@@ -281,5 +281,5 @@ After M6 the work is the machine, which gets its own plan.
 |---|---|
 | now | When the 7300 is running tests: build the extra floating-point vector set listed under M2? |
 | M3 | Is dingusppc built as a library acceptable as the lockstep reference, given it is the reference trusted most? |
-| M5 | Main memory on the SDRAM module or on the HPS DDR3? It sets the line-fill latency and how much RAM the machine can have. |
+| M5 | ~~Main memory on the SDRAM module or on the HPS DDR3?~~ Decided 2026-10-05: the SDRAM module, 64-128 MB fitted; the machine offers 6, 16, 24, 32, 64 or 128 MB. The line-fill bus therefore targets the SDRAM controller, which runs on its own clock, so M5 includes the clock crossing. |
 | M6 | With measured speed in hand: stay with the 7600, or model a slower machine first? |

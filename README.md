@@ -100,12 +100,18 @@ not by drift.
   bit-identically, on a real PowerPC 604 (PVR `00040303`) in a Power Macintosh
   7600: `ppctest/runs/results_604_run2.csv`.
 
+**Memory**
+
+- Main memory lives on the MiSTer SDRAM module; a 64 MB or 128 MB module is
+  expected. The machine's installed RAM is a core option: 6, 16, 24, 32, 64
+  or 128 MB (6 MB is the Pippin's). The caches fill their lines from the
+  SDRAM, so the cache line-fill bus is designed for that controller.
+
 **Still open**
 
 - Whether part of the CPU could run on the DE10-Nano's ARM. Not planned; the
   floating-point unit's request/response boundary is where such a split would
   go if it is ever needed.
-- Main memory: SDRAM module or the HPS DDR3.
 - Which machine the first release actually models.
 
 ## How fast will it be

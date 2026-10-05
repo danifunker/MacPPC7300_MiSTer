@@ -26,7 +26,7 @@ Read these first. They are the source of truth and override anything remembered:
 2. **Milestone M5** from the plan, in this order, each step verified before the next:
    1. Address translation: BATs, segment registers, hashed page table walk in hardware with reference and change bits, ITLB and DTLB, `tlbie`; DSI and ISI with DAR and DSISR. Proof: lockstep with dingusppc with translation on (its MMU is its own code, so say where it cannot be the reference), plus directed page-fault tests.
    2. `lwarx`/`stwcx.` and the cache instructions, `dcbz` first.
-   3. Instruction and data caches in block RAM with 32-byte lines, and the memory side as a line-fill bus. Decide with me first whether main memory will be the SDRAM module or the HPS DDR3, because it sets the bus.
+   3. Instruction and data caches in block RAM with 32-byte lines, and the memory side as a line-fill bus. Decided: main memory is the MiSTer SDRAM module (64 or 128 MB fitted), and the machine's installed RAM is a core option of 6, 16, 24, 32, 64 or 128 MB. The bus therefore targets the SDRAM controller on its own clock; the clock crossing is part of this step.
    4. The timing and area pass: register files in RAM, the FPU's input path, 66 MHz with margin and 75 if it can be had.
 
 Before changing how state is committed or how hazards are handled, check the change against the rules in the plan and tell me. A memory access that can fault in MEM is the one case the current design has not had to handle: an instruction in MEM being cancelled, and EX flushed behind it.
