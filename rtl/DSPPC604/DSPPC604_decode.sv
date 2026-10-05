@@ -8,8 +8,8 @@
 //  and from CR, LR, CTR and XER) and the floating-point arithmetic, move,
 //  convert and compare instructions.
 //
-//  Not yet: sc and traps, supervisor instructions, floating-point loads and
-//  stores, FPSCR instructions, cache and reservation instructions.
+//  Not yet: sc and traps, supervisor instructions, cache and reservation
+//  instructions.
 //
 //  Multi-operation instructions (update forms, lmw/stmw, string forms) are
 //  decoded here as their first operation, with dec.seq telling the sequencer
@@ -59,7 +59,7 @@ always_comb begin
 	dec.crbb   = insn[15:11];
 	dec.crm    = insn[19:12];
 	dec.spr    = {insn[15:11], insn[20:16]};
-	dec.mem_n  = 3'd4;
+	dec.mem_n  = 4'd4;
 
 	case (opcd)
 
@@ -243,14 +243,14 @@ always_comb begin
 			case (xo10)
 				10'd23:  begin end
 				10'd55:  begin dec.seq = SEQ_UPDATE; end
-				10'd87:  begin dec.mem_n = 3'd1; end
-				10'd119: begin dec.mem_n = 3'd1; dec.seq = SEQ_UPDATE; end
-				10'd279: begin dec.mem_n = 3'd2; end
-				10'd311: begin dec.mem_n = 3'd2; dec.seq = SEQ_UPDATE; end
-				10'd343: begin dec.mem_n = 3'd2; dec.mem_sext = 1; end
-				10'd375: begin dec.mem_n = 3'd2; dec.mem_sext = 1; dec.seq = SEQ_UPDATE; end
+				10'd87:  begin dec.mem_n = 4'd1; end
+				10'd119: begin dec.mem_n = 4'd1; dec.seq = SEQ_UPDATE; end
+				10'd279: begin dec.mem_n = 4'd2; end
+				10'd311: begin dec.mem_n = 4'd2; dec.seq = SEQ_UPDATE; end
+				10'd343: begin dec.mem_n = 4'd2; dec.mem_sext = 1; end
+				10'd375: begin dec.mem_n = 4'd2; dec.mem_sext = 1; dec.seq = SEQ_UPDATE; end
 				10'd534: begin dec.mem_brev = 1; end
-				default: begin dec.mem_n = 3'd2; dec.mem_brev = 1; end
+				default: begin dec.mem_n = 4'd2; dec.mem_brev = 1; end
 			endcase
 		end
 		10'd151, 10'd183, 10'd215, 10'd247, 10'd407, 10'd439, 10'd662, 10'd918: begin
@@ -262,12 +262,12 @@ always_comb begin
 			case (xo10)
 				10'd151: begin end
 				10'd183: begin dec.seq = SEQ_UPDATE; end
-				10'd215: begin dec.mem_n = 3'd1; end
-				10'd247: begin dec.mem_n = 3'd1; dec.seq = SEQ_UPDATE; end
-				10'd407: begin dec.mem_n = 3'd2; end
-				10'd439: begin dec.mem_n = 3'd2; dec.seq = SEQ_UPDATE; end
+				10'd215: begin dec.mem_n = 4'd1; end
+				10'd247: begin dec.mem_n = 4'd1; dec.seq = SEQ_UPDATE; end
+				10'd407: begin dec.mem_n = 4'd2; end
+				10'd439: begin dec.mem_n = 4'd2; dec.seq = SEQ_UPDATE; end
 				10'd662: begin dec.mem_brev = 1; end
-				default: begin dec.mem_n = 3'd2; dec.mem_brev = 1; end
+				default: begin dec.mem_n = 4'd2; dec.mem_brev = 1; end
 			endcase
 		end
 		10'd597, 10'd725: begin // lswi, stswi: bytes at (rA|0), count in the NB field
@@ -283,6 +283,28 @@ always_comb begin
 			dec.mem_ljust = 1; dec.seq = SEQ_STRX;
 			if (xo10[7]) begin dec.rc = f_d; dec.rc_rd = 1; dec.mem_wr = 1; end
 			else         begin dec.rd = f_d; dec.rd_wr = 1; dec.mem_rd = 1; end
+		end
+
+		10'd535, 10'd567, 10'd599, 10'd631: begin // lfsx lfsux lfdx lfdux
+			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
+			dec.ra = f_a; dec.ra_rd = a_nz; dec.rb = f_b; dec.rb_rd = 1;
+			dec.frd_wr = 1;
+			dec.mem_rd = 1; dec.mem_fp = 1;
+			dec.mem_fsgl = ~xo10[6]; dec.mem_n = xo10[6] ? 4'd8 : 4'd4;
+			if (xo10[5]) dec.seq = SEQ_UPDATE;
+		end
+		10'd663, 10'd695, 10'd727, 10'd759, 10'd983: begin // stfsx stfsux stfdx stfdux stfiwx
+			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
+			dec.ra = f_a; dec.ra_rd = a_nz; dec.rb = f_b; dec.rb_rd = 1;
+			dec.frb = insn[25:21]; dec.frb_rd = 1;
+			dec.mem_wr = 1; dec.mem_fp = 1;
+			if (xo10 == 10'd983) begin
+				dec.mem_n = 4'd4;                // the low word as it is
+			end
+			else begin
+				dec.mem_fsgl = ~xo10[6]; dec.mem_n = xo10[6] ? 4'd8 : 4'd4;
+				if (xo10[5]) dec.seq = SEQ_UPDATE;
+			end
 		end
 
 		// ---- moves to and from CR and SPRs ---------------------------------
@@ -388,7 +410,7 @@ always_comb begin
 		dec.ra = f_a; dec.ra_rd = a_nz; dec.b_imm = 1; dec.imm = simm;
 		dec.rd = f_d; dec.rd_wr = 1;
 		dec.mem_rd = 1;
-		dec.mem_n  = opcd[3] ? 3'd2 : opcd[1] ? 3'd1 : 3'd4;
+		dec.mem_n  = opcd[3] ? 4'd2 : opcd[1] ? 4'd1 : 4'd4;
 		dec.mem_sext = opcd[3] & opcd[1];
 		if (opcd[0]) dec.seq = SEQ_UPDATE;
 	end
@@ -398,7 +420,7 @@ always_comb begin
 		dec.ra = f_a; dec.ra_rd = a_nz; dec.b_imm = 1; dec.imm = simm;
 		dec.rc = f_d; dec.rc_rd = 1;
 		dec.mem_wr = 1;
-		dec.mem_n  = opcd[3] ? 3'd2 : opcd[1] ? 3'd1 : 3'd4;
+		dec.mem_n  = opcd[3] ? 4'd2 : opcd[1] ? 4'd1 : 4'd4;
 		if (opcd[0]) dec.seq = SEQ_UPDATE;
 	end
 	6'd46: begin // lmw
@@ -412,6 +434,23 @@ always_comb begin
 		dec.ra = f_a; dec.ra_rd = a_nz; dec.b_imm = 1; dec.imm = simm;
 		dec.rc = f_d; dec.rc_rd = 1;
 		dec.mem_wr = 1; dec.seq = SEQ_MULTI;
+	end
+
+	6'd48, 6'd49, 6'd50, 6'd51: begin // lfs lfsu lfd lfdu
+		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
+		dec.ra = f_a; dec.ra_rd = a_nz; dec.b_imm = 1; dec.imm = simm;
+		dec.frd_wr = 1;
+		dec.mem_rd = 1; dec.mem_fp = 1;
+		dec.mem_fsgl = ~opcd[1]; dec.mem_n = opcd[1] ? 4'd8 : 4'd4;
+		if (opcd[0]) dec.seq = SEQ_UPDATE;
+	end
+	6'd52, 6'd53, 6'd54, 6'd55: begin // stfs stfsu stfd stfdu
+		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
+		dec.ra = f_a; dec.ra_rd = a_nz; dec.b_imm = 1; dec.imm = simm;
+		dec.frb = insn[25:21]; dec.frb_rd = 1;
+		dec.mem_wr = 1; dec.mem_fp = 1;
+		dec.mem_fsgl = ~opcd[1]; dec.mem_n = opcd[1] ? 4'd8 : 4'd4;
+		if (opcd[0]) dec.seq = SEQ_UPDATE;
 	end
 
 	// ---- floating point ----------------------------------------------------
@@ -458,6 +497,28 @@ always_comb begin
 				            (xo10 == 10'd14) ? FPU_CTIW : FPU_CTIWZ;
 				dec.frb_rd = 1; dec.frd_wr = 1; dec.fpscr_wr = 1;
 				dec.cr_wr = f_rc; dec.cr_fld = 3'd1;
+			end
+			10'd583: begin // mffs
+				dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MFFS;
+				dec.frd_wr = 1;
+				dec.cr_wr = f_rc; dec.cr_fld = 3'd1;
+			end
+			10'd711: begin // mtfsf
+				dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MTFSF;
+				dec.frb_rd = 1; dec.fpscr_wr = 1;
+				dec.cr_wr = f_rc; dec.cr_fld = 3'd1;
+			end
+			10'd134, 10'd70, 10'd38: begin // mtfsfi, mtfsb0, mtfsb1
+				dec.valid = 1; dec.unit = UNIT_SYS;
+				dec.sys = (xo10 == 10'd134) ? SYS_MTFSFI :
+				          (xo10 == 10'd70)  ? SYS_MTFSB0 : SYS_MTFSB1;
+				dec.fpscr_wr = 1;
+				dec.cr_wr = f_rc; dec.cr_fld = 3'd1;
+			end
+			10'd64: begin // mcrfs
+				dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MCRFS;
+				dec.fpscr_wr = 1;
+				dec.cr_wr = 1; dec.cr_fld = insn[25:23];
 			end
 			10'd40, 10'd72, 10'd136, 10'd264: begin // fneg, fmr, fnabs, fabs
 				dec.valid = 1;

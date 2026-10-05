@@ -63,7 +63,10 @@ always_comb begin
 			// rA <- rA + B, with what the access left in place
 			uop.mem_rd = 1'b0;
 			uop.mem_wr = 1'b0;
+			uop.mem_fp = 1'b0;
 			uop.rc_rd  = 1'b0;
+			uop.frb_rd = 1'b0;
+			uop.frd_wr = 1'b0;
 			uop.rd     = dec.ra;
 			uop.rd_wr  = 1'b1;
 		end
@@ -102,7 +105,7 @@ always_comb begin
 				uop.b_imm = 1'b1;
 			end
 			uop.imm   = {24'd0, done_b};
-			uop.mem_n = (left_b >= 8'd4) ? 3'd4 : left_b[2:0];
+			uop.mem_n = (left_b >= 8'd4) ? 4'd4 : left_b[3:0];
 			if (is_load) uop.rd = {1'b0, str_r};
 			else         uop.rc = {1'b0, str_r};
 			last = (left_b <= 8'd4);

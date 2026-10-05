@@ -3,10 +3,15 @@
 //  DSPPC604 - PowerPC 604-class CPU core
 //  Data memory access unit
 //
-//  Turns one load or store of 1 to 4 bytes at any address into one or two
-//  word-aligned bus accesses, and converts between register values and bytes
-//  in memory (big-endian, byte-reversed, sign-extended, or the left-justified
-//  bytes of the string instructions).
+//  Turns one load or store into one or two word-aligned bus accesses, and
+//  converts between register values and bytes in memory (big-endian,
+//  byte-reversed, sign-extended, or the left-justified bytes of the string
+//  instructions).
+//
+//    1 to 4 bytes   at any address; two bus accesses if a word boundary is
+//                   crossed
+//    8 bytes        a double, at a word-aligned address only (the 604 takes
+//                   an alignment exception otherwise); always two accesses
 //
 //  Handshake: the requester holds req_valid and the request steady until
 //  resp_valid, which is high for one cycle. A store has been written, and a
@@ -27,14 +32,14 @@ module DSPPC604_mem_unit
 	input  logic        req_valid,
 	input  logic        we,
 	input  logic [31:0] addr,
-	input  logic [2:0]  nbytes,      // 1 to 4
+	input  logic [3:0]  nbytes,      // 1 to 4, or 8
 	input  logic        sext,        // load: sign-extend a halfword
 	input  logic        brev,        // byte-reversed
 	input  logic        ljust,       // string: bytes at the top of the register
-	input  logic [31:0] wdata,       // register value to store
+	input  logic [63:0] wdata,       // value to store (low word unless 8 bytes)
 
 	output logic        resp_valid,
-	output logic [31:0] rdata,       // register value loaded
+	output logic [63:0] rdata,       // value loaded (low word unless 8 bytes)
 
 	output logic        dbus_req,
 	output logic        dbus_we,
@@ -49,33 +54,36 @@ module DSPPC604_mem_unit
 typedef enum logic [1:0] {
 	S_REQ0,      // first (or only) word: waiting for the grant
 	S_RSP0,
-	S_REQ1,      // second word of an access that crosses a word boundary
+	S_REQ1,      // second word
 	S_RSP1
 } state_t;
 
 state_t      state;
 logic [31:0] word0_q;
 
-wire [1:0] offset = addr[1:0];
-wire [2:0] last   = {1'b0, offset} + nbytes - 3'd1;   // offset of the last byte
-wire       two_words  = last[2];                          // it is in the next word
+wire       dword     = nbytes[3];
+wire [2:0] n         = nbytes[2:0];
+wire [1:0] offset    = addr[1:0];
+wire [2:0] last      = {1'b0, offset} + n - 3'd1;      // offset of the last byte
+wire       two_words = dword | last[2];
+wire [31:0] w        = wdata[31:0];
 
 // ---- store: register value to bytes, first byte in bits 31:24 --------------
 logic [31:0] sbytes;
 
 always_comb begin
-	if (brev)             sbytes = (nbytes == 3'd4) ? {wdata[7:0], wdata[15:8], wdata[23:16], wdata[31:24]}
-	                                               : {wdata[7:0], wdata[15:8], 16'd0};
-	else if (ljust)       sbytes = wdata;
-	else if (nbytes == 3'd1) sbytes = {wdata[7:0], 24'd0};
-	else if (nbytes == 3'd2) sbytes = {wdata[15:0], 16'd0};
-	else                  sbytes = wdata;
+	if (brev)           sbytes = (n == 3'd4) ? {w[7:0], w[15:8], w[23:16], w[31:24]}
+	                                         : {w[7:0], w[15:8], 16'd0};
+	else if (ljust)     sbytes = w;
+	else if (n == 3'd1) sbytes = {w[7:0], 24'd0};
+	else if (n == 3'd2) sbytes = {w[15:0], 16'd0};
+	else                sbytes = w;
 end
 
 // the bytes placed in a two-word window
-wire [63:0] wwin  = {sbytes, 32'd0} >> {offset, 3'b000};
-wire [7:0]  ones  = ~(8'hFF >> nbytes);
-wire [7:0]  bewin = ones >> offset;
+wire [63:0] wwin  = dword ? wdata : ({sbytes, 32'd0} >> {offset, 3'b000});
+wire [7:0]  ones  = ~(8'hFF >> n);
+wire [7:0]  bewin = dword ? 8'hFF : (ones >> offset);
 
 wire second = (state == S_REQ1) | (state == S_RSP1);
 
@@ -88,18 +96,21 @@ assign dbus_wdata = second ? wwin[31:0] : wwin[63:32];
 // ---- load: bytes to register value ------------------------------------------
 wire [63:0] rwin   = (state == S_RSP1) ? {word0_q, dbus_rdata} : {dbus_rdata, 32'd0};
 wire [63:0] rshift = rwin << {offset, 3'b000};
-wire [31:0] lmask  = ~(32'hFFFFFFFF >> {nbytes, 3'b000});
+wire [31:0] lmask  = ~(32'hFFFFFFFF >> {n, 3'b000});
 wire [31:0] lbytes = rshift[63:32] & lmask;
 
+logic [31:0] lword;
+
 always_comb begin
-	if (brev)                rdata = (nbytes == 3'd4) ? {lbytes[7:0], lbytes[15:8], lbytes[23:16], lbytes[31:24]}
-	                                                  : {16'd0, lbytes[23:16], lbytes[31:24]};
-	else if (ljust)          rdata = lbytes;
-	else if (nbytes == 3'd1) rdata = {24'd0, lbytes[31:24]};
-	else if (nbytes == 3'd2) rdata = {{16{sext & lbytes[31]}}, lbytes[31:16]};
-	else                     rdata = lbytes;
+	if (brev)           lword = (n == 3'd4) ? {lbytes[7:0], lbytes[15:8], lbytes[23:16], lbytes[31:24]}
+	                                        : {16'd0, lbytes[23:16], lbytes[31:24]};
+	else if (ljust)     lword = lbytes;
+	else if (n == 3'd1) lword = {24'd0, lbytes[31:24]};
+	else if (n == 3'd2) lword = {{16{sext & lbytes[31]}}, lbytes[31:16]};
+	else                lword = lbytes;
 end
 
+assign rdata      = dword ? rwin : {32'd0, lword};
 assign resp_valid = dbus_rvalid & (((state == S_RSP0) & ~two_words) | (state == S_RSP1));
 
 always_ff @(posedge clk) begin

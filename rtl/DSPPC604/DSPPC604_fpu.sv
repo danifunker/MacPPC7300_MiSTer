@@ -9,7 +9,8 @@
 //
 //  Handshake (same as the integer unit)
 //    The requester holds req_valid, ctl, the operands and fpscr_in steady
-//    until resp_valid. resp_valid is high for one cycle, with the results.
+//    until the response is taken. resp_valid stays high, with the results,
+//    until a cycle in which resp_ready is high too.
 //
 //    fmr fneg fabs fnabs fsel fcmpu fcmpo   same cycle (combinational)
 //    everything else                        several cycles, see the stages
@@ -45,6 +46,7 @@ module DSPPC604_fpu
 	input  logic [31:0] fpscr_in,
 
 	output logic        resp_valid,
+	input  logic        resp_ready,
 	output logic [63:0] result,
 	output logic        result_we,
 	output logic [31:0] fpscr_out,
@@ -908,7 +910,7 @@ always_ff @(posedge clk) begin
 	end
 
 	default: begin // S_DONE
-		state <= S_IDLE;
+		if (resp_ready) state <= S_IDLE;
 	end
 	endcase
 

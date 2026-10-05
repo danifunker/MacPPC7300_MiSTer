@@ -87,13 +87,14 @@ DSPPC604 cpu
 	.trace_last    (),
 	.trace_pc      (),
 	.trace_insn    (),
-	.trace_gpr_we  (),
-	.trace_gpr_idx (),
-	.trace_gpr_val (),
+	.trace_reg_we  (),
+	.trace_reg_idx (),
+	.trace_reg_val (),
 	.trace_cr      (),
 	.trace_xer     (),
 	.trace_lr      (),
-	.trace_ctr     ()
+	.trace_ctr     (),
+	.trace_fpscr   ()
 );
 /* verilator lint_on PINCONNECTEMPTY */
 

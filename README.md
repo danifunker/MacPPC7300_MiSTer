@@ -16,8 +16,9 @@ still the MiSTer template's test pattern.
 | DSPPC604 integer execute unit | all 11,576 real-604 vectors pass |
 | DSPPC604 floating-point unit | all 25,598 real-604 vectors pass; 1.8 million random vectors agree with the software model |
 | DSPPC604 pipeline, user-mode integer code | the same 11,576 vectors pass when run as a program; random programs match dingusppc instruction for instruction |
-| Floating point in the pipeline | not yet: the FPU above is not connected to the pipeline |
-| Exceptions, supervisor state, MMU, caches | not started; see [the plan](docs/DSPPC604_plan.md) |
+| Floating point in the pipeline | the 25,598 FP vectors pass when run as a program; FP loads, stores and FPSCR instructions agree with the software model (no hardware data for those yet) |
+| Exceptions, supervisor state | in progress |
+| MMU, caches | not started; see [the plan](docs/DSPPC604_plan.md) |
 | Machine (chipset, video, SCSI, ...) | not started |
 
 Size and speed of what exists, each synthesised on its own for the DE10-Nano's
@@ -25,11 +26,15 @@ FPGA with Quartus 17.0 (`syn\check.py`), constrained to 75 MHz:
 
 | Block | ALMs | DSP blocks | Worst-case Fmax |
 |---|---|---|---|
-| Pipeline (six stages, integer units, branch target buffer; no FPU, caches or MMU) | 3,208 (8%) | 3 | 78.6 MHz |
-| Floating-point unit | 3,303 (8%) | 4 | 73.5 MHz (75.2 MHz at the hot corner) |
+| Pipeline with the FPU (six stages, branch target buffer; no caches or MMU) | 9,391 (22%) | 7 | 66.5 MHz |
+| The same pipeline before the FPU was connected | 3,208 (8%) | 3 | 78.6 MHz |
+| Floating-point unit alone | 3,303 (8%) | 4 | 73.5 MHz |
 
-So 66 MHz is met with room. 75 MHz is met by the pipeline and within reach
-for the FPU, whose rounding stage misses it at the cold corner.
+So the 66 MHz target is met, narrowly, and 75 MHz is not. No effort has gone
+into either yet. The two obvious gains are known: the register files are
+built from flip-flops instead of RAM (most of the 2,900 ALMs the FPU's
+connection cost beyond its own size), and the forwarded floating-point
+operands run straight into the FPU's first stage, which sets the clock.
 
 ## Decisions that are locked in
 
@@ -152,11 +157,18 @@ the rest, so they can never hide a real failure or be hidden by one.
 python verilator\run_core.py
 ```
 
-Tests the pipeline. First the real-604 integer vectors, assembled into one
-program and run with and without random bus wait states. Then random programs
-in lockstep with dingusppc's interpreter (`verilator/ref` builds it as a
-library from `..\dingusppc`): the registers are compared after every
-instruction and memory at the end. `--seeds N` runs more random programs.
+Tests the pipeline, four ways:
+
+1. The real-604 integer vectors, assembled into one program and run with and
+   without random bus wait states.
+2. The real-604 floating-point vectors, the same way.
+3. Random floating-point programs (arithmetic, loads, stores, FPSCR
+   instructions) with the state `fpmodel.py` expects after every instruction.
+4. Random integer programs in lockstep with dingusppc's interpreter
+   (`verilator/ref` builds it as a library from `..\dingusppc`): the registers
+   are compared after every instruction and memory at the end.
+
+`--seeds N` runs more random programs.
 
 ```
 python verilator\fpmodel.py check

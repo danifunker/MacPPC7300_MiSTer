@@ -7,8 +7,11 @@
 
 1. The real-604 integer vectors, assembled into one program and executed by
    the pipeline, without and with random bus wait states.
-2. Random programs in lockstep with dingusppc's interpreter: after every
-   instruction the registers must match, and at the end the memory.
+2. The real-604 floating-point vectors, the same way.
+3. Random floating-point programs (arithmetic, loads, stores, FPSCR
+   instructions) with the state fpmodel.py expects after every instruction.
+4. Random integer programs in lockstep with dingusppc's interpreter: after
+   every instruction the registers must match, and at the end the memory.
 
 Runs from Windows (through WSL) or directly under Linux.
 """
@@ -82,7 +85,30 @@ def main():
         r = run([tb, "--prog", golden, "--stall", str(stall), "--seed", str(seed)])
         report("  wait states %d%%" % stall, r)
 
-    # 2. random programs in lockstep
+    # 2. the floating-point vectors the same way
+    goldenfp = os.path.join(progs, "goldenfp.prog")
+    r = run([sys.executable, os.path.join(HERE, "progs.py"), "goldenfp", goldenfp])
+    if r.returncode:
+        print(r.stdout)
+        return 1
+    print("real-604 floating-point vectors through the pipeline (25,598 checks each):")
+    for stall, seed in ((0, 1),) if args.quick else ((0, 1), (30, 2)):
+        r = run([tb, "--prog", goldenfp, "--stall", str(stall), "--seed", str(seed)])
+        report("  wait states %d%%" % stall, r)
+
+    # 3. random floating-point programs, every instruction checked against fpmodel.py
+    print("random floating-point programs against the software model:")
+    for seed in range(args.first_seed, args.first_seed + max(2, args.seeds // 4)):
+        prog = os.path.join(progs, "fprandom.prog")
+        r = run([sys.executable, os.path.join(HERE, "progs.py"), "fprandom", prog, str(args.count), str(seed)])
+        if r.returncode:
+            print(r.stdout)
+            return 1
+        stall = (0, 20, 50)[seed % 3]
+        r = run([tb, "--prog", prog, "--stall", str(stall), "--seed", str(seed)])
+        report("  seed %d, wait states %d%%" % (seed, stall), r)
+
+    # 4. random integer programs in lockstep
     print("random programs in lockstep with dingusppc:")
     total = 0
     for seed in range(args.first_seed, args.first_seed + args.seeds):

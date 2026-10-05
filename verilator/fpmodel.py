@@ -505,6 +505,67 @@ def execute(name, a, b, c, fpscr):
     raise KeyError(name)
 
 
+# ---- loads, stores and the FPSCR instructions ----------------------------------
+# No hardware data covers these yet: they follow the architecture manual.
+def single_to_double(w):
+    """lfs: the double holding the same value as single w (exact, NaNs untouched)."""
+    s, e, f = w >> 31, (w >> 23) & 0xFF, w & 0x7FFFFF
+    if e == 0:
+        if f == 0:
+            return s << 63
+        nb = f.bit_length()                       # denormal: f * 2**-149
+        return (s << 63) | ((nb - 1 - 149 + 1023) << 52) | ((f << (53 - nb)) & FRAC)
+    if e == 255:
+        return (s << 63) | INF | (f << 29)
+    return (s << 63) | ((e - 127 + 1023) << 52) | (f << 29)
+
+
+def double_to_single(d):
+    """stfs: no rounding. A value in the single denormal range is shifted into
+    place and truncated; anything else stores its top bits. (For exponents
+    below the denormal range the architecture leaves the result undefined;
+    this takes the same path as normal numbers.)"""
+    s, e, f = d >> 63, (d >> 52) & 0x7FF, d & FRAC
+    if 874 <= e <= 896:
+        m = ((1 << 52) | f) >> (897 - e)
+        return (s << 31) | ((m >> 29) & 0x7FFFFF)
+    return ((d >> 62) << 30) | ((d >> 29) & 0x3FFFFFFF)
+
+
+FPSCR_WRITABLE = 0x9FFFF7FF        # everything but FEX, VX and the reserved bit
+FPSCR_EXC = FX | STICKY
+
+
+def fpscr_instr(kind, fpscr, fm=0, value=0, field=0, bit=0):
+    """mtfsf, mtfsfi, mtfsb0, mtfsb1, mcrfs. bit and field count from the most
+    significant end, as the instructions do. Returns (fpscr, CR field or None)."""
+    cr = None
+    if kind == "mtfsf":
+        mask = 0
+        for i in range(8):
+            if fm & (0x80 >> i):
+                mask |= 0xF0000000 >> (4 * i)
+        mask &= FPSCR_WRITABLE
+        new = (fpscr & ~mask) | (value & mask)
+    elif kind == "mtfsfi":
+        mask = (0xF0000000 >> (4 * field)) & FPSCR_WRITABLE
+        new = (fpscr & ~mask) | ((value * 0x11111111) & mask)
+    elif kind == "mtfsb0":
+        new = fpscr & ~((0x80000000 >> bit) & FPSCR_WRITABLE)
+    elif kind == "mtfsb1":
+        b = 0x80000000 >> bit
+        new = fpscr | (b & FPSCR_WRITABLE)
+        if b & FPSCR_EXC & ~fpscr:
+            new |= FX
+    elif kind == "mcrfs":
+        mask = 0xF0000000 >> (4 * field)
+        cr = (fpscr & mask) >> (28 - 4 * field)
+        new = fpscr & ~(mask & FPSCR_EXC)
+    else:
+        raise KeyError(kind)
+    return summarise(new & 0xFFFFFFFF), cr
+
+
 # ---- checking against recorded hardware results --------------------------------
 def check(path, show=6, only=None):
     total = bad = skipped = 0

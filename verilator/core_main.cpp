@@ -9,10 +9,12 @@
 //   Final memory contents must equal the reference's (with --lockstep).
 //
 // Program file, one record per line, numbers in hex:
-//   R pc                              reset address
-//   M addr word                       a word of memory
-//   C pc r3 r4 r5 r6 cr xer ctr tag   check after the instruction at pc
-//   E pc                              stop after the instruction at pc
+//   R pc              reset address
+//   M addr word       a word of memory
+//   C pc r3 r4 r5 r6 cr xer ctr fpscr f3 f4 f5 f6 tag
+//                     state required after the instruction at pc
+//   X addr word       a word memory must hold at the end
+//   E pc              stop after the instruction at pc
 
 #include <verilated.h>
 #include "VDSPPC604.h"
@@ -40,7 +42,8 @@ const uint32_t RAM_MASK = RAM_SIZE - 1;
 const uint32_t PVR_604  = 0x00040303;
 
 struct Check {
-	uint32_t r[4], cr, xer, ctr;
+	uint32_t r[4], cr, xer, ctr, fpscr;
+	uint64_t f[4];
 	std::string tag;
 };
 
@@ -119,6 +122,7 @@ int main(int argc, char** argv) {
 	// ---- load the program ----
 	std::vector<uint8_t> mem(RAM_SIZE, 0);
 	std::map<uint32_t, Check> checks;
+	std::vector<std::pair<uint32_t, uint32_t>> expect_mem;
 	uint32_t reset_pc = 0x100, end_pc = 0xFFFFFFFF;
 	{
 		std::ifstream fh(opt.prog);
@@ -139,8 +143,14 @@ int main(int argc, char** argv) {
 			else if (kind == "C") {
 				uint32_t pc;
 				Check c;
-				ss >> pc >> c.r[0] >> c.r[1] >> c.r[2] >> c.r[3] >> c.cr >> c.xer >> c.ctr >> c.tag;
+				ss >> pc >> c.r[0] >> c.r[1] >> c.r[2] >> c.r[3] >> c.cr >> c.xer >> c.ctr >> c.fpscr
+				   >> c.f[0] >> c.f[1] >> c.f[2] >> c.f[3] >> c.tag;
 				checks[pc] = c;
+			}
+			else if (kind == "X") {
+				uint32_t a, w;
+				ss >> a >> w;
+				expect_mem.push_back({a, w});
 			}
 		}
 	}
@@ -164,6 +174,7 @@ int main(int argc, char** argv) {
 
 	Bus ib, db;
 	uint32_t gpr[32] = {0};
+	uint64_t fpr[32] = {0};
 	uint64_t cycles = 0, retired = 0;
 	long checked = 0, failed = 0;
 	bool done = false, diverged = false;
@@ -221,7 +232,11 @@ int main(int argc, char** argv) {
 		tick();
 
 		if (dut->trace_valid) {
-			if (dut->trace_gpr_we && dut->trace_gpr_idx < 32) gpr[dut->trace_gpr_idx] = dut->trace_gpr_val;
+			if (dut->trace_reg_we) {
+				unsigned idx = dut->trace_reg_idx;
+				if (idx < 32) gpr[idx] = (uint32_t)dut->trace_reg_val;
+				else if (idx >= 64) fpr[idx - 64] = dut->trace_reg_val;
+			}
 			if (dut->trace_last) {
 				uint32_t pc = dut->trace_pc, insn = dut->trace_insn;
 				retired++;
@@ -234,14 +249,23 @@ int main(int argc, char** argv) {
 					const Check& c = it->second;
 					checked++;
 					bool ok = gpr[3] == c.r[0] && gpr[4] == c.r[1] && gpr[5] == c.r[2] && gpr[6] == c.r[3] &&
-					          dut->trace_cr == c.cr && dut->trace_xer == c.xer && dut->trace_ctr == c.ctr;
+					          dut->trace_cr == c.cr && dut->trace_xer == c.xer && dut->trace_ctr == c.ctr &&
+					          dut->trace_fpscr == c.fpscr && fpr[3] == c.f[0] && fpr[4] == c.f[1] &&
+					          fpr[5] == c.f[2] && fpr[6] == c.f[3];
 					if (!ok) {
 						if (failed++ < opt.show) {
 							std::printf("FAIL %s at %08X insn=%08X\n", c.tag.c_str(), pc, insn);
-							std::printf("  want r3=%08X r4=%08X r5=%08X r6=%08X cr=%08X xer=%08X ctr=%08X\n",
-								c.r[0], c.r[1], c.r[2], c.r[3], c.cr, c.xer, c.ctr);
-							std::printf("  got  r3=%08X r4=%08X r5=%08X r6=%08X cr=%08X xer=%08X ctr=%08X\n",
-								gpr[3], gpr[4], gpr[5], gpr[6], dut->trace_cr, dut->trace_xer, dut->trace_ctr);
+							std::printf("  want r3=%08X r4=%08X r5=%08X r6=%08X cr=%08X xer=%08X ctr=%08X fpscr=%08X\n",
+								c.r[0], c.r[1], c.r[2], c.r[3], c.cr, c.xer, c.ctr, c.fpscr);
+							std::printf("  got  r3=%08X r4=%08X r5=%08X r6=%08X cr=%08X xer=%08X ctr=%08X fpscr=%08X\n",
+								gpr[3], gpr[4], gpr[5], gpr[6], dut->trace_cr, dut->trace_xer, dut->trace_ctr,
+								dut->trace_fpscr);
+							std::printf("  want f3=%016llX f4=%016llX f5=%016llX f6=%016llX\n",
+								(unsigned long long)c.f[0], (unsigned long long)c.f[1],
+								(unsigned long long)c.f[2], (unsigned long long)c.f[3]);
+							std::printf("  got  f3=%016llX f4=%016llX f5=%016llX f6=%016llX\n",
+								(unsigned long long)fpr[3], (unsigned long long)fpr[4],
+								(unsigned long long)fpr[5], (unsigned long long)fpr[6]);
 						}
 					}
 				}
@@ -307,6 +331,13 @@ int main(int argc, char** argv) {
 	dut->final();
 
 	bool mem_ok = true;
+	long mem_bad = 0;
+	for (const auto& e : expect_mem) {
+		uint32_t got = rd32(mem, e.first);
+		if (got != e.second && mem_bad++ < opt.show)
+			std::printf("MEMORY at %08X: want %08X, got %08X\n", e.first, e.second, got);
+	}
+	if (mem_bad) mem_ok = false;
 #ifdef WITH_REF
 	if (opt.lockstep && !diverged) {
 		const uint8_t* rm = ref_ram();
@@ -324,6 +355,8 @@ int main(int argc, char** argv) {
 		(unsigned long long)retired, (unsigned long long)cycles, retired ? (double)cycles / retired : 0.0);
 	if (!checks.empty())
 		std::printf("recorded-state checks: %ld of %zu reached, %ld failed\n", checked, checks.size(), failed);
+	if (!expect_mem.empty())
+		std::printf("memory words checked at the end: %zu, %ld wrong\n", expect_mem.size(), mem_bad);
 	if (opt.lockstep) std::printf("lockstep with the reference: %s\n", diverged ? "DIVERGED" : mem_ok ? "identical" : "memory differs");
 
 	bool ok = done && !diverged && mem_ok && failed == 0 && checked == (long)checks.size();

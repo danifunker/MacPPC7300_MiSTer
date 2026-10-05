@@ -23,7 +23,7 @@ package DSPPC604_pkg;
 	} unit_t;
 
 	// What a UNIT_SYS instruction does.
-	typedef enum logic [2:0] {
+	typedef enum logic [3:0] {
 		SYS_NOP,       // sync, eieio, isync (until there is something to synchronise)
 		SYS_CRLOG,     // CR bit BT <- BA op BB
 		SYS_MCRF,
@@ -31,7 +31,13 @@ package DSPPC604_pkg;
 		SYS_MTCRF,
 		SYS_MCRXR,
 		SYS_MFSPR,
-		SYS_MTSPR
+		SYS_MTSPR,
+		SYS_MFFS,      // the FPSCR instructions
+		SYS_MTFSF,
+		SYS_MTFSFI,
+		SYS_MTFSB0,
+		SYS_MTFSB1,
+		SYS_MCRFS
 	} sys_op_t;
 
 	// Where a branch goes.
@@ -156,7 +162,9 @@ package DSPPC604_pkg;
 		// memory access at A + B
 		logic        mem_rd;
 		logic        mem_wr;
-		logic [2:0]  mem_n;        // bytes, 1 to 4
+		logic [3:0]  mem_n;        // bytes: 1 to 4, or 8 for a double
+		logic        mem_fp;       // the data register is floating-point (frd, or frb for a store)
+		logic        mem_fsgl;     // ... held in memory as a single
 		logic        mem_sext;     // lha: sign-extend the halfword
 		logic        mem_brev;     // byte-reversed forms
 		logic        mem_ljust;    // string forms: bytes fill the register from the top
@@ -196,5 +204,46 @@ package DSPPC604_pkg;
 		int_ctl_t    ic;
 		fpu_ctl_t    fc;
 	} dec_t;
+
+	// ---- single precision in memory, double precision in a register ---------
+	// The conversions of the floating-point load and store instructions. They
+	// are exact rearrangements of bits, not rounding operations, and are
+	// written as the architecture defines them.
+
+	// lfs: single to double
+	function automatic logic [63:0] fp_single_to_double(input logic [31:0] w);
+		logic [4:0]  lz;
+		logic [22:0] sh;
+		logic [10:0] e;
+		begin
+			lz = 5'd0;
+			for (int i = 0; i < 23; i++)
+				if (w[i]) lz = 5'd22 - i[4:0];
+			sh = w[22:0] << (lz + 5'd1);          // leading one shifted out
+			e  = 11'd896 - {6'd0, lz};
+			if (w[30:23] == 8'd0 && w[22:0] != 23'd0)
+				fp_single_to_double = {w[31], e, sh, 29'd0};                             // denormal
+			else if (w[30:23] == 8'd0 || w[30:23] == 8'hFF)
+				fp_single_to_double = {w[31], w[30], {3{w[30]}}, w[29:0], 29'd0};        // zero, infinity, NaN
+			else
+				fp_single_to_double = {w[31], w[30], {3{~w[30]}}, w[29:0], 29'd0};       // normal
+		end
+	endfunction
+
+	// stfs: double to single. No rounding: a value a single cannot hold stores
+	// its top bits. Exponents below the single denormal range are undefined by
+	// the architecture; they take the same path as normal numbers here.
+	function automatic logic [31:0] fp_double_to_single(input logic [63:0] d);
+		logic [52:0] m;
+		logic [10:0] shift;
+		begin
+			shift = 11'd897 - d[62:52];
+			m     = {1'b1, d[51:0]} >> shift[4:0];
+			if (d[62:52] >= 11'd874 && d[62:52] <= 11'd896)
+				fp_double_to_single = {d[63], 8'd0, m[51:29]};                           // denormal
+			else
+				fp_double_to_single = {d[63:62], d[58:29]};
+		end
+	endfunction
 
 endpackage

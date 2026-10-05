@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Programs for the DSPPC604 pipeline test bench (core_tb).
 
-    python progs.py golden OUT [results.csv]   the real-604 integer vectors as code
-    python progs.py random OUT COUNT [SEED]    random instruction stream for lockstep
+    python progs.py golden OUT [results.csv]     the real-604 integer vectors as code
+    python progs.py goldenfp OUT [results.csv]   the real-604 floating-point vectors as code
+    python progs.py random OUT COUNT [SEED]      random instruction stream for lockstep
+    python progs.py fprandom OUT COUNT [SEED]    random floating-point program, with the
+                                                 state fpmodel.py expects after every instruction
 
 The file format is described at the top of core_main.cpp.
 """
@@ -16,6 +19,7 @@ CODE_BASE = 0x00010000
 DATA_A = 0x00800000          # base register r1
 DATA_B = 0x00900001          # base register r2: deliberately unaligned
 DATA_SPAN = 0x1000           # bytes initialised either side of each base
+POOL_BASE = 0x00400000       # constants for the floating-point programs
 
 
 # ---- encoders ------------------------------------------------------------------
@@ -62,6 +66,7 @@ class Program:
         self.words = []          # code
         self.checks = []         # (index into words, text)
         self.data = {}           # addr -> word
+        self.expect = {}         # addr -> word memory must hold at the end
 
     def pc(self):
         return CODE_BASE + 4 * len(self.words)
@@ -75,6 +80,8 @@ class Program:
                 fh.write("M %08X %08X\n" % (CODE_BASE + 4 * i, w))
             for i, text in self.checks:
                 fh.write("C %08X %s\n" % (CODE_BASE + 4 * i, text))
+            for a in sorted(self.expect):
+                fh.write("X %08X %08X\n" % (a, self.expect[a]))
             fh.write("E %08X\n" % (CODE_BASE + 4 * (len(self.words) - 1)))
 
 
@@ -98,14 +105,249 @@ def golden(out, path):
             k = n % len(setup)
             for group in setup[k:] + setup[:k]:
                 p.words += group
-            p.checks.append((len(p.words), "%08X %08X %08X %08X %08X %08X %08X %s#%s" % (
+            p.checks.append((len(p.words), "%08X %08X %08X %08X %08X %08X %08X %08X 0 0 0 0 %s#%s" % (
                 v["out_r3"], v["out_r4"], v["out_r5"], v["out_r6"],
-                v["out_cr"], v["out_xer"], v["out_ctr"], r["name"], r["index"])))
+                v["out_cr"], v["out_xer"], v["out_ctr"], 0, r["name"], r["index"])))
             p.words.append(insn)
             n += 1
     p.words.append(B_SELF)
     p.write(out)
     print("%d vectors, %d instructions -> %s" % (n, len(p.words), out))
+
+
+def lfd(fr, ra, d):
+    return D(50, fr, ra, d)
+
+
+def mtfsf(fm, frb, rc=0):
+    return (63 << 26) | (fm << 17) | (frb << 11) | (711 << 1) | rc
+
+
+def check_text(r, cr, xer, ctr, fpscr, f, tag):
+    return "%08X %08X %08X %08X %08X %08X %08X %08X %016X %016X %016X %016X %s" % (
+        r[0], r[1], r[2], r[3], cr, xer, ctr, fpscr, f[0], f[1], f[2], f[3], tag)
+
+
+def goldenfp(out, path):
+    """Each vector: f4-f6 and FPSCR loaded from a constant pool, f3 zeroed, CR
+    set, then the instruction. r10 points at the vector's constants."""
+    p = Program()
+    n = 0
+    with open(path) as fh:
+        for r in csv.DictReader(fh):
+            insn = int(r["insn"], 16)
+            if (insn >> 26) not in (59, 63):
+                continue
+            v = {k: int(r[k], 16) for k in r if k.startswith(("in_", "out_"))}
+            block = POOL_BASE + 40 * n
+            for i, d in enumerate((v["in_f4"], v["in_f5"], v["in_f6"], v["in_fpscr"], 0)):
+                p.data[block + 8 * i] = d >> 32
+                p.data[block + 8 * i + 4] = d & 0xFFFFFFFF
+            setup = [
+                [lfd(4, 10, 0)], [lfd(5, 10, 8)], [lfd(6, 10, 16)], [lfd(3, 10, 32)],
+                [lfd(7, 10, 24), mtfsf(0xFF, 7)],
+                li32(7, v["in_cr"]) + [mtcrf(0xFF, 7)],
+            ]
+            k = n % len(setup)
+            p.words += [D(15, 10, 0, block >> 16), D(24, 10, 10, block)]
+            for group in setup[k:] + setup[:k]:
+                p.words += group
+            p.checks.append((len(p.words), check_text(
+                [v["out_r3"], v["out_r4"], v["out_r5"], v["out_r6"]], v["out_cr"], v["out_xer"],
+                v["out_ctr"], v["out_fpscr"], [v["out_f3"], v["out_f4"], v["out_f5"], v["out_f6"]],
+                "%s#%s" % (r["name"], r["index"]))))
+            p.words.append(insn)
+            n += 1
+    p.words.append(B_SELF)
+    p.write(out)
+    print("%d vectors, %d instructions -> %s" % (n, len(p.words), out))
+
+
+# ---- random floating-point programs, checked against fpmodel.py ------------------
+SCRATCH = 0x00500000
+
+
+def fprandom(out, count, seed):
+    """Straight-line floating-point code. This script executes it as well, with
+    fpmodel.py, and records the state every instruction must leave behind.
+    f3-f6 are the only registers written, so the four the test bench checks
+    are the whole floating-point state that changes."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import fpmodel as fm
+
+    rnd = random.Random(seed)
+    p = Program()
+    mem = {}                                   # word address -> value, the model's memory
+
+    def poke(addr, word):
+        mem[addr] = word
+        p.data[addr] = word
+
+    doubles = [fm._rand_double(rnd) for _ in range(256)]
+    singles = [rnd.choice((rnd.getrandbits(32), rnd.getrandbits(32) & 0x807FFFFF,
+                           (rnd.getrandbits(32) & 0x807FFFFF) | 0x7F800000,
+                           rnd.getrandbits(32) & 0x80000000, 0x7F800000, 0x00000001))
+               for _ in range(256)]
+    for i, d in enumerate(doubles):
+        poke(POOL_BASE + 8 * i, d >> 32)
+        poke(POOL_BASE + 8 * i + 4, d & 0xFFFFFFFF)
+    for i, w in enumerate(singles):
+        poke(POOL_BASE + 0x1000 + 4 * i, w)
+
+    fpr = [0] * 32
+    st = {"fpscr": 0, "cr": 0, "r11": SCRATCH}
+
+    def emit(word):
+        p.words.append(word)
+
+    def check(tag):
+        p.checks.append((len(p.words) - 1, check_text(
+            [0, 0, 0, 0], st["cr"], 0, 0, st["fpscr"], fpr[3:7], tag)))
+
+    def cr1():
+        st["cr"] = (st["cr"] & ~0x0F000000) | ((st["fpscr"] >> 28) << 24)
+
+    def set_crf(field, val):
+        sh = 28 - 4 * field
+        st["cr"] = (st["cr"] & ~(0xF << sh)) | (val << sh)
+
+    # prologue: bases, an index, and every source register loaded
+    p.words += li32(10, POOL_BASE) + li32(11, SCRATCH) + li32(12, 8) + li32(9, SCRATCH + 0x800)
+    for r in range(0, 8):
+        i = rnd.randrange(256)
+        emit(lfd(r, 10, 8 * i))
+        fpr[r] = doubles[i]
+
+    dst = lambda: rnd.randrange(3, 7)
+    src = lambda: rnd.randrange(0, 8)
+    bit = lambda: rnd.getrandbits(1)
+    arith = [n for n in fm.GEN_OPS if n not in ("FCMPU", "FCMPO")]
+
+    done = 0
+    while done < count:
+        k = rnd.random()
+        if k < 0.45:
+            # arithmetic, moves, conversions
+            name = rnd.choice(arith)
+            op, xo, uses = fm.GEN_OPS[name]
+            d, a, b, c = dst(), src(), src(), src()
+            rc = 0 if name == "FSEL" else bit()
+            fm.UNDEFINED = False
+            res, new, _ = fm.execute(name, fpr[a], fpr[b], fpr[c], st["fpscr"])
+            if fm.UNDEFINED:
+                continue
+            emit(fm._a(op, d, a if "a" in uses else 0, b if "b" in uses else 0,
+                       c if "c" in uses else 0, xo, rc))
+            if res is not None:
+                fpr[d] = res
+            st["fpscr"] = new
+            if rc:
+                cr1()
+            check(name)
+        elif k < 0.50:
+            name = rnd.choice(("FCMPU", "FCMPO"))
+            op, xo, _ = fm.GEN_OPS[name]
+            a, b, crf = src(), src(), rnd.randrange(8)
+            _, new, c = fm.execute(name, fpr[a], fpr[b], 0, st["fpscr"])
+            emit(fm._a(op, crf << 2, a, b, 0, xo, 0))
+            st["fpscr"] = new
+            set_crf(crf, c)
+            check(name)
+        elif k < 0.62:
+            # loads: displacement, indexed (r10 + r12), and with update through r11
+            d, form = dst(), rnd.randrange(4)
+            double = bit()
+            if form == 0:
+                i = rnd.randrange(256)
+                addr = POOL_BASE + (8 * i if double else 0x1000 + 4 * i)
+                emit(D(50 if double else 48, d, 10, addr - POOL_BASE))       # lfd, lfs
+            elif form == 1:
+                addr = POOL_BASE + 8                                         # r10 + r12
+                emit(X(d, 10, 12, 599 if double else 535))                   # lfdx, lfsx
+            else:
+                # lfdu / lfsu from where r11 points after the update: move r11 within the scratch area
+                step = 4 * rnd.randrange(-4, 5)
+                addr = st["r11"] + step
+                if addr < SCRATCH - 0x400 or addr > SCRATCH + 0x400:
+                    continue
+                st["r11"] = addr
+                emit(D(51 if double else 49, d, 11, step))
+            hi = mem.get(addr, 0)
+            if double:
+                fpr[d] = (hi << 32) | mem.get(addr + 4, 0)
+            else:
+                fpr[d] = fm.single_to_double(hi)
+            check("load")
+        elif k < 0.76:
+            # stores into the scratch area
+            s, form = src(), rnd.randrange(3)
+            kind = rnd.choice(("d", "s", "iw"))
+            if form == 0:
+                off = 4 * rnd.randrange(-128, 128)
+                addr = SCRATCH + 0x800 + off                             # r9 + off
+                if kind == "iw":
+                    emit(D(14, 8, 0, off))                               # li r8, off
+                    emit(X(s, 9, 8, 983))                                # stfiwx
+                else:
+                    emit(D(54 if kind == "d" else 52, s, 9, off))
+            elif form == 1:
+                step = 4 * rnd.randrange(-4, 5)
+                addr = st["r11"] + step
+                if kind == "iw" or addr < SCRATCH - 0x400 or addr > SCRATCH + 0x400:
+                    continue
+                st["r11"] = addr
+                emit(D(55 if kind == "d" else 53, s, 11, step))          # stfdu, stfsu
+            else:
+                addr = st["r11"] + 8                                     # r11 + r12
+                if kind == "iw":
+                    emit(X(s, 11, 12, 983))
+                else:
+                    emit(X(s, 11, 12, 727 if kind == "d" else 663))      # stfdx, stfsx
+            v = fpr[s]
+            if kind == "d":
+                mem[addr], mem[addr + 4] = v >> 32, v & 0xFFFFFFFF
+            elif kind == "s":
+                mem[addr] = fm.double_to_single(v)
+            else:
+                mem[addr] = v & 0xFFFFFFFF
+            check("store")
+        else:
+            # FPSCR instructions
+            j = rnd.randrange(6)
+            rc = bit()
+            if j == 0:
+                d = dst()
+                emit((63 << 26) | (d << 21) | (583 << 1) | rc)           # mffs
+                fpr[d] = 0xFFF8000000000000 | st["fpscr"]
+            elif j == 1:
+                b, mask = src(), rnd.choice((0xFF, 0xFF, rnd.getrandbits(8)))
+                emit(mtfsf(mask, b, rc))
+                st["fpscr"], _ = fm.fpscr_instr("mtfsf", st["fpscr"], fm=mask, value=fpr[b] & 0xFFFFFFFF)
+            elif j == 2:
+                fld, imm = rnd.randrange(8), rnd.getrandbits(4)
+                emit((63 << 26) | (fld << 23) | (imm << 12) | (134 << 1) | rc)
+                st["fpscr"], _ = fm.fpscr_instr("mtfsfi", st["fpscr"], field=fld, value=imm)
+            elif j in (3, 4):
+                b = rnd.randrange(32)
+                emit((63 << 26) | (b << 21) | ((70 if j == 3 else 38) << 1) | rc)
+                st["fpscr"], _ = fm.fpscr_instr("mtfsb0" if j == 3 else "mtfsb1", st["fpscr"], bit=b)
+            else:
+                rc = 0
+                crf, fld = rnd.randrange(8), rnd.randrange(8)
+                emit((63 << 26) | (crf << 23) | (fld << 18) | (64 << 1))  # mcrfs
+                st["fpscr"], c = fm.fpscr_instr("mcrfs", st["fpscr"], field=fld)
+                set_crf(crf, c)
+            if rc:
+                cr1()
+            check("fpscr")
+        done += 1
+
+    for a, wv in mem.items():
+        if a >= SCRATCH - 0x1000:
+            p.expect[a] = wv
+    p.words.append(B_SELF)
+    p.write(out)
+    print("%d instructions, %d checks -> %s" % (len(p.words), len(p.checks), out))
 
 
 # ---- random instruction streams ------------------------------------------------
@@ -305,8 +547,13 @@ def gen_random(out, count, seed):
 if __name__ == "__main__":
     here = os.path.dirname(os.path.abspath(__file__))
     a = sys.argv[1:]
+    default_csv = os.path.join(here, "..", "ppctest", "runs", "results_604_run2.csv")
     if len(a) >= 2 and a[0] == "golden":
-        golden(a[1], a[2] if len(a) > 2 else os.path.join(here, "..", "ppctest", "runs", "results_604_run2.csv"))
+        golden(a[1], a[2] if len(a) > 2 else default_csv)
+    elif len(a) >= 2 and a[0] == "goldenfp":
+        goldenfp(a[1], a[2] if len(a) > 2 else default_csv)
+    elif len(a) >= 3 and a[0] == "fprandom":
+        fprandom(a[1], int(a[2]), int(a[3]) if len(a) > 3 else 1)
     elif len(a) >= 3 and a[0] == "random":
         gen_random(a[1], int(a[2]), int(a[3]) if len(a) > 3 else 1)
     else:

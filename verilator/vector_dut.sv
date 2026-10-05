@@ -147,6 +147,7 @@ generate if (HAVE_FPU != 0) begin : g_fpu
 		.c          (fop_c),
 		.fpscr_in   (fpscr),
 		.resp_valid (fpu_resp),
+		.resp_ready (1'b1),
 		.result     (fpu_result),
 		.result_we  (fpu_result_we),
 		.fpscr_out  (fpu_fpscr),

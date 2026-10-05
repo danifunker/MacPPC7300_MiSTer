@@ -168,6 +168,29 @@ programs avoid these or, for the undefined divides, take the real-604 value.
 
 ### M4: supervisor state, exceptions, floating point in the pipeline
 
+**Step 1, floating point in the pipeline: done 2026-10-05.**
+
+- Floating-point registers are written in WB and forwarded like general
+  registers; a register is named by seven bits, so the one hazard mechanism
+  serves both files. FPSCR commits when an instruction leaves EX, like CR.
+- FP loads and stores in every form. A double is two word accesses at a
+  word-aligned address. The single/double conversions of `lfs` and `stfs`
+  are the bit rearrangements the architecture defines.
+- `DSPPC604_fpscr`: `mtfsf`, `mtfsfi`, `mtfsb0`, `mtfsb1`, `mcrfs`; `mffs`.
+- Verified: the 25,598 real-604 FP vectors as one 281,579-instruction program
+  (constants loaded with `lfd`, FPSCR set with `mtfsf`), with and without bus
+  wait states; random FP programs checked after every instruction against
+  `fpmodel.py`; five deliberate bugs each caught.
+- With the FPU the pipeline is 9,391 ALMs and 66.5 MHz. The register files
+  are still flip-flops, and the forwarded FP operands feed the FPU's first
+  stage directly; both are to be fixed in a timing and area pass.
+- Follows the manual only, no hardware data: the FPSCR instructions, the
+  upper word `mffs` delivers (FFF80000 here), and what `stfs` stores for a
+  double below the single denormal range. All three are in the vector set
+  asked for in `RESUME_hardware.md`.
+
+**Step 2, exceptions and supervisor state: next.**
+
 - MSR, SRR0/SRR1, every exception with its priority and vector, `rfi`,
   privileged-instruction and illegal-instruction checks, alignment.
 - SPRs: PVR, SPRG0-3, DAR, DSISR, DEC, time base, HID0, the 604's performance

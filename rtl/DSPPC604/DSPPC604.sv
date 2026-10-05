@@ -13,15 +13,17 @@
 //    WB   general register write
 //
 //  How state is committed
-//    CR, XER, LR and CTR are written when an instruction leaves EX. Nothing
-//    older can still fault at that point (only a memory access in MEM can,
-//    and EX cannot be left while MEM is occupied), and the instruction itself
-//    can no longer be cancelled. They therefore need no forwarding: EX always
-//    reads the committed registers.
-//    General registers are written in WB and forwarded from MEM and WB.
+//    CR, XER, LR, CTR and FPSCR are written when an instruction leaves EX.
+//    Nothing older can still fault at that point (only a memory access in
+//    MEM can, and EX cannot be left while MEM is occupied), and the
+//    instruction itself can no longer be cancelled. They therefore need no
+//    forwarding: EX always reads the committed registers.
+//    General and floating-point registers are written in WB and forwarded
+//    from MEM and WB. One operation writes at most one of them; a register is
+//    named by seven bits, the top one set for a floating-point register.
 //    Memory is written in MEM.
-//    Invariant: an operation that accesses memory writes none of CR, XER, LR
-//    and CTR.
+//    Invariant: an operation that accesses memory writes none of CR, XER, LR,
+//    CTR and FPSCR.
 //
 //  Buses
 //    Both buses use req/gnt for the address and one rvalid per granted
@@ -36,8 +38,7 @@
 //    correctness.
 //
 //  Not here yet: exceptions and supervisor state (an instruction the core
-//  does not implement stops it with `halted`), floating point in the
-//  pipeline, MMU, caches.
+//  does not implement stops it with `halted`), MMU, caches.
 //
 //============================================================================
 
@@ -77,13 +78,14 @@ module DSPPC604
 	output logic        trace_last,      // completes an instruction
 	output logic [31:0] trace_pc,
 	output logic [31:0] trace_insn,
-	output logic        trace_gpr_we,
-	output logic [5:0]  trace_gpr_idx,
-	output logic [31:0] trace_gpr_val,
+	output logic        trace_reg_we,
+	output logic [6:0]  trace_reg_idx,   // 0-31 GPR, 32 scratch, 64-95 FPR
+	output logic [63:0] trace_reg_val,
 	output logic [31:0] trace_cr,
 	output logic [31:0] trace_xer,
 	output logic [31:0] trace_lr,
-	output logic [31:0] trace_ctr
+	output logic [31:0] trace_ctr,
+	output logic [31:0] trace_fpscr
 );
 
 import DSPPC604_pkg::*;
@@ -92,10 +94,12 @@ localparam logic [31:0] XER_MASK = 32'hE000007F;   // SO OV CA, byte count
 
 // ---- architectural state ---------------------------------------------------
 logic [31:0] gpr [33];      // 32 is the sequencer's scratch register
+logic [63:0] fpr [32];
 logic [31:0] cr;
 logic [31:0] xer;
 logic [31:0] lr;
 logic [31:0] ctr;
+logic [31:0] fpscr;
 
 // ---- pipeline registers ----------------------------------------------------
 // IF1 / IF2
@@ -130,33 +134,39 @@ logic [1:0]  ex_cnt;
 logic [31:0] ex_a;
 logic [31:0] ex_b;
 logic [31:0] ex_c;
+logic [63:0] ex_fa;
+logic [63:0] ex_fb;
+logic [63:0] ex_fc;
 
 // MEM
 logic        mem_valid;
 logic [31:0] mem_pc;
 logic [31:0] mem_insn;
 logic        mem_last;
-logic [5:0]  mem_rd;
+logic [6:0]  mem_rd;        // bit 6: a floating-point register
 logic        mem_rd_wr;
-logic [31:0] mem_result;    // from EX; the effective address for an access
+logic [63:0] mem_result;    // from EX (a load's comes from memory instead)
+logic [31:0] mem_ea;
 logic        mem_load;
 logic        mem_store;
-logic [2:0]  mem_n;
+logic [3:0]  mem_n;
 logic        mem_sext;
 logic        mem_brev;
 logic        mem_ljust;
-logic [31:0] mem_wdata;
-logic [31:0] mem_t_cr, mem_t_xer, mem_t_lr, mem_t_ctr;
+logic        mem_fp;
+logic        mem_fsgl;
+logic [63:0] mem_wdata;
+logic [31:0] mem_t_cr, mem_t_xer, mem_t_lr, mem_t_ctr, mem_t_fpscr;
 
 // WB
 logic        wb_valid;
 logic [31:0] wb_pc;
 logic [31:0] wb_insn;
 logic        wb_last;
-logic [5:0]  wb_rd;
+logic [6:0]  wb_rd;
 logic        wb_rd_wr;
-logic [31:0] wb_result;
-logic [31:0] wb_t_cr, wb_t_xer, wb_t_lr, wb_t_ctr;
+logic [63:0] wb_result;
+logic [31:0] wb_t_cr, wb_t_xer, wb_t_lr, wb_t_ctr, wb_t_fpscr;
 
 logic        halt_q;        // an unimplemented instruction reached EX
 
@@ -282,20 +292,36 @@ DSPPC604_seq seq
 // lswx and stswx read XER's byte count here: wait for anything in EX, the
 // only place that could still be changing it
 // Nothing follows an unimplemented instruction into EX.
+// A redirect in the same cycle does not stop the move: the operation arrives
+// in EX already cancelled.
 wire   id_hold  = (id_wait_xer & ex_valid) | (ex_valid & ex_ill) | halt_q;
-assign id_take  = id_valid & ex_ready & ~redir & ~id_hold;
+assign id_take  = id_valid & ex_ready & ~id_hold;
 assign id_leave = id_take & (id_last | ~id_dec.valid);
 
 // register read, with the value WB is writing in this cycle
 function automatic logic [31:0] rf_read(input logic [5:0] idx);
 	begin
-		rf_read = (wb_valid & wb_rd_wr & (wb_rd == idx)) ? wb_result : gpr[idx];
+		rf_read = (wb_valid & wb_rd_wr & (wb_rd == {1'b0, idx})) ? wb_result[31:0] : gpr[idx];
 	end
 endfunction
 
-wire [31:0] id_a = id_uop.ra_rd ? rf_read(id_uop.ra) : 32'd0;
-wire [31:0] id_b = id_uop.b_imm ? id_uop.imm : rf_read(id_uop.rb);
-wire [31:0] id_c = rf_read(id_uop.rc);
+function automatic logic [63:0] ff_read(input logic [4:0] idx);
+	begin
+		ff_read = (wb_valid & wb_rd_wr & (wb_rd == {2'b10, idx})) ? wb_result : fpr[idx];
+	end
+endfunction
+
+wire [31:0] id_a  = id_uop.ra_rd ? rf_read(id_uop.ra) : 32'd0;
+wire [31:0] id_b  = id_uop.b_imm ? id_uop.imm : rf_read(id_uop.rb);
+wire [31:0] id_c  = rf_read(id_uop.rc);
+// Floating-point register numbers sit in fixed fields, so the read does not
+// wait for the decoder. Only a store names its register (frS) elsewhere:
+// opcodes 52-55, and the indexed forms under opcode 31, where nothing else
+// reads a floating-point register.
+wire        id_fp_store = (id_insn[31:28] == 4'b1101) | (id_insn[31:26] == 6'd31);
+wire [63:0] id_fa = ff_read(id_insn[20:16]);
+wire [63:0] id_fb = ff_read(id_fp_store ? id_insn[25:21] : id_insn[15:11]);
+wire [63:0] id_fc = ff_read(id_insn[10:6]);
 
 always_ff @(posedge clk) begin
 	if (id_leave) id_valid <= 1'b0;
@@ -316,19 +342,31 @@ end
 // ---- operands, forwarded from MEM and WB ------------------------------------
 wire ex_use_b = ex_dec.rb_rd & ~ex_dec.b_imm;
 
-wire fa_mem = mem_valid & mem_rd_wr & ex_dec.ra_rd & (mem_rd == ex_dec.ra);
-wire fb_mem = mem_valid & mem_rd_wr & ex_use_b     & (mem_rd == ex_dec.rb);
-wire fc_mem = mem_valid & mem_rd_wr & ex_dec.rc_rd & (mem_rd == ex_dec.rc);
-wire fa_wb  = wb_valid  & wb_rd_wr  & ex_dec.ra_rd & (wb_rd == ex_dec.ra);
-wire fb_wb  = wb_valid  & wb_rd_wr  & ex_use_b     & (wb_rd == ex_dec.rb);
-wire fc_wb  = wb_valid  & wb_rd_wr  & ex_dec.rc_rd & (wb_rd == ex_dec.rc);
+wire fa_mem = mem_valid & mem_rd_wr & ex_dec.ra_rd & (mem_rd == {1'b0, ex_dec.ra});
+wire fb_mem = mem_valid & mem_rd_wr & ex_use_b     & (mem_rd == {1'b0, ex_dec.rb});
+wire fc_mem = mem_valid & mem_rd_wr & ex_dec.rc_rd & (mem_rd == {1'b0, ex_dec.rc});
+wire fa_wb  = wb_valid  & wb_rd_wr  & ex_dec.ra_rd & (wb_rd == {1'b0, ex_dec.ra});
+wire fb_wb  = wb_valid  & wb_rd_wr  & ex_use_b     & (wb_rd == {1'b0, ex_dec.rb});
+wire fc_wb  = wb_valid  & wb_rd_wr  & ex_dec.rc_rd & (wb_rd == {1'b0, ex_dec.rc});
 
-wire [31:0] op_a = fa_mem ? mem_result : fa_wb ? wb_result : ex_a;
-wire [31:0] op_b = fb_mem ? mem_result : fb_wb ? wb_result : ex_b;
-wire [31:0] op_c = fc_mem ? mem_result : fc_wb ? wb_result : ex_c;
+wire [31:0] op_a = fa_mem ? mem_result[31:0] : fa_wb ? wb_result[31:0] : ex_a;
+wire [31:0] op_b = fb_mem ? mem_result[31:0] : fb_wb ? wb_result[31:0] : ex_b;
+wire [31:0] op_c = fc_mem ? mem_result[31:0] : fc_wb ? wb_result[31:0] : ex_c;
+
+// the same for the floating-point operands
+wire ffa_mem = mem_valid & mem_rd_wr & ex_dec.fra_rd & (mem_rd == {2'b10, ex_dec.fra});
+wire ffb_mem = mem_valid & mem_rd_wr & ex_dec.frb_rd & (mem_rd == {2'b10, ex_dec.frb});
+wire ffc_mem = mem_valid & mem_rd_wr & ex_dec.frc_rd & (mem_rd == {2'b10, ex_dec.frc});
+wire ffa_wb  = wb_valid  & wb_rd_wr  & ex_dec.fra_rd & (wb_rd == {2'b10, ex_dec.fra});
+wire ffb_wb  = wb_valid  & wb_rd_wr  & ex_dec.frb_rd & (wb_rd == {2'b10, ex_dec.frb});
+wire ffc_wb  = wb_valid  & wb_rd_wr  & ex_dec.frc_rd & (wb_rd == {2'b10, ex_dec.frc});
+
+wire [63:0] fop_a = ffa_mem ? mem_result : ffa_wb ? wb_result : ex_fa;
+wire [63:0] fop_b = ffb_mem ? mem_result : ffb_wb ? wb_result : ex_fb;
+wire [63:0] fop_c = ffc_mem ? mem_result : ffc_wb ? wb_result : ex_fc;
 
 // a load's data is not there until it reaches WB
-wire ex_stall = mem_load & (fa_mem | fb_mem | fc_mem);
+wire ex_stall = mem_load & (fa_mem | fb_mem | fc_mem | ffa_mem | ffb_mem | ffc_mem);
 
 // ---- integer unit ----------------------------------------------------------
 wire is_int = (ex_dec.unit == UNIT_ALU) | (ex_dec.unit == UNIT_MUL) | (ex_dec.unit == UNIT_DIV);
@@ -363,7 +401,55 @@ DSPPC604_int_unit int_unit
 	.cr_out     (int_cr)
 );
 
-wire ex_done = ~ex_stall & (ex_ill | ~is_int | int_resp);
+// ---- floating-point unit ---------------------------------------------------
+wire is_fpu = (ex_dec.unit == UNIT_FPU);
+
+logic        fpu_resp;
+logic [63:0] fpu_result;
+logic        fpu_result_we;
+logic [31:0] fpu_fpscr;
+logic [3:0]  fpu_cr;
+/* verilator lint_off UNUSEDSIGNAL */
+logic        fpu_ready;
+logic        fpu_fex;
+/* verilator lint_on UNUSEDSIGNAL */
+
+DSPPC604_fpu fpu
+(
+	.clk        (clk),
+	.reset      (reset),
+	.flush      (1'b0),
+	.req_valid  (ex_valid & ~ex_ill & ~ex_stall & is_fpu),
+	.req_ready  (fpu_ready),
+	.ctl        (ex_dec.fc),
+	.a          (fop_a),
+	.b          (fop_b),
+	.c          (fop_c),
+	.fpscr_in   (fpscr),
+	.resp_valid (fpu_resp),
+	.resp_ready (mem_ready),
+	.result     (fpu_result),
+	.result_we  (fpu_result_we),
+	.fpscr_out  (fpu_fpscr),
+	.cr_out     (fpu_cr),
+	.fex        (fpu_fex)
+);
+
+// ---- the instructions that write FPSCR directly ----------------------------
+logic [31:0] fsys_fpscr;
+logic [3:0]  fsys_cr;
+
+DSPPC604_fpscr fpscr_ops
+(
+	.op         (ex_dec.sys),
+	.insn       (ex_insn),
+	.fpscr      (fpscr),
+	.frb        (fop_b[31:0]),
+	.fpscr_next (fsys_fpscr),
+	.cr_field   (fsys_cr)
+);
+
+wire ex_done = ~ex_stall & (ex_ill | (is_int ? int_resp : is_fpu ? fpu_resp : 1'b1));
 assign ex_leave = ex_valid & ex_done & mem_ready;
 
 // ---- branch ----------------------------------------------------------------
@@ -438,6 +524,7 @@ logic [31:0] cr_next;
 logic [31:0] xer_next;
 logic [31:0] lr_next;
 logic [31:0] ctr_next;
+logic [31:0] fpscr_next;
 logic [31:0] sys_result;
 
 always_comb begin
@@ -445,9 +532,14 @@ always_comb begin
 	xer_next   = xer;
 	lr_next    = lr;
 	ctr_next   = ctr;
+	fpscr_next = fpscr;
 	sys_result = 32'd0;
 
-	if (is_int) begin
+	if (is_fpu) begin
+		if (ex_dec.fpscr_wr) fpscr_next = fpu_fpscr;
+		if (ex_dec.cr_wr)    cr_next    = cr_insert(cr, ex_dec.cr_fld, fpu_cr);
+	end
+	else if (is_int) begin
 		if (ex_dec.ca_wr) xer_next[29] = int_ca;
 		if (ex_dec.ov_wr) begin
 			xer_next[30] = int_ov;
@@ -483,6 +575,18 @@ always_comb begin
 					default: ctr_next = op_a;
 				endcase
 			end
+			SYS_MFFS: begin
+				// Rc: CR1 from the unchanged FPSCR
+				if (ex_dec.cr_wr) cr_next = cr_insert(cr, 3'd1, fpscr[31:28]);
+			end
+			SYS_MTFSF, SYS_MTFSFI, SYS_MTFSB0, SYS_MTFSB1: begin
+				fpscr_next = fsys_fpscr;
+				if (ex_dec.cr_wr) cr_next = cr_insert(cr, 3'd1, fsys_fpscr[31:28]);
+			end
+			SYS_MCRFS: begin
+				fpscr_next = fsys_fpscr;
+				cr_next    = cr_insert(cr, ex_dec.cr_fld, fsys_cr);
+			end
 			default: ;
 		endcase
 
@@ -491,13 +595,24 @@ always_comb begin
 	end
 end
 
-wire [31:0] ex_result = is_int ? int_result : sys_result;
+// The value for the register this operation writes, and which register.
+// The upper word mffs delivers is undefined; FFF80000 is what the 604 puts
+// there for fctiw.
+wire [63:0] ex_result = is_fpu ? fpu_result :
+                        is_int ? {32'd0, int_result} :
+                        (ex_dec.sys == SYS_MFFS) ? {32'hFFF80000, fpscr} : {32'd0, sys_result};
+wire [6:0]  ex_rd     = ex_dec.frd_wr ? {2'b10, ex_dec.frd} : {1'b0, ex_dec.rd};
+wire        ex_rd_wr  = ex_dec.rd_wr | (ex_dec.frd_wr & (~is_fpu | fpu_result_we));
+
+// what a store writes
+wire [63:0] ex_wdata  = ~ex_dec.mem_fp   ? {32'd0, op_c} :
+                        ex_dec.mem_fsgl  ? {32'd0, fp_double_to_single(fop_b)} : fop_b;
 
 always_ff @(posedge clk) begin
 	if (ex_leave) ex_valid <= 1'b0;
 
 	if (id_take) begin
-		ex_valid <= 1'b1;
+		ex_valid <= ~redir;
 		ex_pc    <= id_pc;
 		ex_insn  <= id_insn;
 		ex_dec   <= id_uop;
@@ -509,20 +624,27 @@ always_ff @(posedge clk) begin
 		ex_a     <= id_a;
 		ex_b     <= id_b;
 		ex_c     <= id_c;
+		ex_fa    <= id_fa;
+		ex_fb    <= id_fb;
+		ex_fc    <= id_fc;
 	end
 	else if (ex_valid & ~ex_leave) begin
 		// held here: keep what WB forwards, it is gone next cycle
-		if (fa_wb & ~fa_mem) ex_a <= wb_result;
-		if (fb_wb & ~fb_mem) ex_b <= wb_result;
-		if (fc_wb & ~fc_mem) ex_c <= wb_result;
+		if (fa_wb & ~fa_mem) ex_a <= wb_result[31:0];
+		if (fb_wb & ~fb_mem) ex_b <= wb_result[31:0];
+		if (fc_wb & ~fc_mem) ex_c <= wb_result[31:0];
+		if (ffa_wb & ~ffa_mem) ex_fa <= wb_result;
+		if (ffb_wb & ~ffb_mem) ex_fb <= wb_result;
+		if (ffc_wb & ~ffc_mem) ex_fc <= wb_result;
 	end
 
-	// commit CR, XER, LR, CTR
+	// commit CR, XER, LR, CTR, FPSCR
 	if (ex_leave & ~ex_ill) begin
-		cr  <= cr_next;
-		xer <= xer_next;
-		lr  <= lr_next;
-		ctr <= ctr_next;
+		cr    <= cr_next;
+		xer   <= xer_next;
+		lr    <= lr_next;
+		ctr   <= ctr_next;
+		fpscr <= fpscr_next;
 	end
 
 	// stop at an instruction that is not implemented
@@ -538,6 +660,7 @@ always_ff @(posedge clk) begin
 		xer      <= 32'd0;
 		lr       <= 32'd0;
 		ctr      <= 32'd0;
+		fpscr    <= 32'd0;
 	end
 end
 
@@ -547,7 +670,10 @@ assign halted = halt_q & ~mem_valid & ~wb_valid;
 //  MEM
 // ============================================================================
 logic        mu_resp;
-logic [31:0] mu_rdata;
+logic [63:0] mu_rdata;
+
+// what a load delivers to its register
+wire [63:0] mem_ldata = (mem_fp & mem_fsgl) ? fp_single_to_double(mu_rdata[31:0]) : mu_rdata;
 
 DSPPC604_mem_unit mem_unit
 (
@@ -555,7 +681,7 @@ DSPPC604_mem_unit mem_unit
 	.reset       (reset),
 	.req_valid   (mem_valid & (mem_load | mem_store)),
 	.we          (mem_store),
-	.addr        (mem_result),
+	.addr        (mem_ea),
 	.nbytes      (mem_n),
 	.sext        (mem_sext),
 	.brev        (mem_brev),
@@ -583,20 +709,24 @@ always_ff @(posedge clk) begin
 		mem_pc     <= ex_pc;
 		mem_insn   <= ex_insn;
 		mem_last   <= ex_last;
-		mem_rd     <= ex_dec.rd;
-		mem_rd_wr  <= ex_dec.rd_wr;
+		mem_rd     <= ex_rd;
+		mem_rd_wr  <= ex_rd_wr;
 		mem_result <= ex_result;
+		mem_ea     <= int_result;
 		mem_load   <= ex_dec.mem_rd;
 		mem_store  <= ex_dec.mem_wr;
 		mem_n      <= ex_dec.mem_n;
 		mem_sext   <= ex_dec.mem_sext;
 		mem_brev   <= ex_dec.mem_brev;
 		mem_ljust  <= ex_dec.mem_ljust;
-		mem_wdata  <= op_c;
+		mem_fp     <= ex_dec.mem_fp;
+		mem_fsgl   <= ex_dec.mem_fsgl;
+		mem_wdata  <= ex_wdata;
 		mem_t_cr   <= cr_next;
 		mem_t_xer  <= xer_next;
 		mem_t_lr   <= lr_next;
 		mem_t_ctr  <= ctr_next;
+		mem_t_fpscr <= fpscr_next;
 	end
 
 	if (reset) mem_valid <= 1'b0;
@@ -613,14 +743,18 @@ always_ff @(posedge clk) begin
 		wb_last   <= mem_last;
 		wb_rd     <= mem_rd;
 		wb_rd_wr  <= mem_rd_wr;
-		wb_result <= mem_load ? mu_rdata : mem_result;
+		wb_result <= mem_load ? mem_ldata : mem_result;
 		wb_t_cr   <= mem_t_cr;
 		wb_t_xer  <= mem_t_xer;
 		wb_t_lr   <= mem_t_lr;
 		wb_t_ctr  <= mem_t_ctr;
+		wb_t_fpscr <= mem_t_fpscr;
 	end
 
-	if (wb_valid & wb_rd_wr) gpr[wb_rd] <= wb_result;
+	if (wb_valid & wb_rd_wr) begin
+		if (wb_rd[6]) fpr[wb_rd[4:0]] <= wb_result;
+		else          gpr[wb_rd[5:0]] <= wb_result[31:0];
+	end
 
 	if (reset) wb_valid <= 1'b0;
 end
@@ -629,12 +763,13 @@ assign trace_valid   = wb_valid;
 assign trace_last    = wb_last;
 assign trace_pc      = wb_pc;
 assign trace_insn    = wb_insn;
-assign trace_gpr_we  = wb_rd_wr;
-assign trace_gpr_idx = wb_rd;
-assign trace_gpr_val = wb_result;
+assign trace_reg_we  = wb_rd_wr;
+assign trace_reg_idx = wb_rd;
+assign trace_reg_val = wb_result;
 assign trace_cr      = wb_t_cr;
 assign trace_xer     = wb_t_xer;
 assign trace_lr      = wb_t_lr;
 assign trace_ctr     = wb_t_ctr;
+assign trace_fpscr   = wb_t_fpscr;
 
 endmodule

@@ -86,6 +86,7 @@ DSPPC604_fpu fpu
 	.c          (op_c),
 	.fpscr_in   (op_fs),
 	.resp_valid (resp_valid),
+	.resp_ready (1'b1),
 	.result     (result),
 	.result_we  (result_we),
 	.fpscr_out  (fpscr_out),
