@@ -71,8 +71,8 @@ DSPPC604_decode decode
 );
 
 // ---- operand read ----------------------------------------------------------
-wire [31:0] op_a = dec.ra_rd ? gpr[dec.ra] : 32'd0;
-wire [31:0] op_b = dec.b_imm ? dec.imm : gpr[dec.rb];
+wire [31:0] op_a = dec.ra_rd ? gpr[dec.ra[4:0]] : 32'd0;
+wire [31:0] op_b = dec.b_imm ? dec.imm : gpr[dec.rb[4:0]];
 
 wire [63:0] fop_a = fpr[dec.fra];
 wire [63:0] fop_b = fpr[dec.frb];
@@ -87,7 +87,10 @@ typedef enum logic [1:0] {
 
 state_t state;
 
-wire is_int = dec.valid & (dec.unit == UNIT_ALU || dec.unit == UNIT_MUL || dec.unit == UNIT_DIV);
+// loads, stores, branches and CR/SPR moves need the pipeline; here they
+// count as unimplemented
+wire plain  = ~dec.mem_rd & ~dec.mem_wr & (dec.br == BR_NONE);
+wire is_int = dec.valid & plain & (dec.unit == UNIT_ALU || dec.unit == UNIT_MUL || dec.unit == UNIT_DIV);
 wire is_fpu = dec.valid & (dec.unit == UNIT_FPU) & (HAVE_FPU != 0);
 
 logic        int_resp;
@@ -113,6 +116,7 @@ DSPPC604_int_unit int_unit
 	.ca_in      (xer_ca),
 	.so_in      (xer_so),
 	.resp_valid (int_resp),
+	.resp_ready (1'b1),
 	.result     (int_result),
 	.ca_out     (int_ca),
 	.ov_out     (int_ov),
@@ -198,7 +202,7 @@ always_ff @(posedge clk) begin
 	S_EXEC: begin
 		if (is_int) begin
 			if (int_resp) begin
-				if (dec.rd_wr) gpr[dec.rd] <= int_result;
+				if (dec.rd_wr) gpr[dec.rd[4:0]] <= int_result;
 				if (dec.ca_wr) xer[29] <= int_ca;
 				if (dec.ov_wr) begin
 					xer[30] <= int_ov;

@@ -21,11 +21,12 @@ module DSPPC604_div
 	input  logic        reset,
 	input  logic        start,       // one clock, with the operands
 	input  logic        abort,
+	input  logic        ack,         // results taken
 	input  logic        is_signed,
 	input  logic [31:0] a,           // dividend
 	input  logic [31:0] b,           // divisor
 
-	output logic        done,        // one clock, with the results
+	output logic        done,        // held, with the results, until ack
 	output logic [31:0] quotient,
 	output logic        overflow
 );
@@ -94,7 +95,7 @@ always_ff @(posedge clk) begin
 	end
 
 	default: begin // S_DONE
-		state <= S_IDLE;
+		if (ack) state <= S_IDLE;
 	end
 	endcase
 

@@ -13,8 +13,8 @@ working sessions, not calendar promises.
 | M0 | Repository, MiSTer skeleton | project opens in Quartus | done 2026-10-05 |
 | M1 | Vector test bench, integer execute unit | 11,576 real-604 integer vectors pass | done 2026-10-05 |
 | M2 | Floating-point unit | 25,598 real-604 FP vectors pass | done 2026-10-05 |
-| M3 | Pipeline, user-mode integer | golden vectors pass *through the pipeline*; lockstep against a reference on random code | next, week 1-2 |
-| M4 | Supervisor state, exceptions, FP in the pipeline | exception and SPR tests; lockstep with interrupts | week 2-3 |
+| M3 | Pipeline, user-mode integer | golden vectors pass *through the pipeline*; lockstep against a reference on random code | done 2026-10-05 |
+| M4 | Supervisor state, exceptions, FP in the pipeline | exception and SPR tests; lockstep with interrupts | next, week 1-2 |
 | M5 | MMU and caches | translation and cache tests; lockstep with translation on | week 3-4 |
 | M6 | Real ROM in simulation, first MiSTer build | the 7600 ROM runs from reset until it needs hardware; timing met at 66 MHz or better | week 4-5 |
 
@@ -24,14 +24,21 @@ A CPU that is pipelined late ends up with one-off stall and fix-up paths per
 instruction. These rules exist to prevent that, and every milestone is
 reviewed against them.
 
-1. **One commit point.** Registers, CR, XER, LR, CTR, FPSCR, MSR, the SPRs and
-   memory writes change only when an instruction retires at the end of the
-   pipeline. Exceptions and interrupts are taken only there, so they are
-   always precise.
-2. **One hazard mechanism.** The decoder declares what each instruction reads
-   and writes (up to three GPRs, CR fields, XER[CA], XER[SO/OV], LR, CTR, up to
-   three FPRs, FPSCR). A single forwarding-and-stall block works from those
-   declarations. No instruction gets its own stall logic.
+1. **Commit in order, at two fixed points.** An instruction commits its status
+   registers (CR, XER, LR, CTR; later FPSCR, MSR and the SPRs) when it leaves
+   EX, and its general register and memory write in MEM/WB. Leaving EX is
+   only possible once nothing older can still fault, and from then on the
+   instruction itself cannot be cancelled, so both points are final and
+   exceptions stay precise. The invariant that makes this safe: an operation
+   that accesses memory, the only kind that can fault after EX, writes no
+   status register. (As first written this rule said "one commit point at the
+   end of the pipeline". Building M3 showed the two-point form needs no
+   forwarding network for the status registers at all; EX simply reads them.)
+2. **One hazard mechanism.** The decoder declares which registers each
+   operation reads and writes (up to three GPRs in, one out; later the same
+   for FPRs). One set of forwarding comparisons and one stall condition (the
+   value is a load that has not arrived) work from those declarations. No
+   instruction gets its own stall logic.
 3. **One way to take more than a cycle.** Multiply, divide and floating point
    sit behind the request/response handshake the units already have; the
    execute stage waits for `resp_valid`. Instructions that are several
@@ -110,22 +117,54 @@ the 8-cycle arithmetic path (a separate add path that skips the multiplier,
 leading-zero anticipation, merging stages that have slack), and let it accept
 a new request every cycle.
 
-### M3: pipeline, user-mode integer
+### M3: pipeline, user-mode integer (done)
 
-- The six stages above, the hazard block, the flush, the sequencer.
+What was built (`rtl/DSPPC604/DSPPC604.sv` and the modules it instantiates):
+
+- The six stages, with req/gnt/rvalid buses for instructions and data.
 - All user-mode integer instructions: loads and stores in every form (update,
-  indexed, byte-reversed, multiple, string), branches with a branch history
-  table, CR logic, `mfcr`/`mtcrf`/`mcrf`/`mcrxr`, moves to and from LR, CTR
-  and XER, `sc` and traps as far as raising the request.
-- Memory is a simple bus model with random wait states; no caches yet.
-- Verification:
-  1. The golden vectors again, this time assembled into programs and run
-     through the pipeline back to back, with random stalls. Same expected
-     values, now also exercising forwarding.
-  2. Lockstep against a reference simulator: after every retired instruction
-     the architectural state is compared. Random instruction streams plus
-     directed tests. The reference is dingusppc's CPU built as a library.
-  3. Area and timing check of the whole pipeline.
+  indexed, byte-reversed, multiple, string), branches, CR logic,
+  `mfcr`/`mtcrf`/`mcrf`/`mcrxr`, moves to and from LR, CTR and XER.
+- `DSPPC604_seq`: the sequencer. Update forms become the access plus an add;
+  `lmw`/`stmw` and the string instructions become one access per register.
+  A scratch register (number 32) holds the base address of `lswx`/`stswx`.
+- `DSPPC604_mem_unit`: any 1 to 4 byte access at any alignment as one or two
+  word-aligned bus accesses, with the byte-reverse, sign-extend and string
+  conversions.
+- A 128-entry branch target buffer with two-bit counters. Every instruction
+  carries the address the fetch continued with, and EX redirects when that is
+  not where the instruction really goes, so a wrong prediction costs three
+  cycles and nothing else.
+- An instruction the core does not implement stops it (`halted`), until
+  exceptions exist.
+
+How it was verified (`python verilator\run_core.py`):
+
+1. The 11,576 real-604 integer vectors assembled into one 131,765-instruction
+   program, each instruction's inputs produced by the instructions just
+   before it, run with 0%, 25% and 60% random bus wait states. All pass.
+2. Random programs in lockstep with dingusppc's interpreter
+   (`verilator/ref`): registers compared after every instruction, memory at
+   the end. Deliberately broken RTL (four different bugs) is caught.
+3. Quartus: 3,208 ALMs, 78.6 MHz worst case.
+
+Measured cost, with the test bench's bus (a data access takes two cycles;
+there are no caches yet): 1.36 cycles per instruction on the straight-line
+golden program.
+
+Carried into M4, because they need exceptions:
+
+- `sc`, `tw`, `twi`.
+- The alignment exceptions the 604 manual lists: `lmw`/`stmw` at an address
+  that is not word-aligned, and an unaligned string operation crossing a 4 KB
+  boundary. Today these simply execute.
+
+Where dingusppc is not a usable reference (found while building the lockstep
+library; details in `verilator/ref/README.md`): divide results the
+architecture leaves undefined, its `tw` compares the operands the wrong way
+round, it raises the alignment exception for `stmw` but not `lmw`, it keeps
+reserved XER bits, and its floating point never reports inexact. The random
+programs avoid these or, for the undefined divides, take the real-604 value.
 
 ### M4: supervisor state, exceptions, floating point in the pipeline
 

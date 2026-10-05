@@ -15,7 +15,9 @@ still the MiSTer template's test pattern.
 | Golden-vector test bench (Verilator) | working, one command |
 | DSPPC604 integer execute unit | all 11,576 real-604 vectors pass |
 | DSPPC604 floating-point unit | all 25,598 real-604 vectors pass; 1.8 million random vectors agree with the software model |
-| DSPPC604 pipeline, memory access, exceptions, MMU, caches | not started; see [the plan](docs/DSPPC604_plan.md) |
+| DSPPC604 pipeline, user-mode integer code | the same 11,576 vectors pass when run as a program; random programs match dingusppc instruction for instruction |
+| Floating point in the pipeline | not yet: the FPU above is not connected to the pipeline |
+| Exceptions, supervisor state, MMU, caches | not started; see [the plan](docs/DSPPC604_plan.md) |
 | Machine (chipset, video, SCSI, ...) | not started |
 
 Size and speed of what exists, each synthesised on its own for the DE10-Nano's
@@ -23,11 +25,11 @@ FPGA with Quartus 17.0 (`syn\check.py`), constrained to 75 MHz:
 
 | Block | ALMs | DSP blocks | Worst-case Fmax |
 |---|---|---|---|
-| Integer decode + execute, with the execute-to-execute forwarding loop | 901 (2%) | 3 | 92.4 MHz |
+| Pipeline (six stages, integer units, branch target buffer; no FPU, caches or MMU) | 3,208 (8%) | 3 | 78.6 MHz |
 | Floating-point unit | 3,303 (8%) | 4 | 73.5 MHz (75.2 MHz at the hot corner) |
 
-So 66 MHz is met with room, and 75 MHz is within reach but not yet met by the
-FPU's rounding stage at the cold corner.
+So 66 MHz is met with room. 75 MHz is met by the pipeline and within reach
+for the FPU, whose rounding stage misses it at the cold corner.
 
 ## Decisions that are locked in
 
@@ -147,6 +149,16 @@ Divides whose result the architecture leaves undefined are counted apart from
 the rest, so they can never hide a real failure or be hidden by one.
 
 ```
+python verilator\run_core.py
+```
+
+Tests the pipeline. First the real-604 integer vectors, assembled into one
+program and run with and without random bus wait states. Then random programs
+in lockstep with dingusppc's interpreter (`verilator/ref` builds it as a
+library from `..\dingusppc`): the registers are compared after every
+instruction and memory at the end. `--seeds N` runs more random programs.
+
+```
 python verilator\fpmodel.py check
 python verilator\fpmodel.py random 300000 1 x.csv
 python verilator\run.py --csv x.csv
@@ -161,12 +173,14 @@ denormals, near cancellation) that the hardware set, which is heavy on special
 values, does not.
 
 ```
-python syn\check.py int
+python syn\check.py core
 python syn\check.py fpu
+python syn\check.py int
 ```
 
-Synthesises the integer decode-and-execute path, or the floating-point unit,
-on its own for the DE10-Nano's FPGA and prints its size and maximum clock.
+Synthesises the pipeline, the floating-point unit, or just the integer
+decode-and-execute path on its own for the DE10-Nano's FPGA and prints its
+size and maximum clock. `--paths 10` also lists the slowest paths.
 
 ## Layout
 
@@ -176,7 +190,8 @@ on its own for the DE10-Nano's FPGA and prints its size and maximum clock.
 | `sys/` | MiSTer framework (do not edit) |
 | `rtl/DSPPC604/` | the CPU |
 | `rtl/` (other files) | template demo logic, to be replaced by the machine |
-| `verilator/` | golden-vector test bench and the floating-point software model |
+| `verilator/` | test benches (single instructions, programs on the pipeline) and the floating-point software model |
+| `verilator/ref/` | dingusppc's interpreter as a library, for lockstep runs |
 | `syn/` | stand-alone area and timing checks |
 | `ppctest/` | tool that builds the test disk for real Macs and decodes its results |
 | `ppctest/runs/results_*.csv` | golden results from real hardware |

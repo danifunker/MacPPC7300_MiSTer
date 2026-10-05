@@ -127,6 +127,7 @@ DSPPC604_int_unit int_unit
 	.ca_in      (ca_in),
 	.so_in      (so_in),
 	.resp_valid (resp_valid),
+	.resp_ready (1'b1),
 	.result     (result),
 	.ca_out     (ca_out),
 	.ov_out     (ov_out),

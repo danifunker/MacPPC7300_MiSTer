@@ -8,9 +8,10 @@
 //
 //  Handshake
 //    The requester holds req_valid, unit, ctl and the operands steady until
-//    resp_valid. A request is taken in a cycle where req_valid and req_ready
-//    are both high. resp_valid is high for exactly one cycle, with the
-//    results; the requester moves on at the end of that cycle.
+//    the response is taken. A request starts in a cycle where req_valid and
+//    req_ready are both high. resp_valid then stays high, with the results,
+//    until a cycle in which resp_ready is high too; the requester moves on at
+//    the end of that cycle.
 //
 //    UNIT_ALU   resp_valid in the same cycle as the request (combinational)
 //    UNIT_MUL   resp_valid two cycles after the request
@@ -37,6 +38,7 @@ module DSPPC604_int_unit
 	input  logic        so_in,       // XER[SO]
 
 	output logic        resp_valid,
+	input  logic        resp_ready,
 	output logic [31:0] result,
 	output logic        ca_out,      // new XER[CA], for instructions that set it
 	output logic        ov_out,      // new XER[OV], for instructions with OE
@@ -103,6 +105,7 @@ DSPPC604_div div
 	.reset     (reset),
 	.start     (div_start),
 	.abort     (flush),
+	.ack       (resp_ready),
 	.is_signed (ctl.is_signed),
 	.a         (a),
 	.b         (b),
@@ -116,8 +119,8 @@ always_ff @(posedge clk) begin
 		S_IDLE:  if (mul_start) state <= S_MUL1;
 		         else if (div_start) state <= S_DIV;
 		S_MUL1:  state <= S_MUL2;
-		S_MUL2:  state <= S_IDLE;
-		default: if (div_done) state <= S_IDLE;
+		S_MUL2:  if (resp_ready) state <= S_IDLE;
+		default: if (div_done & resp_ready) state <= S_IDLE;
 	endcase
 
 	if (reset | flush) state <= S_IDLE;

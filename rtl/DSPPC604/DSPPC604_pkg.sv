@@ -18,8 +18,42 @@ package DSPPC604_pkg;
 		UNIT_ALU,      // integer, result in the cycle it is requested
 		UNIT_MUL,      // integer multiply
 		UNIT_DIV,      // integer divide
-		UNIT_FPU       // floating point
+		UNIT_FPU,      // floating point
+		UNIT_SYS       // CR logic, moves to and from CR and SPRs (in the pipeline)
 	} unit_t;
+
+	// What a UNIT_SYS instruction does.
+	typedef enum logic [2:0] {
+		SYS_NOP,       // sync, eieio, isync (until there is something to synchronise)
+		SYS_CRLOG,     // CR bit BT <- BA op BB
+		SYS_MCRF,
+		SYS_MFCR,
+		SYS_MTCRF,
+		SYS_MCRXR,
+		SYS_MFSPR,
+		SYS_MTSPR
+	} sys_op_t;
+
+	// Where a branch goes.
+	typedef enum logic [1:0] {
+		BR_NONE,       // not a branch
+		BR_IMM,        // b, bc: displacement in imm
+		BR_LR,         // bclr
+		BR_CTR         // bcctr
+	} br_t;
+
+	// Instructions the sequencer in the decode stage expands into several
+	// simple operations.
+	typedef enum logic [2:0] {
+		SEQ_NONE,
+		SEQ_UPDATE,    // load/store with update: the access, then rA <- EA
+		SEQ_MULTI,     // lmw, stmw: one word per register
+		SEQ_STRI,      // lswi, stswi: byte count in the instruction
+		SEQ_STRX       // lswx, stswx: byte count in XER
+	} seq_t;
+
+	// Register 32 is a scratch register that only the sequencer can name.
+	localparam logic [5:0] REG_TEMP = 6'd32;
 
 	typedef enum logic [2:0] {
 		ALU_ADD,       // adder: add, subtract, negate
@@ -102,19 +136,47 @@ package DSPPC604_pkg;
 	// Everything the decoder knows about one instruction.
 	//
 	// Integer operands: A is register ra when ra_rd is set, otherwise zero.
-	// B is the immediate when b_imm is set, otherwise register rb.
+	// B is the immediate when b_imm is set, otherwise register rb. C is
+	// register rc, the value a store writes.
 	typedef struct packed {
 		logic        valid;        // an instruction this core implements
 		unit_t       unit;
 
-		logic [4:0]  ra;
+		logic [5:0]  ra;
 		logic        ra_rd;
-		logic [4:0]  rb;
+		logic [5:0]  rb;
 		logic        rb_rd;
 		logic        b_imm;
 		logic [31:0] imm;
-		logic [4:0]  rd;           // integer destination
+		logic [5:0]  rc;
+		logic        rc_rd;
+		logic [5:0]  rd;           // integer destination
 		logic        rd_wr;
+
+		// memory access at A + B
+		logic        mem_rd;
+		logic        mem_wr;
+		logic [2:0]  mem_n;        // bytes, 1 to 4
+		logic        mem_sext;     // lha: sign-extend the halfword
+		logic        mem_brev;     // byte-reversed forms
+		logic        mem_ljust;    // string forms: bytes fill the register from the top
+		seq_t        seq;
+
+		// branch
+		br_t         br;
+		logic        br_aa;        // absolute target
+		logic        br_lk;        // LR <- address of the next instruction
+		logic [4:0]  bo;
+		logic [4:0]  bi;
+
+		// CR and SPR moves
+		sys_op_t     sys;
+		logic [3:0]  crtt;         // CR logic truth table, indexed by {BA, BB}
+		logic [4:0]  crbt;
+		logic [4:0]  crba;
+		logic [4:0]  crbb;
+		logic [7:0]  crm;          // mtcrf field mask
+		logic [9:0]  spr;
 
 		logic [4:0]  fra;
 		logic        fra_rd;

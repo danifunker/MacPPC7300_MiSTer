@@ -8,3 +8,6 @@ set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) D
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) DSPPC604_int_unit.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) DSPPC604_lzc.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) DSPPC604_fpu.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) DSPPC604_mem_unit.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) DSPPC604_seq.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) DSPPC604.sv]

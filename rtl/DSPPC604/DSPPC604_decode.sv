@@ -3,10 +3,17 @@
 //  DSPPC604 - PowerPC 604-class CPU core
 //  Instruction decoder (combinational)
 //
-//  Covers integer arithmetic, logical, compare, rotate and shift, and the
-//  floating-point arithmetic, move, convert and compare instructions.
-//  Loads, stores, branches, CR logic and system instructions are added with
-//  the pipeline.
+//  Covers the user-mode integer instruction set (arithmetic, logical,
+//  compare, rotate and shift, loads and stores, branches, CR logic, moves to
+//  and from CR, LR, CTR and XER) and the floating-point arithmetic, move,
+//  convert and compare instructions.
+//
+//  Not yet: sc and traps, supervisor instructions, floating-point loads and
+//  stores, FPSCR instructions, cache and reservation instructions.
+//
+//  Multi-operation instructions (update forms, lmw/stmw, string forms) are
+//  decoded here as their first operation, with dec.seq telling the sequencer
+//  what follows.
 //
 //============================================================================
 
@@ -19,15 +26,16 @@ module DSPPC604_decode
 import DSPPC604_pkg::*;
 
 wire [5:0]  opcd = insn[31:26];
-wire [4:0]  f_d  = insn[25:21];      // rD, rS, frD
-wire [4:0]  f_a  = insn[20:16];      // rA, frA
-wire [4:0]  f_b  = insn[15:11];      // rB, frB, SH
-wire [4:0]  f_c  = insn[10:6];       // frC, MB
+wire [5:0]  f_d  = {1'b0, insn[25:21]};   // rD, rS, frD
+wire [5:0]  f_a  = {1'b0, insn[20:16]};   // rA, frA
+wire [5:0]  f_b  = {1'b0, insn[15:11]};   // rB, frB, SH
+wire [4:0]  f_c  = insn[10:6];            // frC, MB
 wire [9:0]  xo10 = insn[10:1];
 wire [8:0]  xo9  = insn[9:1];
 wire [4:0]  xo5  = insn[5:1];
 wire        f_oe = insn[10];
 wire        f_rc = insn[0];
+wire        a_nz = (insn[20:16] != 5'd0); // (rA|0) reads a register
 
 wire [31:0] simm  = {{16{insn[15]}}, insn[15:0]};
 wire [31:0] uimm  = {16'd0, insn[15:0]};
@@ -37,13 +45,21 @@ always_comb begin
 	dec = '0;
 
 	// fields that are always in the same place
-	dec.ic.sh  = f_b;
+	dec.ic.sh  = insn[15:11];
 	dec.ic.mb  = f_c;
 	dec.ic.me  = xo5;
-	dec.fra    = f_a;
-	dec.frb    = f_b;
+	dec.fra    = insn[20:16];
+	dec.frb    = insn[15:11];
 	dec.frc    = f_c;
-	dec.frd    = f_d;
+	dec.frd    = insn[25:21];
+	dec.bo     = insn[25:21];
+	dec.bi     = insn[20:16];
+	dec.crbt   = insn[25:21];
+	dec.crba   = insn[20:16];
+	dec.crbb   = insn[15:11];
+	dec.crm    = insn[19:12];
+	dec.spr    = {insn[15:11], insn[20:16]};
+	dec.mem_n  = 3'd4;
 
 	case (opcd)
 
@@ -76,9 +92,55 @@ always_comb begin
 	end
 	6'd14, 6'd15: begin // addi, addis: (rA|0)
 		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
-		dec.ra = f_a; dec.ra_rd = (f_a != 5'd0); dec.b_imm = 1;
+		dec.ra = f_a; dec.ra_rd = a_nz; dec.b_imm = 1;
 		dec.imm = opcd[0] ? shimm : simm;
 		dec.rd = f_d; dec.rd_wr = 1;
+	end
+
+	// ---- branches ----------------------------------------------------------
+	6'd16: begin // bc
+		dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_NOP;
+		dec.br = BR_IMM; dec.br_aa = insn[1]; dec.br_lk = insn[0];
+		dec.imm = {{16{insn[15]}}, insn[15:2], 2'b00};
+	end
+	6'd18: begin // b
+		dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_NOP;
+		dec.br = BR_IMM; dec.br_aa = insn[1]; dec.br_lk = insn[0];
+		dec.imm = {{6{insn[25]}}, insn[25:2], 2'b00};
+		dec.bo  = 5'b10100;      // always
+	end
+
+	// ---- opcode 19: branches to LR and CTR, CR logic -----------------------
+	6'd19: begin
+		case (xo10)
+		10'd16, 10'd528: begin // bclr, bcctr
+			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_NOP;
+			dec.br = xo10[9] ? BR_CTR : BR_LR; dec.br_lk = insn[0];
+			// bcctr cannot also count CTR down
+			if (xo10[9]) dec.bo[2] = 1'b1;
+		end
+		10'd0: begin // mcrf
+			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MCRF;
+		end
+		10'd33, 10'd129, 10'd193, 10'd225, 10'd257, 10'd289, 10'd417, 10'd449: begin
+			// crnor, crandc, crxor, crnand, crand, creqv, crorc, cror
+			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_CRLOG;
+			case (xo10)
+				10'd33:  dec.crtt = 4'b0001;
+				10'd129: dec.crtt = 4'b0100;
+				10'd193: dec.crtt = 4'b0110;
+				10'd225: dec.crtt = 4'b0111;
+				10'd257: dec.crtt = 4'b1000;
+				10'd289: dec.crtt = 4'b1001;
+				10'd417: dec.crtt = 4'b1101;
+				default: dec.crtt = 4'b1110;
+			endcase
+		end
+		10'd150: begin // isync
+			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_NOP;
+		end
+		default: ;
+		endcase
 	end
 
 	// ---- rotates -----------------------------------------------------------
@@ -170,6 +232,85 @@ always_comb begin
 			dec.cr_wr = f_rc;
 		end
 
+		// ---- loads and stores, indexed -------------------------------------
+		10'd23, 10'd55, 10'd87, 10'd119, 10'd279, 10'd311, 10'd343, 10'd375,
+		10'd534, 10'd790: begin
+			// lwzx lwzux lbzx lbzux lhzx lhzux lhax lhaux lwbrx lhbrx
+			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
+			dec.ra = f_a; dec.ra_rd = a_nz; dec.rb = f_b; dec.rb_rd = 1;
+			dec.rd = f_d; dec.rd_wr = 1;
+			dec.mem_rd = 1;
+			case (xo10)
+				10'd23:  begin end
+				10'd55:  begin dec.seq = SEQ_UPDATE; end
+				10'd87:  begin dec.mem_n = 3'd1; end
+				10'd119: begin dec.mem_n = 3'd1; dec.seq = SEQ_UPDATE; end
+				10'd279: begin dec.mem_n = 3'd2; end
+				10'd311: begin dec.mem_n = 3'd2; dec.seq = SEQ_UPDATE; end
+				10'd343: begin dec.mem_n = 3'd2; dec.mem_sext = 1; end
+				10'd375: begin dec.mem_n = 3'd2; dec.mem_sext = 1; dec.seq = SEQ_UPDATE; end
+				10'd534: begin dec.mem_brev = 1; end
+				default: begin dec.mem_n = 3'd2; dec.mem_brev = 1; end
+			endcase
+		end
+		10'd151, 10'd183, 10'd215, 10'd247, 10'd407, 10'd439, 10'd662, 10'd918: begin
+			// stwx stwux stbx stbux sthx sthux stwbrx sthbrx
+			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
+			dec.ra = f_a; dec.ra_rd = a_nz; dec.rb = f_b; dec.rb_rd = 1;
+			dec.rc = f_d; dec.rc_rd = 1;
+			dec.mem_wr = 1;
+			case (xo10)
+				10'd151: begin end
+				10'd183: begin dec.seq = SEQ_UPDATE; end
+				10'd215: begin dec.mem_n = 3'd1; end
+				10'd247: begin dec.mem_n = 3'd1; dec.seq = SEQ_UPDATE; end
+				10'd407: begin dec.mem_n = 3'd2; end
+				10'd439: begin dec.mem_n = 3'd2; dec.seq = SEQ_UPDATE; end
+				10'd662: begin dec.mem_brev = 1; end
+				default: begin dec.mem_n = 3'd2; dec.mem_brev = 1; end
+			endcase
+		end
+		10'd597, 10'd725: begin // lswi, stswi: bytes at (rA|0), count in the NB field
+			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
+			dec.ra = f_a; dec.ra_rd = a_nz; dec.b_imm = 1;
+			dec.mem_ljust = 1; dec.seq = SEQ_STRI;
+			if (xo10[7]) begin dec.rc = f_d; dec.rc_rd = 1; dec.mem_wr = 1; end
+			else         begin dec.rd = f_d; dec.rd_wr = 1; dec.mem_rd = 1; end
+		end
+		10'd533, 10'd661: begin // lswx, stswx: bytes at (rA|0) + rB, count in XER
+			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
+			dec.ra = f_a; dec.ra_rd = a_nz; dec.rb = f_b; dec.rb_rd = 1;
+			dec.mem_ljust = 1; dec.seq = SEQ_STRX;
+			if (xo10[7]) begin dec.rc = f_d; dec.rc_rd = 1; dec.mem_wr = 1; end
+			else         begin dec.rd = f_d; dec.rd_wr = 1; dec.mem_rd = 1; end
+		end
+
+		// ---- moves to and from CR and SPRs ---------------------------------
+		10'd19: begin // mfcr
+			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MFCR;
+			dec.rd = f_d; dec.rd_wr = 1;
+		end
+		10'd144: begin // mtcrf
+			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MTCRF;
+			dec.ra = f_d; dec.ra_rd = 1;
+		end
+		10'd512: begin // mcrxr
+			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MCRXR;
+		end
+		10'd339: begin // mfspr: XER, LR, CTR
+			dec.unit = UNIT_SYS; dec.sys = SYS_MFSPR;
+			dec.valid = (dec.spr == 10'd1) | (dec.spr == 10'd8) | (dec.spr == 10'd9);
+			dec.rd = f_d; dec.rd_wr = 1;
+		end
+		10'd467: begin // mtspr: XER, LR, CTR
+			dec.unit = UNIT_SYS; dec.sys = SYS_MTSPR;
+			dec.valid = (dec.spr == 10'd1) | (dec.spr == 10'd8) | (dec.spr == 10'd9);
+			dec.ra = f_d; dec.ra_rd = 1;
+		end
+		10'd598, 10'd854: begin // sync, eieio
+			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_NOP;
+		end
+
 		default: begin
 			// XO form: 9-bit extended opcode with OE above it
 			case (xo9)
@@ -238,6 +379,39 @@ always_comb begin
 			endcase
 		end
 		endcase
+	end
+
+	// ---- loads and stores, displacement ------------------------------------
+	6'd32, 6'd33, 6'd34, 6'd35, 6'd40, 6'd41, 6'd42, 6'd43: begin
+		// lwz lwzu lbz lbzu lhz lhzu lha lhau
+		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
+		dec.ra = f_a; dec.ra_rd = a_nz; dec.b_imm = 1; dec.imm = simm;
+		dec.rd = f_d; dec.rd_wr = 1;
+		dec.mem_rd = 1;
+		dec.mem_n  = opcd[3] ? 3'd2 : opcd[1] ? 3'd1 : 3'd4;
+		dec.mem_sext = opcd[3] & opcd[1];
+		if (opcd[0]) dec.seq = SEQ_UPDATE;
+	end
+	6'd36, 6'd37, 6'd38, 6'd39, 6'd44, 6'd45: begin
+		// stw stwu stb stbu sth sthu
+		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
+		dec.ra = f_a; dec.ra_rd = a_nz; dec.b_imm = 1; dec.imm = simm;
+		dec.rc = f_d; dec.rc_rd = 1;
+		dec.mem_wr = 1;
+		dec.mem_n  = opcd[3] ? 3'd2 : opcd[1] ? 3'd1 : 3'd4;
+		if (opcd[0]) dec.seq = SEQ_UPDATE;
+	end
+	6'd46: begin // lmw
+		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
+		dec.ra = f_a; dec.ra_rd = a_nz; dec.b_imm = 1; dec.imm = simm;
+		dec.rd = f_d; dec.rd_wr = 1;
+		dec.mem_rd = 1; dec.seq = SEQ_MULTI;
+	end
+	6'd47: begin // stmw
+		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
+		dec.ra = f_a; dec.ra_rd = a_nz; dec.b_imm = 1; dec.imm = simm;
+		dec.rc = f_d; dec.rc_rd = 1;
+		dec.mem_wr = 1; dec.seq = SEQ_MULTI;
 	end
 
 	// ---- floating point ----------------------------------------------------

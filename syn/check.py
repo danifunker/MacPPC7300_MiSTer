@@ -3,6 +3,7 @@
 
     python syn\\check.py int            integer decode + execute path
     python syn\\check.py fpu            floating-point unit
+    python syn\\check.py core           the pipeline (no FPU, caches or MMU yet)
     python syn\\check.py int --mhz 66   constrain to a different clock
 
 Builds a throw-away Quartus project in syn/build/<target>, with every port
@@ -31,6 +32,7 @@ def cpu_sources():
 TARGETS = {
     "int": "DSPPC604_check_int",
     "fpu": "DSPPC604_check_fpu",
+    "core": "DSPPC604_check_core",
 }
 
 
