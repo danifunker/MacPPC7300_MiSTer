@@ -1,0 +1,10 @@
+# DSPPC604 CPU sources. The package must stay first.
+# verilator/Makefile and syn/check.py read their file lists from here.
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) DSPPC604_pkg.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) DSPPC604_decode.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) DSPPC604_alu.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) DSPPC604_mul.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) DSPPC604_div.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) DSPPC604_int_unit.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) DSPPC604_lzc.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) DSPPC604_fpu.sv]

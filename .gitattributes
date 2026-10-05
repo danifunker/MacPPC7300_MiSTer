@@ -1,0 +1,54 @@
+# Text is stored with LF. This machine checks out with core.autocrlf=true, so
+# anything read by tools under WSL must be pinned to LF in the checkout too.
+*           text=auto
+*.sh        text eol=lf
+*.py        text eol=lf
+Makefile    text eol=lf
+*.bat       text eol=crlf
+
+# Our own RTL, test bench and file lists: LF everywhere, so a Windows checkout
+# is byte for byte what WSL, Verilator and Quartus were tested with.
+*.sv        text eol=lf
+*.v         text eol=lf
+*.vh        text eol=lf
+*.cpp       text eol=lf
+*.h         text eol=lf
+*.qip       text eol=lf
+*.md        text eol=lf
+
+# Quartus rewrites its project files with CRLF on every compile. Pinned to LF,
+# those rewrites never show up as whole-file diffs.
+*.qsf       text eol=lf
+*.qpf       text eol=lf
+*.sdc       text eol=lf
+*.srf       text eol=lf
+
+*.gif       binary
+*.png       binary
+*.jpg       binary
+*.pdf       binary
+*.gz        binary
+*.zip       binary
+*.rbf       binary
+*.rom       binary
+*.bin       binary
+*.hda       binary
+
+# Golden results recorded on real hardware: kept exactly as the decoder wrote
+# them.
+ppctest/runs/**     -text
+
+# sys/ is Template_MiSTer 3ea1134 byte for byte (upstream mixes CRLF and LF):
+# store it as it is so a later template update diffs cleanly. The template's
+# demo core and PLL get the same treatment until the machine replaces them.
+sys/**              -text
+rtl/cos.sv          -text
+rtl/lfsr.v          -text
+rtl/mycore.v        -text
+rtl/pll.v           -text
+rtl/pll.qip         -text
+rtl/pll/**          -text
+
+# These two are read by git itself on every platform.
+.gitattributes text eol=lf
+.gitignore     text eol=lf
