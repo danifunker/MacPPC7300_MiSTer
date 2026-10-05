@@ -177,6 +177,8 @@ package DSPPC604_pkg;
 		logic        mem_sext;     // lha: sign-extend the halfword
 		logic        mem_brev;     // byte-reversed forms
 		logic        mem_ljust;    // string forms: bytes fill the register from the top
+		logic [6:0]  str_bytes;    // string forms: bytes in the whole operation, on its
+		                           // first access only (the alignment check is made there)
 		seq_t        seq;
 
 		// branch

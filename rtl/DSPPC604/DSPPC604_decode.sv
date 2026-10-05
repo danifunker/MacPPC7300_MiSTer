@@ -8,8 +8,9 @@
 //  and from CR, LR, CTR and XER) and the floating-point arithmetic, move,
 //  convert and compare instructions.
 //
-//  Not yet: cache and reservation instructions. tlbie and tlbsync are
-//  accepted and do nothing until there is an MMU.
+//  Not yet: the reservation and cache instructions other than dcbt and dcbtst
+//  (which are hints and stay no-ops). tlbie and tlbsync are accepted and do
+//  nothing until there is an MMU.
 //
 //  Multi-operation instructions (update forms, lmw/stmw, string forms) are
 //  decoded here as their first operation, with dec.seq telling the sequencer
@@ -373,6 +374,9 @@ always_comb begin
 			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_NOP; dec.priv = 1;
 		end
 		10'd598, 10'd854: begin // sync, eieio
+			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_NOP;
+		end
+		10'd278, 10'd246: begin // dcbt, dcbtst: hints, never fault; doing nothing is allowed
 			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_NOP;
 		end
 

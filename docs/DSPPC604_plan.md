@@ -229,40 +229,67 @@ programs avoid these or, for the undefined divides, take the real-604 value.
 
 - Quartus, whole CPU so far: 10,781 ALMs (26%), 69.5 MHz worst case.
 
+Added after the review of everything flagged during M0-M4 (2026-10-05):
+`dcbt` and `dcbtst` are accepted and do nothing (they are hints, so that is
+allowed); the alignment exception for a string operation that is not
+word-aligned and crosses a 4 KB boundary, or is word-aligned and crosses a
+256 MB boundary (604 manual 2.3.4.3), with directed tests for both and for
+the cases that must execute; three deliberate bugs in the exception logic
+(SRR0 of `sc`, MSR[EE] left on at entry, the decrementer's pending flag not
+cleared) were each caught by the directed tests.
+
 Left for later, with the milestone that needs them:
 
-- DSI and ISI, `lwarx`/`stwcx.`, the cache instructions: M5.
-- Machine check, trace (MSR[SE], MSR[BE]), the 604's instruction-address
-  breakpoint and performance-monitor interrupts, soft reset, power saving,
-  little-endian mode: not started, no milestone yet.
-- The alignment exception for an unaligned string operation that crosses a
-  4 KB boundary (604 manual, section 2.3.4.3): not implemented.
+- DSI and ISI, `lwarx`/`stwcx.`, the remaining cache instructions: M5.
+- Machine check, trace, the 604's breakpoint and performance-monitor
+  interrupts, soft reset, power saving, little-endian mode: no milestone;
+  what each would take is under "Known behaviour and open items" below.
 - From real hardware, when a supervisor-level test is possible: the reset
   values of MSR and HID0, and the SRR1 and DSISR a 604 really delivers.
 
-- MSR, SRR0/SRR1, every exception with its priority and vector, `rfi`,
-  privileged-instruction and illegal-instruction checks, alignment.
-- SPRs: PVR, SPRG0-3, DAR, DSISR, DEC, time base, HID0, the 604's performance
-  monitor and breakpoint registers as far as software looks at them.
-- External interrupt and decrementer.
-- Floating point joins the pipeline: FPRs, FP loads and stores (with the
-  single/double conversion), the FPSCR instructions (`mffs`, `mtfsf`,
-  `mtfsfi`, `mtfsb0`, `mtfsb1`, `mcrfs`), FP-unavailable, and precise enabled
-  FP exceptions under MSR[FE0,FE1].
-- **Needs from the hardware side:** a second vector set for what the first
-  one does not cover: loads, stores, branches, CR logic and the FPSCR
-  instructions. Programs started from Open Firmware run in supervisor mode, so
-  SPR reads can be recorded too.
-
 ### M5: MMU and caches
 
-- Block address translation, segment registers, hashed page table walk in
-  hardware with reference and change bit updates, ITLB and DTLB, `tlbie`.
-- Instruction and data caches in block RAM, 32-byte lines; `dcbz`, `dcbf`,
-  `dcbst`, `dcbi`, `dcbt`, `dcbtst`, `icbi`; the HID0 cache-control bits.
-- The memory side becomes a line-fill bus. Writes to memory by anything other
-  than the CPU (disk DMA, the HPS loading a ROM) must go through or
-  invalidate the data cache; the bus is defined with that in mind.
+Steps, each verified before the next:
+
+1. Address translation: BATs, segment registers, hashed page table walk in
+   hardware with reference and change bit updates, ITLB and DTLB, `tlbie`;
+   DSI and ISI with DAR and DSISR. Proof: lockstep with dingusppc with
+   translation on (its MMU is its own code; where it cannot be the reference
+   goes into `verilator/ref/README.md`), plus directed page-fault tests.
+2. `lwarx`/`stwcx.` and the cache instructions, `dcbz` first.
+3. Instruction and data caches in block RAM, 32-byte lines; the HID0
+   cache-control bits. The memory side becomes a line-fill bus to the SDRAM
+   controller, which runs on its own clock, so the clock crossing is part of
+   this step. Writes to memory by anything other than the CPU (disk DMA, the
+   HPS loading a ROM) must go through or invalidate the data cache; the bus
+   is defined with that in mind.
+4. Timing and area: register files and SPRs in RAM, the FPU's input path,
+   66 MHz with margin and 75 if it can be had. MEM may split in two if
+   translation plus cache lookup does not fit one cycle; decided here with
+   timing data.
+
+How the rules apply, decided before step 1:
+
+- A data access that faults in MEM is the one thing the pipeline has not had
+  to do: the instruction in MEM is dropped, the one in EX behind it is
+  cancelled before it commits (EX can only leave in the cycle MEM's access
+  completes, so the fault gates that same `ex_leave`), and the fetch is
+  redirected through the one flush. SRR0 is MEM's address. Earlier
+  operations of the same instruction stay done, as for interrupts: `lmw`,
+  `stmw` and the strings are restartable, and an update form has not written
+  rA yet. Rule 1's invariant holds because the faulting operation wrote no
+  status register.
+- ISI is a marker carried with the instruction from fetch to EX, where it is
+  taken like an illegal instruction: the instruction never executes.
+- `stwcx.` is the one instruction that accesses memory and writes a status
+  register (CR0). To keep the invariant it is two operations: the
+  conditional store, then CR0 from the reservation's outcome, the shape an
+  update form already has.
+- 604 facts the RTL must follow: `dcbz` to a cache-inhibited or write-through
+  page, or with the data cache disabled or locked, takes an *alignment*
+  exception (604 manual 4.5.6); `lwarx` and `stwcx.` at a non-word-aligned
+  address take alignment; `eciwx` and `ecowx` take DSI, since this machine
+  has no external control facility (EAR[E] = 0).
 
 ### M6: real ROM, first MiSTer build
 
@@ -274,6 +301,131 @@ Left for later, with the milestone that needs them:
 - Timing closure at 66 MHz, then try 75.
 
 After M6 the work is the machine, which gets its own plan.
+
+## Known behaviour and open items
+
+Everything the CPU does that software could notice and that is not simply
+the architecture, and the limits of the tests, in one place. *Manual* means
+the 604 User's Manual with no hardware data behind it; *measured* means
+recorded on the real 604; *hardware* marks a question only a supervisor-level
+run on a real 604 can settle.
+
+### Behaviour that is deliberate
+
+- Interrupts are taken only on the first operation of a multi-operation
+  instruction; an exception in a later operation leaves the earlier ones
+  done and restarts the instruction. The architecture allows this, the
+  instructions being restartable; only an invalid form such as `lmw` with rA
+  inside the loaded range could tell the difference.
+- `mtmsr` and `rfi` always refetch the next instruction.
+- MSR implements `0x0005FF73` (manual; no 604e PM bit). Exception entry
+  keeps ME, IP and ILE and copies ILE to LE. SRR1 takes MSR bits
+  `0x87C0FFFF`. `mtxer` keeps `0xE000007F`. Hardware: which XER and MSR bits
+  a real 604 keeps.
+- Reset: MSR `0x40`, DEC `0xFFFFFFFF`, time base 0, HID0 0 (manual, Table
+  4-3). GPRs, FPRs and the other SPRs are not reset.
+- `mftb` reads SPR 284/285; `mfspr` 284/285 works in supervisor mode too.
+  The time base and decrementer advance on the `tb_tick` input, which the
+  system pulses at bus clock / 4. The decrementer exception becomes pending
+  when DEC passes from 0 to all ones, or when `mtdec` writes bit 0 set while
+  it was clear.
+- Exception priority, highest first: external interrupt, decrementer,
+  pending enabled FP exception, privileged, illegal, FP unavailable, system
+  call, trap, alignment, then an enabled FP exception the instruction raised
+  itself. `mfspr`/`mtspr` of an SPR the 604 does not have is privileged in
+  user mode and illegal in supervisor mode (manual 4.5.7).
+- Alignment exception: `lmw`, `stmw` and FP loads and stores not
+  word-aligned; a string operation that is not word-aligned and crosses a
+  4 KB boundary, or is word-aligned and crosses a 256 MB boundary (manual
+  2.3.4.3), checked before its first access.
+- `mffs` returns `FFF80000` in the upper word, as `fctiw` does (measured for
+  `fctiw`; hardware for `mffs`).
+- `stfs` of a double with an exponent below the single denormal range stores
+  the top bits as if it were normal (undefined by the architecture;
+  hardware).
+- FPSCR[NI] is ignored by the FPU and by the model (hardware; open).
+- `fres` is a full divide of 1.0 by the operand rounded to single, which is
+  what the 604 does (measured); a 750 will need its own estimate. `frsqrte`
+  is a 32-entry table of which 8 entries are measured; the other 24 follow
+  the same rule (hardware).
+- Divide by zero and `0x80000000 / -1` return the real 604's values
+  (measured; README).
+- The sequencer's scratch register (32) is not architectural and never
+  visible. Update forms take one extra cycle, being two operations.
+- The branch target buffer has 128 entries and no return-address stack; a
+  wrong or stale entry costs three cycles and is corrected in EX. A
+  mispredicted branch costs three cycles.
+- Latencies: multiply 2 cycles after the request, divide 34 (radix 2; radix
+  4 would halve it), FP add/mul/madd 8, `fdiv` 34, `fdivs`/`fres` 20,
+  `frsqrte` 2, plus 6 if an operand is denormal. A data access takes two
+  cycles on the test bench bus until there is a cache.
+- `dcbt` and `dcbtst` do nothing, which the architecture allows for hints.
+- CR, XER, LR, CTR, FPSCR and MSR have no forwarding at all; EX reads the
+  committed registers. The hazard logic covers GPRs and FPRs only
+  (seven-bit register names). The FPU holds its response until the
+  pipeline takes it, like the integer unit.
+
+### Not implemented, no milestone
+
+- Machine check: needs a bus-error signal from the machine. The 7600 ROM
+  relies on bus errors when it probes for hardware, so this comes with M6 or
+  the machine's plan. MSR[ME] = 0 would checkstop.
+- Trace (MSR[SE], MSR[BE]): about 30 lines along the path an enabled FP
+  exception already takes (complete, then trap), with the 604's own SRR1
+  layout (manual Table 4-10: bits 0-2 = 010, flags for load, store, taken
+  branch and `mtspr` to translation registers). Only a debugger needs it, and
+  only hardware could check Table 4-10.
+- The 604's instruction-address breakpoint (IABR), performance-monitor
+  interrupt, soft reset, power saving (MSR[POW]) and little-endian mode
+  (MSR[LE] and [ILE] are stored and ignored): no software we target uses
+  them. Their registers exist as storage.
+
+### What the tests do not cover, or cover with a stand-in
+
+- No hardware data for: FP exception enables other than VE, FPSCR arriving
+  with sticky bits set, 24 of the 32 `frsqrte` entries, NI mode, the FPSCR
+  instructions, `mffs`'s upper word, `stfs` below the single range, `lfs` of
+  SNaNs and denormals, which XER and MSR bits stick, SRR1 and DSISR as a
+  real 604 delivers them, reset values. The user-level ones are the v4
+  vector set asked for in `RESUME_hardware.md`; the rest need a
+  supervisor-level run.
+- The golden FP vectors all start with CR = 0, so an FP instruction with a
+  non-zero CR in place is checked only by the random FP programs.
+- dingusppc cannot be the reference for: FP arithmetic (never reports
+  inexact, clears VE on compares), `tw` (operands swapped), undefined divide
+  results (quotient 0), unaligned `lmw` (no exception), reserved XER and MSR
+  bits (kept), undefined SPRs (plain storage), invalid instruction forms
+  (trap as illegal), enabled FP exceptions and interrupts (never taken), one
+  SRR1 bit each on `sc` and FP unavailable (the test bench clears them). The
+  random programs avoid these or correct for them; `verilator/ref/README.md`
+  has the list with file and line numbers.
+- The random FP programs skip operations the model marks undefined (an
+  enabled overflow or underflow whose adjusted exponent is still out of
+  range).
+- The random integer programs keep r0, r1 and r2 as index and data bases
+  (the bases drift, by r0, with every update form), keep `lmw`/`stmw`
+  word-aligned and the string operations inside a page through masked copies
+  of the base (dingusppc takes neither alignment exception), and set XER for
+  `lswx`/`stswx` from controlled values.
+- The lockstep test bench models 16 MB of RAM with addresses wrapping modulo
+  16 MB; dingusppc reads all ones outside its RAM and drops stores, and
+  cannot fetch from MSR[IP] = 1 vectors, so every program sets IP = 0 first.
+  Interrupt tests use fixed addresses: handlers count at
+  `00FFFFE0`/`00FFFFE4` and acknowledge at `00FFFFF0`.
+- Deliberate-bug checks: four bugs in the integer pipeline, five in the FP
+  pipeline, three in the exception logic; each was caught.
+- The trace ports on `DSPPC604` exist for the test bench; a real build
+  leaves them unconnected.
+
+### Cost and speed
+
+- Register files and SPRs are flip-flops; moving them to MLAB/M10K RAM is the
+  main area saving. The forwarded FP operands feed the FPU's first stage
+  directly and set the clock. M5 step 4.
+- 1.36 cycles per instruction on straight-line code with an ideal bus is not
+  representative: every data access takes two cycles until the caches exist.
+- Whether part of the CPU could run on the DE10-Nano's ARM was raised and set
+  aside; the FPU's request/response boundary is where such a split would go.
 
 ## Decisions needed along the way
 

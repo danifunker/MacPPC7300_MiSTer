@@ -635,8 +635,16 @@ wire        trap_hit = (ex_dec.bo[4] & trap_lts) | (ex_dec.bo[3] & ~trap_lts & ~
 wire x_sc     = is_sys & (ex_dec.sys == SYS_SC);
 wire x_trap   = is_sys & (ex_dec.sys == SYS_TRAP) & trap_hit;
 // the 604 does not perform these accesses unless they are word-aligned
-wire x_align  = (ex_dec.mem_rd | ex_dec.mem_wr) & ((ex_dec.seq == SEQ_MULTI) | ex_dec.mem_fp) &
-                (int_result[1:0] != 2'b00);
+wire x_align_w = (ex_dec.mem_rd | ex_dec.mem_wr) & ((ex_dec.seq == SEQ_MULTI) | ex_dec.mem_fp) &
+                 (int_result[1:0] != 2'b00);
+// ... nor a string operation that is not word-aligned and crosses a 4 KB
+// boundary, or is word-aligned and crosses a 256 MB boundary (604 manual
+// 2.3.4.3); checked on its first access, which carries the whole count
+wire [12:0] str_end   = {1'b0, int_result[11:0]} + {6'd0, ex_dec.str_bytes};
+wire        str_4k    = str_end[12] & (str_end[11:0] != 12'd0);
+wire        x_align_s = (ex_dec.str_bytes != 7'd0) & str_4k &
+                        ((int_result[1:0] != 2'b00) | (&int_result[27:12]));
+wire x_align  = x_align_w | x_align_s;
 
 assign ex_abort = x_pre | x_sc | x_trap | x_align;      // the instruction has no effect
 

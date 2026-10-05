@@ -179,6 +179,8 @@ Against the PowerPC 604 User's Manual (sections in parentheses):
 8. **Alignment**: only `stmw` (`ppcopcodes.cpp:1827`) and 8-byte FP accesses
    (`ppcmmu.cpp:1515,1602`) raise 0x600 for a non-word-aligned address; `lmw`,
    `lwarx`, `stwcx.`, `lfs`, `stfs` do not (4.5.6 says all of them do). [run]
+   Nor does a string operation that is not word-aligned and crosses a 4 KB
+   boundary, or is word-aligned and crosses a 256 MB boundary (2.3.4.3). [run]
 9. **Undefined SPRs are plain storage** for `mfspr`/`mtspr`, even in user mode
    (`ppcopcodes.cpp:1112,1236`); the 604 takes a program exception (4.5.7). `mfspr`
    268/269 is accepted as well as `mftb`. [run]

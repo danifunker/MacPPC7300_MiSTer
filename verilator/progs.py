@@ -220,7 +220,7 @@ def exctest(out):
         p.words.extend(set_msr(v, 7))
         st["msr"] = v
 
-    def expect(insn, info, pc_after=False, align_ea=None):
+    def expect(insn, info, pc_after=False, align_ea=None, xer=0):
         """insn raises an exception; the nop after it is checked."""
         at = p.pc()
         p.words.append(insn)
@@ -232,11 +232,19 @@ def exctest(out):
                 st["dsisr"] = (((insn >> 26) & 1) << 14) | (((insn >> 27) & 15) << 10)
             st["dsisr"] |= ((insn >> 21) & 31) << 5 | ((insn >> 16) & 31)
         srr1 = (st["msr"] & 0x87C0FFFF) | info
+        st["seen"] = [at + 4 if pc_after else at, srr1, st["dar"], st["dsisr"]]
         p.words.append(NOP)
         p.checks.append((len(p.words) - 1, check_text(
-            [at + 4 if pc_after else at, srr1, st["dar"], st["dsisr"]], 0, 0, 0, st["fpscr"],
-            [0, 0, 0, 0], "exc%X" % len(p.checks))))
+            st["seen"], 0, xer, 0, st["fpscr"], [0, 0, 0, 0], "exc%X" % len(p.checks))))
         st["msr"] &= ~0x900                    # the handler returns with FE0 and FE1 off
+
+    def no_exc(insn, xer=0):
+        """insn must execute without an exception: what the last handler left
+        in r3-r6 is still there afterwards."""
+        p.words.append(insn)
+        p.words.append(NOP)
+        p.checks.append((len(p.words) - 1, check_text(
+            st["seen"], 0, xer, 0, st["fpscr"], [0, 0, 0, 0], "noexc%X" % len(p.checks))))
 
     setm(0)
     p.words += li32(1, DATA_A)
@@ -251,6 +259,20 @@ def exctest(out):
     expect(D(50, 1, 1, 1), 0, align_ea=DATA_A + 1)                # lfd
     p.words += li32(8, 3)
     expect(X(2, 1, 8, 663), 0, align_ea=DATA_A + 3)               # stfsx
+    # a string operation that is not word-aligned and crosses a 4 KB boundary,
+    # or is word-aligned and crosses a 256 MB boundary, is not performed either
+    p.words += li32(8, DATA_A + 0xFFE)
+    expect(X(29, 8, 4, 597), 0, align_ea=DATA_A + 0xFFE)          # lswi r29,r8,4: bytes FFE-1001
+    no_exc(X(29, 8, 2, 725))                                      # stswi r29,r8,2: ends at FFF
+    p.words += li32(0, 0) + li32(9, 3) + [mtspr(XER, 9)]
+    expect(X(29, 8, 0, 533), 0, align_ea=DATA_A + 0xFFE, xer=3)   # lswx r29,r8,r0: XER says 3 bytes
+    p.words += li32(9, 2) + [mtspr(XER, 9)]
+    no_exc(X(29, 8, 0, 661), xer=2)                               # stswx, 2 bytes
+    p.words += li32(9, 0) + [mtspr(XER, 9)]
+    p.words += li32(8, DATA_A + 0xFFC)
+    no_exc(X(29, 8, 8, 597))                                      # lswi, word-aligned across 4 KB
+    p.words += li32(8, 0x0FFFFFFC)
+    expect(X(29, 8, 8, 725), 0, align_ea=0x0FFFFFFC)              # stswi across 256 MB
     setm(MSR_FP | MSR_PR)
     expect(X(9, 0, 0, 83), 0x00040000)                            # mfmsr in user mode
     expect(mfspr(SRR0, 9), 0x00040000)                            # a supervisor SPR in user mode
@@ -681,16 +703,23 @@ def gen_random(out, count, seed):
             t = rnd.randrange(3, 20)
             return [M(21, base(), t, 0, 0, 29),
                     D(46 if bit() else 47, rnd.randrange(20, 32), t, 4 * rnd.randrange(-16, 16))]
-        if k == 9:
-            first = rnd.randrange(3, 28)                         # lswi stswi: up to 4 registers
-            return [X(first, base(), rnd.randrange(1, 17), 597 if bit() else 725)]
-        # lswx stswx: byte count from XER
+        # String operations: the 604 takes an alignment exception when one that
+        # is not word-aligned crosses a 4 KB boundary (dingusppc does not), so
+        # they go through a copy of the base with bits 5-11 cleared, which
+        # keeps the whole string inside the first 128 bytes of its page.
         first, t = rnd.randrange(3, 28), rd()
-        count = rnd.randrange(0, 17)
-        flags = rnd.choice((0, 0x20000000, 0x80000000, 0xA0000000))
         while first <= t <= first + 4:
             t = rd()
-        return li32(t, flags | count) + [mtspr(XER, t), X(first, base(), 0, 533 if bit() else 661)]
+        inpage = [M(21, base(), t, 0, 27, 19)]                   # t = base & FFFFF01F
+        if k == 9:
+            return inpage + [X(first, t, rnd.randrange(1, 17), 597 if bit() else 725)]   # lswi stswi
+        # lswx stswx: byte count from XER
+        u = rd()
+        while first <= u <= first + 4 or u == t:
+            u = rd()
+        count = rnd.randrange(0, 17)
+        flags = rnd.choice((0, 0x20000000, 0x80000000, 0xA0000000))
+        return inpage + li32(u, flags | count) + [mtspr(XER, u), X(first, t, 0, 533 if bit() else 661)]
 
     # groups: ('code', words) or ('br', kind, skip)
     groups = []

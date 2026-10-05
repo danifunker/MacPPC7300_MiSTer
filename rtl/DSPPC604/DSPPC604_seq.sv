@@ -108,6 +108,7 @@ always_comb begin
 			uop.mem_n = (left_b >= 8'd4) ? 4'd4 : left_b[3:0];
 			if (is_load) uop.rd = {1'b0, str_r};
 			else         uop.rc = {1'b0, str_r};
+			if (word_i == 6'd0) uop.str_bytes = n_total;
 			last = (left_b <= 8'd4);
 		end
 	end
