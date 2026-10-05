@@ -29,7 +29,8 @@ module DSPPC604_check_core
 	output logic [29:0] o_dbus_addr,
 	output logic [3:0]  o_dbus_be,
 	output logic [31:0] o_dbus_wdata,
-	output logic        o_halted
+	input  logic        i_ext_irq,
+	input  logic        i_tb_tick
 );
 
 logic        reset_q;
@@ -37,7 +38,8 @@ logic [31:0] reset_pc_q;
 logic        ibus_gnt_q, ibus_rvalid_q, dbus_gnt_q, dbus_rvalid_q;
 logic [31:0] ibus_rdata_q, dbus_rdata_q;
 
-logic        ibus_req, dbus_req, dbus_we, halted;
+logic        ibus_req, dbus_req, dbus_we;
+logic        ext_irq_q, tb_tick_q;
 logic [31:0] ibus_addr, dbus_wdata;
 logic [29:0] dbus_addr;
 logic [3:0]  dbus_be;
@@ -45,6 +47,8 @@ logic [3:0]  dbus_be;
 always_ff @(posedge clk) begin
 	reset_q       <= i_reset;
 	reset_pc_q    <= i_reset_pc;
+	ext_irq_q     <= i_ext_irq;
+	tb_tick_q     <= i_tb_tick;
 	ibus_gnt_q    <= i_ibus_gnt;
 	ibus_rvalid_q <= i_ibus_rvalid;
 	ibus_rdata_q  <= i_ibus_rdata;
@@ -59,7 +63,6 @@ always_ff @(posedge clk) begin
 	o_dbus_addr   <= dbus_addr;
 	o_dbus_be     <= dbus_be;
 	o_dbus_wdata  <= dbus_wdata;
-	o_halted      <= halted;
 end
 
 /* verilator lint_off PINCONNECTEMPTY */
@@ -68,6 +71,8 @@ DSPPC604 cpu
 	.clk           (clk),
 	.reset         (reset_q),
 	.reset_pc      (reset_pc_q),
+	.ext_irq       (ext_irq_q),
+	.tb_tick       (tb_tick_q),
 	.ibus_req      (ibus_req),
 	.ibus_addr     (ibus_addr),
 	.ibus_gnt      (ibus_gnt_q),
@@ -81,8 +86,6 @@ DSPPC604 cpu
 	.dbus_gnt      (dbus_gnt_q),
 	.dbus_rvalid   (dbus_rvalid_q),
 	.dbus_rdata    (dbus_rdata_q),
-	.halted        (halted),
-	.halt_pc       (),
 	.trace_valid   (),
 	.trace_last    (),
 	.trace_pc      (),
@@ -94,7 +97,8 @@ DSPPC604 cpu
 	.trace_xer     (),
 	.trace_lr      (),
 	.trace_ctr     (),
-	.trace_fpscr   ()
+	.trace_fpscr   (),
+	.trace_msr     ()
 );
 /* verilator lint_on PINCONNECTEMPTY */
 

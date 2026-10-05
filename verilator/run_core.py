@@ -10,8 +10,12 @@
 2. The real-604 floating-point vectors, the same way.
 3. Random floating-point programs (arithmetic, loads, stores, FPSCR
    instructions) with the state fpmodel.py expects after every instruction.
-4. Random integer programs in lockstep with dingusppc's interpreter: after
-   every instruction the registers must match, and at the end the memory.
+4. Each exception once, with what its handler must find in SRR0, SRR1, DAR
+   and DSISR; and a computation that thousands of external and decrementer
+   interrupts must leave undisturbed.
+5. Random programs in lockstep with dingusppc's interpreter, including
+   supervisor instructions, mode switches and exceptions: after every
+   instruction the registers and MSR must match, and at the end the memory.
 
 Runs from Windows (through WSL) or directly under Linux.
 """
@@ -108,7 +112,24 @@ def main():
         r = run([tb, "--prog", prog, "--stall", str(stall), "--seed", str(seed)])
         report("  seed %d, wait states %d%%" % (seed, stall), r)
 
-    # 4. random integer programs in lockstep
+    # 4. exceptions and interrupts, with known outcomes
+    print("exceptions and interrupts:")
+    for name, gen, tb_args in (
+        ("each exception once", ["exctest"], ["--stall", "10"]),
+        ("floating-point enabled exceptions", ["fpexctest"], []),
+        ("external interrupts", ["irqtest", "3000"], ["--irq-every", "97", "--stall", "10"]),
+        ("decrementer interrupts", ["irqtest", "3000"], ["--tb-run"]),
+        ("both, with wait states", ["irqtest", "3000"], ["--irq-every", "61", "--tb-run", "--stall", "30"]),
+    ):
+        prog = os.path.join(progs, "exc.prog")
+        r = run([sys.executable, os.path.join(HERE, "progs.py"), gen[0], prog] + gen[1:])
+        if r.returncode:
+            print(r.stdout)
+            return 1
+        r = run([tb, "--prog", prog] + tb_args)
+        report("  " + name, r)
+
+    # 5. random programs in lockstep, exceptions and supervisor instructions included
     print("random programs in lockstep with dingusppc:")
     total = 0
     for seed in range(args.first_seed, args.first_seed + args.seeds):

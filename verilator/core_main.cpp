@@ -52,6 +52,8 @@ struct Options {
 	bool lockstep = false;
 	bool trace = false;
 	int stall = 0;                 // percent chance of a wait state, per bus per cycle
+	long irq_every = 0;            // raise the external interrupt every N cycles
+	bool tb_run = false;           // time base and decrementer advance every cycle
 	unsigned seed = 1;
 	uint64_t max_cycles = 2000000000ull;
 	long show = 10;
@@ -89,6 +91,9 @@ void usage() {
 		"  --seed N         seed for the wait states\n"
 		"  --max-cycles N   give up after N clocks\n"
 		"  --show N         mismatches printed before stopping (default 10)\n"
+		"  --irq-every N    raise the external interrupt every N cycles; a store to\n"
+		"                   address 00FFFFF0 takes it away again\n"
+		"  --tb-run         advance the time base and decrementer every cycle\n"
 		"  --trace          print every retired instruction\n");
 }
 
@@ -109,6 +114,8 @@ int main(int argc, char** argv) {
 		else if (a == "--seed") opt.seed = (unsigned)std::strtoul(next().c_str(), nullptr, 0);
 		else if (a == "--max-cycles") opt.max_cycles = std::strtoull(next().c_str(), nullptr, 0);
 		else if (a == "--show") opt.show = std::atol(next().c_str());
+		else if (a == "--irq-every") opt.irq_every = std::atol(next().c_str());
+		else if (a == "--tb-run") opt.tb_run = true;
 		else { usage(); return a == "--help" ? 0 : 2; }
 	}
 	if (opt.prog.empty()) { usage(); return 2; }
@@ -161,6 +168,7 @@ int main(int argc, char** argv) {
 		std::memcpy(ref_ram(), mem.data(), RAM_SIZE);
 		ref_state_t s{};
 		s.pc = reset_pc;
+		s.msr = 0x40;              // as the core leaves reset
 		ref_set_state(&s);
 	}
 #endif
@@ -178,8 +186,12 @@ int main(int argc, char** argv) {
 	uint64_t cycles = 0, retired = 0;
 	long checked = 0, failed = 0;
 	bool done = false, diverged = false;
+	bool irq = false;
+	long irq_count = 0, irq_acks = 0;
 
 	auto drive = [&]() {
+		dut->ext_irq = irq;
+		dut->tb_tick = opt.tb_run;
 		dut->ibus_gnt = ib.gnt; dut->ibus_rvalid = ib.rvalid; dut->ibus_rdata = ib.rdata;
 		dut->dbus_gnt = db.gnt; dut->dbus_rvalid = db.rvalid; dut->dbus_rdata = db.rdata;
 	};
@@ -217,8 +229,11 @@ int main(int argc, char** argv) {
 		uint32_t daddr = (uint32_t)dut->dbus_addr << 2, dbe = dut->dbus_be, dwd = dut->dbus_wdata;
 		dut->clk = 1; dut->eval();
 		step_bus(ib, ireq, false, iaddr, 0xF, 0);
+		// the handler acknowledges an interrupt by storing to this address
+		if (dreq && db.gnt && dwe && daddr == 0x00FFFFF0) { irq = false; irq_acks++; }
 		step_bus(db, dreq, dwe, daddr, dbe, dwd);
 		cycles++;
+		if (opt.irq_every && !irq && cycles % opt.irq_every == 0) { irq = true; irq_count++; }
 	};
 
 	dut->reset_pc = reset_pc;
@@ -274,6 +289,16 @@ int main(int argc, char** argv) {
 				if (opt.lockstep) {
 					ref_state_t before{}, s{};
 					ref_get_state(&before);
+					// The core retires nothing for an instruction that takes an
+					// exception; the reference has to take it now to catch up.
+					for (int tries = 0; tries < 3 && before.pc != pc; tries++) {
+						int vec = ref_step();
+						if (vec <= 0) break;
+						// two places where dingusppc sets SRR1 bits it should not
+						if (vec == 0xC00) ref_set_spr(27, ref_get_spr(27) & ~0x00020000u);
+						if (vec == 0x800) ref_set_spr(27, ref_get_spr(27) & ~0x00100000u);
+						ref_get_state(&before);
+					}
 					if (before.pc != pc) {
 						std::printf("DIVERGED after %llu instructions: core retired %08X, reference is at %08X\n",
 							(unsigned long long)retired, pc, before.pc);
@@ -301,7 +326,7 @@ int main(int argc, char** argv) {
 					}
 
 					bool same = rc == 0 && s.cr == dut->trace_cr && s.xer == dut->trace_xer &&
-					            s.lr == dut->trace_lr && s.ctr == dut->trace_ctr;
+					            s.lr == dut->trace_lr && s.ctr == dut->trace_ctr && s.msr == dut->trace_msr;
 					for (int r = 0; r < 32 && same; r++) same = s.gpr[r] == gpr[r];
 					if (!same) {
 						std::printf("MISMATCH after %llu instructions at %08X insn=%08X (reference step returned %X)\n",
@@ -312,6 +337,7 @@ int main(int argc, char** argv) {
 						if (s.xer != dut->trace_xer) std::printf("  xer   reference %08X  core %08X\n", s.xer, dut->trace_xer);
 						if (s.lr != dut->trace_lr)   std::printf("  lr    reference %08X  core %08X\n", s.lr, dut->trace_lr);
 						if (s.ctr != dut->trace_ctr) std::printf("  ctr   reference %08X  core %08X\n", s.ctr, dut->trace_ctr);
+						if (s.msr != dut->trace_msr) std::printf("  msr   reference %08X  core %08X\n", s.msr, dut->trace_msr);
 						diverged = true;
 						break;
 					}
@@ -319,10 +345,6 @@ int main(int argc, char** argv) {
 #endif
 				if (pc == end_pc) done = true;
 			}
-		}
-		if (dut->halted) {
-			std::printf("core halted at %08X (instruction not implemented)\n", dut->halt_pc);
-			break;
 		}
 	}
 
@@ -355,6 +377,18 @@ int main(int argc, char** argv) {
 		(unsigned long long)retired, (unsigned long long)cycles, retired ? (double)cycles / retired : 0.0);
 	if (!checks.empty())
 		std::printf("recorded-state checks: %ld of %zu reached, %ld failed\n", checked, checks.size(), failed);
+	// the interrupt handlers of progs.py's irqtest count in memory
+	if (opt.irq_every) {
+		uint32_t counted = rd32(mem, 0x00FFFFE0);
+		std::printf("external interrupts: %ld raised, %ld acknowledged, %u counted by the handler\n",
+			irq_count, irq_acks, counted);
+		if (counted != (uint32_t)irq_acks || irq_acks == 0 || irq_count - irq_acks > 1) mem_ok = false;
+	}
+	if (opt.tb_run) {
+		uint32_t counted = rd32(mem, 0x00FFFFE4);
+		std::printf("decrementer interrupts counted by the handler: %u\n", counted);
+		if (counted == 0) mem_ok = false;
+	}
 	if (!expect_mem.empty())
 		std::printf("memory words checked at the end: %zu, %ld wrong\n", expect_mem.size(), mem_bad);
 	if (opt.lockstep) std::printf("lockstep with the reference: %s\n", diverged ? "DIVERGED" : mem_ok ? "identical" : "memory differs");

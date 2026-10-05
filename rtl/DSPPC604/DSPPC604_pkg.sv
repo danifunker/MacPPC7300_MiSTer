@@ -23,8 +23,8 @@ package DSPPC604_pkg;
 	} unit_t;
 
 	// What a UNIT_SYS instruction does.
-	typedef enum logic [3:0] {
-		SYS_NOP,       // sync, eieio, isync (until there is something to synchronise)
+	typedef enum logic [4:0] {
+		SYS_NOP,       // sync, eieio, isync, tlbie, tlbsync (until they have something to do)
 		SYS_CRLOG,     // CR bit BT <- BA op BB
 		SYS_MCRF,
 		SYS_MFCR,
@@ -37,7 +37,14 @@ package DSPPC604_pkg;
 		SYS_MTFSFI,
 		SYS_MTFSB0,
 		SYS_MTFSB1,
-		SYS_MCRFS
+		SYS_MCRFS,
+		SYS_SC,        // system call
+		SYS_TRAP,      // tw, twi: the TO field is in bo
+		SYS_RFI,
+		SYS_MFMSR,
+		SYS_MTMSR,
+		SYS_MFSR,      // segment registers; the number comes from operand B when rb_rd is set
+		SYS_MTSR
 	} sys_op_t;
 
 	// Where a branch goes.
@@ -147,6 +154,8 @@ package DSPPC604_pkg;
 	typedef struct packed {
 		logic        valid;        // an instruction this core implements
 		unit_t       unit;
+		logic        priv;         // supervisor only
+		logic        fp_use;       // needs MSR[FP]
 
 		logic [5:0]  ra;
 		logic        ra_rd;

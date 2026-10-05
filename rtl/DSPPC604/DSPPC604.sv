@@ -37,19 +37,36 @@
 //    difference. So a wrong or stale prediction costs time, never
 //    correctness.
 //
-//  Not here yet: exceptions and supervisor state (an instruction the core
-//  does not implement stops it with `halted`), MMU, caches.
+//  Exceptions
+//    Everything that can stop an instruction is known by the time it would
+//    leave EX: an interrupt, an illegal or privileged instruction, floating
+//    point switched off, a trap, a system call, a misaligned access. The
+//    instruction is then dropped instead of moving on, SRR0, SRR1 and MSR are
+//    written, and the fetch is redirected to the vector, all at that one
+//    edge. Because the status registers commit in EX, EX sees the true MSR
+//    and FPSCR, so interrupts and pending floating-point exceptions are
+//    simply conditions on the instruction that happens to be there.
+//    A floating-point instruction that raises an enabled exception itself
+//    completes first and traps at the same edge.
+//    Interrupts are taken only on the first operation of an instruction.
+//
+//  Not here yet: MMU (so no DSI or ISI), caches, the reservation and cache
+//  instructions, trace and machine-check exceptions, little-endian mode.
 //
 //============================================================================
 
 module DSPPC604
 #(
-	parameter int BTB_BITS = 7       // branch target buffer entries, as a power of two
+	parameter int          BTB_BITS = 7,              // branch target buffer entries, as a power of two
+	parameter logic [31:0] PVR      = 32'h00040303    // processor version: 604 revision 3.3
 )
 (
 	input  logic        clk,
 	input  logic        reset,
 	input  logic [31:0] reset_pc,
+
+	input  logic        ext_irq,         // external interrupt request, level
+	input  logic        tb_tick,         // one clock: advance the time base and decrementer
 
 	// instruction bus
 	output logic        ibus_req,
@@ -68,10 +85,6 @@ module DSPPC604
 	input  logic        dbus_rvalid,
 	input  logic [31:0] dbus_rdata,
 
-	// stopped at an instruction this core does not implement
-	output logic        halted,
-	output logic [31:0] halt_pc,
-
 	// retirement trace for the test bench: one pulse per operation leaving
 	// the pipeline, with the state as that instruction left it
 	output logic        trace_valid,
@@ -85,7 +98,8 @@ module DSPPC604
 	output logic [31:0] trace_xer,
 	output logic [31:0] trace_lr,
 	output logic [31:0] trace_ctr,
-	output logic [31:0] trace_fpscr
+	output logic [31:0] trace_fpscr,
+	output logic [31:0] trace_msr
 );
 
 import DSPPC604_pkg::*;
@@ -100,6 +114,34 @@ logic [31:0] xer;
 logic [31:0] lr;
 logic [31:0] ctr;
 logic [31:0] fpscr;
+
+// supervisor state
+localparam logic [31:0] MSR_MASK  = 32'h0005FF73;  // the bits the 604 implements
+localparam logic [31:0] SRR1_MASK = 32'h87C0FFFF;  // MSR bits saved in SRR1 and restored by rfi
+localparam int MSR_EE = 15, MSR_PR = 14, MSR_FP = 13, MSR_FE0 = 11, MSR_FE1 = 8, MSR_IP = 6;
+
+logic [31:0] msr;
+logic [31:0] srr0;
+logic [31:0] srr1;
+logic [31:0] sprg [4];
+logic [31:0] dar;
+logic [31:0] dsisr;
+logic [31:0] dec_r;         // decrementer
+logic        dec_pending;   // it passed zero and the exception has not been taken
+logic [31:0] tbl;
+logic [31:0] tbu;
+logic [31:0] sdr1;
+logic [31:0] bat [16];      // IBAT0U ... DBAT3L, in SPR number order
+logic [31:0] sr [16];
+logic [31:0] hid0;
+logic [31:0] ear;
+logic [31:0] iabr;
+logic [31:0] dabr;
+logic [31:0] mmcr0;
+logic [31:0] pmc1;
+logic [31:0] pmc2;
+logic [31:0] sia;
+logic [31:0] sda;
 
 // ---- pipeline registers ----------------------------------------------------
 // IF1 / IF2
@@ -126,7 +168,8 @@ logic        ex_valid;
 logic [31:0] ex_pc;
 logic [31:0] ex_insn;
 dec_t        ex_dec;
-logic        ex_ill;        // not implemented: stop here
+logic        ex_ill;        // not an instruction this core implements
+logic        ex_first;
 logic        ex_last;
 logic [31:0] ex_pred;
 logic        ex_btb;
@@ -156,7 +199,7 @@ logic        mem_ljust;
 logic        mem_fp;
 logic        mem_fsgl;
 logic [63:0] mem_wdata;
-logic [31:0] mem_t_cr, mem_t_xer, mem_t_lr, mem_t_ctr, mem_t_fpscr;
+logic [31:0] mem_t_cr, mem_t_xer, mem_t_lr, mem_t_ctr, mem_t_fpscr, mem_t_msr;
 
 // WB
 logic        wb_valid;
@@ -166,9 +209,7 @@ logic        wb_last;
 logic [6:0]  wb_rd;
 logic        wb_rd_wr;
 logic [63:0] wb_result;
-logic [31:0] wb_t_cr, wb_t_xer, wb_t_lr, wb_t_ctr, wb_t_fpscr;
-
-logic        halt_q;        // an unimplemented instruction reached EX
+logic [31:0] wb_t_cr, wb_t_xer, wb_t_lr, wb_t_ctr, wb_t_fpscr, wb_t_msr;
 
 // ---- stage handshakes ------------------------------------------------------
 logic        redir;         // EX redirects the fetch at the end of this cycle
@@ -177,6 +218,13 @@ logic        id_take;       // ID's operation moves to EX
 logic        id_leave;      // ... and it was the instruction's last
 logic        ex_leave;
 logic        mem_leave;
+
+// exception decisions made in EX (declared here: the units above them use them)
+logic        x_pre;         // known without executing the instruction
+logic        ex_abort;      // the instruction in EX is dropped
+logic        ex_exc;        // an exception is taken as it leaves
+logic [11:0] exc_vector;
+logic [31:0] fpscr_next;
 
 wire id_ready  = ~id_valid | id_leave;
 wire ex_ready  = ~ex_valid | ex_leave;
@@ -189,7 +237,7 @@ wire        if2_resp  = if2_valid & (if2_has | ibus_rvalid);
 wire [31:0] if2_word  = if2_has ? if2_insn : ibus_rdata;
 wire        if2_leave = if2_resp & (if2_kill | id_ready);
 
-assign ibus_req  = ~reset & ~halt_q & (~if2_valid | if2_leave);
+assign ibus_req  = ~reset & (~if2_valid | if2_leave);
 assign ibus_addr = pc_f;
 
 wire fetch_go = ibus_req & ibus_gnt;
@@ -291,10 +339,9 @@ DSPPC604_seq seq
 
 // lswx and stswx read XER's byte count here: wait for anything in EX, the
 // only place that could still be changing it
-// Nothing follows an unimplemented instruction into EX.
 // A redirect in the same cycle does not stop the move: the operation arrives
 // in EX already cancelled.
-wire   id_hold  = (id_wait_xer & ex_valid) | (ex_valid & ex_ill) | halt_q;
+wire   id_hold  = id_wait_xer & ex_valid;
 assign id_take  = id_valid & ex_ready & ~id_hold;
 assign id_leave = id_take & (id_last | ~id_dec.valid);
 
@@ -333,7 +380,7 @@ always_ff @(posedge clk) begin
 		id_btb   <= if2_btb;
 		id_cnt   <= if2_cnt;
 	end
-	if (reset | redir | halt_q) id_valid <= 1'b0;
+	if (reset | redir) id_valid <= 1'b0;
 end
 
 // ============================================================================
@@ -384,8 +431,8 @@ DSPPC604_int_unit int_unit
 (
 	.clk        (clk),
 	.reset      (reset),
-	.flush      (1'b0),
-	.req_valid  (ex_valid & ~ex_ill & ~ex_stall & is_int),
+	.flush      (ex_leave & ex_abort),
+	.req_valid  (ex_valid & ~x_pre & ~ex_stall & is_int),
 	.req_ready  (int_ready),
 	.unit       (ex_dec.unit),
 	.ctl        (ex_dec.ic),
@@ -418,8 +465,8 @@ DSPPC604_fpu fpu
 (
 	.clk        (clk),
 	.reset      (reset),
-	.flush      (1'b0),
-	.req_valid  (ex_valid & ~ex_ill & ~ex_stall & is_fpu),
+	.flush      (ex_leave & ex_abort),
+	.req_valid  (ex_valid & ~x_pre & ~ex_stall & is_fpu),
 	.req_ready  (fpu_ready),
 	.ctl        (ex_dec.fc),
 	.a          (fop_a),
@@ -449,7 +496,7 @@ DSPPC604_fpscr fpscr_ops
 	.cr_field   (fsys_cr)
 );
 
-wire ex_done = ~ex_stall & (ex_ill | (is_int ? int_resp : is_fpu ? fpu_resp : 1'b1));
+wire ex_done = x_pre | (~ex_stall & (is_int ? int_resp : is_fpu ? fpu_resp : 1'b1));
 assign ex_leave = ex_valid & ex_done & mem_ready;
 
 // ---- branch ----------------------------------------------------------------
@@ -473,10 +520,16 @@ end
 wire [31:0] ex_pc4 = ex_pc + 32'd4;
 
 // Where this instruction really continues, against where the fetch went.
-// Only an instruction's last operation decides.
-assign redir_pc = br_taken ? br_target : ex_pc4;
-wire   ex_final = ex_leave & ~ex_ill & ex_last;
-assign redir    = ex_final & (redir_pc != ex_pred);
+// Only an instruction's last operation decides. An exception goes to its
+// vector; mtmsr and rfi always refetch, because what follows them was
+// fetched under the old MSR.
+wire        is_sys    = ~is_int & ~is_fpu;
+wire        is_rfi    = is_sys & (ex_dec.sys == SYS_RFI);
+wire        is_mtmsr  = is_sys & (ex_dec.sys == SYS_MTMSR);
+wire [31:0] next_pc   = is_rfi ? {srr0[31:2], 2'b00} : br_taken ? br_target : ex_pc4;
+assign redir_pc = ex_exc ? {{12{msr[MSR_IP]}}, 8'h00, exc_vector} : next_pc;
+wire   ex_final = ex_leave & ~ex_exc & ex_last;
+assign redir    = ex_leave & (ex_exc | (ex_last & (is_rfi | is_mtmsr | (next_pc != ex_pred))));
 
 // Teach the branch target buffer: a taken branch is entered or strengthened,
 // one that was not taken is weakened, and an entry that fired for something
@@ -487,7 +540,7 @@ always_comb begin
 	btb_wtgt = 1'b0;
 	btb_clr  = 1'b0;
 	btb_wcnt = 2'd2;
-	if (ex_final) begin
+	if (ex_final & ~is_rfi) begin
 		if (br_taken) begin
 			btb_we   = 1'b1;
 			btb_wtgt = 1'b1;
@@ -520,11 +573,108 @@ function automatic logic [3:0] cr_field(input logic [31:0] v, input logic [2:0] 
 	end
 endfunction
 
+// ---- special-purpose registers ----------------------------------------------
+logic        spr_known;
+logic [31:0] spr_rdata;
+
+always_comb begin
+	spr_known = 1'b1;
+	spr_rdata = 32'd0;
+	case (ex_dec.spr)
+		10'd1:    spr_rdata = xer;
+		10'd8:    spr_rdata = lr;
+		10'd9:    spr_rdata = ctr;
+		10'd18:   spr_rdata = dsisr;
+		10'd19:   spr_rdata = dar;
+		10'd22:   spr_rdata = dec_r;
+		10'd25:   spr_rdata = sdr1;
+		10'd26:   spr_rdata = srr0;
+		10'd27:   spr_rdata = srr1;
+		10'd272, 10'd273, 10'd274, 10'd275: spr_rdata = sprg[ex_dec.spr[1:0]];
+		10'd282:  spr_rdata = ear;
+		10'd284:  spr_rdata = tbl;
+		10'd285:  spr_rdata = tbu;
+		10'd287:  spr_rdata = PVR;
+		10'd952:  spr_rdata = mmcr0;
+		10'd953:  spr_rdata = pmc1;
+		10'd954:  spr_rdata = pmc2;
+		10'd955:  spr_rdata = sia;
+		10'd959:  spr_rdata = sda;
+		10'd1008: spr_rdata = hid0;
+		10'd1010: spr_rdata = iabr;
+		10'd1013: spr_rdata = dabr;
+		default: begin
+			if (ex_dec.spr[9:4] == 6'b100001) spr_rdata = bat[ex_dec.spr[3:0]];   // 528-543
+			else spr_known = 1'b0;
+		end
+	endcase
+end
+
+// segment register number: in the instruction, or the top of operand B
+wire [3:0] sr_idx = ex_dec.rb_rd ? op_b[31:28] : ex_insn[19:16];
+
+// ---- exceptions -------------------------------------------------------------
+wire fp_trap_on = msr[MSR_FE0] | msr[MSR_FE1];
+
+// conditions that do not need the instruction to execute
+wire irq_ext  = ex_first & msr[MSR_EE] & ext_irq;
+wire irq_dec  = ex_first & msr[MSR_EE] & dec_pending & ~ext_irq;
+wire fpe_pend = ex_first & fpscr[30] & fp_trap_on;      // FEX was already set when traps were enabled
+wire x_priv   = ex_dec.priv & msr[MSR_PR];
+wire x_ill    = ex_ill | (is_sys & ((ex_dec.sys == SYS_MFSPR) | (ex_dec.sys == SYS_MTSPR)) & ~spr_known & ~x_priv);
+wire x_fpu    = ex_dec.fp_use & ~msr[MSR_FP];
+assign x_pre  = irq_ext | irq_dec | fpe_pend | x_priv | x_ill | x_fpu;
+
+// conditions that come out of executing it
+wire        trap_lts = ($signed(op_a) < $signed(op_b));
+wire        trap_ltu = (op_a < op_b);
+wire        trap_eq  = (op_a == op_b);
+wire        trap_hit = (ex_dec.bo[4] & trap_lts) | (ex_dec.bo[3] & ~trap_lts & ~trap_eq) |
+                       (ex_dec.bo[2] & trap_eq) |
+                       (ex_dec.bo[1] & trap_ltu) | (ex_dec.bo[0] & ~trap_ltu & ~trap_eq);
+wire x_sc     = is_sys & (ex_dec.sys == SYS_SC);
+wire x_trap   = is_sys & (ex_dec.sys == SYS_TRAP) & trap_hit;
+// the 604 does not perform these accesses unless they are word-aligned
+wire x_align  = (ex_dec.mem_rd | ex_dec.mem_wr) & ((ex_dec.seq == SEQ_MULTI) | ex_dec.mem_fp) &
+                (int_result[1:0] != 2'b00);
+
+assign ex_abort = x_pre | x_sc | x_trap | x_align;      // the instruction has no effect
+
+// an enabled floating-point exception this instruction raises itself: it
+// completes, then traps
+wire x_fpen   = ~ex_abort & ex_dec.fpscr_wr & fpscr_next[30] & fp_trap_on;
+assign ex_exc = ex_abort | x_fpen;
+
+logic [31:0] exc_info;      // the cause bits of SRR1
+
+always_comb begin
+	exc_info = 32'd0;
+	if (irq_ext)       exc_vector = 12'h500;
+	else if (irq_dec)  exc_vector = 12'h900;
+	else if (fpe_pend) begin exc_vector = 12'h700; exc_info = 32'h00100000; end
+	else if (x_priv)   begin exc_vector = 12'h700; exc_info = 32'h00040000; end
+	else if (x_ill)    begin exc_vector = 12'h700; exc_info = 32'h00080000; end
+	else if (x_fpu)    exc_vector = 12'h800;
+	else if (x_sc)     exc_vector = 12'hC00;
+	else if (x_trap)   begin exc_vector = 12'h700; exc_info = 32'h00020000; end
+	else if (x_align)  exc_vector = 12'h600;
+	else               begin exc_vector = 12'h700; exc_info = 32'h00100000; end   // x_fpen
+end
+
+// what the alignment handler is told about the instruction
+wire [31:0] align_dsisr = (ex_insn[31:26] == 6'd31)
+	? {15'd0, ex_insn[2:1], ex_insn[6],  ex_insn[10:7],  ex_insn[25:21], ex_insn[20:16]}
+	: {15'd0, 2'b00,        ex_insn[26], ex_insn[30:27], ex_insn[25:21], ex_insn[20:16]};
+
+// MSR on exception entry: interrupts, translation, floating point and user
+// mode off; ME, IP and ILE kept; LE takes ILE
+wire [31:0] msr_exc = (msr & 32'h00011040) | {31'd0, msr[16]};
+
 logic [31:0] cr_next;
 logic [31:0] xer_next;
 logic [31:0] lr_next;
 logic [31:0] ctr_next;
-logic [31:0] fpscr_next;
+logic [31:0] msr_next;
 logic [31:0] sys_result;
 
 always_comb begin
@@ -533,6 +683,7 @@ always_comb begin
 	lr_next    = lr;
 	ctr_next   = ctr;
 	fpscr_next = fpscr;
+	msr_next   = msr;
 	sys_result = 32'd0;
 
 	if (is_fpu) begin
@@ -561,20 +712,20 @@ always_comb begin
 				cr_next  = cr_insert(cr, ex_dec.crbt[4:2], xer[31:28]);
 				xer_next[31:28] = 4'd0;
 			end
-			SYS_MFSPR: begin
-				case (ex_dec.spr)
-					10'd1:   sys_result = xer;
-					10'd8:   sys_result = lr;
-					default: sys_result = ctr;
-				endcase
-			end
+			SYS_MFSPR: sys_result = spr_rdata;
 			SYS_MTSPR: begin
+				// the registers kept here; the rest are written below
 				case (ex_dec.spr)
 					10'd1:   xer_next = op_a & XER_MASK;
 					10'd8:   lr_next  = op_a;
-					default: ctr_next = op_a;
+					10'd9:   ctr_next = op_a;
+					default: ;
 				endcase
 			end
+			SYS_MFMSR: sys_result = msr;
+			SYS_MTMSR: msr_next = op_a & MSR_MASK;
+			SYS_RFI:   msr_next = ((msr & ~SRR1_MASK) | (srr1 & SRR1_MASK)) & MSR_MASK;
+			SYS_MFSR:  sys_result = sr[sr_idx];
 			SYS_MFFS: begin
 				// Rc: CR1 from the unchanged FPSCR
 				if (ex_dec.cr_wr) cr_next = cr_insert(cr, 3'd1, fpscr[31:28]);
@@ -617,6 +768,7 @@ always_ff @(posedge clk) begin
 		ex_insn  <= id_insn;
 		ex_dec   <= id_uop;
 		ex_ill   <= ~id_dec.valid;
+		ex_first <= id_first;
 		ex_last  <= id_last | ~id_dec.valid;
 		ex_pred  <= id_pred;
 		ex_btb   <= id_btb;
@@ -638,33 +790,79 @@ always_ff @(posedge clk) begin
 		if (ffc_wb & ~ffc_mem) ex_fc <= wb_result;
 	end
 
-	// commit CR, XER, LR, CTR, FPSCR
-	if (ex_leave & ~ex_ill) begin
+	// time base and decrementer
+	if (tb_tick) begin
+		{tbu, tbl} <= {tbu, tbl} + 64'd1;
+		dec_r      <= dec_r - 32'd1;
+		if (dec_r == 32'd0) dec_pending <= 1'b1;
+	end
+
+	// commit CR, XER, LR, CTR, FPSCR, MSR and the SPRs
+	if (ex_leave & ~ex_abort) begin
 		cr    <= cr_next;
 		xer   <= xer_next;
 		lr    <= lr_next;
 		ctr   <= ctr_next;
 		fpscr <= fpscr_next;
+		msr   <= msr_next;
+
+		if (is_sys & (ex_dec.sys == SYS_MTSR)) sr[sr_idx] <= op_a;
+
+		if (is_sys & (ex_dec.sys == SYS_MTSPR)) begin
+			case (ex_dec.spr)
+				10'd18:   dsisr <= op_a;
+				10'd19:   dar   <= op_a;
+				10'd22:   begin
+					dec_r <= op_a;
+					if (~dec_r[31] & op_a[31]) dec_pending <= 1'b1;
+				end
+				10'd25:   sdr1  <= op_a;
+				10'd26:   srr0  <= op_a;
+				10'd27:   srr1  <= op_a;
+				10'd272, 10'd273, 10'd274, 10'd275: sprg[ex_dec.spr[1:0]] <= op_a;
+				10'd282:  ear   <= op_a;
+				10'd284:  tbl   <= op_a;
+				10'd285:  tbu   <= op_a;
+				10'd952:  mmcr0 <= op_a;
+				10'd953:  pmc1  <= op_a;
+				10'd954:  pmc2  <= op_a;
+				10'd955:  sia   <= op_a;
+				10'd959:  sda   <= op_a;
+				10'd1008: hid0  <= op_a;
+				10'd1010: iabr  <= op_a;
+				10'd1013: dabr  <= op_a;
+				default:  if (ex_dec.spr[9:4] == 6'b100001) bat[ex_dec.spr[3:0]] <= op_a;
+			endcase
+		end
 	end
 
-	// stop at an instruction that is not implemented
-	if (ex_leave & ex_ill) begin
-		halt_q  <= 1'b1;
-		halt_pc <= ex_pc;
+	// exception entry
+	if (ex_leave & ex_exc) begin
+		srr0 <= x_sc ? ex_pc4 : ex_pc;
+		srr1 <= (msr & SRR1_MASK) | exc_info;
+		msr  <= msr_exc;
+		if (x_align & ~x_pre) begin
+			dar   <= int_result;
+			dsisr <= align_dsisr;
+		end
+		if (irq_dec) dec_pending <= 1'b0;
 	end
 
 	if (reset) begin
-		ex_valid <= 1'b0;
-		halt_q   <= 1'b0;
-		cr       <= 32'd0;
-		xer      <= 32'd0;
-		lr       <= 32'd0;
-		ctr      <= 32'd0;
-		fpscr    <= 32'd0;
+		ex_valid    <= 1'b0;
+		cr          <= 32'd0;
+		xer         <= 32'd0;
+		lr          <= 32'd0;
+		ctr         <= 32'd0;
+		fpscr       <= 32'd0;
+		msr         <= 32'h00000040;   // exception vectors at FFFxxxxx
+		dec_pending <= 1'b0;
+		dec_r       <= 32'hFFFFFFFF;
+		tbl         <= 32'd0;
+		tbu         <= 32'd0;
+		hid0        <= 32'd0;
 	end
 end
-
-assign halted = halt_q & ~mem_valid & ~wb_valid;
 
 // ============================================================================
 //  MEM
@@ -704,7 +902,7 @@ assign mem_leave = mem_valid & (~(mem_load | mem_store) | mu_resp);
 always_ff @(posedge clk) begin
 	if (mem_leave) mem_valid <= 1'b0;
 
-	if (ex_leave & ~ex_ill) begin
+	if (ex_leave & ~ex_abort) begin
 		mem_valid  <= 1'b1;
 		mem_pc     <= ex_pc;
 		mem_insn   <= ex_insn;
@@ -727,6 +925,7 @@ always_ff @(posedge clk) begin
 		mem_t_lr   <= lr_next;
 		mem_t_ctr  <= ctr_next;
 		mem_t_fpscr <= fpscr_next;
+		mem_t_msr   <= x_fpen ? msr_exc : msr_next;
 	end
 
 	if (reset) mem_valid <= 1'b0;
@@ -749,6 +948,7 @@ always_ff @(posedge clk) begin
 		wb_t_lr   <= mem_t_lr;
 		wb_t_ctr  <= mem_t_ctr;
 		wb_t_fpscr <= mem_t_fpscr;
+		wb_t_msr   <= mem_t_msr;
 	end
 
 	if (wb_valid & wb_rd_wr) begin
@@ -771,5 +971,6 @@ assign trace_xer     = wb_t_xer;
 assign trace_lr      = wb_t_lr;
 assign trace_ctr     = wb_t_ctr;
 assign trace_fpscr   = wb_t_fpscr;
+assign trace_msr     = wb_t_msr;
 
 endmodule

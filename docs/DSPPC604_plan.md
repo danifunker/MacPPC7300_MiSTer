@@ -189,7 +189,54 @@ programs avoid these or, for the undefined divides, take the real-604 value.
   double below the single denormal range. All three are in the vector set
   asked for in `RESUME_hardware.md`.
 
-**Step 2, exceptions and supervisor state: next.**
+**Step 2, exceptions and supervisor state: done 2026-10-05.**
+
+- MSR, SRR0, SRR1, SPRG0-3, DAR, DSISR, the decrementer and time base (they
+  advance on a `tb_tick` input), PVR, and as plain storage for now HID0, EAR,
+  IABR, DABR, the performance-monitor registers, SDR1, the BATs and the
+  segment registers. An SPR number the 604 does not have is an illegal
+  instruction, as the 604 manual says.
+- `mfmsr`, `mtmsr`, `rfi`, `sc`, `tw`, `twi`, `mftb`, `mfsr`/`mtsr` and their
+  indirect forms. `tlbie` and `tlbsync` are accepted and do nothing yet.
+- Exceptions: program (illegal, privileged, trap, enabled floating-point),
+  floating-point unavailable, system call, alignment (`lmw`/`stmw` and
+  floating-point loads and stores at an address that is not word-aligned,
+  with DAR and DSISR), external interrupt, decrementer.
+- How it works: everything that can stop an instruction is known by the time
+  it would leave EX. It is dropped there, SRR0/SRR1/MSR are written and the
+  fetch redirected at that one edge. Because the status registers commit in
+  EX, an interrupt or a pending floating-point exception is just a condition
+  on whichever instruction is in EX; nothing is sampled or carried along. A
+  floating-point instruction that raises an enabled exception itself
+  completes and traps at the same edge. `mtmsr` and `rfi` always refetch.
+- Verified three ways (`python verilator\run_core.py`):
+  1. Lockstep with dingusppc now includes supervisor instructions, switches
+     between user and supervisor mode, system calls, traps, illegal and
+     privileged instructions and floating-point unavailable; MSR is compared
+     after every instruction, and the handlers copy SRR0 and SRR1 into
+     registers that are compared too.
+  2. Each exception raised once, with the exact SRR0, SRR1, DAR and DSISR the
+     handler must find, including both ways an enabled floating-point
+     exception arrives.
+  3. A loop with known results under thousands of external and decrementer
+     interrupts, with and without bus wait states: the results are intact and
+     every interrupt raised is counted exactly once by its handler.
+- Where dingusppc could not be the reference: it sets an SRR1 bit on `sc` and
+  on floating-point unavailable that the architecture does not (the test
+  bench clears them), its `tw` swaps the operands (the random programs use
+  only conditions where that does not matter), and it never takes an enabled
+  floating-point exception or an interrupt (covered by 2 and 3).
+
+Left for later, with the milestone that needs them:
+
+- DSI and ISI, `lwarx`/`stwcx.`, the cache instructions: M5.
+- Machine check, trace (MSR[SE], MSR[BE]), the 604's instruction-address
+  breakpoint and performance-monitor interrupts, soft reset, power saving,
+  little-endian mode: not started, no milestone yet.
+- The alignment exception for an unaligned string operation that crosses a
+  4 KB boundary (604 manual, section 2.3.4.3): not implemented.
+- From real hardware, when a supervisor-level test is possible: the reset
+  values of MSR and HID0, and the SRR1 and DSISR a 604 really delivers.
 
 - MSR, SRR0/SRR1, every exception with its priority and vector, `rfi`,
   privileged-instruction and illegal-instruction checks, alignment.

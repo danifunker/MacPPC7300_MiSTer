@@ -6,6 +6,9 @@
     python progs.py random OUT COUNT [SEED]      random instruction stream for lockstep
     python progs.py fprandom OUT COUNT [SEED]    random floating-point program, with the
                                                  state fpmodel.py expects after every instruction
+    python progs.py exctest OUT                  each exception once, with what its handler must see
+    python progs.py irqtest OUT [LOOPS]          a computation that interrupts must not disturb
+                                                 (run with --irq-every and --tb-run)
 
 The file format is described at the top of core_main.cpp.
 """
@@ -57,8 +60,34 @@ def mtcrf(mask, rs):
     return (31 << 26) | (rs << 21) | (mask << 12) | (144 << 1)
 
 
+def mtmsr(rs):
+    return (31 << 26) | (rs << 21) | (146 << 1)
+
+
 B_SELF = 0x48000000
+RFI = 0x4C000064
 XER, LR, CTR = 1, 8, 9
+SRR0, SRR1 = 26, 27
+MSR_FP, MSR_PR, MSR_EE = 0x2000, 0x4000, 0x8000
+
+
+def set_msr(value, scratch=0):
+    """The core leaves reset with MSR = 0x40 (vectors at FFFxxxxx, no floating point)."""
+    return li32(scratch, value) + [mtmsr(scratch)]
+
+
+def install_handlers(p):
+    """Exception handlers at the vectors. They leave SRR0 (advanced) and SRR1
+    in r30 and r31, where a lockstep run compares them.
+      program, FP unavailable, alignment: step over the instruction
+      system call: switch between user and supervisor mode"""
+    skip = [mfspr(SRR0, 30), mfspr(SRR1, 31), D(14, 30, 30, 4), mtspr(SRR0, 30), RFI]
+    for vec in (0x600, 0x700, 0x800):
+        for i, w in enumerate(skip):
+            p.data[vec + 4 * i] = w
+    toggle = [mfspr(SRR0, 30), mfspr(SRR1, 31), D(26, 31, 31, MSR_PR), mtspr(SRR1, 31), RFI]
+    for i, w in enumerate(toggle):
+        p.data[0xC00 + 4 * i] = w
 
 
 class Program:
@@ -88,12 +117,13 @@ class Program:
 # ---- the golden vectors as one program -----------------------------------------
 def golden(out, path):
     p = Program()
+    p.words += set_msr(0)
     n = 0
     with open(path) as fh:
         for r in csv.DictReader(fh):
             insn = int(r["insn"], 16)
             if (insn >> 26) in (59, 63):
-                continue                              # floating point joins in M4
+                continue                              # see goldenfp
             v = {k: int(r[k], 16) for k in r if k.startswith(("in_", "out_")) and "_f" not in k}
             setup = [
                 li32(3, v["in_r3"]), li32(4, v["in_r4"]), li32(5, v["in_r5"]), li32(6, v["in_r6"]),
@@ -132,6 +162,7 @@ def goldenfp(out, path):
     """Each vector: f4-f6 and FPSCR loaded from a constant pool, f3 zeroed, CR
     set, then the instruction. r10 points at the vector's constants."""
     p = Program()
+    p.words += set_msr(MSR_FP)
     n = 0
     with open(path) as fh:
         for r in csv.DictReader(fh):
@@ -161,6 +192,149 @@ def goldenfp(out, path):
     p.words.append(B_SELF)
     p.write(out)
     print("%d vectors, %d instructions -> %s" % (n, len(p.words), out))
+
+
+# ---- exceptions, one at a time ---------------------------------------------------
+NOP = 0x60000000
+DAR, DSISR, DEC, SPRG0, SPRG1 = 19, 18, 22, 272, 273
+
+
+def exctest(out):
+    """Raises each exception the core has, once. The handler copies SRR0, SRR1,
+    DAR and DSISR to r3-r6 and returns past the instruction (with the
+    floating-point trap enables off), so the check on the following nop sees
+    exactly what the exception delivered."""
+    p = Program()
+    body = [mfspr(SRR0, 3), mfspr(SRR1, 4), mfspr(DAR, 5), mfspr(DSISR, 6)]
+    tail = [D(14, 31, 0, 0x900), X(4, 31, 31, 60), mtspr(SRR1, 31), RFI]      # SRR1 &= ~(FE0|FE1)
+    skip = body + [D(14, 30, 3, 4), mtspr(SRR0, 30)] + tail
+    for vec in (0x600, 0x700, 0x800):
+        for i, w in enumerate(skip):
+            p.data[vec + 4 * i] = w
+    for i, w in enumerate(body + tail):                                        # sc: SRR0 is already past it
+        p.data[0xC00 + 4 * i] = w
+
+    st = {"dar": 0, "dsisr": 0, "fpscr": 0, "msr": 0}
+
+    def setm(v):
+        p.words.extend(set_msr(v, 7))
+        st["msr"] = v
+
+    def expect(insn, info, pc_after=False, align_ea=None):
+        """insn raises an exception; the nop after it is checked."""
+        at = p.pc()
+        p.words.append(insn)
+        if align_ea is not None:
+            st["dar"] = align_ea
+            if insn >> 26 == 31:
+                st["dsisr"] = (((insn >> 1) & 3) << 15) | (((insn >> 6) & 1) << 14) | (((insn >> 7) & 15) << 10)
+            else:
+                st["dsisr"] = (((insn >> 26) & 1) << 14) | (((insn >> 27) & 15) << 10)
+            st["dsisr"] |= ((insn >> 21) & 31) << 5 | ((insn >> 16) & 31)
+        srr1 = (st["msr"] & 0x87C0FFFF) | info
+        p.words.append(NOP)
+        p.checks.append((len(p.words) - 1, check_text(
+            [at + 4 if pc_after else at, srr1, st["dar"], st["dsisr"]], 0, 0, 0, st["fpscr"],
+            [0, 0, 0, 0], "exc%X" % len(p.checks))))
+        st["msr"] &= ~0x900                    # the handler returns with FE0 and FE1 off
+
+    setm(0)
+    p.words += li32(1, DATA_A)
+    expect(0x44000002, 0, pc_after=True)                          # sc
+    expect(D(3, 31, 0, 0), 0x00020000)                            # twi 31,r0,0: trap always
+    expect(0x00000000, 0x00080000)                                # not an instruction
+    expect(mfspr(1023, 9), 0x00080000)                            # an SPR that does not exist
+    expect(0xFC201090, 0)                                         # fmr with MSR[FP] off
+    setm(MSR_FP)
+    expect(D(46, 29, 1, 2), 0, align_ea=DATA_A + 2)               # lmw at an odd address
+    expect(D(47, 29, 1, 6), 0, align_ea=DATA_A + 6)               # stmw
+    expect(D(50, 1, 1, 1), 0, align_ea=DATA_A + 1)                # lfd
+    p.words += li32(8, 3)
+    expect(X(2, 1, 8, 663), 0, align_ea=DATA_A + 3)               # stfsx
+    setm(MSR_FP | MSR_PR)
+    expect(X(9, 0, 0, 83), 0x00040000)                            # mfmsr in user mode
+    expect(mfspr(SRR0, 9), 0x00040000)                            # a supervisor SPR in user mode
+    expect(mfspr(1023, 9), 0x00040000)                            # ... even one that does not exist
+    expect(0x44000002, 0, pc_after=True)                          # sc from user mode
+    p.words.append(B_SELF)
+    p.write(out)
+    print("%d instructions, %d checks -> %s" % (len(p.words), len(p.checks), out))
+
+
+def fpexctest(out):
+    """Enabled floating-point exceptions: one raised by the instruction itself,
+    and one pending when the trap enable is switched on."""
+    p = Program()
+    body = [mfspr(SRR0, 3), mfspr(SRR1, 4), mfspr(DAR, 5), mfspr(DSISR, 6)]
+    tail = [D(14, 31, 0, 0x900), X(4, 31, 31, 60), mtspr(SRR1, 31), RFI]
+    for i, w in enumerate(body + [D(14, 30, 3, 4), mtspr(SRR0, 30)] + tail):
+        p.data[0x700 + 4 * i] = w
+    FE0 = 0x800
+    p.words += set_msr(MSR_FP | FE0, 7)
+    p.words.append((63 << 26) | (6 << 23) | (8 << 12) | (134 << 1))      # mtfsfi 6,8: FPSCR[VE] on
+    at = p.pc()
+    p.words.append((63 << 26) | (3 << 21) | (0 << 16) | (0 << 11) | (18 << 1))   # fdiv f3,f0,f0: 0/0
+    fpscr = 0x80000000 | 0x40000000 | 0x20000000 | 0x00200000 | 0x80     # FX FEX VX VXZDZ, VE
+    srr1 = (MSR_FP | FE0) | 0x00100000
+    p.words.append(NOP)
+    p.checks.append((len(p.words) - 1, check_text([at, srr1, 0, 0], 0, 0, 0, fpscr, [0, 0, 0, 0], "own")))
+    # FEX is still set and the handler returned with the enables off: switching
+    # them on again must trap on the next instruction, before it executes
+    p.words += set_msr(MSR_FP | FE0, 7)
+    at = p.pc()
+    p.words.append(D(14, 9, 0, 0x55))                                    # li r9,0x55: must not execute
+    p.words.append(NOP)
+    p.checks.append((len(p.words) - 1, check_text([at, srr1, 0, 0], 0, 0, 0, fpscr, [0, 0, 0, 0], "pending")))
+    p.words.append(B_SELF)
+    p.write(out)
+    print("%d instructions, %d checks -> %s" % (len(p.words), len(p.checks), out))
+
+
+def irqtest(out, loops):
+    """A loop whose results are known, running with interrupts enabled. The
+    external and decrementer handlers each count in memory (00FFFFE0 and
+    00FFFFE4) and change nothing the loop can see; the external one also
+    acknowledges by storing to 00FFFFF0."""
+    p = Program()
+    COUNT = 0x00FFFFE0
+    save = [mtspr(SPRG0, 30), mtspr(SPRG1, 31), D(15, 30, 0, COUNT >> 16), D(24, 30, 30, COUNT)]
+    back = [mfspr(SPRG0, 30), mfspr(SPRG1, 31), RFI]
+    ext = save + [D(32, 31, 30, 0), D(14, 31, 31, 1), D(36, 31, 30, 0), D(36, 31, 30, 16)] + back
+    dec = save + [D(32, 31, 30, 4), D(14, 31, 31, 1), D(36, 31, 30, 4),
+                  D(14, 31, 0, 300), mtspr(DEC, 31)] + back
+    for i, w in enumerate(ext):
+        p.data[0x500 + 4 * i] = w
+    for i, w in enumerate(dec):
+        p.data[0x900 + 4 * i] = w
+
+    p.words += set_msr(0, 7)
+    p.words += li32(1, DATA_A) + li32(3, 1) + li32(4, 0) + li32(5, 0) + li32(6, 0)
+    p.words += li32(7, 100) + [mtspr(DEC, 7)]
+    p.words += li32(7, loops) + [mtspr(CTR, 7)]
+    p.words += set_msr(MSR_EE, 7)
+    body = [D(7, 3, 3, 33),            # mulli r3,r3,33
+            D(14, 3, 3, 7),            # addi  r3,r3,7
+            X(4, 4, 3, 266),           # add   r4,r4,r3
+            D(36, 4, 1, 0),            # stw   r4,0(r1)
+            D(32, 5, 1, 0),            # lwz   r5,0(r1)
+            X(5, 6, 3, 316),           # xor   r6,r5,r3
+            X(6, 6, 4, 459)]           # divwu r6,r6,r4 (a long instruction to interrupt)
+    p.words += body
+    p.words.append((16 << 26) | (16 << 21) | ((-4 * len(body)) & 0xFFFC))     # bdnz
+    p.words += set_msr(0, 7)
+    r3, r4, r5, r6 = 1, 0, 0, 0
+    for _ in range(loops):
+        r3 = (r3 * 33 + 7) & 0xFFFFFFFF
+        r4 = (r4 + r3) & 0xFFFFFFFF
+        r5 = r4
+        r6 = r5 ^ r3
+        r6 = (r6 // r4) if r4 else ((r6 << 4) | 0xF) & 0xFFFFFFFF
+    p.words.append(NOP)
+    p.checks.append((len(p.words) - 1, check_text([r3, r4, r5, r6], 0, 0, 0, 0, [0, 0, 0, 0], "loop")))
+    p.expect[DATA_A] = r4
+    p.words.append(B_SELF)
+    p.write(out)
+    print("%d instructions, %d loops -> %s" % (len(p.words), loops, out))
 
 
 # ---- random floating-point programs, checked against fpmodel.py ------------------
@@ -212,6 +386,7 @@ def fprandom(out, count, seed):
         st["cr"] = (st["cr"] & ~(0xF << sh)) | (val << sh)
 
     # prologue: bases, an index, and every source register loaded
+    p.words += set_msr(MSR_FP)
     p.words += li32(10, POOL_BASE) + li32(11, SCRATCH) + li32(12, 8) + li32(9, SCRATCH + 0x800)
     for r in range(0, 8):
         i = rnd.randrange(256)
@@ -369,7 +544,10 @@ def gen_random(out, count, seed):
             return rnd.getrandbits(rnd.randrange(1, 33))
         return rnd.getrandbits(32)
 
-    # prologue: every register and CR, XER, LR, CTR defined
+    install_handlers(p)
+
+    # prologue: MSR, then every register and CR, XER, LR, CTR defined
+    p.words += set_msr(0, 3)
     p.words += li32(0, rnd.randrange(0, 40))
     p.words += li32(1, DATA_A)
     p.words += li32(2, DATA_B)
@@ -442,6 +620,39 @@ def gen_random(out, count, seed):
             return mtspr(LR if (j == 3 or keep_ctr) else CTR, rs())
         return D(14, rd(), 0, rnd.getrandbits(16))               # li
 
+    def system():
+        """Supervisor instructions and things that raise exceptions. In user
+        mode the privileged ones trap; the handlers step over them."""
+        k = rnd.randrange(12)
+        if k == 0:
+            return [0x44000002]                                   # sc: switch mode
+        if k == 1:
+            return [D(3, rnd.randrange(32), rs(), rnd.getrandbits(16))]       # twi
+        if k == 2:
+            # tw: only conditions that do not care which operand is which
+            return [X(rnd.choice((4, 31, 24, 3, 0)), rs(), rs(), 4)]
+        if k == 3:
+            return [(rnd.choice((0, 1, 5, 6)) << 26) | rnd.getrandbits(26)]   # not an instruction
+        if k == 4:
+            return [X(rd(), 0, 0, 83)]                            # mfmsr
+        if k == 5:
+            t = rd()
+            v = rnd.choice((0, MSR_FP, 0x1000, 0x3000, MSR_EE, MSR_EE | MSR_FP, MSR_PR, MSR_PR | MSR_FP))
+            return li32(t, v) + [mtmsr(t)]
+        if k in (6, 7):
+            spr = rnd.choice((272, 273, 274, 275, 26, 27, 19, 18))
+            return [mtspr(spr, rs()) if k == 6 else mfspr(spr, rd())]
+        if k == 8:
+            return [mfspr(287, rd())]                             # PVR
+        if k == 9:
+            return [(31 << 26) | (rd() << 21) | ((268 & 31) << 16) | ((268 >> 5) << 11) | (371 << 1)]  # mftb
+        if k == 10:
+            n = rnd.randrange(16)
+            if bit():
+                return [(31 << 26) | (rs() << 21) | (n << 16) | (210 << 1)]   # mtsr
+            return [(31 << 26) | (rd() << 21) | (n << 16) | (595 << 1)]       # mfsr
+        return [0xFC201090]                                       # fmr f1,f2: traps when MSR[FP] is off
+
     def memory():
         """A group that loads or stores."""
         k = rnd.randrange(12)
@@ -486,8 +697,10 @@ def gen_random(out, count, seed):
     total = 0
     while total < count:
         k = rnd.random()
-        if k < 0.55:
+        if k < 0.50:
             g = ("code", [simple()])
+        elif k < 0.56:
+            g = ("code", system())
         elif k < 0.80:
             g = ("code", memory())
         elif k < 0.90:
@@ -552,6 +765,12 @@ if __name__ == "__main__":
         golden(a[1], a[2] if len(a) > 2 else default_csv)
     elif len(a) >= 2 and a[0] == "goldenfp":
         goldenfp(a[1], a[2] if len(a) > 2 else default_csv)
+    elif len(a) >= 2 and a[0] == "exctest":
+        exctest(a[1])
+    elif len(a) >= 2 and a[0] == "fpexctest":
+        fpexctest(a[1])
+    elif len(a) >= 2 and a[0] == "irqtest":
+        irqtest(a[1], int(a[2]) if len(a) > 2 else 3000)
     elif len(a) >= 3 and a[0] == "fprandom":
         fprandom(a[1], int(a[2]), int(a[3]) if len(a) > 3 else 1)
     elif len(a) >= 3 and a[0] == "random":

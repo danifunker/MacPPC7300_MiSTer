@@ -17,7 +17,7 @@ still the MiSTer template's test pattern.
 | DSPPC604 floating-point unit | all 25,598 real-604 vectors pass; 1.8 million random vectors agree with the software model |
 | DSPPC604 pipeline, user-mode integer code | the same 11,576 vectors pass when run as a program; random programs match dingusppc instruction for instruction |
 | Floating point in the pipeline | the 25,598 FP vectors pass when run as a program; FP loads, stores and FPSCR instructions agree with the software model (no hardware data for those yet) |
-| Exceptions, supervisor state | in progress |
+| Exceptions, supervisor state | program, FP unavailable, system call, alignment, external and decrementer interrupts; MSR and the SPRs; checked in lockstep and by directed tests |
 | MMU, caches | not started; see [the plan](docs/DSPPC604_plan.md) |
 | Machine (chipset, video, SCSI, ...) | not started |
 
@@ -164,9 +164,12 @@ Tests the pipeline, four ways:
 2. The real-604 floating-point vectors, the same way.
 3. Random floating-point programs (arithmetic, loads, stores, FPSCR
    instructions) with the state `fpmodel.py` expects after every instruction.
-4. Random integer programs in lockstep with dingusppc's interpreter
-   (`verilator/ref` builds it as a library from `..\dingusppc`): the registers
-   are compared after every instruction and memory at the end.
+4. Each exception once, with what its handler must find; and a loop with
+   known results under thousands of external and decrementer interrupts.
+5. Random programs in lockstep with dingusppc's interpreter
+   (`verilator/ref` builds it as a library from `..\dingusppc`), including
+   supervisor instructions, mode switches and exceptions: the registers and
+   MSR are compared after every instruction and memory at the end.
 
 `--seeds N` runs more random programs.
 

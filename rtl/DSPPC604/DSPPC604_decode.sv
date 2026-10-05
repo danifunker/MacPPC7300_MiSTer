@@ -8,8 +8,8 @@
 //  and from CR, LR, CTR and XER) and the floating-point arithmetic, move,
 //  convert and compare instructions.
 //
-//  Not yet: sc and traps, supervisor instructions, cache and reservation
-//  instructions.
+//  Not yet: cache and reservation instructions. tlbie and tlbsync are
+//  accepted and do nothing until there is an MMU.
 //
 //  Multi-operation instructions (update forms, lmw/stmw, string forms) are
 //  decoded here as their first operation, with dec.seq telling the sequencer
@@ -62,6 +62,15 @@ always_comb begin
 	dec.mem_n  = 4'd4;
 
 	case (opcd)
+
+	// ---- traps and system call ---------------------------------------------
+	6'd3: begin // twi
+		dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_TRAP;
+		dec.ra = f_a; dec.ra_rd = 1; dec.b_imm = 1; dec.imm = simm;
+	end
+	6'd17: begin // sc
+		dec.valid = insn[1]; dec.unit = UNIT_SYS; dec.sys = SYS_SC;
+	end
 
 	// ---- integer, immediate operand ---------------------------------------
 	6'd7: begin // mulli
@@ -138,6 +147,9 @@ always_comb begin
 		end
 		10'd150: begin // isync
 			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_NOP;
+		end
+		10'd50: begin // rfi
+			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_RFI; dec.priv = 1;
 		end
 		default: ;
 		endcase
@@ -319,15 +331,46 @@ always_comb begin
 		10'd512: begin // mcrxr
 			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MCRXR;
 		end
-		10'd339: begin // mfspr: XER, LR, CTR
-			dec.unit = UNIT_SYS; dec.sys = SYS_MFSPR;
-			dec.valid = (dec.spr == 10'd1) | (dec.spr == 10'd8) | (dec.spr == 10'd9);
+		10'd339: begin // mfspr: the execute stage knows which SPRs exist
+			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MFSPR;
+			dec.priv = dec.spr[4];
 			dec.rd = f_d; dec.rd_wr = 1;
 		end
-		10'd467: begin // mtspr: XER, LR, CTR
-			dec.unit = UNIT_SYS; dec.sys = SYS_MTSPR;
-			dec.valid = (dec.spr == 10'd1) | (dec.spr == 10'd8) | (dec.spr == 10'd9);
+		10'd467: begin // mtspr
+			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MTSPR;
+			dec.priv = dec.spr[4];
 			dec.ra = f_d; dec.ra_rd = 1;
+		end
+		10'd371: begin // mftb: the time base, readable in user mode
+			dec.unit = UNIT_SYS; dec.sys = SYS_MFSPR;
+			dec.valid = (dec.spr == 10'd268) | (dec.spr == 10'd269);
+			dec.spr = dec.spr[0] ? 10'd285 : 10'd284;
+			dec.rd = f_d; dec.rd_wr = 1;
+		end
+		10'd4: begin // tw
+			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_TRAP;
+			dec.ra = f_a; dec.ra_rd = 1; dec.rb = f_b; dec.rb_rd = 1;
+		end
+		10'd83: begin // mfmsr
+			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MFMSR; dec.priv = 1;
+			dec.rd = f_d; dec.rd_wr = 1;
+		end
+		10'd146: begin // mtmsr
+			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MTMSR; dec.priv = 1;
+			dec.ra = f_d; dec.ra_rd = 1;
+		end
+		10'd595, 10'd659: begin // mfsr, mfsrin
+			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MFSR; dec.priv = 1;
+			dec.rb = f_b; dec.rb_rd = xo10[7];   // mfsrin takes the number from rB
+			dec.rd = f_d; dec.rd_wr = 1;
+		end
+		10'd210, 10'd242: begin // mtsr, mtsrin
+			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MTSR; dec.priv = 1;
+			dec.ra = f_d; dec.ra_rd = 1;
+			dec.rb = f_b; dec.rb_rd = xo10[5];
+		end
+		10'd306, 10'd566: begin // tlbie, tlbsync
+			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_NOP; dec.priv = 1;
 		end
 		10'd598, 10'd854: begin // sync, eieio
 			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_NOP;
@@ -535,6 +578,12 @@ always_comb begin
 
 	default: ;
 	endcase
+
+	// every instruction that touches a floating-point register or FPSCR
+	dec.fp_use = (dec.unit == UNIT_FPU) | dec.mem_fp |
+	             ((dec.unit == UNIT_SYS) & ((dec.sys == SYS_MFFS) | (dec.sys == SYS_MTFSF) |
+	              (dec.sys == SYS_MTFSFI) | (dec.sys == SYS_MTFSB0) | (dec.sys == SYS_MTFSB1) |
+	              (dec.sys == SYS_MCRFS)));
 
 	// nothing about an unimplemented instruction may look like a request
 	if (!dec.valid) dec = '0;
