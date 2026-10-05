@@ -1,0 +1,71 @@
+db
+greybox_tmp
+incremental_db
+output_files
+simulation
+hc_output
+scaler
+hps_isw_handoff
+vip
+*_sim
+.qsys_edit
+PLLJ_PLLSPE_INFO.txt
+*.bak
+*.orig
+*.rej
+*.qdf
+*.rpt
+*.smsg
+*.summary
+*.done
+*.jdi
+*.pin
+*.sof
+*.qws
+*.ppf
+*.ddb
+build_id.v
+c5_pin_model_dump.txt
+*.sopcinfo
+*.csv
+*.f
+*.cmp
+*.sip
+*.spd
+*.bsf
+*~
+*.xml
+*_netlist
+*.cdf
+**/.DS_Store
+
+# --- PPCMac additions -------------------------------------------------------
+
+# reference manuals and scratch material
+Scratch/
+
+# machine-specific material from the real-hardware test rig:
+# disk images, ROM and NVRAM dumps, and the hardware session notes
+ppctest/TO_CARD/
+ppctest/FROM_CARD/
+ppctest/_sim/
+ppctest/*.bin
+ppctest/runs/*
+*.hda
+*.rom
+RESUME_hardware.md
+
+# the golden results are the one thing in runs/ that is tracked
+!ppctest/runs/results_*.csv
+
+# Verilator, stand-alone Quartus check and Python build output
+obj_dir/
+verilator/build/
+syn/build/
+__pycache__/
+*.pyc
+*.vcd
+*.fst
+
+# local tool state
+.claude/
