@@ -14,8 +14,8 @@ working sessions, not calendar promises.
 | M1 | Vector test bench, integer execute unit | 11,576 real-604 integer vectors pass | done 2026-10-05 |
 | M2 | Floating-point unit | 25,598 real-604 FP vectors pass | done 2026-10-05 |
 | M3 | Pipeline, user-mode integer | golden vectors pass *through the pipeline*; lockstep against a reference on random code | done 2026-10-05 |
-| M4 | Supervisor state, exceptions, FP in the pipeline | exception and SPR tests; lockstep with interrupts | next, week 1-2 |
-| M5 | MMU and caches | translation and cache tests; lockstep with translation on | week 3-4 |
+| M4 | Supervisor state, exceptions, FP in the pipeline | exception and SPR tests; lockstep with exceptions; interrupt tests | done 2026-10-05 |
+| M5 | MMU and caches | translation and cache tests; lockstep with translation on | next |
 | M6 | Real ROM in simulation, first MiSTer build | the 7600 ROM runs from reset until it needs hardware; timing met at 66 MHz or better | week 4-5 |
 
 ## Rules that keep the pipeline from growing special cases
@@ -226,6 +226,8 @@ programs avoid these or, for the undefined divides, take the real-604 value.
   bench clears them), its `tw` swaps the operands (the random programs use
   only conditions where that does not matter), and it never takes an enabled
   floating-point exception or an interrupt (covered by 2 and 3).
+
+- Quartus, whole CPU so far: 10,781 ALMs (26%), 69.5 MHz worst case.
 
 Left for later, with the milestone that needs them:
 
