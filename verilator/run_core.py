@@ -51,6 +51,12 @@ def main():
 
     cache = os.path.join(os.path.expanduser("~"), ".cache", "ppcmac")
     build = os.environ.get("PPCMAC_BUILD") or os.path.join(cache, "verilator")
+    # the compilers' temporary files go in a directory of this build's own:
+    # other WSL sessions working at the same time have deleted files in /tmp
+    # under a running g++
+    tmp = build.rstrip("/") + "-tmp"
+    os.makedirs(tmp, exist_ok=True)
+    os.environ["TMPDIR"] = tmp
     refdir = os.path.join(cache, "dingusref")
     progs = os.path.join(build, "progs")
     os.makedirs(progs, exist_ok=True)

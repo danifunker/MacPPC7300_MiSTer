@@ -55,6 +55,28 @@ const char *ref_last_error(void);
 uint32_t ref_get_sr(unsigned n);
 void     ref_set_sr(unsigned n, uint32_t v);
 
+/* ---- A machine around the CPU (for running a real ROM in lockstep) ----------
+   All of these must be called again after every ref_init(). */
+
+/* Read-only memory at base (instructions can be fetched from it, as from RAM).
+   The data is copied. Returns 0, or -1 if the range overlaps another region. */
+int      ref_add_rom(uint32_t base, const uint8_t *data, uint32_t size);
+
+/* A device range: every load from it calls rd(ctx, address, size) for the value
+   (size 1, 2 or 4; an 8-byte access is two 4-byte calls, the lower address
+   first), every store calls wr(ctx, address, size, value). The address is the
+   physical one; the value is the number the access reads or writes, right-
+   aligned, as dingusppc's devices see it. Returns 0, or -1 on an overlap. */
+typedef uint32_t (*ref_mmio_read_fn)(void *ctx, uint32_t addr, unsigned size);
+typedef void     (*ref_mmio_write_fn)(void *ctx, uint32_t addr, unsigned size, uint32_t value);
+int      ref_add_mmio(uint32_t base, uint32_t size, ref_mmio_read_fn rd, ref_mmio_write_fn wr, void *ctx);
+
+/* Take an asynchronous interrupt now, before the instruction at pc: vector
+   0x500 (external) or 0x900 (decrementer). SRR0 = pc, SRR1 = the MSR bits as
+   dingusppc's exception entry saves them, MSR as it leaves it, pc = the
+   vector. Returns the vector, or 0 for any other number (nothing is done). */
+int      ref_interrupt(unsigned vector);
+
 #ifdef __cplusplus
 }
 #endif

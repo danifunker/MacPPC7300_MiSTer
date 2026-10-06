@@ -1,0 +1,8 @@
+# PPCMac machine sources (the 7600 around the CPU). The package must stay first.
+# verilator/Makefile reads its file list from here.
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) PPCMac_pkg.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) PPCMac_pcicfg.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) PPCMac_gc.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) PPCMac_bootrom.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) PPCMac_machine.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) PPCMac_system.sv]

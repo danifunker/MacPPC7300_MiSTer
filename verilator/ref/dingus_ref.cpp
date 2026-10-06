@@ -10,6 +10,7 @@
 
 #include <cpu/ppc/ppcemu.h>
 #include <cpu/ppc/ppcmmu.h>
+#include <devices/common/mmiodevice.h>
 #include <devices/memctrl/memctrlbase.h>
 #include <loguru.hpp>
 
@@ -18,6 +19,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
+#include <vector>
 
 /* dingusppc globals that its headers do not declare (cpu/ppc/ppcexec.cpp). */
 extern bool     g_realtime;   // false: virtual time = g_icycles << icnt_factor
@@ -49,6 +52,28 @@ MemCtrlBase *g_mem      = nullptr;
 bool         g_ready    = false;
 bool         g_log_init = false;
 char         g_err[512] = "";
+
+/* A device range whose accesses are answered by the caller (ref_add_mmio). */
+class BenchMmio : public MMIODevice {
+public:
+    BenchMmio(ref_mmio_read_fn rd, ref_mmio_write_fn wr, void *ctx) : rd(rd), wr(wr), ctx(ctx) {
+        this->name = "bench";
+    }
+    uint32_t read(uint32_t rgn_start, uint32_t offset, int size) override {
+        return rd ? rd(ctx, rgn_start + offset, unsigned(size)) : 0;
+    }
+    void write(uint32_t rgn_start, uint32_t offset, uint32_t value, int size) override {
+        if (wr)
+            wr(ctx, rgn_start + offset, unsigned(size), value);
+    }
+
+private:
+    ref_mmio_read_fn  rd;
+    ref_mmio_write_fn wr;
+    void             *ctx;
+};
+
+std::vector<std::unique_ptr<BenchMmio>> g_mmio;
 
 void log_store(uint32_t addr, uint32_t size, uint64_t value) {
     if (g_nstores < MAX_STORES)
@@ -219,6 +244,7 @@ int ref_init(uint32_t ram_size, uint32_t pvr) {
 
     delete g_mem;
     g_mem = nullptr;
+    g_mmio.clear();
     free(g_ram);
     g_ram = static_cast<uint8_t *>(calloc(size_t(size) + RAM_GUARD, 1));
     if (!g_ram)
@@ -449,6 +475,57 @@ void ref_last_store(unsigned i, uint32_t *addr, unsigned *size, uint64_t *value)
 
 const char *ref_last_error(void) {
     return g_err;
+}
+
+int ref_add_rom(uint32_t base, const uint8_t *data, uint32_t size) {
+    if (!g_ready || !data || !size)
+        return -1;
+    try {
+        if (!g_mem->add_rom_region(base, size))
+            return -1;
+        if (!g_mem->set_data(base, data, size))
+            return -1;
+    } catch (...) {
+        return -1;
+    }
+    /* the soft TLBs may hold "unmapped" for these addresses */
+    do_ctx_sync();
+    return 0;
+}
+
+int ref_add_mmio(uint32_t base, uint32_t size, ref_mmio_read_fn rd, ref_mmio_write_fn wr, void *ctx) {
+    if (!g_ready || !size)
+        return -1;
+    auto dev = std::make_unique<BenchMmio>(rd, wr, ctx);
+    try {
+        if (!g_mem->add_mmio_region(base, size, dev.get()))
+            return -1;
+    } catch (...) {
+        return -1;
+    }
+    g_mmio.push_back(std::move(dev));
+    do_ctx_sync();
+    return 0;
+}
+
+int ref_interrupt(unsigned vector) {
+    if (!g_ready)
+        return 0;
+    Except_Type t;
+    if (vector == 0x500)
+        t = Except_Type::EXC_EXT_INT;
+    else if (vector == 0x900)
+        t = Except_Type::EXC_DECR;
+    else
+        return 0;
+    /* dingusppc takes these after an instruction; here the instruction at pc
+       has not executed, so it is where execution resumes (SRR0) */
+    exec_flags = EXEF_BRANCH;
+    ppc_next_instruction_address = ppc_state.pc;
+    ppc_exception_handler(t, 0);     /* returns for these two: no longjmp */
+    ppc_state.pc = ppc_next_instruction_address;
+    exec_flags = 0;
+    return int(vector);
 }
 
 } // extern "C"

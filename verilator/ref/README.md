@@ -39,6 +39,9 @@ except the `ref_*` functions is local, so dingusppc's 700 or so global names
 (`ppc_state`, `power_on`, `int_pin`, ...) cannot collide with the test bench.
 `HIDE=0` gives a plain archive of the individual objects.
 
+`verilator/machref` is the other half of the M6 reference: dingusppc's whole
+7600 with its devices, used to check the machine's device stubs.
+
 What is compiled from dingusppc: `cpu/ppc/{ppcexec,ppcopcodes,ppcfpopcodes,poweropcodes,ppcmmu,ppcexceptions}.cpp`,
 `devices/memctrl/memctrlbase.cpp`, `core/timermanager.cpp`, `thirdparty/loguru/loguru.cpp`,
 with dingusppc's own settings (C++20, both little-endian options off) plus
@@ -98,6 +101,19 @@ timer manager is linked but never run. No SDL, cubeb, devices, machines or debug
   out itself because it would kill the process with SIGFPE: the 601's `div` with
   rA:MQ = 0x8000000000000000 and rB = -1 (`poweropcodes.cpp:111`).
 - Added `ref_get_sr(n)` / `ref_set_sr(n, v)`: segment registers are not SPRs.
+- Added for running a real ROM (M6, 2026-10-06), each to be called again after
+  every `ref_init`:
+  - **`ref_add_rom(base, data, size)`**: a read-only region (dingusppc's
+    `add_rom_region` and `set_data`), from which instructions can be fetched,
+    so the exception vectors with MSR[IP] = 1 work.
+  - **`ref_add_mmio(base, size, rd, wr, ctx)`**: a device range; every load
+    from it calls `rd(ctx, address, size)` for its value, every store calls
+    `wr(ctx, address, size, value)` (a device object in dingusppc's memory map
+    that hands the access to the caller). The machine bench answers with what
+    the core's machine returned, so the reference needs no devices of its own.
+  - **`ref_interrupt(vector)`**: takes the external (0x500) or decrementer
+    (0x900) interrupt before the instruction at pc, through dingusppc's own
+    exception entry, with SRR0 = pc.
 - Nothing else. The store log is implemented.
 
 ## Determinism, time base, interrupts

@@ -58,6 +58,9 @@ RESUME_hardware.md
 # the golden results are the one thing in runs/ that is tracked
 !ppctest/runs/results_*.csv
 
+# the disassembly of the 7600's ROM: Apple's code, kept local like the ROM
+rom7600/
+
 # Verilator, stand-alone Quartus check and Python build output
 obj_dir/
 verilator/build/

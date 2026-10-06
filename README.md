@@ -1,9 +1,10 @@
 # PPCMac_MiSTer
 
 A PowerPC Macintosh core for the [MiSTer](https://github.com/MiSTer-devel) FPGA
-platform. Work in progress: the CPU is being built and verified first, and
-there is no machine around it yet. The bitstream this tree builds today is
-still the MiSTer template's test pattern.
+platform. Work in progress: the CPU is built and verified, and the machine
+around it (the Power Macintosh 7600) has begun: in simulation the 7600's own
+ROM runs from reset into Open Firmware. The bitstream this tree builds today
+is still the MiSTer template's test pattern.
 
 `PPCMac` is a working name and may change.
 
@@ -23,7 +24,10 @@ still the MiSTer template's test pattern.
 | Caches | two 16 KB four-way caches with 32-byte lines (the 604's shape), write-back, one line port to memory, a snoop port for DMA; directed tests and the whole suite through them |
 | Clock crossing to the SDRAM controller | done, checked at several clock ratios; the controller itself comes with the machine |
 | Timing and area pass | in progress: 55 to 64-65 MHz so far with eleven cuts that cost no cycles, plus the FPU operand register on (2 % of floating-point cycles) to take its forwarding path off the list; the slowest families now sit at the 66 MHz line and move across it with the fitter's placement; what remains and what it would cost is in [the plan](docs/DSPPC604_plan.md) |
-| Machine (chipset, video, SCSI, ...) | not started |
+| Machine: the 7600's address map and device stubs | `rtl/machine/`: Hammerhead, Bandit and Chaos configuration space, Grand Central (interrupt and DMA registers, VIA with timers, NVRAM, board register, SCC and sound registers) as register stubs that answer as dingusppc's devices do; [docs/PPCMac_stubs.md](docs/PPCMac_stubs.md) lists every stub and what it leaves out |
+| The 7600's ROM in simulation | runs from the reset vector in lockstep with dingusppc for 150 million instructions with no difference; reaches Open Firmware, which after 18.3 million instructions waits for Cuda (the ADB/power microcontroller, not built) and polls for it forever |
+| Memory-test boot program | selectable in place of the ROM; passes in the bench over 1 and 6 MB and finds an injected fault |
+| Machine (video, SCSI, Cuda, sound, ...) | not started |
 
 Size and speed of what exists, each synthesised on its own for the DE10-Nano's
 FPGA with Quartus 17.0 (`syn\check.py`), constrained to 75 MHz:
@@ -242,6 +246,24 @@ Tests the pipeline, six ways:
 `--seeds N` runs more random programs.
 
 ```
+python verilator\run_machine.py --max-instr 30000000 --progress 1000000
+python verilator\run_machine.py --boot memtest --memtest-passes 2
+```
+
+Runs the whole machine (`PPCMac_system`: the CPU, the 7600's address map and
+device stubs, the clock crossing, and a software memory in its own clock
+standing in for the SDRAM) on the 7600's ROM from the reset vector, in
+lockstep with dingusppc: every device read returns the same value to both
+(the reference has no devices; it is handed what the machine answered), and
+the registers and MSR are compared after every instruction. About 400,000
+instructions a second. `--dev-log FILE` writes every device access;
+`verilator\machref` runs dingusppc's whole 7600 (all its devices, headless)
+and writes the same log, and `verilator\machref\devdiff.py` compares the two
+to show where the stubs answer differently. The second command runs the
+memory-test boot program instead of the ROM (1 MB unless `--ram`;
+`--mem-fault ADDR` must be found).
+
+```
 python verilator\fpmodel.py check
 python verilator\fpmodel.py random 300000 1 x.csv
 python verilator\run.py --csv x.csv
@@ -273,9 +295,12 @@ size and maximum clock. `--paths 10` also lists the slowest paths.
 | `PPCMac.sv`, `PPCMac.qsf`, `files.qip` | MiSTer core top level and Quartus project |
 | `sys/` | MiSTer framework (do not edit) |
 | `rtl/DSPPC604/` | the CPU |
+| `rtl/machine/` | the machine: the 7600's address map and device stubs (`PPCMac_*`) |
 | `rtl/` (other files) | template demo logic, to be replaced by the machine |
-| `verilator/` | test benches (single instructions, programs on the pipeline) and the floating-point software model |
+| `verilator/` | test benches (single instructions, programs on the pipeline, the whole machine) and the floating-point software model |
 | `verilator/ref/` | dingusppc's interpreter as a library, for lockstep runs |
+| `verilator/machref/` | dingusppc's whole 7600, headless, logging every device access |
+| `docs/PPCMac_stubs.md` | everything the machine stubs, simplifies or leaves out |
 | `syn/` | stand-alone area and timing checks |
 | `ppctest/` | tool that builds the test disk for real Macs and decodes its results |
 | `ppctest/runs/results_*.csv` | golden results from real hardware |

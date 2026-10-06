@@ -1,7 +1,4 @@
-// Runs a program on the DSPPC604 pipeline, with a memory model on its line
-// port (random wait states; at the end every line the data cache may hold
-// dirty is written back through the snoop port), and checks it in up to
-// three ways:
+// Runs a program on the DSPPC604 pipeline and checks it in up to three ways:
 //
 //   C records in the program file: the architectural state after a given
 //       instruction retires must equal recorded values (golden vectors from a
@@ -10,7 +7,25 @@
 //       dingusppc's interpreter executing the same program (verilator/ref).
 //   Final memory contents must equal the reference's (with --lockstep).
 //
-// Program file, one record per line, numbers in hex:
+// Built two ways from this one file:
+//
+//   core_tb     the CPU alone (top DSPPC604), with a memory model on its
+//               line port (random wait states; at the end every line the
+//               data cache may hold dirty is written back through the snoop
+//               port), running a program file.
+//   machine_tb  the whole machine (top PPCMac_system, PPCMAC_MACHINE
+//               defined): the CPU, PPCMac_machine with its device stubs, the
+//               clock crossing, and this bench's software memory standing in
+//               for the SDRAM controller on the far side, in its own clock.
+//               It runs a ROM from the reset vector: --machine --rom FILE
+//               [--ram MB]. In lockstep the reference gets the ROM and RAM,
+//               and every value the core's devices answered (a device read
+//               in the reference returns what the core's machine returned;
+//               mftb and mfdec get the core's values; the decrementer and
+//               external interrupts are taken where the core took them), so
+//               the comparison is of the CPU alone.
+//
+// Program file (core_tb), one record per line, numbers in hex:
 //   R pc              reset address
 //   M addr word       a word of memory
 //   C pc r3 r4 r5 r6 cr xer ctr fpscr f3 f4 f5 f6 tag
@@ -19,12 +34,19 @@
 //   E pc              stop after the instruction at pc
 
 #include <verilated.h>
+#ifdef PPCMAC_MACHINE
+#include "VPPCMac_system.h"
+typedef VPPCMac_system Top;
+#else
 #include "VDSPPC604.h"
+typedef VDSPPC604 Top;
+#endif
 
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <fstream>
 #include <map>
 #include <memory>
@@ -40,9 +62,20 @@
 
 namespace {
 
+const uint32_t PVR_604  = 0x00040303;
+
+#ifdef PPCMAC_MACHINE
+// the machine's SDRAM module, as PPCMac_system is built (SDRAM_MB)
+const uint32_t SDRAM_SIZE = 128u << 20;
+const uint32_t ROM_BASE   = 0xFFC00000u;
+const uint32_t ROM_SIZE   = 4u << 20;
+const uint32_t ROM_SDRAM  = SDRAM_SIZE - ROM_SIZE;
+uint32_t RAM_SIZE = 16u << 20;               // installed RAM (--ram)
+uint32_t RAM_MASK = 0xFFFFFFFFu;             // the bench's memory is indexed by SDRAM offset
+#else
 const uint32_t RAM_SIZE = 16u << 20;
 const uint32_t RAM_MASK = RAM_SIZE - 1;
-const uint32_t PVR_604  = 0x00040303;
+#endif
 
 struct Check {
 	uint32_t r[4], cr, xer, ctr, fpscr;
@@ -60,6 +93,19 @@ struct Options {
 	unsigned seed = 1;
 	uint64_t max_cycles = 2000000000ull;
 	long show = 10;
+	// machine_tb
+	bool machine = false;
+	std::string rom;
+	unsigned ram_mb = 16;
+	double cpu_mhz = 65.0, mem_mhz = 100.0;
+	uint64_t max_instr = 0;        // stop after this many instructions (0: no limit)
+	uint64_t progress = 0;         // a line every N instructions
+	std::string dev_log;           // every device access, in machref's log format
+	uint64_t trace_from = 0, trace_count = 0;
+	uint64_t stuck = 1ull << 24;   // cycles without a retirement that count as stuck
+	bool memtest = false;          // boot the memory test in place of the ROM
+	uint32_t memtest_passes = 1;   // ... and stop when it has completed this many
+	int64_t mem_fault = -1;        // SDRAM offset whose reads come back with bit 0 flipped
 };
 
 // The memory port: a request (one line or one word) is acknowledged after
@@ -86,17 +132,176 @@ void wr32(std::vector<uint8_t>& m, uint32_t a, uint32_t v, uint32_t be) {
 
 void usage() {
 	std::printf(
+#ifdef PPCMAC_MACHINE
+		"usage: machine_tb --machine --rom FILE [options]\n"
+		"  --ram MB         installed RAM (default 16)\n"
+		"  --cpu-mhz F      the CPU's clock (default 65)\n"
+		"  --mem-mhz F      the memory's clock (default 100)\n"
+		"  --max-instr N    stop after N instructions\n"
+		"  --progress N     print where the CPU is every N instructions\n"
+		"  --dev-log FILE   log every device access (machref's format)\n"
+		"  --trace-from N --trace-count M   print M retired instructions from the Nth\n"
+		"  --stuck N        cycles without a retirement that end the run (default 2^24)\n"
+		"  --boot memtest   run the memory-test boot program instead of the ROM (no --rom)\n"
+		"  --memtest-passes N   stop after N passes of it (default 1); PASS if no errors\n"
+		"  --mem-fault ADDR flip bit 0 of every read of this SDRAM byte offset\n"
+#else
 		"usage: core_tb --prog FILE [options]\n"
+		"  --irq-every N    raise the external interrupt every N cycles; a store to\n"
+		"                   address 00FFFFF0 takes it away again\n"
+		"  --tb-run         advance the time base and decrementer every cycle\n"
+#endif
 		"  --lockstep       compare with dingusppc after every instruction\n"
 		"  --stall P        percent chance of a bus wait state (default 0)\n"
 		"  --seed N         seed for the wait states\n"
 		"  --max-cycles N   give up after N clocks\n"
 		"  --show N         mismatches printed before stopping (default 10)\n"
-		"  --irq-every N    raise the external interrupt every N cycles; a store to\n"
-		"                   address 00FFFFF0 takes it away again\n"
-		"  --tb-run         advance the time base and decrementer every cycle\n"
 		"  --trace          print every retired instruction\n");
 }
+
+#ifdef PPCMAC_MACHINE
+// A device access the core's machine answered, as seen on the CPU's port.
+struct DevAccess {
+	bool we, line;
+	uint32_t addr;                 // byte address of the word, or of the line
+	uint32_t be, wdata, rdata;     // a word access
+	uint32_t lw[8], lr[8];         // a line, the lowest address first
+};
+
+// The device accesses not yet consumed by the reference, in order.
+struct DevQueue {
+	std::deque<DevAccess> q;
+	// device lines the core's data cache read and may still hold: the
+	// reference, which has no cache, reads them again and again
+	std::map<uint32_t, std::vector<uint32_t>> cached;
+	std::string error;             // the first disagreement, if any
+	FILE* log = nullptr;
+	uint64_t icount = 0;           // instructions before the one being stepped
+	uint32_t pc = 0;
+	uint64_t reads = 0, writes = 0, lines = 0, line_writes = 0, hits = 0;
+
+	// a line written back to a device is the cache's business, not the
+	// instruction's; it is not matched with the reference's stores
+	void drop_writebacks() {
+		while (!q.empty() && q.front().line && q.front().we) {
+			const DevAccess& a = q.front();
+			auto it = cached.find(a.addr);
+			if (it != cached.end()) for (int k = 0; k < 8; k++) it->second[k] = a.lw[k];
+			line_writes++;
+			q.pop_front();
+		}
+	}
+};
+
+// the value an access of `size` bytes at byte address `addr` takes from a
+// big-endian word (the lowest address in bits 31-24)
+uint32_t lane_value(uint32_t word, uint32_t addr, unsigned size) {
+	unsigned shift = 32 - 8 * ((addr & 3) + size);
+	uint32_t mask = size == 4 ? 0xFFFFFFFFu : ((1u << (8 * size)) - 1);
+	return (word >> shift) & mask;
+}
+
+uint32_t lane_be(uint32_t addr, unsigned size) {
+	return ((size == 4 ? 0xFu : size == 2 ? 0x3u : 0x1u) << (4 - (addr & 3) - size)) & 0xF;
+}
+
+uint32_t dev_read(void* ctx, uint32_t addr, unsigned size) {
+	DevQueue& d = *static_cast<DevQueue*>(ctx);
+	char buf[256];
+	d.drop_writebacks();
+	uint32_t line_addr = addr & ~31u;
+	bool front_line = !d.q.empty() && d.q.front().line && d.q.front().addr == line_addr;
+	bool front_word = !d.q.empty() && !d.q.front().line;
+	if (front_line) {
+		// the core read the whole line through its data cache, as a 604
+		// does with data translation off; remember it for the reads that
+		// hit in the cache
+		const DevAccess& a = d.q.front();
+		d.cached[line_addr] = std::vector<uint32_t>(a.lr, a.lr + 8);
+		d.q.pop_front();
+		d.lines++;
+	}
+	if (!front_word) {
+		auto it = d.cached.find(line_addr);
+		if (it == d.cached.end()) {
+			if (d.error.empty()) {
+				std::snprintf(buf, sizeof buf, "the reference read %u bytes at %08X; the core made no device access", size, addr);
+				d.error = buf;
+			}
+			return 0;
+		}
+		if (!front_line) d.hits++;
+		uint32_t v = lane_value(it->second[(addr >> 2) & 7], addr, size);
+		if (d.log) std::fprintf(d.log, "A %llu %08X R %u %08X %0*X %s\n", (unsigned long long)d.icount, d.pc, size, addr, size * 2, v,
+			front_line ? "line" : "cached");
+		return v;
+	}
+	DevAccess a = d.q.front();
+	d.q.pop_front();
+	if (a.we || a.addr != (addr & ~3u) || a.be != lane_be(addr, size)) {
+		if (d.error.empty()) {
+			std::snprintf(buf, sizeof buf, "the reference read %u bytes at %08X; the core %s %08X with byte enables %X",
+				size, addr, a.we ? "wrote" : "read", a.addr, a.be);
+			d.error = buf;
+		}
+		return 0;
+	}
+	uint32_t v = lane_value(a.rdata, addr, size);
+	d.reads++;
+	if (d.log) std::fprintf(d.log, "A %llu %08X R %u %08X %0*X\n", (unsigned long long)d.icount, d.pc, size, addr, size * 2, v);
+	return v;
+}
+
+void dev_write(void* ctx, uint32_t addr, unsigned size, uint32_t value) {
+	DevQueue& d = *static_cast<DevQueue*>(ctx);
+	char buf[256];
+	d.writes++;
+	d.drop_writebacks();
+	uint32_t line_addr = addr & ~31u;
+	bool front_line = !d.q.empty() && d.q.front().line && !d.q.front().we && d.q.front().addr == line_addr;
+	bool front_word = !d.q.empty() && !d.q.front().line;
+	if (front_line) {
+		// a store that missed in the core's data cache: the line is read
+		// and the store goes into the cache (a 604 with the cache on and data
+		// translation off does the same)
+		const DevAccess& a = d.q.front();
+		d.cached[line_addr] = std::vector<uint32_t>(a.lr, a.lr + 8);
+		d.q.pop_front();
+		d.lines++;
+	}
+	if (!front_word) {
+		auto it = d.cached.find(line_addr);
+		if (it != d.cached.end()) {
+			// the store stays in the cache until the line is written back
+			uint32_t& w = it->second[(addr >> 2) & 7];
+			unsigned shift = 32 - 8 * ((addr & 3) + size);
+			uint32_t mask = (size == 4 ? 0xFFFFFFFFu : ((1u << (8 * size)) - 1)) << shift;
+			w = (w & ~mask) | ((value << shift) & mask);
+			if (d.log) std::fprintf(d.log, "A %llu %08X W %u %08X %0*X %s\n", (unsigned long long)d.icount, d.pc, size, addr, size * 2, value,
+				front_line ? "line" : "cached");
+			return;
+		}
+	}
+	if (d.log) std::fprintf(d.log, "A %llu %08X W %u %08X %0*X\n", (unsigned long long)d.icount, d.pc, size, addr, size * 2, value);
+	if (d.q.empty()) {
+		if (d.error.empty()) {
+			std::snprintf(buf, sizeof buf, "the reference wrote %u bytes %X at %08X; the core made no device access", size, value, addr);
+			d.error = buf;
+		}
+		return;
+	}
+	DevAccess a = d.q.front();
+	d.q.pop_front();
+	uint32_t got = lane_value(a.wdata, addr, size);
+	if (!a.we || a.line || a.addr != (addr & ~3u) || a.be != lane_be(addr, size) || got != value) {
+		if (d.error.empty()) {
+			std::snprintf(buf, sizeof buf, "the reference wrote %u bytes %X at %08X; the core %s %08X with byte enables %X, data %08X",
+				size, value, addr, a.we ? "wrote" : "read", a.addr, a.be, a.wdata);
+			d.error = buf;
+		}
+	}
+}
+#endif
 
 } // namespace
 
@@ -117,9 +322,44 @@ int main(int argc, char** argv) {
 		else if (a == "--show") opt.show = std::atol(next().c_str());
 		else if (a == "--irq-every") opt.irq_every = std::atol(next().c_str());
 		else if (a == "--tb-run") opt.tb_run = true;
+		else if (a == "--machine") opt.machine = true;
+		else if (a == "--rom") opt.rom = next();
+		else if (a == "--ram") opt.ram_mb = (unsigned)std::atoi(next().c_str());
+		else if (a == "--cpu-mhz") opt.cpu_mhz = std::atof(next().c_str());
+		else if (a == "--mem-mhz") opt.mem_mhz = std::atof(next().c_str());
+		else if (a == "--max-instr") opt.max_instr = std::strtoull(next().c_str(), nullptr, 0);
+		else if (a == "--progress") opt.progress = std::strtoull(next().c_str(), nullptr, 0);
+		else if (a == "--dev-log") opt.dev_log = next();
+		else if (a == "--trace-from") opt.trace_from = std::strtoull(next().c_str(), nullptr, 0);
+		else if (a == "--trace-count") opt.trace_count = std::strtoull(next().c_str(), nullptr, 0);
+		else if (a == "--stuck") opt.stuck = std::strtoull(next().c_str(), nullptr, 0);
+		else if (a == "--boot") {
+			std::string b = next();
+			if (b == "memtest") opt.memtest = true;
+			else if (b != "rom") { usage(); return 2; }
+		}
+		else if (a == "--memtest-passes") opt.memtest_passes = (uint32_t)std::strtoul(next().c_str(), nullptr, 0);
+		else if (a == "--mem-fault") opt.mem_fault = (int64_t)std::strtoll(next().c_str(), nullptr, 0);
 		else { usage(); return a == "--help" ? 0 : 2; }
 	}
+#ifdef PPCMAC_MACHINE
+	if (!opt.machine || opt.rom.empty() == !opt.memtest || !opt.prog.empty()) { usage(); return 2; }
+	if (opt.memtest && opt.lockstep) {
+		std::fprintf(stderr, "the memory test runs without the reference (it has no copy of the boot program)\n");
+		return 2;
+	}
+	if (opt.ram_mb < 1 || (opt.ram_mb << 20) > ROM_SDRAM) {
+		std::fprintf(stderr, "--ram must leave the top 4 MB of the %u MB module to the ROM\n", SDRAM_SIZE >> 20);
+		return 2;
+	}
+	RAM_SIZE = opt.ram_mb << 20;
+#else
+	if (opt.machine) {
+		std::fprintf(stderr, "this is the CPU-only bench; the machine runs in machine_tb\n");
+		return 2;
+	}
 	if (opt.prog.empty()) { usage(); return 2; }
+#endif
 #ifndef WITH_REF
 	if (opt.lockstep) {
 		std::fprintf(stderr, "this build has no reference model; rebuild with the dingusppc library\n");
@@ -127,11 +367,28 @@ int main(int argc, char** argv) {
 	}
 #endif
 
-	// ---- load the program ----
-	std::vector<uint8_t> mem(RAM_SIZE, 0);
+	// ---- load the program, or the ROM ----
 	std::map<uint32_t, Check> checks;
 	std::vector<std::pair<uint32_t, uint32_t>> expect_mem;
 	uint32_t reset_pc = 0x100, end_pc = 0xFFFFFFFF;
+#ifdef PPCMAC_MACHINE
+	std::vector<uint8_t> mem(SDRAM_SIZE, 0);
+	std::vector<uint8_t> rom(ROM_SIZE, 0);
+	if (!opt.memtest) {
+		std::ifstream fh(opt.rom, std::ios::binary);
+		if (!fh) { std::fprintf(stderr, "cannot open %s\n", opt.rom.c_str()); return 2; }
+		fh.read(reinterpret_cast<char*>(rom.data()), ROM_SIZE);
+		if (fh.gcount() != (std::streamsize)ROM_SIZE) { std::fprintf(stderr, "%s is not a 4 MB ROM\n", opt.rom.c_str()); return 2; }
+		std::memcpy(mem.data() + ROM_SDRAM, rom.data(), ROM_SIZE);
+	}
+	reset_pc = 0xFFF00100;
+	DevQueue devq;
+	if (!opt.dev_log.empty()) {
+		devq.log = std::fopen(opt.dev_log.c_str(), "w");
+		if (!devq.log) { std::fprintf(stderr, "cannot write %s\n", opt.dev_log.c_str()); return 2; }
+	}
+#else
+	std::vector<uint8_t> mem(RAM_SIZE, 0);
 	{
 		std::ifstream fh(opt.prog);
 		if (!fh) { std::fprintf(stderr, "cannot open %s\n", opt.prog.c_str()); return 2; }
@@ -162,11 +419,21 @@ int main(int argc, char** argv) {
 			}
 		}
 	}
+#endif
 
 #ifdef WITH_REF
 	if (opt.lockstep) {
 		if (ref_init(RAM_SIZE, PVR_604) != 0) { std::fprintf(stderr, "reference model failed to start\n"); return 2; }
+#ifdef PPCMAC_MACHINE
+		// RAM, the ROM, and everything else answered by the core's machine
+		if (ref_add_rom(ROM_BASE, rom.data(), ROM_SIZE) != 0 ||
+		    ref_add_mmio(RAM_SIZE, ROM_BASE - RAM_SIZE, dev_read, dev_write, &devq) != 0) {
+			std::fprintf(stderr, "reference model: cannot map the ROM and devices\n");
+			return 2;
+		}
+#else
 		std::memcpy(ref_ram(), mem.data(), RAM_SIZE);
+#endif
 		ref_state_t s{};
 		s.pc = reset_pc;
 		s.msr = 0x40;              // as the core leaves reset
@@ -176,7 +443,7 @@ int main(int argc, char** argv) {
 
 	auto ctx = std::make_unique<VerilatedContext>();
 	ctx->commandArgs(argc, argv);
-	auto dut = std::make_unique<VDSPPC604>(ctx.get());
+	auto dut = std::make_unique<Top>(ctx.get());
 
 	std::mt19937 rng(opt.seed);
 	auto stalled = [&]() { return opt.stall > 0 && (int)(rng() % 100) < opt.stall; };
@@ -187,6 +454,101 @@ int main(int argc, char** argv) {
 	uint64_t cycles = 0, retired = 0;
 	long checked = 0, failed = 0;
 	bool done = false, diverged = false;
+
+#ifdef PPCMAC_MACHINE
+	// ---- two clocks: the CPU's (and the machine's), and the memory's ----
+	const double pa = 1e6 / opt.cpu_mhz / 2, pb = 1e6 / opt.mem_mhz / 2;   // half periods, ps
+	double ta = pa, tb = pb;                                              // next edge of each
+	uint64_t last_retire_cycle = 0;
+	bool stuck = false;
+	int line_notes = 0;
+	uint32_t mt_passes = 0, mt_errors = 0, mt_status = 0, mt_first = 0;
+	int mt_error_lines = 0;
+
+	auto drive = [&]() {
+		dut->ram_mb = opt.ram_mb;
+		dut->boot_memtest = opt.memtest;
+		dut->reset_pc = reset_pc;
+		dut->b_ack = mm.ack;
+		for (int i = 0; i < 8; i++) dut->b_rdata[i] = mm.rdata[i];
+	};
+
+	// the SDRAM's stand-in, on a rising edge of the memory's clock
+	auto mem_edge = [&]() {
+		if (mm.ack) { mm.ack = false; mm.pending = false; return; }
+		if (dut->b_req && !mm.pending) {
+			mm.pending = true;
+			mm.wait = 1;
+			while (stalled()) mm.wait++;
+		}
+		if (mm.pending && --mm.wait == 0) {
+			bool we = dut->b_we, line = dut->b_line;
+			uint32_t addr = (uint32_t)dut->b_addr << 2, be = dut->b_be;
+			if (addr >= SDRAM_SIZE) { std::printf("memory request beyond the module: %08X\n", addr); addr &= SDRAM_SIZE - 1; }
+			if (line) {
+				uint32_t base = addr & ~31u;
+				for (int k = 0; k < 8; k++) {
+					// the ROM's part of the module is written only by the upload
+					if (we && base < ROM_SDRAM) wr32(mem, base + 4 * k, dut->b_wdata[7 - k], 0xF);
+					mm.rdata[7 - k] = rd32(mem, base + 4 * k);
+					if (opt.mem_fault >= 0 && base + 4 * k == ((uint32_t)opt.mem_fault & ~3u))
+						mm.rdata[7 - k] ^= 1u << (8 * (3 - (opt.mem_fault & 3)));
+				}
+			} else {
+				if (we && addr < ROM_SDRAM) wr32(mem, addr, dut->b_wdata[0], be);
+				mm.rdata[0] = rd32(mem, addr);
+				if (opt.mem_fault >= 0 && addr == ((uint32_t)opt.mem_fault & ~3u))
+					mm.rdata[0] ^= 1u << (8 * (3 - (opt.mem_fault & 3)));
+			}
+			mm.ack = true;
+		}
+	};
+
+	// one cycle of the CPU's clock, with the memory's edges in between
+	auto tick = [&]() {
+		for (;;) {
+			bool a_edge = ta <= tb;
+			if (a_edge) ta += pa; else tb += pb;
+			drive();
+			if (a_edge) {
+				dut->clk = !dut->clk;
+				dut->eval();
+				if (dut->clk) break;
+			} else {
+				dut->clk_b = !dut->clk_b;
+				dut->eval();
+				if (dut->clk_b) mem_edge();
+			}
+		}
+		cycles++;
+		// a device access answered by the machine: everything but RAM and ROM reads
+		if (dut->cpu_ack && dut->cpu_req) {
+			uint32_t addr = (uint32_t)dut->cpu_addr << 2;
+			bool rom_read = addr >= ROM_BASE && !dut->cpu_we;
+			if (addr >= RAM_SIZE && !rom_read) {
+				DevAccess a{(bool)dut->cpu_we, (bool)dut->cpu_line, addr, dut->cpu_be, dut->cpu_wdata[0], dut->cpu_rdata[0], {}, {}};
+				for (int k = 0; k < 8; k++) { a.lw[k] = dut->cpu_wdata[7 - k]; a.lr[k] = dut->cpu_rdata[7 - k]; }
+				if (a.line) {
+					a.addr &= ~31u;
+					if (line_notes++ < 10) std::printf("note: a line %s at %08X outside RAM and ROM, after %llu instructions%s\n",
+						a.we ? "write" : "read", a.addr, (unsigned long long)retired, line_notes == 10 ? " (no more notes)" : "");
+				}
+				if (opt.lockstep) devq.q.push_back(a);
+				else if (devq.log) {
+					if (a.we) std::fprintf(devq.log, "A %llu %08X W 4 %08X %08X be %X\n", (unsigned long long)retired, 0u, addr, a.wdata, a.be);
+					else std::fprintf(devq.log, "A %llu %08X R 4 %08X %08X be %X\n", (unsigned long long)retired, 0u, addr, a.rdata, a.be);
+				}
+			}
+		}
+	};
+
+	dut->clk = 0; dut->clk_b = 0;
+	dut->reset = 1; dut->reset_b = 1;
+	for (int i = 0; i < 4; i++) tick();
+	dut->reset = 0; dut->reset_b = 0;
+	mm = Mem();
+	cycles = 0;
+#else
 	bool irq = false;
 	long irq_count = 0, irq_acks = 0;
 	// lines the data cache may hold dirty: every line stored to or zeroed,
@@ -307,10 +669,34 @@ int main(int argc, char** argv) {
 	tick(); tick();
 	dut->reset = 0;
 	mm = Mem();
+#endif
 
 	while (!done && cycles < opt.max_cycles) {
 		tick();
 
+#ifdef PPCMAC_MACHINE
+		if (cycles - last_retire_cycle > opt.stuck) { stuck = true; break; }
+		// the memory test reports through the machine's debug registers
+		if (opt.memtest) {
+			uint32_t passes = dut->dbg_passes, errors = dut->dbg_errors, status = dut->dbg_status;
+			uint32_t first = dut->dbg_first;
+			if (first != mt_first && first != 0xFFFFFFFFu) {
+				std::printf("memory test: first error at %08X, after %llu instructions\n", first, (unsigned long long)retired);
+				mt_first = first;
+			}
+			if (passes != mt_passes || errors != mt_errors || status != mt_status) {
+				if (errors != mt_errors && mt_error_lines++ < 10)
+					std::printf("memory test: %u errors after %llu instructions\n", errors, (unsigned long long)retired);
+				if (passes != mt_passes)
+					std::printf("memory test: pass %u done after %llu instructions, %llu cycles, %u errors\n",
+						passes, (unsigned long long)retired, (unsigned long long)cycles, errors);
+				if ((status >> 24) == 0xEE)
+					std::printf("memory test: exception at vector %X\n", status & 0xFFFF);
+				mt_passes = passes; mt_errors = errors; mt_status = status;
+			}
+			if (passes >= opt.memtest_passes || (status >> 24) == 0xEE) done = true;
+		}
+#endif
 		if (dut->trace_valid) {
 			if (dut->trace_reg_we) {
 				unsigned idx = dut->trace_reg_idx;
@@ -320,9 +706,24 @@ int main(int argc, char** argv) {
 			if (dut->trace_last) {
 				uint32_t pc = dut->trace_pc, insn = dut->trace_insn;
 				retired++;
+#ifdef PPCMAC_MACHINE
+				last_retire_cycle = cycles;
+				bool show = opt.trace || (opt.trace_count && retired > opt.trace_from && retired <= opt.trace_from + opt.trace_count);
+				if (show)
+					std::printf("%10llu %10llu  %08X: %08X  msr=%08X cr=%08X lr=%08X ctr=%08X\n",
+						(unsigned long long)retired, (unsigned long long)cycles, pc, insn, dut->trace_msr,
+						dut->trace_cr, dut->trace_lr, dut->trace_ctr);
+				if (opt.progress && retired % opt.progress == 0) {
+					std::printf("progress: %llu instructions, %llu cycles, pc %08X, msr %08X\n",
+						(unsigned long long)retired, (unsigned long long)cycles, pc, dut->trace_msr);
+					std::fflush(stdout);
+				}
+				if (opt.max_instr && retired >= opt.max_instr) done = true;
+#else
 				if (opt.trace)
 					std::printf("%10llu  %08X: %08X  cr=%08X xer=%08X lr=%08X ctr=%08X\n",
 						(unsigned long long)cycles, pc, insn, dut->trace_cr, dut->trace_xer, dut->trace_lr, dut->trace_ctr);
+#endif
 
 				auto it = checks.find(pc);
 				if (it != checks.end()) {
@@ -354,9 +755,22 @@ int main(int argc, char** argv) {
 				if (opt.lockstep) {
 					ref_state_t before{}, s{};
 					ref_get_state(&before);
+#ifdef PPCMAC_MACHINE
+					// an interrupt the core took before this instruction: the
+					// decrementer's and the external vector are reached no other way
+					if (before.pc != pc && ((pc & 0xFFF00000u) == 0 || (pc & 0xFFF00000u) == 0xFFF00000u) &&
+					    ((pc & 0xFFFFF) == 0x900 || (pc & 0xFFFFF) == 0x500)) {
+						ref_interrupt(pc & 0xFFFFF);
+						ref_get_state(&before);
+					}
+#endif
 					// The core retires nothing for an instruction that takes an
 					// exception; the reference has to take it now to catch up.
 					for (int tries = 0; tries < 3 && before.pc != pc; tries++) {
+#ifdef PPCMAC_MACHINE
+						devq.icount = retired - 1;
+						devq.pc = before.pc;
+#endif
 						int vec = ref_step();
 						if (vec <= 0) break;
 						// two places where dingusppc sets SRR1 bits it should not
@@ -368,12 +782,14 @@ int main(int argc, char** argv) {
 						if (vec == 0x300) {
 							const uint8_t* rm = ref_ram();
 							uint32_t a = ref_get_spr(26) & RAM_MASK & ~3u;
-							uint32_t w = (uint32_t)rm[a] << 24 | (uint32_t)rm[a + 1] << 16 | (uint32_t)rm[a + 2] << 8 | rm[a + 3];
-							if ((w >> 26) == 31 && ((w >> 1) & 0x3FF) == 150) {
-								ref_state_t t{};
-								ref_get_state(&t);
-								t.cr = before.cr;
-								ref_set_state(&t);
+							if (a + 4 <= RAM_SIZE) {
+								uint32_t w = (uint32_t)rm[a] << 24 | (uint32_t)rm[a + 1] << 16 | (uint32_t)rm[a + 2] << 8 | rm[a + 3];
+								if ((w >> 26) == 31 && ((w >> 1) & 0x3FF) == 150) {
+									ref_state_t t{};
+									ref_get_state(&t);
+									t.cr = before.cr;
+									ref_set_state(&t);
+								}
 							}
 						}
 						ref_get_state(&before);
@@ -384,6 +800,10 @@ int main(int argc, char** argv) {
 						diverged = true;
 						break;
 					}
+#ifdef PPCMAC_MACHINE
+					devq.icount = retired - 1;
+					devq.pc = pc;
+#endif
 					int rc = ref_step();
 					ref_get_state(&s);
 					if (opt.trace)
@@ -409,6 +829,24 @@ int main(int argc, char** argv) {
 							ref_set_state(&s);
 						}
 					}
+#ifdef PPCMAC_MACHINE
+					// time is the core's: mftb and mfspr of the time base or the
+					// decrementer read what the core's counters held
+					uint32_t xo10 = (insn >> 1) & 0x3FF;
+					uint32_t sprn = ((insn >> 16) & 31) | (((insn >> 11) & 31) << 5);
+					if ((insn >> 26) == 31 && (xo10 == 371 || xo10 == 339) &&
+					    (sprn == 22 || sprn == 268 || sprn == 269 || sprn == 284 || sprn == 285)) {
+						unsigned rd = (insn >> 21) & 31;
+						s.gpr[rd] = gpr[rd];
+						ref_set_state(&s);
+					}
+					if (!devq.error.empty()) {
+						std::printf("DEVICE ACCESSES DIFFER after %llu instructions at %08X insn=%08X: %s\n",
+							(unsigned long long)retired, pc, insn, devq.error.c_str());
+						diverged = true;
+						break;
+					}
+#endif
 
 					bool same = rc == 0 && s.cr == dut->trace_cr && s.xer == dut->trace_xer &&
 					            s.lr == dut->trace_lr && s.ctr == dut->trace_ctr && s.msr == dut->trace_msr;
@@ -416,6 +854,7 @@ int main(int argc, char** argv) {
 					if (!same) {
 						std::printf("MISMATCH after %llu instructions at %08X insn=%08X (reference step returned %X; r0=%08X r1=%08X r2=%08X)\n",
 							(unsigned long long)retired, pc, insn, rc, gpr[0], gpr[1], gpr[2]);
+						if (rc == REF_STEP_FAULT) std::printf("  reference: %s\n", ref_last_error());
 						for (int r = 0; r < 32; r++)
 							if (s.gpr[r] != gpr[r]) std::printf("  r%-2d   reference %08X  core %08X\n", r, s.gpr[r], gpr[r]);
 						if (s.cr != dut->trace_cr)   std::printf("  cr    reference %08X  core %08X\n", s.cr, dut->trace_cr);
@@ -433,6 +872,33 @@ int main(int argc, char** argv) {
 		}
 	}
 
+	bool mem_ok = true;
+#ifdef PPCMAC_MACHINE
+	dut->final();
+	if (devq.log) std::fclose(devq.log);
+	std::printf("%llu instructions in %llu cycles (%.2f cycles per instruction)\n",
+		(unsigned long long)retired, (unsigned long long)cycles, retired ? (double)cycles / retired : 0.0);
+	std::printf("last retired: pc %08X, msr %08X\n", (uint32_t)dut->trace_pc, (uint32_t)dut->trace_msr);
+	if (opt.lockstep)
+		std::printf("device accesses: %llu reads and %llu writes compared; %llu line reads and %llu line writes "
+			"outside RAM and ROM, %llu reads answered from a cached device line\n",
+			(unsigned long long)devq.reads, (unsigned long long)devq.writes, (unsigned long long)devq.lines,
+			(unsigned long long)devq.line_writes, (unsigned long long)devq.hits);
+	if (stuck) std::printf("STUCK: nothing retired for %llu cycles\n", (unsigned long long)opt.stuck);
+	if (opt.lockstep) std::printf("lockstep with the reference: %s\n", diverged ? "DIVERGED" : "identical");
+	bool ok = !diverged && !stuck && (done || cycles >= opt.max_cycles);
+	if (opt.memtest) {
+		std::printf("memory test: %u passes over %u MB, %u errors", mt_passes, opt.ram_mb, mt_errors);
+		if (mt_errors) std::printf(", the first at %08X", (uint32_t)dut->dbg_first);
+		std::printf("\n");
+		// with a fault injected the test must find it; without, find nothing
+		ok = !stuck && mt_passes >= opt.memtest_passes && (mt_status >> 24) != 0xEE &&
+		     (opt.mem_fault >= 0 ? mt_errors > 0 : mt_errors == 0);
+	}
+	(void)mem_ok; (void)checked; (void)failed; (void)end_pc;
+	std::printf("%s\n", ok ? "RESULT: PASS" : "RESULT: FAIL");
+	return ok ? 0 : 1;
+#else
 	// let the last access finish, then have the cache write back every line
 	// it may hold dirty, through the snoop port as a DMA engine would
 	for (int i = 0; i < 16; i++) tick();
@@ -445,7 +911,6 @@ int main(int argc, char** argv) {
 	}
 	dut->final();
 
-	bool mem_ok = true;
 	long mem_bad = 0;
 	for (const auto& e : expect_mem) {
 		uint32_t got = rd32(mem, e.first);
@@ -490,4 +955,5 @@ int main(int argc, char** argv) {
 	if (!done && !diverged) std::printf("the program did not reach its end\n");
 	std::printf("%s\n", ok ? "RESULT: PASS" : "RESULT: FAIL");
 	return ok ? 0 : 1;
+#endif
 }

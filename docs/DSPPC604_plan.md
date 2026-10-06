@@ -15,8 +15,8 @@ working sessions, not calendar promises.
 | M2 | Floating-point unit | 25,598 real-604 FP vectors pass | done 2026-10-05 |
 | M3 | Pipeline, user-mode integer | golden vectors pass *through the pipeline*; lockstep against a reference on random code | done 2026-10-05 |
 | M4 | Supervisor state, exceptions, FP in the pipeline | exception and SPR tests; lockstep with exceptions; interrupt tests | done 2026-10-05 |
-| M5 | MMU and caches | translation and cache tests; lockstep with translation on | next |
-| M6 | Real ROM in simulation, first MiSTer build | the 7600 ROM runs from reset until it needs hardware; timing met at 66 MHz or better | week 4-5 |
+| M5 | MMU and caches | translation and cache tests; lockstep with translation on | done 2026-10-06 (timing pass stopped at 64-65 MHz) |
+| M6 | Real ROM in simulation, first MiSTer build | the 7600 ROM runs from reset until it needs hardware; timing met at 66 MHz or better | in progress: the ROM runs in simulation to Open Firmware's wait for Cuda (2026-10-06) |
 
 ## Rules that keep the pipeline from growing special cases
 
@@ -980,6 +980,71 @@ header on the disk image (`ppctest.py results` prints it), not in the CSVs.
 With translation off the 604 treats memory as cacheable, so device registers
 must be reached through BATs with I = 1, which is what the ROM sets up; a
 read of RAM space beyond the installed memory returns 0 with no exception.
+
+**Step 1, the ROM in Verilator, done 2026-10-06.** The machine is
+`rtl/machine/`: `PPCMac_system` (the CPU, `PPCMac_machine`, the clock
+crossing), the 7600's map taken from dingusppc's `machinetnt.cpp` with file
+and line for each entry, and register stubs that answer as dingusppc's
+devices do from reset (`docs/PPCMac_stubs.md` lists every one).
+`verilator/core_main.cpp` builds a second time as `machine_tb` with the whole
+system as its top and a software memory in its own clock on the far side of
+the crossing; `verilator/run_machine.py` runs it.
+
+The lockstep decision: the reference stays dingusppc's CPU alone, given the
+ROM (`ref_add_rom`) and a device range whose reads return what the core's
+machine returned (`ref_add_mmio`); `mftb` and `mfdec` get the core's values
+and the decrementer and external interrupts are taken where the core took
+them (`ref_interrupt`). Linking dingusppc's whole machine into the lockstep
+instead would make every polling loop and timer diverge, its devices
+running on dingusppc's instruction-counted time and not the core's cycles.
+The device side is checked separately against dingusppc's whole 7600
+(`verilator/machref`, headless, logging every device access):
+`machref/devdiff.py` compares the two logs.
+
+What happened, with 16 MB:
+
+- **The CPU got nothing wrong.** 150 million instructions in lockstep, the
+  registers and MSR identical after every one, 4.9 million device reads
+  mirrored and 33,363 device writes compared for address, size and data.
+  1.7-1.9 cycles per instruction (caches on from the 29th instruction).
+- **The machine needed one fix**: the ROM reads Hammerhead's CPU ID at its
+  40th instruction through the data cache, before any BAT (with data
+  translation off the 604 caches everything), so a line request to a device
+  is now eight word accesses to it, as a burst on the real bus would be. The
+  bench learned that cached stores to RAM space beyond the installed memory
+  stay in the cache (the ROM's RAM sizing stores, flushes with `dcbf` and
+  reads back).
+- **Where it stops**: after 18,273,849 instructions Open Firmware's Cuda
+  routine (FF80AAC8, FF80AB74) sets up the VIA, asserts TIP and polls the
+  VIA's interrupt flags for the shift register's bit with no timeout. Cuda
+  (the 68HC05 behind the VIA: power, reset, real-time clock, PRAM, ADB) is
+  not built, so nothing ever answers; the run was taken to 150 million
+  instructions, all in that loop (FF809C7C-FF80BB00, FF838BC0-FF838EA0).
+  dingusppc's Cuda answers there after 142 polls.
+- **On the way**, compared with dingusppc's whole machine: the ROM's first
+  Cuda exchange (instructions 140-69,404 on dingusppc) times out here (the
+  ROM's loops have counter timeouts), costing 70,000 instructions; from there
+  to the endless poll the two machines make the same device accesses in the
+  same order (only values differ), within 1 % of each other in instruction
+  count (18.27 against 18.15 million). The values that differ are the RAM
+  sizing's: the ROM writes 04 to each Hammerhead bank register and 01 to
+  NVRAM where dingusppc writes 08 and 02, RAM beyond the installed size
+  reading 0 here (as measured on the 7300) and all ones in dingusppc.
+
+**Step 2, the memory-test boot program, done in the bench 2026-10-06.**
+`progs.py memtest` generates `rtl/machine/PPCMac_bootrom.sv` (67
+instructions in an 8 KB ROM mirrored over the ROM's 4 MB when the OSD's Boot
+option says so). It turns the caches on, maps RAM cached and the devices
+inhibited with two DBATs, then each pass writes every word of the installed
+RAM with its address XORed with a per-pass seed, pushes every line out with
+`dcbf`, reads it all back and counts errors, reporting through the machine's
+debug registers at F9000000 (not a 7600 device; the debug readout shows
+them). Passes in the bench over 1 MB (3 passes, 3.3 million instructions
+each) and 6 MB with 30 % wait states and a 133 MHz memory clock; an injected
+single-bit fault is found at its address.
+
+Next: step 3, the SDRAM controller with its own bench, then the first
+Quartus build of `PPCMac`.
 
 After M6 the work is the machine, which gets its own plan.
 

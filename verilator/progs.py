@@ -13,6 +13,8 @@
     python progs.py cachetest OUT                the caches: write-back, the cache instructions, HID0, DMA
     python progs.py irqtest OUT [LOOPS]          a computation that interrupts must not disturb
                                                  (run with --irq-every and --tb-run)
+    python progs.py memtest OUT.sv               the machine's memory-test boot ROM, as RTL
+                                                 (rtl/machine/PPCMac_bootrom.sv)
 
 The file format is described at the top of core_main.cpp.
 """
@@ -1455,6 +1457,130 @@ def gen_random(out, count, seed, translate=False):
     print("%d instructions -> %s" % (len(p.words), out))
 
 
+# ---- the machine's memory-test boot program -------------------------------------
+# It runs from PPCMac_bootrom, which the machine puts in place of the ROM when
+# the OSD's Boot option says "Memory test", and reports through the machine's
+# debug registers (PPCMac_machine, F9000000):
+#   00  status: 1 writing, 2 reading; EE00xxxx: exception at vector xxxx
+#   04  passes completed       08  errors counted
+#   0C  address of the first error (FFFFFFFF: none)
+#   10  the word read there     14  the word expected
+#   20  (read only) the installed RAM, in bytes
+# Each pass writes every word of the installed RAM with its address XORed
+# with a per-pass seed (0 in the first pass, then multiples of 9E3779B9),
+# through the data cache, pushing every line out with dcbf; then reads it all
+# back (every line misses, the cache holding none of them) and compares.
+
+DBG = 0xF9000000
+BOOTROM_WORDS = 2048           # 8 KB, mirrored over the ROM's 4 MB
+MEMTEST_MAIN = 0x1000
+
+
+def cmplw(ra, rb, crf=0):
+    return (31 << 26) | (crf << 23) | (ra << 16) | (rb << 11) | (32 << 1)
+
+
+def cmpwi(ra, imm, crf=0):
+    return (11 << 26) | (crf << 23) | (ra << 16) | (imm & 0xFFFF)
+
+
+def assemble(items, base):
+    """items: words, ("label", name), ("b", name) or ("bc", BO, BI, name).
+    Returns the words for an image starting at byte offset base."""
+    labels, pc = {}, base
+    for it in items:
+        if isinstance(it, tuple) and it[0] == "label":
+            labels[it[1]] = pc
+        else:
+            pc += 4
+    out, pc = [], base
+    for it in items:
+        if isinstance(it, tuple):
+            if it[0] == "label":
+                continue
+            if it[0] == "b":
+                out.append((18 << 26) | ((labels[it[1]] - pc) & 0x03FFFFFC))
+            else:
+                _, bo, bi, name = it
+                out.append((16 << 26) | (bo << 21) | (bi << 16) | ((labels[name] - pc) & 0xFFFC))
+        else:
+            out.append(it)
+        pc += 4
+    return out
+
+
+def memtest_image():
+    """The 8 KB boot ROM image as a list of words."""
+    img = [0] * BOOTROM_WORDS
+    BNE, BEQ, BLT = (4, 2), (12, 2), (12, 0)
+    # reset (FFF00100): to the program
+    img[0x100 // 4] = (18 << 26) | ((MEMTEST_MAIN - 0x100) & 0x03FFFFFC)
+    # every other vector: report it and stop. A store and dcbf work whether
+    # or not data translation is on yet (with it off the store goes through
+    # the cache and dcbf writes the line back)
+    for vec in list(range(0x200, 0x1000, 0x100)):
+        code = [D(15, 1, 0, DBG >> 16)] + li32(2, 0xEE000000 | vec) + \
+               [D(36, 2, 1, 0), X(0, 0, 1, 86), X(0, 0, 0, 598), B_SELF]
+        for i, w in enumerate(code):
+            img[vec // 4 + i] = w
+    p = []
+    p += li32(3, 0x0000CC04) + [mtspr(HID0, 3), 0x4C00012C]          # caches on, flash-invalidated, BHT
+    p += [D(14, 3, 0, 0), mtspr(540, 3), mtspr(542, 3)]               # DBAT2, DBAT3 off
+    p += li32(3, batu(0x00000000, 2048)) + [mtspr(536, 3)]            # DBAT0: RAM, 256 MB, cached
+    p += li32(3, batl(0x00000000, 2, wimg=0b0010)) + [mtspr(537, 3)]
+    p += li32(3, batu(0xF0000000, 2048)) + [mtspr(538, 3)]            # DBAT1: devices, inhibited, guarded
+    p += li32(3, batl(0xF0000000, 2, wimg=0b0101)) + [mtspr(539, 3)]
+    p += [0x4C00012C] + li32(3, 0x50) + [mtmsr(3), 0x4C00012C]        # data translation on
+    p += [D(15, 31, 0, DBG >> 16), D(32, 30, 31, 0x20)]                # r31 debug registers, r30 RAM size
+    p += [D(14, 29, 0, 0), D(14, 28, 0, 0), D(14, 27, 0, -1)]          # passes, errors, first error
+    p += [D(36, 29, 31, 4), D(36, 28, 31, 8), D(36, 27, 31, 0xC)]
+    p += li32(25, 0x9E3779B9)
+    p += [("label", "pass"),
+          (31 << 26) | (26 << 21) | (29 << 16) | (25 << 11) | (235 << 1),   # mullw r26, r29, r25: the seed
+          D(14, 3, 0, 1), D(36, 3, 31, 0), D(14, 4, 0, 0),
+          ("label", "wl"),
+          X(4, 5, 26, 316), D(36, 5, 4, 0), D(14, 4, 4, 4),               # xor, stw, addi
+          D(28, 4, 6, 31), ("bc",) + BNE + ("wl",),                      # andi. r6, r4, 31; bne
+          D(14, 7, 4, -32), X(0, 0, 7, 86),                              # dcbf the line just written
+          cmplw(4, 30), ("bc",) + BLT + ("wl",),
+          X(0, 0, 0, 598),                                               # sync
+          D(14, 3, 0, 2), D(36, 3, 31, 0), D(14, 4, 0, 0),
+          ("label", "rl"),
+          D(32, 5, 4, 0), X(4, 6, 26, 316), cmplw(5, 6), ("bc",) + BNE + ("bad",),
+          ("label", "next"),
+          D(14, 4, 4, 4), cmplw(4, 30), ("bc",) + BLT + ("rl",),
+          D(14, 29, 29, 1), D(36, 29, 31, 4), ("b", "pass"),
+          ("label", "bad"),
+          D(14, 28, 28, 1), D(36, 28, 31, 8),
+          cmpwi(27, -1), ("bc",) + BNE + ("next",),
+          X(4, 27, 4, 444),                                               # mr r27, r4
+          D(36, 27, 31, 0xC), D(36, 5, 31, 0x10), D(36, 6, 31, 0x14),
+          ("b", "next")]
+    words = assemble(p, MEMTEST_MAIN)
+    assert MEMTEST_MAIN // 4 + len(words) <= BOOTROM_WORDS
+    for i, w in enumerate(words):
+        img[MEMTEST_MAIN // 4 + i] = w
+    return img, len(words)
+
+
+def memtest(out):
+    """Writes the boot ROM as a SystemVerilog module (a ROM Quartus infers
+    from a case statement, with no file to find at build time)."""
+    img, n = memtest_image()
+    with open(out, "w", newline="\n") as fh:
+        fh.write("// Generated by verilator/progs.py memtest: do not edit.\n")
+        fh.write("//\n// PPCMac - the machine's memory-test boot program, 8 KB, mirrored over the\n")
+        fh.write("// ROM's 4 MB when the OSD selects it (see progs.py for what it does and\n")
+        fh.write("// PPCMac_machine.sv for the debug registers it reports through).\n\n")
+        fh.write("module PPCMac_bootrom\n(\n\tinput  logic        clk,\n\tinput  logic [12:2] addr,\n")
+        fh.write("\toutput logic [31:0] q\n);\n\nalways_ff @(posedge clk) begin\n\tcase (addr)\n")
+        for i, w in enumerate(img):
+            if w:
+                fh.write("\t\t11'h%03X: q <= 32'h%08X;\n" % (i, w))
+        fh.write("\t\tdefault: q <= 32'h00000000;\n\tendcase\nend\n\nendmodule\n")
+    print("memory test: %d instructions, %d words in the image -> %s" % (n, sum(1 for w in img if w), out))
+
+
 if __name__ == "__main__":
     here = os.path.dirname(os.path.abspath(__file__))
     a = sys.argv[1:]
@@ -1479,6 +1605,8 @@ if __name__ == "__main__":
         fprandom(a[1], int(a[2]), int(a[3]) if len(a) > 3 else 1)
     elif len(a) >= 3 and a[0] == "random":
         gen_random(a[1], int(a[2]), int(a[3]) if len(a) > 3 else 1, len(a) > 4 and a[4] == "xlate")
+    elif len(a) >= 2 and a[0] == "memtest":
+        memtest(a[1])
     else:
         print(__doc__)
         sys.exit(2)

@@ -3,6 +3,7 @@
 #   make            build $(BUILD)/vector_tb   single-instruction golden vectors
 #   make core       build $(BUILD)/core/core_tb   programs on the pipeline
 #   make cdc        build $(BUILD)/cdc/cdc_tb   the memory port across two clocks
+#   make machine    build $(BUILD)/machine/machine_tb   the whole machine (PPCMac_system) running a ROM
 #   make lint       Verilator lint only
 #   make clean
 #
@@ -19,6 +20,10 @@ RTL  := $(HERE)../rtl/DSPPC604
 # the CPU's file list lives in its .qip, shared with Quartus
 RTL_SRCS := $(addprefix $(RTL)/,$(shell grep -o '[A-Za-z0-9_]*\.sv' $(RTL)/DSPPC604.qip))
 
+# the machine around it, likewise from its .qip
+MACH     := $(HERE)../rtl/machine
+MACH_SRCS := $(addprefix $(MACH)/,$(shell grep -o '[A-Za-z0-9_]*\.sv' $(MACH)/PPCMac_machine.qip))
+
 # The RTL is kept clean under -Wall. Unused-signal warnings are off because a
 # unit legitimately ignores most of the decode bundle it is handed.
 WARN := -Wall -Wno-DECLFILENAME -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM
@@ -29,8 +34,10 @@ ifneq ($(REF_LIB),)
 REF_CFLAGS  := -DWITH_REF -I$(HERE)ref
 REF_LDFLAGS := -LDFLAGS "$(REF_LIB)"
 CORE_DIR    := $(BUILD)/core_ref
+MACH_DIR    := $(BUILD)/machine_ref
 else
 CORE_DIR    := $(BUILD)/core
+MACH_DIR    := $(BUILD)/machine
 endif
 
 all: $(BUILD)/vector_tb
@@ -53,6 +60,16 @@ $(CORE_DIR)/core_tb: $(RTL_SRCS) $(HERE)core_main.cpp $(RTL)/DSPPC604.qip $(HERE
 		> $(CORE_DIR)/build.log 2>&1 || (cat $(CORE_DIR)/build.log; false)
 	@grep -E '^%Warning' $(CORE_DIR)/build.log || true
 
+machine: $(MACH_DIR)/machine_tb
+
+$(MACH_DIR)/machine_tb: $(RTL_SRCS) $(MACH_SRCS) $(HERE)core_main.cpp $(RTL)/DSPPC604.qip $(MACH)/PPCMac_machine.qip $(HERE)Makefile $(REF_LIB)
+	@mkdir -p $(MACH_DIR)
+	@$(VERILATOR) $(VFLAGS) --top-module PPCMac_system -Mdir $(MACH_DIR) -o machine_tb \
+		-CFLAGS "-O2 -std=c++17 -DPPCMAC_MACHINE $(REF_CFLAGS)" $(REF_LDFLAGS) \
+		$(RTL_SRCS) $(MACH_SRCS) $(HERE)core_main.cpp \
+		> $(MACH_DIR)/build.log 2>&1 || (cat $(MACH_DIR)/build.log; false)
+	@grep -E '^%Warning' $(MACH_DIR)/build.log || true
+
 cdc: $(BUILD)/cdc/cdc_tb
 
 $(BUILD)/cdc/cdc_tb: $(RTL)/DSPPC604_memcdc.sv $(HERE)cdc_main.cpp $(HERE)Makefile
@@ -67,8 +84,9 @@ lint:
 	$(VERILATOR) --lint-only $(WARN) --top-module vector_dut $(RTL_SRCS) $(HERE)vector_dut.sv
 	$(VERILATOR) --lint-only $(WARN) --top-module DSPPC604 $(RTL_SRCS)
 	$(VERILATOR) --lint-only $(WARN) --top-module DSPPC604_memcdc $(RTL)/DSPPC604_memcdc.sv
+	$(VERILATOR) --lint-only $(WARN) --top-module PPCMac_system $(RTL_SRCS) $(MACH_SRCS)
 
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all core cdc lint clean
+.PHONY: all core machine cdc lint clean
