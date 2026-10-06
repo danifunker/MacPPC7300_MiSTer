@@ -495,6 +495,24 @@ How the rules apply, decided before step 1 and followed in it:
   per instruction with an ideal line port, and from 4.29 to 2.04 with 60%
   wait states; the random lockstep programs stay at about 2.6, the caches
   absorbing their memory traffic entirely.
+- Synthesis lessons: Quartus 17 inferred the instruction cache's data as
+  RAM but built the data cache's from flip-flops (141,000 registers, three
+  times the device), because a byte-enabled write into a two-dimensional
+  unpacked array is not a shape it recognises; each way's data now lives
+  in `DSPPC604_cache_ram`, a one-dimensional array of packed bytes in a
+  module of its own, the handbook's template. It also refuses a variable
+  part-select of a two-dimensional array, `genvar` inside the `for`, and a
+  generate loop without `generate`. Verilator accepts all of these, so
+  only a Quartus run finds them.
+- Quartus, whole CPU with the caches: 14,234 ALMs (34%), 10,796
+  registers, 77 RAM blocks (14%; the two caches' data and tags, the TLBs,
+  the branch target buffer, SPRG0-3), 7 DSP blocks, 55.2 MHz worst case.
+  Above the 50 MHz floor, below the 66 MHz target. The slowest paths run
+  from the data cache's tag RAM through the four-way compare, the way and
+  word select, the memory unit's byte shifting and the single-to-double
+  conversion into `wb_result`: the cache's answer cycle and the memory
+  unit's formatting in one cycle, which is where the plan said MEM might
+  have to split. For step 4, together with the forwarding network.
 - `DSPPC604_memcdc` carries the memory port into the memory controller's
   clock and the answer back: the request and its write data are captured
   once and stand still while a toggle crosses through two flip-flops, the

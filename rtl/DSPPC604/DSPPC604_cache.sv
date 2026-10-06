@@ -102,33 +102,43 @@ typedef struct packed {
 	logic [TAGW-1:0] tag;
 } tag_t;
 
-typedef logic [31:0][7:0] line_t;           // byte 31 is the lowest address (bits 255-248)
-
 // ---- the RAMs: one per way, so that a whole set is read at once -----------
-(* ramstyle = "no_rw_check" *) tag_t  tag_mem  [WAYS][SETS];
-(* ramstyle = "no_rw_check" *) line_t data_mem [WAYS][SETS];
+// (the data in DSPPC604_cache_ram, eight word RAMs, a write enable each;
+// word 0 of a line is the lowest address, bits 255-224)
+(* ramstyle = "no_rw_check" *) tag_t tag_mem [WAYS][SETS];
 tag_t         tag_q  [WAYS];
-line_t        data_q [WAYS];
+logic [255:0] data_q [WAYS];
 logic [2:0]   plru   [SETS];                // pseudo-LRU tree: [0] ways 01 vs 23, [1] 0 vs 1, [2] 2 vs 3
 
 logic [6:0]   rd_idx;                       // the set read at this edge
 logic [WAYS-1:0] tag_we;
 logic [WAYS-1:0] data_we;
-logic [31:0]  data_bwe;                     // bytes of the line written
+logic [7:0]   data_wwe;                     // words of the line written (bit j: bits 32j+31 downward)
 logic [6:0]   wr_idx;
 tag_t         tag_wd;
-line_t        data_wd;
+logic [255:0] data_wd;
 
 always_ff @(posedge clk) begin
 	for (int w = 0; w < WAYS; w++) begin
-		tag_q[w]  <= tag_mem[w][rd_idx];
-		data_q[w] <= data_mem[w][rd_idx];
+		tag_q[w] <= tag_mem[w][rd_idx];
 		if (tag_we[w]) tag_mem[w][wr_idx] <= tag_wd;
-		if (data_we[w])
-			for (int b = 0; b < 32; b++)
-				if (data_bwe[b]) data_mem[w][wr_idx][b] <= data_wd[b];
 	end
 end
+
+genvar gw;
+generate
+	for (gw = 0; gw < WAYS; gw++) begin : way
+		DSPPC604_cache_ram data
+		(
+			.clk   (clk),
+			.raddr (rd_idx),
+			.q     (data_q[gw]),
+			.we    ({8{data_we[gw]}} & data_wwe),
+			.waddr (wr_idx),
+			.d     (data_wd)
+		);
+	end
+endgenerate
 
 // ---- the request in hand ---------------------------------------------------
 typedef enum logic [3:0] {
@@ -202,19 +212,18 @@ wire k_icbi  = (r_kind == CK_ICBI);
 // locked, or a store miss on a write-through page
 wire unc = k_word & (r_ci | ~enable | (lock & ~hit) | (WRITABLE & r_we & r_wt & ~hit));
 
-// the store's bytes within the line, and the data in every word position
-logic [31:0] st_bwe;
-always_comb begin
-	st_bwe = '0;
-	for (int j = 0; j < 4; j++) st_bwe[31 - 4*r_word - j] = r_be[3 - j];
-end
-
 wire [1:0] wsel = hit ? hit_sel : victim;   // the way a line-zero takes
 
 // the word a read delivers (the line flattened first: Quartus 17 has no
 // variable part-select of a two-dimensional array)
 wire [255:0] hit_flat = data_q[hit_sel];
 wire [31:0]  hit_word = hit_flat[255 - 32*r_word -: 32];
+
+// the store's bytes merged into that word, which is then written whole
+logic [31:0] st_mask;
+always_comb for (int j = 0; j < 4; j++) st_mask[8*j +: 8] = {8{r_be[j]}};
+wire [31:0] st_word = (hit_word & ~st_mask) | (r_wdata & st_mask);
+wire [7:0]  st_wwe  = 8'd1 << (3'd7 - r_word);
 
 // a read hit being answered: the next request can come in behind it
 wire read_hit = (state == S_LOOK) & k_word & hit & ~unc & ~r_we & ~r_snoop;
@@ -224,7 +233,7 @@ assign gnt = can_take & req;
 always_comb begin
 	tag_we    = '0;
 	data_we   = '0;
-	data_bwe  = '1;
+	data_wwe  = '1;
 	wr_idx    = r_idx;
 	tag_wd    = {1'b1, 1'b0, r_tag};
 	data_wd   = mem_rdata;
@@ -255,8 +264,8 @@ always_comb begin
 			rvalid = 1'b1;
 			if (WRITABLE & r_we) begin
 				data_we[hit_sel] = 1'b1;
-				data_bwe = st_bwe;
-				data_wd  = {8{r_wdata}};
+				data_wwe = st_wwe;
+				data_wd  = {8{st_word}};
 				tag_we[hit_sel] = ~r_wt;                 // dirty, unless memory gets it too
 				tag_wd = {1'b1, 1'b1, r_tag};
 				if (r_wt) rvalid = 1'b0;                 // -> S_UNC

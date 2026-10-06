@@ -30,17 +30,18 @@ FPGA with Quartus 17.0 (`syn\check.py`), constrained to 75 MHz:
 
 | Block | ALMs | DSP blocks | Worst-case Fmax |
 |---|---|---|---|
-| The whole CPU so far (pipeline, FPU, exceptions, SPRs, MMU; no caches) | 12,049 (29%) | 7 | 61-65 MHz (three runs) |
+| The whole CPU (pipeline, FPU, exceptions, SPRs, MMU, two 16 KB caches) | 14,234 (34%), 77 RAM blocks | 7 | 55.2 MHz |
+| The same before the caches | 12,049 (29%) | 7 | 61-65 MHz (three runs) |
 | The same before the MMU | 10,781 (26%) | 7 | 69.5 MHz |
 | The integer pipeline alone, before the FPU was connected | 3,208 (8%) | 3 | 78.6 MHz |
 | Floating-point unit alone | 3,303 (8%) | 4 | 73.5 MHz |
 
-So 66 MHz is within reach and 75 MHz is not. No effort has gone into
-timing yet; it is a step of its own in the plan. The gains are known: the
-register files and SPRs are built from flip-flops instead of RAM (most of
-what the CPU costs beyond the two blocks above), and the forwarded operands
-run straight into the ALU and the FPU's first stage, which sets the clock;
-the MMU added to that network's fanout.
+So the CPU is above its 50 MHz floor and below the 66 MHz target. No effort
+has gone into timing yet; it is the next step of the plan. The slowest
+paths are known: the data cache's tag compare, way select and the memory
+unit's byte formatting share one cycle on the way to the register file, and
+the forwarded operands run straight into the ALU and the FPU's first stage.
+The register files and SPRs are still flip-flops, the main area to be had.
 
 ## Decisions that are locked in
 
