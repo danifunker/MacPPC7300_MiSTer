@@ -1199,9 +1199,20 @@ DSPPC604_mmu #(.TLB_BITS (TLB_BITS)) mmu
 // ============================================================================
 // HID0: bits 16-21 are ICE, DCE, ILOCK, DLOCK, ICFI, DCFI
 wire hid0_ice = hid0[15], hid0_dce = hid0[14], hid0_ilock = hid0[13], hid0_dlock = hid0[12];
+// The flash invalidations start the cycle after the write commits: the
+// caches take inval_all combinationally into their grant, and the commit
+// decision (ex_abort, with its fan-out) must not reach a RAM's address
+// through it. Nothing can see the difference: the instruction after the
+// mtspr is refetched (is_xlate), and no access is in a cache in that cycle.
 wire hid0_wr  = ex_leave & ~ex_abort & is_mtspr & (ex_dec.spr == 10'd1008);
-assign ic_inval = hid0_wr & op_a[11];
-assign dc_inval = hid0_wr & op_a[10];
+always_ff @(posedge clk) begin
+	ic_inval <= hid0_wr & op_a[11];
+	dc_inval <= hid0_wr & op_a[10];
+	if (reset) begin
+		ic_inval <= 1'b0;
+		dc_inval <= 1'b0;
+	end
+end
 
 // An external snoop goes to both caches, each of which answers in its own
 // time; the answer goes out when both have. The data cache's icbi goes to

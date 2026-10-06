@@ -133,14 +133,16 @@ always_comb begin
 	default: ;
 	endcase
 
-	// The read indexes the operations after the first use: the scratch
-	// register for lswx and stswx, the next register for a multiple or
-	// string store. Decided from the step and the opcode bits alone, so that
-	// the register file's read mux does not wait for the decoder's seq field;
-	// at step 0 these are the decoder's own values, and where they do not
-	// apply the operand is not read.
-	if (strx & (step != 6'd0)) uop.ra = REG_TEMP;
-	if (step != 6'd0)          uop.rc = {1'b0, str_r};
+	// The read indexes, assigned last and unconditionally: the decoder's
+	// fields, or after the first operation the scratch register for lswx and
+	// stswx and the next register of a multiple or string store, decided
+	// from the step and the opcode bits alone, so that the register file's
+	// read mux waits neither for the decoder's seq field nor for the arms
+	// above (which zero the whole operation in the two nop cases; nothing
+	// reads an index there, the read enables being zero).
+	uop.ra = (strx & (step != 6'd0)) ? REG_TEMP : dec.ra;
+	uop.rb = dec.rb;
+	uop.rc = (step != 6'd0) ? {1'b0, str_r} : dec.rc;
 end
 
 always_ff @(posedge clk) begin
