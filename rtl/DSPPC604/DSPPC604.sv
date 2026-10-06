@@ -140,7 +140,7 @@ module DSPPC604
 
 import DSPPC604_pkg::*;
 
-localparam logic [31:0] XER_MASK = 32'hE000007F;   // SO OV CA, byte count
+localparam logic [31:0] XER_MASK = 32'hE000FF7F;   // SO OV CA, bits 16-23, byte count: what a 604 keeps (measured)
 
 // ---- architectural state ---------------------------------------------------
 logic [31:0] gpr [33];      // 32 is the sequencer's scratch register
@@ -152,7 +152,7 @@ logic [31:0] ctr;
 logic [31:0] fpscr;
 
 // supervisor state
-localparam logic [31:0] MSR_MASK  = 32'h0005FF73;  // the bits the 604 implements
+localparam logic [31:0] MSR_MASK  = 32'h0005FF77;  // the bits the 604 implements (measured: bit 29, PM, is one of them)
 localparam logic [31:0] SRR1_MASK = 32'h87C0FFFF;  // MSR bits saved in SRR1 and restored by rfi
 localparam int MSR_EE = 15, MSR_PR = 14, MSR_FP = 13, MSR_FE0 = 11, MSR_FE1 = 8, MSR_IP = 6,
                MSR_IR = 5, MSR_DR = 4;
@@ -179,6 +179,7 @@ logic [31:0] pmc1;
 logic [31:0] pmc2;
 logic [31:0] sia;
 logic [31:0] sda;
+logic [3:0]  pir;           // the four bits a 604 keeps
 
 // ---- pipeline registers ----------------------------------------------------
 // IF1 / IF2
@@ -678,6 +679,9 @@ function automatic logic [3:0] cr_field(input logic [31:0] v, input logic [2:0] 
 endfunction
 
 // ---- special-purpose registers ----------------------------------------------
+// The set a 604 has (measured: mfspr of all 1,024 numbers in both modes).
+// 268 and 269 read the time base through mfspr as well as mftb, in user mode
+// too; they cannot be written.
 logic        spr_known;
 logic [31:0] spr_rdata;
 
@@ -694,6 +698,8 @@ always_comb begin
 		10'd25:   spr_rdata = sdr1;
 		10'd26:   spr_rdata = srr0;
 		10'd27:   spr_rdata = srr1;
+		10'd268:  begin spr_rdata = tbl; spr_known = (ex_dec.sys == SYS_MFSPR); end
+		10'd269:  begin spr_rdata = tbu; spr_known = (ex_dec.sys == SYS_MFSPR); end
 		10'd272, 10'd273, 10'd274, 10'd275: spr_rdata = sprg[ex_dec.spr[1:0]];
 		10'd282:  spr_rdata = ear;
 		10'd284:  spr_rdata = tbl;
@@ -707,6 +713,7 @@ always_comb begin
 		10'd1008: spr_rdata = hid0;
 		10'd1010: spr_rdata = iabr;
 		10'd1013: spr_rdata = dabr;
+		10'd1023: spr_rdata = {28'd0, pir};
 		default: begin
 			if (ex_dec.spr[9:4] == 6'b100001) spr_rdata = bat[ex_dec.spr[3:0]];   // 528-543
 			else spr_known = 1'b0;
@@ -725,8 +732,11 @@ wire irq_ext  = ex_first & msr[MSR_EE] & ext_irq;
 wire irq_dec  = ex_first & msr[MSR_EE] & dec_pending & ~ext_irq;
 wire x_isi    = ex_isi;
 wire fpe_pend = ex_first & fpscr[30] & fp_trap_on;      // FEX was already set when traps were enabled
-wire x_priv   = ex_dec.priv & msr[MSR_PR];
-wire x_ill    = ex_ill | (is_sys & ((ex_dec.sys == SYS_MFSPR) | (ex_dec.sys == SYS_MTSPR)) & ~spr_known & ~x_priv);
+// an SPR the 604 does not have is an illegal instruction in either mode
+// (measured; the manual's "privileged in user mode" is not what the chip does)
+wire x_spr    = is_sys & ((ex_dec.sys == SYS_MFSPR) | (ex_dec.sys == SYS_MTSPR)) & ~spr_known;
+wire x_priv   = ex_dec.priv & msr[MSR_PR] & ~x_spr;
+wire x_ill    = ex_ill | x_spr;
 wire x_fpu    = ex_dec.fp_use & ~msr[MSR_FP];
 assign x_pre  = irq_ext | irq_dec | x_isi | fpe_pend | x_priv | x_ill | x_fpu;
 
@@ -776,7 +786,8 @@ always_comb begin
 	if (irq_ext)       exc_vector = 12'h500;
 	else if (irq_dec)  exc_vector = 12'h900;
 	else if (x_isi)    begin exc_vector = 12'h400; exc_info = ex_isi_info; end
-	else if (fpe_pend) begin exc_vector = 12'h700; exc_info = 32'h00100000; end
+	// a pending exception is taken at a later instruction: SRR1[15] says so (measured)
+	else if (fpe_pend) begin exc_vector = 12'h700; exc_info = 32'h00110000; end
 	else if (x_priv)   begin exc_vector = 12'h700; exc_info = 32'h00040000; end
 	else if (x_ill)    begin exc_vector = 12'h700; exc_info = 32'h00080000; end
 	else if (x_fpu)    exc_vector = 12'h800;
@@ -787,12 +798,18 @@ always_comb begin
 	else               begin exc_vector = 12'h700; exc_info = 32'h00100000; end   // x_fpen
 end
 
-// what the alignment handler is told about the instruction
+// What the alignment handler is told about the instruction. The opcode
+// fields are the architecture's. In the register fields a 604 puts, not rD
+// and rA as the architecture says, rD and rD - 1 (8 and 7 for dcbz, whose
+// rD field means nothing): measured for lmw, stmw, lfd, stfd, lwarx, stwcx.
+// and dcbz; not for the update forms.
 function automatic logic [31:0] align_info(input logic [31:0] insn);
+	logic [4:0] rd;
 	begin
+		rd = (insn[31:26] == 6'd31 && insn[10:1] == 10'd1014) ? 5'd8 : insn[25:21];
 		align_info = (insn[31:26] == 6'd31)
-			? {15'd0, insn[2:1], insn[6],  insn[10:7],  insn[25:21], insn[20:16]}
-			: {15'd0, 2'b00,     insn[26], insn[30:27], insn[25:21], insn[20:16]};
+			? {15'd0, insn[2:1], insn[6],  insn[10:7],  rd, rd - 5'd1}
+			: {15'd0, 2'b00,     insn[26], insn[30:27], rd, rd - 5'd1};
 	end
 endfunction
 wire [31:0] align_dsisr = align_info(ex_insn);
@@ -896,7 +913,7 @@ end
 
 // The value for the register this operation writes, and which register.
 // The upper word mffs delivers is undefined; FFF80000 is what the 604 puts
-// there for fctiw.
+// there (measured, as for fctiw).
 wire [63:0] ex_result = is_fpu ? fpu_result :
                         is_int ? {32'd0, int_result} :
                         (ex_dec.sys == SYS_MFFS) ? {32'hFFF80000, fpscr} : {32'd0, sys_result};
@@ -962,6 +979,8 @@ always_ff @(posedge clk) begin
 
 		if (is_sys & (ex_dec.sys == SYS_MTSR)) sr[sr_idx] <= op_a;
 
+		// the bits each register keeps are the measured ones (7300 run, two
+		// patterns written to and read back from every supervisor register)
 		if (is_sys & (ex_dec.sys == SYS_MTSPR)) begin
 			case (ex_dec.spr)
 				10'd18:   dsisr <= op_a;
@@ -970,11 +989,11 @@ always_ff @(posedge clk) begin
 					dec_r <= op_a;
 					if (~dec_r[31] & op_a[31]) dec_pending <= 1'b1;
 				end
-				10'd25:   sdr1  <= op_a;
-				10'd26:   srr0  <= op_a;
+				10'd25:   sdr1  <= op_a & 32'hFFFF01FF;     // HTABORG, HTABMASK
+				10'd26:   srr0  <= op_a & 32'hFFFFFFFC;
 				10'd27:   srr1  <= op_a;
 				10'd272, 10'd273, 10'd274, 10'd275: sprg[ex_dec.spr[1:0]] <= op_a;
-				10'd282:  ear   <= op_a;
+				10'd282:  ear   <= op_a & 32'h8000003F;     // E, RID
 				10'd284:  tbl   <= op_a;
 				10'd285:  tbu   <= op_a;
 				10'd952:  mmcr0 <= op_a;
@@ -985,7 +1004,10 @@ always_ff @(posedge clk) begin
 				10'd1008: hid0  <= op_a & ~32'h00000C00;    // ICFI and DCFI act once and clear
 				10'd1010: iabr  <= op_a;
 				10'd1013: dabr  <= op_a;
-				default:  if (ex_dec.spr[9:4] == 6'b100001) bat[ex_dec.spr[3:0]] <= op_a;
+				10'd1023: pir   <= op_a[3:0];
+				default:  if (ex_dec.spr[9:4] == 6'b100001)
+					// upper: BEPI, BL, Vs, Vp; lower: BRPN, WIMG, PP (W and G kept by the IBATs too)
+					bat[ex_dec.spr[3:0]] <= op_a & (ex_dec.spr[0] ? 32'hFFFE007B : 32'hFFFE1FFF);
 			endcase
 		end
 	end

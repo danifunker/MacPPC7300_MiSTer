@@ -290,8 +290,8 @@ always_comb begin
 			dec.rd = f_d; dec.rd_wr = 1;
 			dec.mem_rd = 1; dec.resv = RESV_SET;
 		end
-		10'd150: begin // stwcx.: the store, then CR0
-			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
+		10'd150: begin // stwcx.: the store, then CR0. Without Rc the 604 calls it illegal (measured)
+			dec.valid = f_rc; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
 			dec.ra = f_a; dec.ra_rd = a_nz; dec.rb = f_b; dec.rb_rd = 1;
 			dec.rc = f_d; dec.rc_rd = 1;
 			dec.mem_wr = 1; dec.resv = RESV_STORE; dec.seq = SEQ_STWCX;
@@ -360,7 +360,7 @@ always_comb begin
 		10'd512: begin // mcrxr
 			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MCRXR;
 		end
-		10'd339: begin // mfspr: the execute stage knows which SPRs exist
+		10'd339: begin // mfspr: the execute stage knows which SPRs exist (an SPR that does not is illegal in either mode)
 			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MFSPR;
 			dec.priv = dec.spr[4];
 			dec.rd = f_d; dec.rd_wr = 1;

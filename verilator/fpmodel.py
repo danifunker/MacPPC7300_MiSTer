@@ -3,7 +3,9 @@
 
 The executable specification for DSPPC604_fpu. It is written for clarity, with
 exact integer arithmetic, and is checked against the vectors recorded on a
-real 604:
+real 604 (two runs on a Power Macintosh 7600, one on a 7300; the 7300 run
+covers non-IEEE mode, the enabled exceptions, the loads and stores and the
+FPSCR instructions):
 
     python fpmodel.py check [results.csv]      compare with real-hardware data
     python fpmodel.py random N SEED x.csv      vectors with modelled results,
@@ -55,7 +57,11 @@ def value(x):
     return (f | (1 << 52), e - 1075) if e else (f, -1074)
 
 
-def fprf_of(x, single):
+def fprf_of(x, single, den=False):
+    """The result class. den: the result was denormalised in its own format
+    (a single-precision denormal is held as a normalised double, so it cannot
+    be told from its bits). A result an enabled underflow scaled into range
+    is a normal number whatever its exponent, as the 604 reports it."""
     s, c = x >> 63, cls(x)
     if c in ("qnan", "snan"):
         return 0x11
@@ -63,32 +69,43 @@ def fprf_of(x, single):
         return 0x09 if s else 0x05
     if c == "zero":
         return 0x12 if s else 0x02
-    # a single-precision denormal is held as a normalised double
-    if c == "den" or (single and ((x >> 52) & 0x7FF) < 1023 - 126):
+    if c == "den" or den:
         return 0x18 if s else 0x14
     return 0x08 if s else 0x04
 
 
-# Set when a result is one the architecture leaves undefined: an enabled
-# overflow or underflow whose adjusted exponent is still out of range.
+# Nothing this model computes is undefined any more: the 7300 run recorded
+# every case the architecture leaves open (the exponent of an enabled
+# overflow or underflow in single precision that is still out of range after
+# the adjustment, see pack_exponent), and the model follows the 604. The flag
+# stays for the vector generators that read it.
 UNDEFINED = False
 
 
-def round_pack(sign, m, e, sticky, single, rn, oe=False, ue=False):
+def pack_exponent(e):
+    """The exponent field for the biased exponent e, as the 604 forms it from
+    its wider internal exponent: bits 9-0 as they are, bit 10 as bit 11 XOR
+    bit 10 (in two's complement). The identity for every exponent in range;
+    measured on the 7300 for the single-precision enabled underflows and
+    overflows whose adjusted exponent is still outside the double range
+    (biased -883 to -717 and 2841 to 2853)."""
+    return (e & 0x3FF) | ((((e >> 11) ^ (e >> 10)) & 1) << 10)
+
+
+def round_pack(sign, m, e, sticky, single, rn, oe=False, ue=False, ni=False):
     """Round the exact value m * 2**e (plus a sticky fraction) to the target
-    precision. Returns (bits, flags); flags has ox, ux, xx, fr, fi."""
-    global UNDEFINED
+    precision. Returns (bits, flags); flags has ox, ux, xx, fr, fi and den
+    (the result was delivered denormalised)."""
     p, emin, emax, adj = (24, -126, 127, 192) if single else (53, -1022, 1023, 1536)
-    fl = dict(ox=False, ux=False, xx=False, fr=False, fi=False)
+    fl = dict(ox=False, ux=False, xx=False, fr=False, fi=False, den=False)
     top = e + m.bit_length() - 1            # exponent of the leading one
     tiny = top < emin
-    if tiny and ue:
+    scaled = tiny and ue                    # an enabled underflow: delivered with the exponent adjusted
+    if scaled:
         fl["ux"] = True
         e += adj
         top += adj
         tiny = False
-        if top < emin:
-            UNDEFINED = True                # still out of range after the adjustment
     q = (emin if tiny else top) - (p - 1)   # weight of the result's last place
     sh = q - e
     if sh <= 0:
@@ -109,6 +126,14 @@ def round_pack(sign, m, e, sticky, single, rn, oe=False, ue=False):
     fl["fr"], fl["fi"], fl["xx"] = up, inexact, inexact
     if tiny and inexact:
         fl["ux"] = True
+    if tiny and ni:
+        # Non-IEEE mode: a result that would be denormalised is flushed to
+        # zero and reported as an inexact underflow, exact or not (measured on
+        # the 7300; denormal operands are not touched, whatever the 604
+        # manual's Table 2-7 says)
+        fl["ux"] = fl["xx"] = fl["fi"] = True
+        fl["fr"] = False
+        return (sign << 63), fl
     if kept == 0:
         return (sign << 63), fl
     if kept >> p:               # rounded up to the next power of two
@@ -120,8 +145,7 @@ def round_pack(sign, m, e, sticky, single, rn, oe=False, ue=False):
         if oe:
             q -= adj
             top -= adj
-            if top > emax:
-                UNDEFINED = True
+            scaled = True
         else:
             fl["xx"] = fl["fi"] = True
             to_inf = rn == 0 or (rn == 2 and not sign) or (rn == 3 and sign)
@@ -132,12 +156,10 @@ def round_pack(sign, m, e, sticky, single, rn, oe=False, ue=False):
                 return (sign << 63) | INF, fl
             big = 0x47EFFFFFE0000000 if single else 0x7FEFFFFFFFFFFFFF
             return (sign << 63) | big, fl
-    if top >= -1022:
+    fl["den"] = tiny and top < emin         # (rounding can carry into the smallest normal)
+    if top >= -1022 or scaled:
         frac = (kept << (52 - (kept.bit_length() - 1))) & FRAC
-        return (sign << 63) | ((top + 1023) << 52) | frac, fl
-    if q < -1074:
-        UNDEFINED = True
-        return sign << 63, fl
+        return (sign << 63) | (pack_exponent(top + 1023) << 52) | frac, fl
     return (sign << 63) | (kept << (q + 1074)), fl
 
 
@@ -330,13 +352,14 @@ def finish(result, exact, vx, zx, fpscr, single, negate=False):
     sign, m, e, sticky = exact
     if m == 0:
         result = sign << 63
-        fl = dict(ox=False, ux=False, xx=False, fr=False, fi=False)
+        fl = dict(ox=False, ux=False, xx=False, fr=False, fi=False, den=False)
     else:
-        result, fl = round_pack(sign, m, e, sticky, single, rn, bool(fpscr & OE), bool(fpscr & UE))
+        result, fl = round_pack(sign, m, e, sticky, single, rn, bool(fpscr & OE), bool(fpscr & UE),
+                                bool(fpscr & NI))
     if negate:
         result ^= SIGN
     bits = (OX if fl["ox"] else 0) | (UX if fl["ux"] else 0) | (XX if fl["xx"] else 0)
-    return result, update_fpscr(fpscr, bits, fl["fr"], fl["fi"], fprf_of(result, single))
+    return result, update_fpscr(fpscr, bits, fl["fr"], fl["fi"], fprf_of(result, single, fl["den"]))
 
 
 def frsp(b, fpscr):
@@ -506,7 +529,10 @@ def execute(name, a, b, c, fpscr):
 
 
 # ---- loads, stores and the FPSCR instructions ----------------------------------
-# No hardware data covers these yet: they follow the architecture manual.
+# Measured on the 7300: lfs of every class (SNaNs and denormals included),
+# stfs down to and below the single range, stfiwx, and every FPSCR
+# instruction with every bit (2,989 vectors). mffs delivers FFF80000 in the
+# upper word, as fctiw does.
 def single_to_double(w):
     """lfs: the double holding the same value as single w (exact, NaNs untouched)."""
     s, e, f = w >> 31, (w >> 23) & 0xFF, w & 0x7FFFFF
@@ -521,12 +547,14 @@ def single_to_double(w):
 
 
 def double_to_single(d):
-    """stfs: no rounding. A value in the single denormal range is shifted into
-    place and truncated; anything else stores its top bits. (For exponents
-    below the denormal range the architecture leaves the result undefined;
-    this takes the same path as normal numbers.)"""
+    """stfs: no rounding. A value whose exponent field is 896 or less is
+    denormalised: the 24-bit significand is shifted right by 897 - exponent
+    places and truncated, so below the single denormal range (exponent 873
+    and under, double denormals included) a signed zero is stored. Anything
+    else stores its top bits. The architecture leaves exponents below 874
+    undefined; the shift to zero is what the 604 does (7300 run, 92 vectors)."""
     s, e, f = d >> 63, (d >> 52) & 0x7FF, d & FRAC
-    if 874 <= e <= 896:
+    if e <= 896:
         m = ((1 << 52) | f) >> (897 - e)
         return (s << 31) | ((m >> 29) & 0x7FFFFF)
     return ((d >> 62) << 30) | ((d >> 29) & 0x3FFFFFFF)

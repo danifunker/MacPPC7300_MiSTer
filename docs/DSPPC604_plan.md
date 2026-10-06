@@ -98,19 +98,31 @@ not before.
   worst case (75.2 MHz at the hot corner). The slowest path is the rounding
   stage; the stage boundaries have not been tuned yet.
 
-What the hardware data does not cover, and the RTL therefore takes from the
-architecture manual alone:
+What the first hardware data did not cover (the enabled overflow, underflow
+and inexact exceptions, FPSCR arriving with exception bits set, 24 of the 32
+`frsqrte` entries, non-IEEE mode) the 7300 run of 2026-10-06 did, with 39,025
+vectors the model had predicted (`ppctest/v4gen.py`,
+`runs/results_604_7300_of_run1.csv`). The model and the unit were corrected
+where the 604 disagreed, and now match every one of them:
 
-- enabled overflow, underflow and inexact exceptions (only the
-  invalid-operation enable was set in any vector);
-- FPSCR arriving with exception bits already set (how FX behaves);
-- 24 of the 32 `frsqrte` table entries;
-- `FPSCR[NI]`, non-IEEE mode, which is not implemented at all yet.
-
-**Needs from the hardware side** (one new vector set covers all four): the
-same instructions with the other enables set and with sticky bits preloaded,
-an `frsqrte` sweep of 32 operands per exponent parity, and a few operations
-with NI set.
+- **Non-IEEE mode (FPSCR[NI])**, 1,366 of 4,000 vectors differed: a result
+  that would be denormalised is delivered as a signed zero, with UX, XX and
+  FI set whether or not the denormal would have been exact, FR clear and
+  FPRF saying zero. Denormal *operands* are computed with exactly as in IEEE
+  mode, whatever Table 2-7 of the 604 manual says ("zero A, B, C").
+  `fctiw`, `frsqrte`, `fres` and the compares are not affected.
+- **Enabled underflow and overflow in single precision** whose adjusted
+  exponent is still outside the double range, 456 vectors the model had
+  called undefined: the 604 delivers the scaled value with the exponent
+  field formed from its wider internal biased exponent as bits 9-0 as they
+  are and bit 10 as bit 11 XOR bit 10 (the identity for every exponent in
+  range), and classes a scaled result as a normal number whatever its
+  exponent (FPRF C bit clear). Nothing the model computes is undefined any
+  more.
+- The 251-entry `frsqrte` table sweep and the 1,664-vector `frsqrte`/`fres`
+  sweep matched: all 32 table entries are now measured.
+- The 8,228 vectors with the other enables and with sticky bits preloaded
+  matched the model as it was.
 
 Still to do on the unit itself, when the pipeline shows what matters: shorten
 the 8-cycle arithmetic path (a separate add path that skips the multiplier,
@@ -184,10 +196,16 @@ programs avoid these or, for the undefined divides, take the real-604 value.
 - With the FPU the pipeline is 9,391 ALMs and 66.5 MHz. The register files
   are still flip-flops, and the forwarded FP operands feed the FPU's first
   stage directly; both are to be fixed in a timing and area pass.
-- Follows the manual only, no hardware data: the FPSCR instructions, the
-  upper word `mffs` delivers (FFF80000 here), and what `stfs` stores for a
-  double below the single denormal range. All three are in the vector set
-  asked for in `RESUME_hardware.md`.
+- Measured on the 7300 (2026-10-06): the FPSCR instructions, every bit of
+  every one (2,989 vectors), are as built; `mffs` puts FFF80000 in the upper
+  word, as `fctiw` does; FPSCR bit 20 is never set. `lfs` of every class
+  (SNaNs and denormals included) was as built. `stfs` of a double below the
+  single denormal range was not: the 604 denormalises for every exponent of
+  896 or less, shifting the 24-bit significand right by 897 minus the
+  exponent, so from exponent 873 down (double denormals included) it stores
+  a signed zero (92 vectors). The conversion in `DSPPC604_pkg` and the model
+  do that now. The 152 integer load and store vectors (every form,
+  byte-reversed and string ones included) were as built.
 
 **Step 2, exceptions and supervisor state: done 2026-10-05.**
 
@@ -247,6 +265,60 @@ Left for later, with the milestone that needs them:
   what each would take is under "Known behaviour and open items" below.
 - From real hardware, when a supervisor-level test is possible: the reset
   values of MSR and HID0, and the SRR1 and DSISR a 604 really delivers.
+  (Done 2026-10-06, next paragraph; the reset values are still open, the
+  test runs after the ROM.)
+
+**Corrected from the 7300 run's second stage (2026-10-06)**, 10,772
+supervisor-mode sequences (`ppctest/runs/sresults_604_7300_of_run1.csv`;
+the groups are described in `ppctest/README.md`). Where the 604 disagreed
+with the core, the core and its directed tests now follow the 604:
+
+- `mtxer` keeps `0xE000FF7F`, bits 16-23 included (the core kept
+  `0xE000007F`); `mcrxr` is as built.
+- `mtmsr` keeps `0x0005FF77`: bit 29, PM, is implemented on the 604 (the
+  core had `0x0005FF73`); `rfi` copies the same low 16 bits, `0xFF77`.
+- An SPR the 604 does not have is an illegal instruction in user mode as in
+  supervisor mode (the core, following manual 4.5.7, called it privileged in
+  user mode). The SPRs that exist: 1, 8, 9, 18, 19, 22, 25, 26, 27, 268, 269,
+  272-275, 282, 284, 285, 287, 528-543, 952-955, 959, 1008, 1010, 1013, 1023,
+  of which 1, 8, 9, 268 and 269 are readable in user mode. So `mfspr` 268/269
+  reads the time base like `mftb`, in user mode too, and PIR (1023, four bits)
+  exists; both added. 1009 (HID1), 956-958, 1019-1022 (the 604e's and 750's)
+  do not exist.
+- `stwcx` without the record bit is illegal (the core executed it). Every
+  other instruction without a record form ignores bit 31 (`lwarx` with it set
+  writes CR0, which the core does not reproduce: undefined).
+- The second and later exceptions for a pending enabled floating-point
+  exception (FEX still set when a later instruction, floating-point or not,
+  completes) set SRR1[15]: SRR0 is not the instruction that caused it. The
+  first, raised by the instruction itself, has it clear, in every FE0/FE1
+  mode. The core sets it for the pending case now.
+- The alignment exception's DSISR: the opcode fields are the architecture's,
+  but where it says rD and rA the 604 puts rD and rD - 1, and 8 and 7 for
+  `dcbz`. Measured for `lmw`, `stmw`, `lfd`, `stfd`, `lwarx`, `stwcx.` and
+  `dcbz`; the update forms were not tested. The core and the tests do the
+  same; a handler on a 604 cannot take rA from DSISR.
+- The bits the supervisor registers keep: SRR0 bits 0-29; SDR1 `0xFFFF01FF`;
+  EAR `0x8000003F`; PIR 4 bits; BAT upper `0xFFFE1FFF`, lower `0xFFFE007B`
+  (the IBATs keep W and G too); SPRG0-3, SRR1, DAR, DSISR, DEC, IABR, DABR,
+  MMCR0, PMC1, PMC2, SIA, SDA and the segment registers all 32 bits. The
+  core masked none of them before.
+- As built, and now measured: SRR1 holds only the MSR bits for `sc`, FP
+  unavailable, alignment and DSI (dingusppc's extra bits on `sc` and FP
+  unavailable are its own); `0x00040000` privileged, `0x00080000` illegal,
+  `0x00020000` trap, `0x00100000` FP enabled; DSISR `0x40000000` no page,
+  `0x08000000` protection, `0x02000000` store, `0x00100000` `eciwx`
+  (`0x02100000` `ecowx`); ISI SRR1 `0x40000000` no page, `0x08000000`
+  protection; exception entry keeps ME and clears the rest (IP, ILE and LE
+  were never set); `sc` saves the next address; `dcbz` on a cache-inhibited
+  page or in user mode is alignment with DAR the line; `lwarx`/`stwcx.` on a
+  cache-inhibited page take no DSI and the store succeeds; `eciwx`/`ecowx`
+  take a DSI; `mftb` with a TBR number other than 268/269 is illegal;
+  `tlbia`, `tlbld`, `tlbli`, opcodes 0-2, 4-6, 9, 22, 30, 56-58, 60-62 and an
+  opcode-17 word without bit 30 are illegal; `FFFFFFFF` is a valid `fnmadd.`;
+  `lswx`/`stswx` with XER = 0 touch nothing; `lmw` with rA in the range loads
+  it like the others; the decrementer interrupt comes when bit 0 is written
+  set, or on the next instruction after `mtmsr` enables EE with one pending.
 
 ### M5: MMU and caches
 
@@ -559,10 +631,24 @@ How the rules apply, decided before step 1 and followed in it:
 
 - Run the 7600's own ROM from the reset vector in Verilator against a stub
   machine, in lockstep with dingusppc, until it needs hardware that is not
-  there.
+  there. The 7300's ROM (`ppctest/runs/my7300.rom`, checksum `5B38E8BD`) is
+  dumped too.
 - Put the CPU in the MiSTer project with memory and the ROM; get a first
   bitstream that executes ROM code and reports over the UART.
 - Timing closure at 66 MHz, then try 75.
+
+What the 7300 run's `probe` group says about the state the ROM leaves the
+CPU in at the Open Firmware prompt, which is where the lockstep run will
+arrive (2026-10-06): HID0 `8000C084` (EMCP, both caches enabled, HID0[24],
+BHT), the segment registers 0-15 holding VSID 0-15 with no keys, no BATs of
+its own (the test program's own BAT3 was the only one set), SDR1
+`0FFE0000` (a 64 KB page table at 0FFE0000, the top of 256 MB), the
+decrementer running, the time base running, a decrementer interrupt left
+pending, PMC1 counting. The firmware's own entry MSR is in the run's slot
+header on the disk image (`ppctest.py results` prints it), not in the CSVs.
+With translation off the 604 treats memory as cacheable, so device registers
+must be reached through BATs with I = 1, which is what the ROM sets up; a
+read of RAM space beyond the installed memory returns 0 with no exception.
 
 After M6 the work is the machine, which gets its own plan.
 
@@ -582,38 +668,46 @@ run on a real 604 can settle.
   instructions being restartable; only an invalid form such as `lmw` with rA
   inside the loaded range could tell the difference.
 - `mtmsr` and `rfi` always refetch the next instruction.
-- MSR implements `0x0005FF73` (manual; no 604e PM bit). Exception entry
-  keeps ME, IP and ILE and copies ILE to LE. SRR1 takes MSR bits
-  `0x87C0FFFF`. `mtxer` keeps `0xE000007F`. Hardware: which XER and MSR bits
-  a real 604 keeps.
+- MSR implements `0x0005FF77` (measured: bit 29, PM, is one of the 604's;
+  POW and ILE from the manual, the test never set them). Exception entry
+  keeps ME, IP and ILE and copies ILE to LE (measured for ME with IP = 0).
+  SRR1 takes MSR bits `0x87C0FFFF` and `rfi` copies them back (measured for
+  the low 16). `mtxer` keeps `0xE000FF7F` (measured).
 - Reset: MSR `0x40`, DEC `0xFFFFFFFF`, time base 0, HID0 0 (manual, Table
-  4-3). GPRs, FPRs and the other SPRs are not reset.
-- `mftb` reads SPR 284/285; `mfspr` 284/285 works in supervisor mode too.
-  The time base and decrementer advance on the `tb_tick` input, which the
-  system pulses at bus clock / 4. The decrementer exception becomes pending
-  when DEC passes from 0 to all ones, or when `mtdec` writes bit 0 set while
-  it was clear.
+  4-3). GPRs, FPRs and the other SPRs are not reset. Hardware: the test ran
+  after the ROM, which had left HID0 at `8000C084` (EMCP, both caches,
+  bit 24, BHT) and the decrementer running.
+- `mftb` reads SPR 284/285; so does `mfspr` 268/269, in user mode too, and
+  `mfspr` 284/285 in supervisor mode (measured; `mtspr` 268/269 is illegal,
+  manual). The time base and decrementer advance on the `tb_tick` input,
+  which the system pulses at bus clock / 4. The decrementer exception becomes
+  pending when DEC passes from 0 to all ones, or when `mtdec` writes bit 0
+  set while it was clear (measured).
 - Exception priority, highest first: external interrupt, decrementer,
   pending enabled FP exception, privileged, illegal, FP unavailable, system
   call, trap, alignment, then an enabled FP exception the instruction raised
-  itself. `mfspr`/`mtspr` of an SPR the 604 does not have is privileged in
-  user mode and illegal in supervisor mode (manual 4.5.7).
+  itself. `mfspr`/`mtspr` of an SPR the 604 does not have is illegal in both
+  modes (measured; manual 4.5.7 says privileged in user mode).
 - Alignment exception: `lmw`, `stmw` and FP loads and stores not
   word-aligned; a string operation that is not word-aligned and crosses a
   4 KB boundary, or is word-aligned and crosses a 256 MB boundary (manual
-  2.3.4.3), checked before its first access.
-- `mffs` returns `FFF80000` in the upper word, as `fctiw` does (measured for
-  `fctiw`; hardware for `mffs`).
-- `stfs` of a double with an exponent below the single denormal range stores
-  the top bits as if it were normal (undefined by the architecture;
-  hardware).
-- FPSCR[NI] is ignored by the FPU and by the model (hardware; open).
+  2.3.4.3), checked before its first access. DSISR carries the opcode
+  fields the architecture defines and, in the register fields, rD and
+  rD - 1 (8 and 7 for `dcbz`), which is what the 604 puts there (measured;
+  the update forms were not tested).
+- `mffs` returns `FFF80000` in the upper word, as `fctiw` does (both
+  measured).
+- `stfs` of a double below the single denormal range stores a signed zero:
+  the 604 denormalises for every exponent of 896 or less (measured).
+- FPSCR[NI]: a result that would be denormalised becomes a signed zero and
+  an inexact underflow; denormal operands are computed with (measured, M2).
 - `fres` is a full divide of 1.0 by the operand rounded to single, which is
   what the 604 does (measured); a 750 will need its own estimate. `frsqrte`
-  is a 32-entry table of which 8 entries are measured; the other 24 follow
-  the same rule (hardware).
+  is a 32-entry table, every entry measured.
 - Divide by zero and `0x80000000 / -1` return the real 604's values
-  (measured; README).
+  (measured; README). An enabled underflow or overflow in single precision
+  whose scaled exponent is still out of range delivers the 604's exponent
+  field (measured, M2); the architecture calls it undefined.
 - The sequencer's scratch register (32) is not architectural and never
   visible. Update forms take one extra cycle, being two operations.
 - The branch target buffer has 128 entries and no return-address stack; a
@@ -628,8 +722,10 @@ run on a real 604 can settle.
   else until there is a cache (M5 step 3).
 - The reservation has no address: `stwcx.` succeeds after any `lwarx`, as
   on the 604 and in dingusppc, and survives exceptions. `lwarx` and
-  `stwcx.` to a write-through page do not take the DSI the architecture
-  allows (manual Table 4-9); whether a 604 does is unknown.
+  `stwcx.` to a cache-inhibited page take no DSI and the store is made
+  (measured); to a write-through page the architecture allows a DSI (manual
+  Table 4-9), the core takes none, and a 604 was not tested. `stwcx`
+  without the record bit is illegal (measured).
 - Address translation: the TLBs are direct-mapped with 64 entries (the 604's
   are two-way with 128), so a program that alternates between two pages of
   the same index walks the table for each; software cannot tell otherwise.
@@ -649,39 +745,58 @@ run on a real 604 can settle.
 
 - Machine check: needs a bus-error signal from the machine. The 7600 ROM
   relies on bus errors when it probes for hardware, so this comes with M6 or
-  the machine's plan. MSR[ME] = 0 would checkstop.
-- Trace (MSR[SE], MSR[BE]): about 30 lines along the path an enabled FP
-  exception already takes (complete, then trap), with the 604's own SRR1
-  layout (manual Table 4-10: bits 0-2 = 010, flags for load, store, taken
-  branch and `mtspr` to translation registers). Only a debugger needs it, and
-  only hardware could check Table 4-10.
-- The 604's instruction-address breakpoint (IABR), performance-monitor
-  interrupt, soft reset, power saving (MSR[POW]) and little-endian mode
-  (MSR[LE] and [ILE] are stored and ignored): no software we target uses
-  them. Their registers exist as storage.
+  the machine's plan. MSR[ME] = 0 would checkstop. Measured on the 7300: a
+  load from RAM space beyond the installed memory (240 MB) returns 0 without
+  any exception, so the ROM's probing of memory sizes is not what needs the
+  bus error.
+- Trace (MSR[SE]) is cheap now that its SRR1 is measured: `0x40000000` and
+  the MSR bits, nothing else, for the instructions tested (Table 4-10's
+  load/store flags were not exercised); SRR0 is the next instruction; the
+  `mtmsr` that clears SE is itself traced, the one that sets it is not, and
+  an instruction completing in the same cycle as that `mtmsr` is not either
+  (a 604 artefact a single-issue core would not show). About 30 lines along
+  the path an enabled FP exception takes (complete, then trap). MSR[BE] was
+  not settled: the only branches tested sat right after the `mtmsr`, in that
+  shadow. Worth a short step when a debugger wants it; see the decisions
+  table.
+- The instruction-address breakpoint (IABR) is as cheap: vector `0x1300`,
+  SRR0 the breakpoint address itself (the instruction has not executed),
+  SRR1 the MSR bits, IABR[30] = BE enables it and IABR[31] = TE must match
+  MSR[IR] (measured). The performance-monitor interrupt (`0x0F00`, SRR1 the
+  MSR bits, SRR0 the next instruction, re-raised until the counter is
+  cleared; measured) needs the counters themselves and is not. Soft reset,
+  power saving (MSR[POW]) and little-endian mode (MSR[LE] and [ILE] are
+  stored and ignored): no software we target uses them. The registers of all
+  of these exist as storage, with the bits a 604 keeps.
 
 ### What the tests do not cover, or cover with a stand-in
 
-- No hardware data for: FP exception enables other than VE, FPSCR arriving
-  with sticky bits set, 24 of the 32 `frsqrte` entries, NI mode, the FPSCR
-  instructions, `mffs`'s upper word, `stfs` below the single range, `lfs` of
-  SNaNs and denormals, which XER and MSR bits stick, SRR1 and DSISR as a
-  real 604 delivers them, reset values. The user-level ones are the v4
-  vector set asked for in `RESUME_hardware.md`; the rest need a
-  supervisor-level run.
+- Hardware data now covers (7600 runs plus the 7300 run of 2026-10-06, see
+  M2 and M4): every FP exception enable, FPSCR arriving with sticky bits
+  set, the whole `frsqrte` table, NI mode, the FPSCR instructions, `mffs`'s
+  upper word, `stfs` below the single range, `lfs` of SNaNs and denormals,
+  integer loads and stores in every form, which XER and MSR bits stick, which
+  SPRs exist and what they keep, which opcodes are illegal, and SRR1 and
+  DSISR for every exception kind the core has. Still without hardware data:
+  the reset values of MSR and HID0 (the test runs after the ROM); POW, ILE
+  and LE; the ISI bit for guarded memory; `lwarx`/`stwcx.` on a write-through
+  page; the alignment DSISR of the update forms; MSR[BE]; what the 604 does
+  for the invalid update forms (rA = 0, rA = rD). `mtspr` to a nonexistent
+  SPR was tested with one number only (164: illegal in both modes).
 - The golden FP vectors all start with CR = 0, so an FP instruction with a
   non-zero CR in place is checked only by the random FP programs.
 - dingusppc cannot be the reference for: FP arithmetic (never reports
   inexact, clears VE on compares), `tw` (operands swapped), undefined divide
-  results (quotient 0), unaligned `lmw` (no exception), reserved XER and MSR
-  bits (kept), undefined SPRs (plain storage), invalid instruction forms
+  results (quotient 0), unaligned `lmw` (no exception), reserved MSR bits and
+  the low bits of SRR0 (kept; the random programs clear SRR0's before
+  writing it), undefined SPRs (plain storage), invalid instruction forms
   (trap as illegal), enabled FP exceptions and interrupts (never taken), one
   SRR1 bit each on `sc` and FP unavailable (the test bench clears them). The
   random programs avoid these or correct for them; `verilator/ref/README.md`
-  has the list with file and line numbers.
-- The random FP programs skip operations the model marks undefined (an
-  enabled overflow or underflow whose adjusted exponent is still out of
-  range).
+  has the list with file and line numbers, and which items the 604 has since
+  settled.
+- The random FP programs no longer need to skip anything: nothing the model
+  computes is undefined since the 7300 run.
 - The random integer programs keep r0, r1 and r2 as index and data bases
   (the bases drift, by r0, with every update form), keep `lmw`/`stmw`
   word-aligned and the string operations inside a page through masked copies
@@ -701,6 +816,11 @@ run on a real 604 can settle.
 - Largest lockstep run so far: 300 programs of 20,000 instructions
   (5,375,852 instructions compared) on the RTL as of 2026-10-05, all with
   a complete passing summary.
+- `run_core.py` also runs the 7300 run's 79,624 vectors as two programs
+  (12,053 integer and 67,571 floating-point checks; the memory vectors get
+  a buffer each, whose contents are checked at the end), and `run.py --csv`
+  replays the file through the execute units alone, applying XER and FPSCR
+  as the hardware harness's `mtxer` and `mtfsf` left them.
 - The trace ports on `DSPPC604` exist for the test bench; a real build
   leaves them unconnected.
 
@@ -718,7 +838,8 @@ run on a real 604 can settle.
 
 | When | Question |
 |---|---|
-| now | When the 7300 is running tests: build the extra floating-point vector set listed under M2? |
+| ~~now~~ | ~~When the 7300 is running tests: build the extra floating-point vector set listed under M2?~~ Done 2026-10-06: the version-4 set ran on the 7300, with a supervisor-mode second stage; M2 and M4 have what it changed. |
+| M6 or later | Trace and the IABR, cheap now that their SRR1 is measured: add them when a debugger or the ROM's own tests want them, or leave them out? |
 | M3 | Is dingusppc built as a library acceptable as the lockstep reference, given it is the reference trusted most? |
 | M5 | ~~Main memory on the SDRAM module or on the HPS DDR3?~~ Decided 2026-10-05: the SDRAM module, 64-128 MB fitted; the machine offers 6, 16, 24, 32, 64 or 128 MB. The line-fill bus therefore targets the SDRAM controller, which runs on its own clock, so M5 includes the clock crossing. |
 | M6 | With measured speed in hand: stay with the 7600, or model a slower machine first? |

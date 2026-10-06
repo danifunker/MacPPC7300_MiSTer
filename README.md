@@ -14,10 +14,10 @@ still the MiSTer template's test pattern.
 | Project skeleton (MiSTer framework, Quartus project) | imported, unmodified template |
 | Golden-vector test bench (Verilator) | working, one command |
 | DSPPC604 integer execute unit | all 11,576 real-604 vectors pass |
-| DSPPC604 floating-point unit | all 25,598 real-604 vectors pass; 1.8 million random vectors agree with the software model |
-| DSPPC604 pipeline, user-mode integer code | the same 11,576 vectors pass when run as a program; random programs match dingusppc instruction for instruction |
-| Floating point in the pipeline | the 25,598 FP vectors pass when run as a program; FP loads, stores and FPSCR instructions agree with the software model (no hardware data for those yet) |
-| Exceptions, supervisor state | program, FP unavailable, system call, alignment, external and decrementer interrupts; MSR and the SPRs; checked in lockstep and by directed tests |
+| DSPPC604 floating-point unit | all 25,598 real-604 vectors pass, and all 64,013 of the 7300 run (non-IEEE mode, every exception enable, the whole `frsqrte` table); 1.8 million random vectors agree with the software model |
+| DSPPC604 pipeline, user-mode integer code | the same vectors pass when run as a program, XER and the integer loads and stores of the 7300 run included; random programs match dingusppc instruction for instruction |
+| Floating point in the pipeline | the FP vectors of both machines pass when run as a program; FP loads, stores and the FPSCR instructions as a real 604 does them (7300 run) |
+| Exceptions, supervisor state | program, FP unavailable, system call, alignment, external and decrementer interrupts; MSR and the SPRs; SRR1, DSISR, the SPR set and the bits each keeps as a real 604 delivers them (7300 run); checked in lockstep and by directed tests |
 | MMU | BATs, segment registers, hardware page-table walk with R and C bits, ITLB and DTLB, `tlbie`, DSI and ISI; directed tests and lockstep with translation on |
 | `lwarx`/`stwcx.`, `dcbz`, cache instructions | done |
 | Caches | two 16 KB four-way caches with 32-byte lines (the 604's shape), write-back, one line port to memory, a snoop port for DMA; directed tests and the whole suite through them |
@@ -107,7 +107,14 @@ not by drift.
   used for floating point.
 - The golden data is 37,174 single-instruction vectors recorded twice,
   bit-identically, on a real PowerPC 604 (PVR `00040303`) in a Power Macintosh
-  7600: `ppctest/runs/results_604_run2.csv`.
+  7600: `ppctest/runs/results_604_run2.csv`; and the 79,624 vectors of the
+  version-4 set (those again, plus 39,025 the software model had predicted
+  and 3,425 with no prediction) recorded on a 604 of the same revision in a
+  Power Macintosh 7300, identical to the 7600 where they overlap:
+  `ppctest/runs/results_604_7300_of_run1.csv`. The same run's second stage,
+  10,772 supervisor-mode sequences recording what every kind of exception
+  saves, which SPRs and opcodes exist and which bits each register keeps, is
+  `sresults_604_7300_of_run1.csv`.
 
 **Memory**
 
@@ -141,18 +148,48 @@ Measured on the chip, and reproduced by the RTL:
 - `fres` is not an estimate. It is a full divide of 1.0 by the operand,
   rounded to single precision, with every status bit a divide would set.
 - `frsqrte` is a 32-entry table with seven fraction bits, indexed by the low
-  exponent bit and the top four fraction bits. The data confirms 8 of the 32
-  entries; the rest follow the same rule and still need a hardware sweep.
+  exponent bit and the top four fraction bits; every entry is measured.
 - `fctiw` and `fctiwz` write `FFF80000` to the upper word of the result, with
-  the lowest bit set when a negative operand converts to zero.
+  the lowest bit set when a negative operand converts to zero. `mffs` writes
+  the same upper word.
 - When a disabled overflow delivers infinity or the largest number, FPSCR[FR]
   is left as the rounding of the significand set it.
 - Single-precision instructions clear the 29 payload bits of a NaN result
   that a single cannot hold.
+- Non-IEEE mode (FPSCR[NI]) flushes a result that would be denormalised to a
+  signed zero and calls it an inexact underflow; denormal operands are
+  computed with as usual, whatever the manual's table says.
+- An enabled underflow or overflow in single precision whose scaled
+  exponent still does not fit a double (the architecture: undefined) delivers
+  the exponent field with bit 10 as bits 11 and 10 of the wider internal
+  exponent XORed, and classes the result as normal.
+- `stfs` denormalises for every exponent of 896 or less, so anything below
+  the single denormal range, double denormals included, stores a signed zero.
+- XER keeps `E000FF7F` (bits 16-23 too); MSR keeps `0005FF77` (bit 29, PM,
+  is implemented); SRR0 keeps bits 0-29, SDR1 `FFFF01FF`, EAR `8000003F`,
+  PIR four bits, the BATs `FFFE1FFF` and `FFFE007B`.
+- The SPRs it has: 1, 8, 9, 18, 19, 22, 25, 26, 27, 268, 269, 272-275, 282,
+  284, 285, 287, 528-543, 952-955, 959, 1008, 1010, 1013, 1023. Any other
+  number is an illegal instruction in user mode as in supervisor mode, not a
+  privileged one as the manual says. `mfspr` 268/269 reads the time base in
+  user mode.
+- `stwcx` without the record bit is illegal; other instructions without a
+  record form ignore bit 31; `tlbia`, `tlbld`, `tlbli` and an opcode-17 word
+  without bit 30 are illegal; `FFFFFFFF` is a valid `fnmadd.`.
+- SRR1 holds only the MSR bits for `sc`, FP unavailable, alignment and DSI;
+  a pending enabled FP exception taken at a later instruction sets SRR1[15].
+  The alignment DSISR carries rD and rD - 1 (8 and 7 for `dcbz`) where the
+  architecture says rD and rA. Trace saves `40000000` and the MSR, the IABR
+  the breakpoint's own address.
+- `lwarx`/`stwcx.` on a cache-inhibited page take no DSI; `dcbz` there is an
+  alignment exception; a load beyond the installed memory returns 0 and no
+  exception.
 
 Apart from these, the 604 follows the architecture manual to the bit. The 34
 vectors where it differs from dingusppc are 24 undefined divides and 10
-`fmuls` cases where the chip is simply correctly rounded.
+`fmuls` cases where the chip is simply correctly rounded. The RTL reproduces
+all of the above; `docs/DSPPC604_plan.md` has the details and what the
+tests still do not cover.
 
 ## Running the tests
 
@@ -161,9 +198,12 @@ python verilator\run.py
 ```
 
 Builds the Verilator model (under WSL on Windows) and replays every golden
-vector, printing pass counts per instruction and each mismatch with the fields
-that differ. Useful options: `--only int`, `--only fp`, `--name ADDE,DIVW`,
-`--show 20`, `--variants`.
+vector through the execute units, printing pass counts per instruction and
+each mismatch with the fields that differ. Useful options: `--only int`,
+`--only fp`, `--name ADDE,DIVW`, `--show 20`, `--variants`, and
+`--csv ppctest\runs\results_604_7300_of_run1.csv` for the 7300 run (its
+loads, stores and moves to and from XER and FPSCR are reported as
+unimplemented here and run by `run_core.py`).
 
 Divides whose result the architecture leaves undefined are counted apart from
 the rest, so they can never hide a real failure or be hidden by one.
@@ -176,7 +216,8 @@ Tests the pipeline, six ways:
 
 1. The real-604 integer vectors, assembled into one program and run with and
    without random bus wait states.
-2. The real-604 floating-point vectors, the same way.
+2. The real-604 floating-point vectors, the same way; then both halves of the
+   7300 run, whose loads and stores get a buffer each.
 3. Random floating-point programs (arithmetic, loads, stores, FPSCR
    instructions) with the state `fpmodel.py` expects after every instruction.
 4. Each exception once, with what its handler must find; address
@@ -204,8 +245,9 @@ python verilator\run.py --csv x.csv
 
 `fpmodel.py` is a bit-exact software model of the 604's floating-point unit and
 the specification the RTL was written to. `check` compares the model itself
-with the hardware data. `random` writes vectors (count, seed, file) with
-modelled results in the golden CSV format, and `run.py --csv` replays them.
+with the hardware data (the 7600 file by default; give it the 7300 one for
+the rest). `random` writes vectors (count, seed, file) with modelled results
+in the golden CSV format, and `run.py --csv` replays them.
 They reach datapath corners (random significands, enabled exceptions,
 denormals, near cancellation) that the hardware set, which is heavy on special
 values, does not.

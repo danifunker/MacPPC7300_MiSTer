@@ -266,16 +266,20 @@ package DSPPC604_pkg;
 	endfunction
 
 	// stfs: double to single. No rounding: a value a single cannot hold stores
-	// its top bits. Exponents below the single denormal range are undefined by
-	// the architecture; they take the same path as normal numbers here.
+	// its top bits. An exponent of 896 or less is denormalised, the 24-bit
+	// significand shifted right by 897 - exponent places and truncated, so
+	// below the single denormal range (exponent 873 and under, double
+	// denormals included) a signed zero is stored. The architecture leaves
+	// exponents below 874 undefined; the shift to zero is what a real 604
+	// does (measured, 7300 run).
 	function automatic logic [31:0] fp_double_to_single(input logic [63:0] d);
 		logic [52:0] m;
 		logic [10:0] shift;
 		begin
 			shift = 11'd897 - d[62:52];
-			m     = {1'b1, d[51:0]} >> shift[4:0];
-			if (d[62:52] >= 11'd874 && d[62:52] <= 11'd896)
-				fp_double_to_single = {d[63], 8'd0, m[51:29]};                           // denormal
+			m     = (shift >= 11'd24) ? 53'd0 : ({1'b1, d[51:0]} >> shift[4:0]);
+			if (d[62:52] <= 11'd896)
+				fp_double_to_single = {d[63], 8'd0, m[51:29]};                           // denormalised, or zero
 			else
 				fp_double_to_single = {d[63:62], d[58:29]};
 		end

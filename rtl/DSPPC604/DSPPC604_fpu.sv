@@ -27,7 +27,9 @@
 //
 //  followed by a shared normalise - shift - round - pack back end.
 //
-//  Not implemented: FPSCR[NI] (non-IEEE mode) is ignored.
+//  Non-IEEE mode (FPSCR[NI]) does what a 604 does: a result that would be
+//  denormalised is delivered as a signed zero and reported as an inexact
+//  underflow; denormal operands are computed with as in IEEE mode.
 //
 //============================================================================
 
@@ -95,15 +97,17 @@ function automatic logic [31:0] fpscr_update(
 endfunction
 
 // result class, as FPSCR[FPRF]. A single-precision denormal is held as a
-// normalised double, so it is recognised by its exponent.
-function automatic logic [4:0] fprf_of(input logic [63:0] x, input logic single);
+// normalised double, so the rounding stage says whether the result was
+// denormalised (den_in); one that an enabled underflow scaled into range is a
+// normal number whatever its exponent, as a 604 reports it.
+function automatic logic [4:0] fprf_of(input logic [63:0] x, input logic den_in);
 	logic s, emax, ezero, fzero, den;
 	begin
 		s     = x[63];
 		emax  = (x[62:52] == 11'h7FF);
 		ezero = (x[62:52] == 11'd0);
 		fzero = (x[51:0] == 52'd0);
-		den   = ezero | (single & (x[62:52] < 11'd897));
+		den   = ezero | den_in;
 		if (emax & ~fzero)      fprf_of = 5'b10001;
 		else if (emax)          fprf_of = s ? 5'b01001 : 5'b00101;
 		else if (ezero & fzero) fprf_of = s ? 5'b10010 : 5'b00010;
@@ -401,6 +405,7 @@ logic [31:0] fin_set;
 logic        fin_fr;
 logic        fin_fi;
 logic        fin_fprf_we;
+logic        fin_den;      // the result was denormalised in its own format
 
 wire ue = fpscr_q[B_UE];
 wire oe = fpscr_q[B_OE];
@@ -582,6 +587,10 @@ logic [63:0] rnd_result;
 logic [31:0] rnd_set;
 logic        rnd_fr;
 logic        rnd_fi;
+logic        rnd_den;
+
+// non-IEEE mode: a result that would be denormalised becomes a signed zero
+wire ni_flush = den_q & fpscr_q[2] & ~rzero_q;
 
 always_comb begin : round_pack
 	logic        sign;
@@ -592,6 +601,7 @@ always_comb begin : round_pack
 	logic        ovf;
 	logic        carry;
 	logic signed [13:0] e_res;
+	logic signed [13:0] b14;      // biased exponent, in the wider internal range
 	logic [10:0] bexp;
 	logic [51:0] frac;
 	logic [24:0] snorm;
@@ -614,9 +624,11 @@ always_comb begin : round_pack
 	rnd_set = 32'd0;
 	rnd_fr  = up;
 	rnd_fi  = inexact;
+	rnd_den = 1'b0;
 	ovf     = 1'b0;
 	carry   = 1'b0;
 	e_res   = top_q;
+	b14     = 14'sd0;
 	bexp    = 11'd0;
 	frac    = 52'd0;
 	snorm   = 25'd0;
@@ -637,6 +649,11 @@ always_comb begin : round_pack
 		rnd_set[B_XX] = rnd_fi;
 	end
 	else begin
+		// The exponent field, from the biased exponent in the wider internal
+		// range: bits 9-0 as they are and bit 10 as bit 11 XOR bit 10. The
+		// identity for every exponent in range; outside it (an enabled
+		// underflow or overflow in single precision whose adjusted exponent
+		// still does not fit a double) it is what a 604 delivers (measured).
 		if (sgl_q) begin
 			// A single-precision denormal is delivered as a normalised
 			// double: shift the rounded bits back up to find it.
@@ -647,13 +664,16 @@ always_comb begin : round_pack
 			is_zero = (kr[24:0] == 25'd0);
 			ovf     = ~den_q & (e_res > 14'sd127);
 			if (ovf & oe) e_res = e_res - 14'sd192;
-			bexp    = e_res[10:0] + 11'd1023;
+			b14     = e_res + 14'sd1023;
+			bexp    = {b14[11] ^ b14[10], b14[9:0]};
+			rnd_den = den_q & (e_res < -14'sd126);    // (rounding can carry into the smallest normal)
 		end
 		else if (den_q) begin
 			// double-precision denormal: held as it is
 			frac    = kr[51:0];
 			bexp    = {10'd0, kr[52]};
 			is_zero = (kr[52:0] == 53'd0);
+			rnd_den = ~kr[52];
 		end
 		else begin
 			carry   = kr[53];
@@ -661,13 +681,14 @@ always_comb begin : round_pack
 			frac    = carry ? 52'd0 : kr[51:0];
 			ovf     = (e_res > 14'sd1023);
 			if (ovf & oe) e_res = e_res - 14'sd1536;
-			bexp    = e_res[10:0] + 11'd1023;
+			b14     = e_res + 14'sd1023;
+			bexp    = {b14[11] ^ b14[10], b14[9:0]};
 		end
 
 		if (rzero_q)
 			// an exact zero sum: positive, except when rounding down
 			rnd_result = {(fpscr_q[1:0] == 2'b11) ^ neg_q, 63'd0};
-		else if (is_zero)
+		else if (is_zero | ni_flush)
 			rnd_result = {sign ^ neg_q, 63'd0};
 		else if (ovf & ~oe) begin
 			if (to_inf)     rnd_result = {sign ^ neg_q, 11'h7FF, 52'd0};
@@ -678,16 +699,22 @@ always_comb begin : round_pack
 			rnd_result = {sign ^ neg_q, bexp, frac};
 
 		// A disabled overflow is always inexact. FR is left as the rounding
-		// of the significand set it, which is what the 604 does.
-		rnd_fi = inexact | (ovf & ~oe);
+		// of the significand set it, which is what the 604 does. A result
+		// flushed in non-IEEE mode is an inexact underflow, exact or not.
+		rnd_fi = inexact | (ovf & ~oe) | ni_flush;
 		rnd_set[B_OX] = ovf;
 		rnd_set[B_XX] = rnd_fi;
-		rnd_set[B_UX] = tiny_q & (ue | inexact);
+		rnd_set[B_UX] = tiny_q & (ue | inexact | ni_flush);
 
+		if (ni_flush) begin
+			rnd_fr  = 1'b0;
+			rnd_den = 1'b0;
+		end
 		if (rzero_q) begin
 			rnd_set = 32'd0;
 			rnd_fr  = 1'b0;
 			rnd_fi  = 1'b0;
+			rnd_den = 1'b0;
 		end
 	end
 end
@@ -751,6 +778,7 @@ always_ff @(posedge clk) begin
 				fin_fr      <= 1'b0;
 				fin_fi      <= 1'b0;
 				fin_fprf_we <= sp_fprf_we;
+				fin_den     <= 1'b0;
 				state       <= S_DONE;
 			end
 			else if (need_pre) state <= S_PREA;
@@ -868,6 +896,7 @@ always_ff @(posedge clk) begin
 		fin_fr      <= rnd_fr;
 		fin_fi      <= rnd_fi;
 		fin_fprf_we <= ~int_q;
+		fin_den     <= rnd_den;
 		state       <= S_DONE;
 	end
 
@@ -906,6 +935,7 @@ always_ff @(posedge clk) begin
 		fin_fr      <= 1'b0;
 		fin_fi      <= 1'b0;
 		fin_fprf_we <= 1'b1;
+		fin_den     <= 1'b0;
 		state       <= S_DONE;
 	end
 
@@ -927,7 +957,7 @@ wire done_vx       = |(fin_set & VX_ALL);
 wire done_suppress = (done_vx & fpscr_q[B_VE]) | (fin_set[B_ZX] & fpscr_q[B_ZE]);
 wire [31:0] done_fpscr = fpscr_update(fpscr_q, fin_set, 1'b1,
                                       fin_fr & ~done_suppress, fin_fi & ~done_suppress,
-                                      fin_fprf_we & ~done_suppress, fprf_of(fin_result, sgl_q));
+                                      fin_fprf_we & ~done_suppress, fprf_of(fin_result, fin_den));
 
 always_comb begin
 	if (state == S_DONE) begin

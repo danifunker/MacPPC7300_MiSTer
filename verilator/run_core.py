@@ -104,6 +104,21 @@ def main():
         r = run([tb, "--prog", goldenfp, "--stall", str(stall), "--seed", str(seed)])
         report("  wait states %d%%" % stall, r)
 
+    # ... and the 7300 run's version-4 set: the same vectors plus non-IEEE
+    # mode, the enabled exceptions, XER, the FPSCR instructions, and integer
+    # and floating-point loads and stores through a buffer
+    v4 = os.path.join(HERE, "..", "ppctest", "runs", "results_604_7300_of_run1.csv")
+    if os.path.exists(v4):
+        print("the 7300 run's vectors through the pipeline (12,053 integer, 67,571 floating-point checks):")
+        for kind, stall in (("golden", 20), ("goldenfp", 20)):
+            prog = os.path.join(progs, kind + "_7300.prog")
+            r = run([sys.executable, os.path.join(HERE, "progs.py"), kind, prog, v4])
+            if r.returncode:
+                print(r.stdout)
+                return 1
+            r = run([tb, "--prog", prog, "--stall", str(stall), "--seed", "4"])
+            report("  %s, wait states %d%%" % ("integer" if kind == "golden" else "floating point", stall), r)
+
     # 3. random floating-point programs, every instruction checked against fpmodel.py
     print("random floating-point programs against the software model:")
     for seed in range(args.first_seed, args.first_seed + max(2, args.seeds // 4)):

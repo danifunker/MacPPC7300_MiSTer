@@ -131,18 +131,50 @@ class Program:
 
 
 # ---- the golden vectors as one program -----------------------------------------
+MEMV_BASE = 0x00700000       # the memory vectors' buffers, 8 bytes each
+FP_LS_XO = (535, 567, 599, 631, 663, 695, 727, 759, 983)   # lfsx ... stfiwx
+
+
+def is_fp_insn(insn):
+    """Floating-point arithmetic, FPSCR instructions, loads and stores: run
+    by goldenfp, with MSR[FP] on and the registers loaded from a pool."""
+    op = insn >> 26
+    return op in (59, 63) or 48 <= op <= 55 or (op == 31 and ((insn >> 1) & 0x3FF) in FP_LS_XO)
+
+
+def is_mem_vector(r):
+    """A memory vector (the sources with `mem` in their name): r6 points at an
+    8-byte buffer that starts as the f6 pattern and is recorded in f6's
+    place; r6 is recorded less the buffer's address."""
+    return "mem" in r["source"].split("-")
+
+
+def mem_buffer(p, v, n):
+    """The buffer of memory vector number n: its contents before, and what
+    memory must hold at the end. Returns its address."""
+    buf = MEMV_BASE + 8 * n
+    p.data[buf], p.data[buf + 4] = v["in_f6"] >> 32, v["in_f6"] & 0xFFFFFFFF
+    p.expect[buf], p.expect[buf + 4] = v["out_f6"] >> 32, v["out_f6"] & 0xFFFFFFFF
+    return buf
+
+
 def golden(out, path):
     p = Program()
     p.words += caches_on() + set_msr(0)
-    n = 0
+    n = n_mem = 0
     with open(path) as fh:
         for r in csv.DictReader(fh):
             insn = int(r["insn"], 16)
-            if (insn >> 26) in (59, 63):
+            if is_fp_insn(insn):
                 continue                              # see goldenfp
-            v = {k: int(r[k], 16) for k in r if k.startswith(("in_", "out_")) and "_f" not in k}
+            v = {k: int(r[k], 16) for k in r if k.startswith(("in_", "out_"))}
+            r6_in, r6_out = v["in_r6"], v["out_r6"]
+            if is_mem_vector(r):
+                buf = mem_buffer(p, v, n_mem)
+                n_mem += 1
+                r6_in, r6_out = buf + r6_in, buf + r6_out
             setup = [
-                li32(3, v["in_r3"]), li32(4, v["in_r4"]), li32(5, v["in_r5"]), li32(6, v["in_r6"]),
+                li32(3, v["in_r3"]), li32(4, v["in_r4"]), li32(5, v["in_r5"]), li32(6, r6_in),
                 li32(7, v["in_cr"]) + [mtcrf(0xFF, 7)],
                 li32(8, v["in_xer"]) + [mtspr(XER, 8)],
                 li32(9, v["in_ctr"]) + [mtspr(CTR, 9)],
@@ -152,13 +184,13 @@ def golden(out, path):
             for group in setup[k:] + setup[:k]:
                 p.words += group
             p.checks.append((len(p.words), "%08X %08X %08X %08X %08X %08X %08X %08X 0 0 0 0 %s#%s" % (
-                v["out_r3"], v["out_r4"], v["out_r5"], v["out_r6"],
+                v["out_r3"], v["out_r4"], v["out_r5"], r6_out,
                 v["out_cr"], v["out_xer"], v["out_ctr"], 0, r["name"], r["index"])))
             p.words.append(insn)
             n += 1
     p.words.append(B_SELF)
     p.write(out)
-    print("%d vectors, %d instructions -> %s" % (n, len(p.words), out))
+    print("%d vectors (%d through memory), %d instructions -> %s" % (n, n_mem, len(p.words), out))
 
 
 def lfd(fr, ra, d):
@@ -176,14 +208,15 @@ def check_text(r, cr, xer, ctr, fpscr, f, tag):
 
 def goldenfp(out, path):
     """Each vector: f4-f6 and FPSCR loaded from a constant pool, f3 zeroed, CR
-    set, then the instruction. r10 points at the vector's constants."""
+    set, then the instruction. r10 points at the vector's constants. A memory
+    vector also gets its buffer, at r6."""
     p = Program()
     p.words += caches_on() + set_msr(MSR_FP)
-    n = 0
+    n = n_mem = 0
     with open(path) as fh:
         for r in csv.DictReader(fh):
             insn = int(r["insn"], 16)
-            if (insn >> 26) not in (59, 63):
+            if not is_fp_insn(insn):
                 continue
             v = {k: int(r[k], 16) for k in r if k.startswith(("in_", "out_"))}
             block = POOL_BASE + 40 * n
@@ -195,24 +228,45 @@ def goldenfp(out, path):
                 [lfd(7, 10, 24), mtfsf(0xFF, 7)],
                 li32(7, v["in_cr"]) + [mtcrf(0xFF, 7)],
             ]
+            r6_out, f6_out = v["out_r6"], v["out_f6"]
+            if is_mem_vector(r):
+                buf = mem_buffer(p, v, n_mem)
+                n_mem += 1
+                setup.append(li32(6, buf + v["in_r6"]))
+                r6_out, f6_out = buf + r6_out, v["in_f6"]       # the register keeps the pattern
+            elif n_mem:
+                setup.append(li32(6, v["in_r6"]))               # r6 back from the last buffer
             k = n % len(setup)
             p.words += [D(15, 10, 0, block >> 16), D(24, 10, 10, block)]
             for group in setup[k:] + setup[:k]:
                 p.words += group
             p.checks.append((len(p.words), check_text(
-                [v["out_r3"], v["out_r4"], v["out_r5"], v["out_r6"]], v["out_cr"], v["out_xer"],
-                v["out_ctr"], v["out_fpscr"], [v["out_f3"], v["out_f4"], v["out_f5"], v["out_f6"]],
+                [v["out_r3"], v["out_r4"], v["out_r5"], r6_out], v["out_cr"], v["out_xer"],
+                v["out_ctr"], v["out_fpscr"], [v["out_f3"], v["out_f4"], v["out_f5"], f6_out],
                 "%s#%s" % (r["name"], r["index"]))))
             p.words.append(insn)
             n += 1
     p.words.append(B_SELF)
     p.write(out)
-    print("%d vectors, %d instructions -> %s" % (n, len(p.words), out))
+    print("%d vectors (%d through memory), %d instructions -> %s" % (n, n_mem, len(p.words), out))
 
 
 # ---- exceptions, one at a time ---------------------------------------------------
 NOP = 0x60000000
 DAR, DSISR, DEC, SPRG0, SPRG1 = 19, 18, 22, 272, 273
+
+
+def align_dsisr(insn):
+    """What a 604 puts in DSISR for an alignment exception: the architecture's
+    opcode fields, then, where the architecture says rD and rA, the measured
+    rD and rD - 1 (8 and 7 for dcbz)."""
+    if insn >> 26 == 31:
+        d = (((insn >> 1) & 3) << 15) | (((insn >> 6) & 1) << 14) | (((insn >> 7) & 15) << 10)
+        rd = 8 if ((insn >> 1) & 0x3FF) == 1014 else (insn >> 21) & 31
+    else:
+        d = (((insn >> 26) & 1) << 14) | (((insn >> 27) & 15) << 10)
+        rd = (insn >> 21) & 31
+    return d | (rd << 5) | ((rd - 1) & 31)
 
 
 def exctest(out):
@@ -242,11 +296,7 @@ def exctest(out):
         p.words.append(insn)
         if align_ea is not None:
             st["dar"] = align_ea
-            if insn >> 26 == 31:
-                st["dsisr"] = (((insn >> 1) & 3) << 15) | (((insn >> 6) & 1) << 14) | (((insn >> 7) & 15) << 10)
-            else:
-                st["dsisr"] = (((insn >> 26) & 1) << 14) | (((insn >> 27) & 15) << 10)
-            st["dsisr"] |= ((insn >> 21) & 31) << 5 | ((insn >> 16) & 31)
+            st["dsisr"] = align_dsisr(insn)
         srr1 = (st["msr"] & 0x87C0FFFF) | info
         st["seen"] = [at + 4 if pc_after else at, srr1, st["dar"], st["dsisr"]]
         p.words.append(NOP)
@@ -268,7 +318,8 @@ def exctest(out):
     expect(0x44000002, 0, pc_after=True)                          # sc
     expect(D(3, 31, 0, 0), 0x00020000)                            # twi 31,r0,0: trap always
     expect(0x00000000, 0x00080000)                                # not an instruction
-    expect(mfspr(1023, 9), 0x00080000)                            # an SPR that does not exist
+    expect(mfspr(1009, 9), 0x00080000)                            # an SPR that does not exist (HID1 is the 604e's)
+    expect(X(5, 0, 9, 150), 0x00080000)                           # stwcx without the dot: illegal on a 604
     expect(0xFC201090, 0)                                         # fmr with MSR[FP] off
     setm(MSR_FP)
     expect(D(46, 29, 1, 2), 0, align_ea=DATA_A + 2)               # lmw at an odd address
@@ -293,7 +344,9 @@ def exctest(out):
     setm(MSR_FP | MSR_PR)
     expect(X(9, 0, 0, 83), 0x00040000)                            # mfmsr in user mode
     expect(mfspr(SRR0, 9), 0x00040000)                            # a supervisor SPR in user mode
-    expect(mfspr(1023, 9), 0x00040000)                            # ... even one that does not exist
+    expect(mfspr(1023, 9), 0x00040000)                            # PIR too
+    expect(mfspr(1009, 9), 0x00080000)                            # one that does not exist is illegal, not privileged (measured)
+    no_exc(mfspr(268, 9))                                         # the time base through mfspr, in user mode
     expect(0x44000002, 0, pc_after=True)                          # sc from user mode
     p.words.append(B_SELF)
     p.write(out)
@@ -318,12 +371,13 @@ def fpexctest(out):
     p.words.append(NOP)
     p.checks.append((len(p.words) - 1, check_text([at, srr1, 0, 0], 0, 0, 0, fpscr, [0, 0, 0, 0], "own")))
     # FEX is still set and the handler returned with the enables off: switching
-    # them on again must trap on the next instruction, before it executes
+    # them on again must trap on the next instruction, before it executes, and
+    # SRR1[15] then says SRR0 is not the instruction that caused it (measured)
     p.words += set_msr(MSR_FP | FE0, 7)
     at = p.pc()
     p.words.append(D(14, 9, 0, 0x55))                                    # li r9,0x55: must not execute
     p.words.append(NOP)
-    p.checks.append((len(p.words) - 1, check_text([at, srr1, 0, 0], 0, 0, 0, fpscr, [0, 0, 0, 0], "pending")))
+    p.checks.append((len(p.words) - 1, check_text([at, srr1 | 0x00010000, 0, 0], 0, 0, 0, fpscr, [0, 0, 0, 0], "pending")))
     p.words.append(B_SELF)
     p.write(out)
     print("%d instructions, %d checks -> %s" % (len(p.words), len(p.checks), out))
@@ -602,9 +656,7 @@ def resvtest(out):
             st["r"][2], st["r"][3] = dar, dsisr
         check("x%03X_%d" % (vec, len(p.checks)))
 
-    def x_dsisr(insn):
-        return (((insn >> 1) & 3) << 15) | (((insn >> 6) & 1) << 14) | (((insn >> 7) & 15) << 10) | \
-               (((insn >> 21) & 31) << 5) | ((insn >> 16) & 31)
+    x_dsisr = align_dsisr
 
     def load(reg, ra, d, value):
         p.words.append(D(32, reg, ra, d))
@@ -1240,7 +1292,14 @@ def gen_random(out, count, seed, translate=False):
             return li32(t, v | msr_base) + [mtmsr(t)]
         if k in (6, 7):
             spr = rnd.choice((272, 273, 274, 275, 26, 27, 19, 18))
-            return [mtspr(spr, rs()) if k == 6 else mfspr(spr, rd())]
+            if k == 7:
+                return [mfspr(spr, rd())]
+            s = rs()
+            if spr == 26:
+                # a 604 keeps bits 0-29 of SRR0 and dingusppc all 32: clear the
+                # two low bits first, so that a later mfspr agrees
+                return [M(21, s, s, 0, 0, 29), mtspr(spr, s)]
+            return [mtspr(spr, s)]
         if k == 8:
             return [mfspr(287, rd())]                             # PVR
         if k == 9:

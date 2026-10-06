@@ -150,7 +150,9 @@ it is run as `selftest --strict`; if dingusppc changes, the test says so.
 ## Caveats: where dingusppc differs from the architecture or from a real 604
 
 File references are into the dingusppc tree. "[run]" = confirmed by executing it
-(selftest or by hand), "[read]" = from reading the code only.
+(selftest or by hand), "[read]" = from reading the code only, "[604]" = what a
+real 604 does was measured (the 7300 run's second stage, 2026-10-06:
+`ppctest/runs/sresults_604_7300_of_run1.csv`).
 
 Against the PowerPC architecture (PEM):
 
@@ -158,8 +160,10 @@ Against the PowerPC architecture (PEM):
    read rA from the rB field and vice versa): `twlt`, `twgt`, `twllt`, `twlgt` and
    combinations are reversed. `twi`, `tweq`, `twne`, `trap` are right. [run]
 2. **`sc` sets SRR1[14]** (0x00020000) on every CPU (`ppcopcodes.cpp:1624`); that is
-   601/POWER behaviour, the architecture clears SRR1[1-4,10-15]. [run]
+   601/POWER behaviour, the architecture clears SRR1[1-4,10-15]. [run] [604: SRR1
+   holds the MSR bits only]
 3. **FP-unavailable exception sets SRR1[11]** (0x00100000) (`ppcexec.cpp:294`). [run]
+   [604: not set]
 4. **`fcmpu`/`fcmpo` clear FPSCR[VE]** (`ppcfpopcodes.cpp:1355,1381`, "kludge to pass
    tests"). [run]
 5. **Inexact results are never flagged**: FPSCR[XX], [FI], [FR] are not set by
@@ -183,19 +187,27 @@ Against the PowerPC 604 User's Manual (sections in parentheses):
    boundary, or is word-aligned and crosses a 256 MB boundary (2.3.4.3). [run]
 9. **Undefined SPRs are plain storage** for `mfspr`/`mtspr`, even in user mode
    (`ppcopcodes.cpp:1112,1236`); the 604 takes a program exception (4.5.7). `mfspr`
-   268/269 is accepted as well as `mftb`. [run]
+   268/269 is accepted as well as `mftb`. [run] [604: an SPR it does not have is an
+   illegal instruction in both modes, not privileged in user mode as the manual
+   says; `mfspr` 268/269 does read the time base, in user mode too]
 10. **Invalid forms trap instead of executing**: update forms with rA = 0 or rA = rD
     (`ppcopcodes.cpp:1746,1769,1860,1896`, ...) and instructions without a record
     form that have bit 31 set (the decode table has no entry) raise an
     illegal-instruction program exception; the 604 executes them with undefined
     rD/r0 or CR0 (2.3.4.3). Other reserved bits are ignored (any primary-opcode-17
-    word is `sc`). [run]
+    word is `sc`). [run] [604: bit 31 is ignored on every instruction without a
+    record form except `stwcx.`, which is illegal without it, and `lwarx`, which
+    then writes CR0; an opcode-17 word with bit 30 clear is illegal; `lmw` with
+    rA in the loaded range loads rA like the others]
 11. **Instructions the 604 does not have are accepted** on every non-601 PVR:
     `tlbia` (2.3.1.2), and the 603's `tlbld`/`tlbli`, which are not even privileged
-    (`ppcexec.cpp:944-949`). [run]
+    (`ppcexec.cpp:944-949`). [run] [604: all three illegal, in both modes]
 12. Reserved register bits are kept: `mtmsr` stores all 32 bits
     (`ppcopcodes.cpp:811`); `mtxer` keeps 0xE000FF7F on every CPU, i.e. also the
-    601's bits 16-23 (`:1149`). [run]
+    601's bits 16-23 (`:1149`). [run] [604: `mtxer` keeps exactly 0xE000FF7F too;
+    `mtmsr` keeps 0x0005FF77 (bit 29, PM, included); SRR0 keeps bits 0-29, SDR1
+    0xFFFF01FF, EAR 0x8000003F, PIR four bits, the BATs 0xFFFE1FFF/0xFFFE007B;
+    the random lockstep programs clear SRR0's two low bits before writing it]
 
 With address translation on:
 
@@ -225,6 +237,9 @@ Worked around in this library (they are dingusppc bugs all the same):
 15. The 601 `div` host crash described under `REF_STEP_FAULT`.
 
 Not verified: the 601's POWER instructions; floating point beyond items 4-6;
-what a real 604 does in items 8-13 and 16-19 (the manual is the only source
-used). With translation on, dingusppc has agreed with the RTL's walker on the
-page tables' R and C bits over every lockstep program so far.
+what a real 604 does in items 8 (only that it takes the exception for `lmw`,
+`stmw`, `lfd`, `stfd`, `lwarx`, `stwcx.` and `dcbz`), 16, 17, 18 and 19 (the
+manual is the only source used). With translation on, dingusppc has agreed with
+the RTL's walker on the page tables' R and C bits over every lockstep program
+so far. Items 2, 3, 9, 10, 11, 12 and 13 are now measured on the 604 (see the
+[604] notes).

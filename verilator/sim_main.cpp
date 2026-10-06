@@ -130,6 +130,23 @@ bool load_csv(const std::string& path, std::vector<Vector>& vectors) {
 	return true;
 }
 
+// The values the hardware harness's mtxer and mtfsf 0xFF left in the
+// registers: a 604 keeps XER bits 0-2, 16-23 and 25-31, and every FPSCR bit
+// but the two summaries, which it derives, and reserved bit 20.
+uint32_t held_xer(uint32_t x) {
+	return x & 0xE000FF7Fu;
+}
+
+uint32_t held_fpscr(uint32_t x) {
+	x &= 0x9FFFF7FFu;
+	if (x & 0x01F80700u) x |= 0x20000000u;                       // VX
+	if (((x & 0x20000000u) && (x & 0x80u)) || ((x & 0x10000000u) && (x & 0x40u)) ||
+	    ((x & 0x08000000u) && (x & 0x20u)) || ((x & 0x04000000u) && (x & 0x10u)) ||
+	    ((x & 0x02000000u) && (x & 0x08u)))
+		x |= 0x40000000u;                                        // FEX
+	return x;
+}
+
 bool is_fp(const Vector& v) {
 	uint32_t op = v.insn >> 26;
 	return op == 59 || op == 63;
@@ -267,9 +284,9 @@ int main(int argc, char** argv) {
 		dut->in_r5    = v.in.r[2];
 		dut->in_r6    = v.in.r[3];
 		dut->in_cr    = v.in.cr;
-		dut->in_xer   = v.in.xer;
+		dut->in_xer   = held_xer(v.in.xer);
 		dut->in_ctr   = v.in.ctr;
-		dut->in_fpscr = v.in.fpscr;
+		dut->in_fpscr = held_fpscr(v.in.fpscr);
 		dut->in_f4    = v.in.f[1];
 		dut->in_f5    = v.in.f[2];
 		dut->in_f6    = v.in.f[3];
@@ -353,7 +370,10 @@ int main(int argc, char** argv) {
 		}
 	}
 
-	long bad = total_int.fail + total_int.unimpl + total_fp.fail + total_fp.unimpl;
+	// Vectors the execute units cannot run on their own (loads, stores, the
+	// moves to and from XER and FPSCR) are reported, not counted as failures:
+	// run_core.py runs every vector file as a program through the pipeline.
+	long bad = total_int.fail + total_fp.fail;
 	long ran = total_int.vectors + total_fp.vectors + undef.vectors;
 	if (ran == 0) {
 		std::printf("no vectors selected\n");
