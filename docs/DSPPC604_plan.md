@@ -268,9 +268,9 @@ Steps, each verified before the next:
    translation plus cache lookup does not fit one cycle; decided here with
    timing data.
 
-How the rules apply, decided before step 1:
+How the rules apply, decided before step 1 and followed in it:
 
-- A data access that faults in MEM is the one thing the pipeline has not had
+- A data access that faults in MEM is the one thing the pipeline had not had
   to do: the instruction in MEM is dropped, the one in EX behind it is
   cancelled before it commits (EX can only leave in the cycle MEM's access
   completes, so the fault gates that same `ex_leave`), and the fetch is
@@ -290,6 +290,66 @@ How the rules apply, decided before step 1:
   exception (604 manual 4.5.6); `lwarx` and `stwcx.` at a non-word-aligned
   address take alignment; `eciwx` and `ecowx` take DSI, since this machine
   has no external control facility (EAR[E] = 0).
+
+**Step 1, address translation: done 2026-10-05.**
+
+- `DSPPC604_mmu` sits between the pipeline and the two buses. Block address
+  translation (four IBAT and four DBAT pairs, lowest match wins), then the
+  segment register and a translation lookaside buffer per side, filled by a
+  hardware walk of the hashed page table (both hash groups; one walker for
+  both sides, data first). The walker sets the referenced bit when it loads
+  an entry and the changed bit for a store, with byte writes to the PTE as
+  the 604 does; a store that hits an entry whose C bit is clear walks again
+  to set it. Neither is set when the access fails the protection check,
+  which the architecture allows and dingusppc does too.
+- Each TLB is direct-mapped, 64 entries, indexed by EA bits 14-19: the
+  604's congruence class, so `tlbie` invalidates exactly what the 604 does,
+  one entry in each. An entry holds the PTE fields and the segment's VSID;
+  the segment register's keys and no-execute bit are looked up on every
+  access, so `mtsr` needs no invalidation.
+- A fetch or an access that hits is translated in the cycle it is requested:
+  the TLBs are read a cycle ahead, with the address the fetch will present
+  next (`pc_next`) and with the effective address as an access leaves EX. A
+  data access to a page other than the one read ahead (the second word of
+  an access crossing a page boundary) costs one extra cycle. With
+  translation off nothing costs anything: the suite's cycle counts are
+  unchanged.
+- Exceptions as the manual lists them: DSI for no page, protection, a
+  direct-store segment (nothing here serves one), `eciwx`/`ecowx`
+  (DSISR[11]); ISI for no page, protection, no-execute segment, guarded
+  memory, direct-store segment. DAR is the address of the word that failed,
+  which for an access crossing into a bad page is the page boundary.
+  `mtsr`, `mtspr` to SDR1 or a BAT, and `tlbie` refetch, like `mtmsr`.
+- Verified (`python verilator\run_core.py`): a directed program with BATs,
+  page tables in both hash groups, every cause of DSI and ISI with the exact
+  DAR, DSISR and SRR1, accesses that cross into an unmapped page (the first
+  word's bytes are stored, then the fault), `lmw` across a page, a stale
+  entry used until `tlbie`, the keys in user mode, and the page table's R
+  and C bits checked at the end (34 checks, 14 memory words); and random
+  programs in lockstep with dingusppc with translation on, their data pages
+  mapped 4 MB away from their addresses with read-only pages and holes that
+  draw hundreds of DSIs per program, the DAR and DSISR copied by the
+  handler into compared registers, and the page tables compared with
+  dingusppc's at the end, R and C bits included. Five deliberate bugs
+  (secondary hash, a key rule, C never set, EX committing behind a fault,
+  TLB aliasing) each caught; the last only by lockstep, the first two only
+  by the directed test.
+- Where dingusppc cannot be the reference here: direct-store segments
+  (it aborts), guarded memory (no ISI), `eciwx` (no DSISR); and its `tlbie`
+  flushes every page translation, which only differs for software that
+  forgets one. The random programs keep the code under a BAT, so no
+  speculative fetch walks the table.
+- Quartus, whole CPU: 12,049 ALMs (29%), 7 RAM blocks (the two TLBs, the
+  branch target buffer, SPRG0-3), 61-65 MHz worst case over three runs.
+  The MMU itself is about 1,200 ALMs. The slowest paths are the operand
+  forwarding network into the ALU and FPU, as before; the MMU adds to its
+  fanout (the DTLB's read-ahead address comes off the effective-address
+  adder) and a term to `ex_leave`. Two things learnt: the DTLB only became
+  a RAM once its two read expressions were merged into one with a muxed
+  address (as flip-flops it cost 3,900 ALMs and 8 MHz); and reading the
+  ITLB ahead with the *redirect* address put branch resolution in front of
+  the RAM, so it reads ahead with the predicted address and re-reads after
+  a redirect into another page. For step 4.
 
 ### M6: real ROM, first MiSTer build
 
@@ -360,6 +420,16 @@ run on a real 604 can settle.
   `frsqrte` 2, plus 6 if an operand is denormal. A data access takes two
   cycles on the test bench bus until there is a cache.
 - `dcbt` and `dcbtst` do nothing, which the architecture allows for hints.
+- Address translation: the TLBs are direct-mapped with 64 entries (the 604's
+  are two-way with 128), so a program that alternates between two pages of
+  the same index walks the table for each; software cannot tell otherwise.
+  The referenced bit is set when an entry is loaded, the changed bit when a
+  store is allowed; neither on a protection violation (allowed; dingusppc
+  does the same). A direct-store segment (T = 1) takes a DSI with DSISR[0]
+  or an ISI with SRR1[3], there being no direct-store device. `eciwx` and
+  `ecowx` always take a DSI with DSISR[11]: EAR[E] is stored and ignored.
+  `mtsr`, `mtspr` to SDR1 or a BAT and `tlbie` refetch the next instruction,
+  which spares software the `isync`.
 - CR, XER, LR, CTR, FPSCR and MSR have no forwarding at all; EX reads the
   committed registers. The hazard logic covers GPRs and FPRs only
   (seven-bit register names). The FPU holds its response until the
@@ -413,7 +483,13 @@ run on a real 604 can settle.
   Interrupt tests use fixed addresses: handlers count at
   `00FFFFE0`/`00FFFFE4` and acknowledge at `00FFFFF0`.
 - Deliberate-bug checks: four bugs in the integer pipeline, five in the FP
-  pipeline, three in the exception logic; each was caught.
+  pipeline, three in the exception logic, five in the MMU; each was caught.
+- With translation on, the random programs keep the code under a BAT (no
+  speculative fetch reaches the page table), never touch a direct-store or
+  guarded page, and only `tlbie` entries whose PTEs have not changed.
+- Largest lockstep run so far: 300 programs of 20,000 instructions
+  (5,375,852 instructions compared) on the RTL as of 2026-10-05, all with
+  a complete passing summary.
 - The trace ports on `DSPPC604` exist for the test bench; a real build
   leaves them unconnected.
 

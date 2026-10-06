@@ -18,7 +18,8 @@ still the MiSTer template's test pattern.
 | DSPPC604 pipeline, user-mode integer code | the same 11,576 vectors pass when run as a program; random programs match dingusppc instruction for instruction |
 | Floating point in the pipeline | the 25,598 FP vectors pass when run as a program; FP loads, stores and FPSCR instructions agree with the software model (no hardware data for those yet) |
 | Exceptions, supervisor state | program, FP unavailable, system call, alignment, external and decrementer interrupts; MSR and the SPRs; checked in lockstep and by directed tests |
-| MMU, caches | not started; see [the plan](docs/DSPPC604_plan.md) |
+| MMU | BATs, segment registers, hardware page-table walk with R and C bits, ITLB and DTLB, `tlbie`, DSI and ISI; directed tests and lockstep with translation on |
+| Caches, reservation and cache instructions | not started; see [the plan](docs/DSPPC604_plan.md) |
 | Machine (chipset, video, SCSI, ...) | not started |
 
 Size and speed of what exists, each synthesised on its own for the DE10-Nano's
@@ -26,15 +27,17 @@ FPGA with Quartus 17.0 (`syn\check.py`), constrained to 75 MHz:
 
 | Block | ALMs | DSP blocks | Worst-case Fmax |
 |---|---|---|---|
-| The whole CPU so far (pipeline, FPU, exceptions, SPRs; no caches or MMU) | 10,781 (26%) | 7 | 69.5 MHz |
+| The whole CPU so far (pipeline, FPU, exceptions, SPRs, MMU; no caches) | 12,049 (29%) | 7 | 61-65 MHz (three runs) |
+| The same before the MMU | 10,781 (26%) | 7 | 69.5 MHz |
 | The integer pipeline alone, before the FPU was connected | 3,208 (8%) | 3 | 78.6 MHz |
 | Floating-point unit alone | 3,303 (8%) | 4 | 73.5 MHz |
 
-So the 66 MHz target is met and 75 MHz is not. No effort has gone into
-either yet. The two obvious gains are known: the register files and SPRs are
-built from flip-flops instead of RAM (most of what the CPU costs beyond the
-two blocks above), and the forwarded floating-point operands run straight
-into the FPU's first stage, which sets the clock.
+So 66 MHz is within reach and 75 MHz is not. No effort has gone into
+timing yet; it is a step of its own in the plan. The gains are known: the
+register files and SPRs are built from flip-flops instead of RAM (most of
+what the CPU costs beyond the two blocks above), and the forwarded operands
+run straight into the ALU and the FPU's first stage, which sets the clock;
+the MMU added to that network's fanout.
 
 ## Decisions that are locked in
 
@@ -163,19 +166,22 @@ the rest, so they can never hide a real failure or be hidden by one.
 python verilator\run_core.py
 ```
 
-Tests the pipeline, four ways:
+Tests the pipeline, five ways:
 
 1. The real-604 integer vectors, assembled into one program and run with and
    without random bus wait states.
 2. The real-604 floating-point vectors, the same way.
 3. Random floating-point programs (arithmetic, loads, stores, FPSCR
    instructions) with the state `fpmodel.py` expects after every instruction.
-4. Each exception once, with what its handler must find; and a loop with
-   known results under thousands of external and decrementer interrupts.
+4. Each exception once, with what its handler must find; address
+   translation with every cause of DSI and ISI and the page table's R and C
+   bits; and a loop with known results under thousands of external and
+   decrementer interrupts.
 5. Random programs in lockstep with dingusppc's interpreter
    (`verilator/ref` builds it as a library from `..\dingusppc`), including
    supervisor instructions, mode switches and exceptions: the registers and
-   MSR are compared after every instruction and memory at the end.
+   MSR are compared after every instruction and memory at the end. Then the
+   same with address translation on, page faults included.
 
 `--seeds N` runs more random programs.
 

@@ -11,11 +11,13 @@
 3. Random floating-point programs (arithmetic, loads, stores, FPSCR
    instructions) with the state fpmodel.py expects after every instruction.
 4. Each exception once, with what its handler must find in SRR0, SRR1, DAR
-   and DSISR; and a computation that thousands of external and decrementer
-   interrupts must leave undisturbed.
+   and DSISR; address translation with every cause of DSI and ISI; and a
+   computation that thousands of external and decrementer interrupts must
+   leave undisturbed.
 5. Random programs in lockstep with dingusppc's interpreter, including
    supervisor instructions, mode switches and exceptions: after every
    instruction the registers and MSR must match, and at the end the memory.
+   Then the same with address translation on.
 
 Runs from Windows (through WSL) or directly under Linux.
 """
@@ -117,6 +119,7 @@ def main():
     for name, gen, tb_args in (
         ("each exception once", ["exctest"], ["--stall", "10"]),
         ("floating-point enabled exceptions", ["fpexctest"], []),
+        ("address translation, DSI, ISI", ["mmutest"], ["--stall", "20", "--seed", "5"]),
         ("external interrupts", ["irqtest", "3000"], ["--irq-every", "97", "--stall", "10"]),
         ("decrementer interrupts", ["irqtest", "3000"], ["--tb-run"]),
         ("both, with wait states", ["irqtest", "3000"], ["--irq-every", "61", "--tb-run", "--stall", "30"]),
@@ -129,21 +132,27 @@ def main():
         r = run([tb, "--prog", prog] + tb_args)
         report("  " + name, r)
 
-    # 5. random programs in lockstep, exceptions and supervisor instructions included
-    print("random programs in lockstep with dingusppc:")
+    # 5. random programs in lockstep, exceptions and supervisor instructions
+    #    included; then the same with address translation on (page faults,
+    #    protection faults, tlbie, and the page table's R and C bits compared
+    #    at the end)
     total = 0
-    for seed in range(args.first_seed, args.first_seed + args.seeds):
-        prog = os.path.join(progs, "random.prog")
-        r = run([sys.executable, os.path.join(HERE, "progs.py"), "random", prog, str(args.count), str(seed)])
-        if r.returncode:
-            print(r.stdout)
-            return 1
-        stall = (0, 15, 40, 70)[seed % 4]
-        r = run([tb, "--prog", prog, "--lockstep", "--stall", str(stall), "--seed", str(seed)])
-        report("  seed %d, wait states %d%%" % (seed, stall), r)
-        for l in r.stdout.splitlines():
-            if l.endswith("per instruction)"):
-                total += int(l.split()[0])
+    for xlate in (False, True):
+        print("random programs in lockstep with dingusppc%s:" % (", translation on" if xlate else ""))
+        seeds = range(args.first_seed, args.first_seed + (max(2, args.seeds // 2) if xlate else args.seeds))
+        for seed in seeds:
+            prog = os.path.join(progs, "random.prog")
+            r = run([sys.executable, os.path.join(HERE, "progs.py"), "random", prog, str(args.count), str(seed)]
+                    + (["xlate"] if xlate else []))
+            if r.returncode:
+                print(r.stdout)
+                return 1
+            stall = (0, 15, 40, 70)[seed % 4]
+            r = run([tb, "--prog", prog, "--lockstep", "--stall", str(stall), "--seed", str(seed)])
+            report("  seed %d, wait states %d%%" % (seed, stall), r)
+            for l in r.stdout.splitlines():
+                if l.endswith("per instruction)"):
+                    total += int(l.split()[0])
     print("%d random instructions compared" % total)
 
     print("\nRESULT: %s" % ("PASS" if failures == 0 else "FAIL (%d runs)" % failures))

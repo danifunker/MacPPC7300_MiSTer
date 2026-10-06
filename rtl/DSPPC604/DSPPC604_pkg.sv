@@ -44,7 +44,8 @@ package DSPPC604_pkg;
 		SYS_MFMSR,
 		SYS_MTMSR,
 		SYS_MFSR,      // segment registers; the number comes from operand B when rb_rd is set
-		SYS_MTSR
+		SYS_MTSR,
+		SYS_TLBIE      // the effective address is operand B
 	} sys_op_t;
 
 	// Where a branch goes.
@@ -179,6 +180,7 @@ package DSPPC604_pkg;
 		logic        mem_ljust;    // string forms: bytes fill the register from the top
 		logic [6:0]  str_bytes;    // string forms: bytes in the whole operation, on its
 		                           // first access only (the alignment check is made there)
+		logic        mem_ext;      // eciwx, ecowx: a DSI, there being no external control facility
 		seq_t        seq;
 
 		// branch

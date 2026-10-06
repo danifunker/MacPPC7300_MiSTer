@@ -39,25 +39,40 @@
 //
 //  Exceptions
 //    Everything that can stop an instruction is known by the time it would
-//    leave EX: an interrupt, an illegal or privileged instruction, floating
-//    point switched off, a trap, a system call, a misaligned access. The
-//    instruction is then dropped instead of moving on, SRR0, SRR1 and MSR are
-//    written, and the fetch is redirected to the vector, all at that one
-//    edge. Because the status registers commit in EX, EX sees the true MSR
-//    and FPSCR, so interrupts and pending floating-point exceptions are
-//    simply conditions on the instruction that happens to be there.
-//    A floating-point instruction that raises an enabled exception itself
-//    completes first and traps at the same edge.
+//    leave EX, with one exception below: an interrupt, an illegal or
+//    privileged instruction, floating point switched off, a trap, a system
+//    call, a misaligned access, a fetch that failed (an ISI, carried with the
+//    instruction from the fetch). The instruction is then dropped instead of
+//    moving on, SRR0, SRR1 and MSR are written, and the fetch is redirected
+//    to the vector, all at that one edge. Because the status registers
+//    commit in EX, EX sees the true MSR and FPSCR, so interrupts and pending
+//    floating-point exceptions are simply conditions on the instruction that
+//    happens to be there. A floating-point instruction that raises an
+//    enabled exception itself completes first and traps at the same edge.
 //    Interrupts are taken only on the first operation of an instruction.
 //
-//  Not here yet: MMU (so no DSI or ISI), caches, the reservation and cache
-//  instructions, trace and machine-check exceptions, little-endian mode.
+//    The exception: a data access that cannot be translated faults in MEM
+//    (a DSI). The instruction in MEM is dropped, the one in EX is cancelled
+//    before it commits (EX can only leave in the cycle MEM's access
+//    completes, so the fault gates that same edge), and the fetch is
+//    redirected. Earlier operations of the same instruction stay done, as
+//    for interrupts; that is allowed, the instruction being restartable.
+//
+//  Memory management
+//    DSPPC604_mmu sits between the pipeline and the two buses: BATs, segment
+//    registers, a TLB per side, a hardware walk of the page table. The TLBs
+//    are read a cycle ahead (the predicted fetch address, the effective
+//    address as an access leaves EX), so a hit costs no time.
+//
+//  Not here yet: caches, the reservation and cache instructions, trace and
+//  machine-check exceptions, little-endian mode.
 //
 //============================================================================
 
 module DSPPC604
 #(
 	parameter int          BTB_BITS = 7,              // branch target buffer entries, as a power of two
+	parameter int          TLB_BITS = 6,              // entries in each TLB, as a power of two
 	parameter logic [31:0] PVR      = 32'h00040303    // processor version: 604 revision 3.3
 )
 (
@@ -118,7 +133,8 @@ logic [31:0] fpscr;
 // supervisor state
 localparam logic [31:0] MSR_MASK  = 32'h0005FF73;  // the bits the 604 implements
 localparam logic [31:0] SRR1_MASK = 32'h87C0FFFF;  // MSR bits saved in SRR1 and restored by rfi
-localparam int MSR_EE = 15, MSR_PR = 14, MSR_FP = 13, MSR_FE0 = 11, MSR_FE1 = 8, MSR_IP = 6;
+localparam int MSR_EE = 15, MSR_PR = 14, MSR_FP = 13, MSR_FE0 = 11, MSR_FE1 = 8, MSR_IP = 6,
+               MSR_IR = 5, MSR_DR = 4;
 
 logic [31:0] msr;
 logic [31:0] srr0;
@@ -131,8 +147,8 @@ logic        dec_pending;   // it passed zero and the exception has not been tak
 logic [31:0] tbl;
 logic [31:0] tbu;
 logic [31:0] sdr1;
-logic [31:0] bat [16];      // IBAT0U ... DBAT3L, in SPR number order
-logic [31:0] sr [16];
+logic [15:0][31:0] bat;     // IBAT0U ... DBAT3L, in SPR number order
+logic [15:0][31:0] sr;
 logic [31:0] hid0;
 logic [31:0] ear;
 logic [31:0] iabr;
@@ -154,6 +170,8 @@ logic [31:0] if2_insn;
 logic [31:0] if2_pred;      // where the fetch went next
 logic        if2_btb;       // the branch target buffer knew this address
 logic [1:0]  if2_cnt;       // ... with this taken/not-taken counter
+logic        if2_isi;       // the fetch failed: the word is an ISI instead
+logic [31:0] if2_isi_info;  // ... with these SRR1 bits
 
 // ID
 logic        id_valid;
@@ -162,6 +180,8 @@ logic [31:0] id_insn;
 logic [31:0] id_pred;
 logic        id_btb;
 logic [1:0]  id_cnt;
+logic        id_isi;
+logic [31:0] id_isi_info;
 
 // EX
 logic        ex_valid;
@@ -169,6 +189,8 @@ logic [31:0] ex_pc;
 logic [31:0] ex_insn;
 dec_t        ex_dec;
 logic        ex_ill;        // not an instruction this core implements
+logic        ex_isi;
+logic [31:0] ex_isi_info;
 logic        ex_first;
 logic        ex_last;
 logic [31:0] ex_pred;
@@ -225,22 +247,39 @@ logic        ex_abort;      // the instruction in EX is dropped
 logic        ex_exc;        // an exception is taken as it leaves
 logic [11:0] exc_vector;
 logic [31:0] fpscr_next;
+logic        mem_fault;     // the access in MEM cannot be made: a DSI
 
 wire id_ready  = ~id_valid | id_leave;
 wire ex_ready  = ~ex_valid | ex_leave;
 wire mem_ready = ~mem_valid | mem_leave;
 
+// ---- the buses as the pipeline sees them: through the MMU -------------------
+logic        if_req;
+logic [31:0] if_addr;
+logic        if_gnt;
+logic        if_rvalid;
+logic [31:0] if_rdata;
+logic        if_fault;
+logic [31:0] if_srr1;
+
+logic        mu_req, mu_we, mu_gnt, mu_rvalid, mu_bfault;
+logic [29:0] mu_addr;
+logic [3:0]  mu_be;
+logic [31:0] mu_wdata, mu_bus_rdata;
+
 // ============================================================================
 //  IF1, IF2
 // ============================================================================
-wire        if2_resp  = if2_valid & (if2_has | ibus_rvalid);
-wire [31:0] if2_word  = if2_has ? if2_insn : ibus_rdata;
+wire        if2_resp  = if2_valid & (if2_has | if_rvalid);
+wire [31:0] if2_word  = if2_has ? if2_insn : if_rdata;
+wire        if2_isi_w = if2_has ? if2_isi  : if_fault;
+wire [31:0] if2_info_w = if2_has ? if2_isi_info : if_srr1;
 wire        if2_leave = if2_resp & (if2_kill | id_ready);
 
-assign ibus_req  = ~reset & (~if2_valid | if2_leave);
-assign ibus_addr = pc_f;
+assign if_req  = ~reset & (~if2_valid | if2_leave);
+assign if_addr = pc_f;
 
-wire fetch_go = ibus_req & ibus_gnt;
+wire fetch_go = if_req & if_gnt;
 
 // ---- branch target buffer --------------------------------------------------
 localparam int BTB_SIZE = 1 << BTB_BITS;
@@ -274,10 +313,18 @@ always_ff @(posedge clk) begin
 	if (reset) btb_valid <= '0;
 end
 
+// the address pc_f takes at the end of this cycle; the MMU reads its TLB
+// ahead with the predicted one (a redirect into another page costs a cycle
+// there, which keeps branch resolution away from the TLB's address)
+wire [31:0] pc_next = reset ? reset_pc : redir ? redir_pc : fetch_go ? pred_pc : pc_f;
+wire [31:0] pc_ahead = fetch_go ? pred_pc : pc_f;
+
 always_ff @(posedge clk) begin
-	if (if2_valid & ~if2_has & ibus_rvalid & ~if2_leave) begin
-		if2_has  <= 1'b1;
-		if2_insn <= ibus_rdata;
+	if (if2_valid & ~if2_has & if_rvalid & ~if2_leave) begin
+		if2_has      <= 1'b1;
+		if2_insn     <= if_rdata;
+		if2_isi      <= if_fault;
+		if2_isi_info <= if_srr1;
 	end
 	if (if2_leave) if2_valid <= 1'b0;
 
@@ -289,17 +336,14 @@ always_ff @(posedge clk) begin
 		if2_pred  <= pred_pc;
 		if2_btb   <= btb_hit;
 		if2_cnt   <= btb_c;
-		pc_f      <= pred_pc;
 	end
 
-	if (redir) begin
-		pc_f <= redir_pc;
-		// a fetch still waiting for its word is dropped when the word comes
-		if (if2_valid & ~if2_leave) if2_kill <= 1'b1;
-	end
+	// a fetch still waiting for its word is dropped when the word comes
+	if (redir & if2_valid & ~if2_leave) if2_kill <= 1'b1;
+
+	pc_f <= pc_next;
 
 	if (reset) begin
-		pc_f      <= reset_pc;
 		if2_valid <= 1'b0;
 		if2_kill  <= 1'b0;
 		if2_has   <= 1'b0;
@@ -373,12 +417,14 @@ wire [63:0] id_fc = ff_read(id_insn[10:6]);
 always_ff @(posedge clk) begin
 	if (id_leave) id_valid <= 1'b0;
 	if (if2_leave & ~if2_kill) begin
-		id_valid <= 1'b1;
-		id_pc    <= if2_pc;
-		id_insn  <= if2_word;
-		id_pred  <= if2_pred;
-		id_btb   <= if2_btb;
-		id_cnt   <= if2_cnt;
+		id_valid    <= 1'b1;
+		id_pc       <= if2_pc;
+		id_insn     <= if2_isi_w ? 32'd0 : if2_word;    // a failed fetch decodes as one illegal operation
+		id_pred     <= if2_pred;
+		id_btb      <= if2_btb;
+		id_cnt      <= if2_cnt;
+		id_isi      <= if2_isi_w;
+		id_isi_info <= if2_info_w;
 	end
 	if (reset | redir) id_valid <= 1'b0;
 end
@@ -427,11 +473,14 @@ logic [3:0]  int_cr;
 logic        int_ready;
 /* verilator lint_on UNUSEDSIGNAL */
 
+// an instruction in EX is cancelled by its own exception or by a fault in MEM
+wire ex_flush = (ex_leave & ex_abort) | mem_fault;
+
 DSPPC604_int_unit int_unit
 (
 	.clk        (clk),
 	.reset      (reset),
-	.flush      (ex_leave & ex_abort),
+	.flush      (ex_flush),
 	.req_valid  (ex_valid & ~x_pre & ~ex_stall & is_int),
 	.req_ready  (int_ready),
 	.unit       (ex_dec.unit),
@@ -465,7 +514,7 @@ DSPPC604_fpu fpu
 (
 	.clk        (clk),
 	.reset      (reset),
-	.flush      (ex_leave & ex_abort),
+	.flush      (ex_flush),
 	.req_valid  (ex_valid & ~x_pre & ~ex_stall & is_fpu),
 	.req_ready  (fpu_ready),
 	.ctl        (ex_dec.fc),
@@ -497,7 +546,7 @@ DSPPC604_fpscr fpscr_ops
 );
 
 wire ex_done = x_pre | (~ex_stall & (is_int ? int_resp : is_fpu ? fpu_resp : 1'b1));
-assign ex_leave = ex_valid & ex_done & mem_ready;
+assign ex_leave = ex_valid & ex_done & mem_ready & ~mem_fault;
 
 // ---- branch ----------------------------------------------------------------
 wire        is_br    = (ex_dec.br != BR_NONE);
@@ -521,15 +570,23 @@ wire [31:0] ex_pc4 = ex_pc + 32'd4;
 
 // Where this instruction really continues, against where the fetch went.
 // Only an instruction's last operation decides. An exception goes to its
-// vector; mtmsr and rfi always refetch, because what follows them was
-// fetched under the old MSR.
+// vector; mtmsr, rfi and anything that changes how addresses translate
+// (segment registers, BATs, SDR1, tlbie) always refetch, because what
+// follows them was fetched under the old state. A fault in MEM redirects
+// too, and the instruction in EX goes with it.
 wire        is_sys    = ~is_int & ~is_fpu;
 wire        is_rfi    = is_sys & (ex_dec.sys == SYS_RFI);
 wire        is_mtmsr  = is_sys & (ex_dec.sys == SYS_MTMSR);
+wire        is_mtspr  = is_sys & (ex_dec.sys == SYS_MTSPR);
+wire        is_tlbie  = is_sys & (ex_dec.sys == SYS_TLBIE);
+wire        is_xlate  = is_tlbie | (is_sys & (ex_dec.sys == SYS_MTSR)) |
+                        (is_mtspr & ((ex_dec.spr == 10'd25) | (ex_dec.spr[9:4] == 6'b100001)));
 wire [31:0] next_pc   = is_rfi ? {srr0[31:2], 2'b00} : br_taken ? br_target : ex_pc4;
-assign redir_pc = ex_exc ? {{12{msr[MSR_IP]}}, 8'h00, exc_vector} : next_pc;
+wire [31:0] vec_base  = {{12{msr[MSR_IP]}}, 8'h00, 12'h000};
+assign redir_pc = mem_fault ? (vec_base | 32'h300) : ex_exc ? (vec_base | {20'd0, exc_vector}) : next_pc;
 wire   ex_final = ex_leave & ~ex_exc & ex_last;
-assign redir    = ex_leave & (ex_exc | (ex_last & (is_rfi | is_mtmsr | (next_pc != ex_pred))));
+assign redir    = mem_fault |
+                  (ex_leave & (ex_exc | (ex_last & (is_rfi | is_mtmsr | is_xlate | (next_pc != ex_pred)))));
 
 // Teach the branch target buffer: a taken branch is entered or strengthened,
 // one that was not taken is weakened, and an entry that fired for something
@@ -619,11 +676,12 @@ wire fp_trap_on = msr[MSR_FE0] | msr[MSR_FE1];
 // conditions that do not need the instruction to execute
 wire irq_ext  = ex_first & msr[MSR_EE] & ext_irq;
 wire irq_dec  = ex_first & msr[MSR_EE] & dec_pending & ~ext_irq;
+wire x_isi    = ex_isi;
 wire fpe_pend = ex_first & fpscr[30] & fp_trap_on;      // FEX was already set when traps were enabled
 wire x_priv   = ex_dec.priv & msr[MSR_PR];
 wire x_ill    = ex_ill | (is_sys & ((ex_dec.sys == SYS_MFSPR) | (ex_dec.sys == SYS_MTSPR)) & ~spr_known & ~x_priv);
 wire x_fpu    = ex_dec.fp_use & ~msr[MSR_FP];
-assign x_pre  = irq_ext | irq_dec | fpe_pend | x_priv | x_ill | x_fpu;
+assign x_pre  = irq_ext | irq_dec | x_isi | fpe_pend | x_priv | x_ill | x_fpu;
 
 // conditions that come out of executing it
 wire        trap_lts = ($signed(op_a) < $signed(op_b));
@@ -645,8 +703,10 @@ wire        str_4k    = str_end[12] & (str_end[11:0] != 12'd0);
 wire        x_align_s = (ex_dec.str_bytes != 7'd0) & str_4k &
                         ((int_result[1:0] != 2'b00) | (&int_result[27:12]));
 wire x_align  = x_align_w | x_align_s;
+// eciwx and ecowx: a DSI, this machine having no external control facility
+wire x_ecx    = ex_dec.mem_ext;
 
-assign ex_abort = x_pre | x_sc | x_trap | x_align;      // the instruction has no effect
+assign ex_abort = x_pre | x_sc | x_trap | x_align | x_ecx;   // the instruction has no effect
 
 // an enabled floating-point exception this instruction raises itself: it
 // completes, then traps
@@ -659,6 +719,7 @@ always_comb begin
 	exc_info = 32'd0;
 	if (irq_ext)       exc_vector = 12'h500;
 	else if (irq_dec)  exc_vector = 12'h900;
+	else if (x_isi)    begin exc_vector = 12'h400; exc_info = ex_isi_info; end
 	else if (fpe_pend) begin exc_vector = 12'h700; exc_info = 32'h00100000; end
 	else if (x_priv)   begin exc_vector = 12'h700; exc_info = 32'h00040000; end
 	else if (x_ill)    begin exc_vector = 12'h700; exc_info = 32'h00080000; end
@@ -666,6 +727,7 @@ always_comb begin
 	else if (x_sc)     exc_vector = 12'hC00;
 	else if (x_trap)   begin exc_vector = 12'h700; exc_info = 32'h00020000; end
 	else if (x_align)  exc_vector = 12'h600;
+	else if (x_ecx)    exc_vector = 12'h300;
 	else               begin exc_vector = 12'h700; exc_info = 32'h00100000; end   // x_fpen
 end
 
@@ -673,6 +735,8 @@ end
 wire [31:0] align_dsisr = (ex_insn[31:26] == 6'd31)
 	? {15'd0, ex_insn[2:1], ex_insn[6],  ex_insn[10:7],  ex_insn[25:21], ex_insn[20:16]}
 	: {15'd0, 2'b00,        ex_insn[26], ex_insn[30:27], ex_insn[25:21], ex_insn[20:16]};
+// ... and the DSI handler about eciwx/ecowx: DSISR[11], and [6] for a store
+wire [31:0] ecx_dsisr = 32'h00100000 | (ex_dec.mem_wr ? 32'h02000000 : 32'd0);
 
 // MSR on exception entry: interrupts, translation, floating point and user
 // mode off; ME, IP and ILE kept; LE takes ILE
@@ -776,6 +840,8 @@ always_ff @(posedge clk) begin
 		ex_insn  <= id_insn;
 		ex_dec   <= id_uop;
 		ex_ill   <= ~id_dec.valid;
+		ex_isi   <= id_isi;
+		ex_isi_info <= id_isi_info;
 		ex_first <= id_first;
 		ex_last  <= id_last | ~id_dec.valid;
 		ex_pred  <= id_pred;
@@ -849,11 +915,21 @@ always_ff @(posedge clk) begin
 		srr0 <= x_sc ? ex_pc4 : ex_pc;
 		srr1 <= (msr & SRR1_MASK) | exc_info;
 		msr  <= msr_exc;
-		if (x_align & ~x_pre) begin
+		if ((x_align | x_ecx) & ~x_pre) begin
 			dar   <= int_result;
-			dsisr <= align_dsisr;
+			dsisr <= x_align ? align_dsisr : ecx_dsisr;
 		end
 		if (irq_dec) dec_pending <= 1'b0;
+	end
+
+	// ... for the access in MEM that cannot be made (EX did not commit)
+	if (mem_fault) begin
+		ex_valid <= 1'b0;
+		srr0  <= mem_pc;
+		srr1  <= msr & SRR1_MASK;
+		msr   <= msr_exc;
+		dar   <= mu_dar;
+		dsisr <= mu_dsisr;
 	end
 
 	if (reset) begin
@@ -876,7 +952,10 @@ end
 //  MEM
 // ============================================================================
 logic        mu_resp;
+logic        mu_fault;
 logic [63:0] mu_rdata;
+logic [31:0] mu_dsisr;
+logic [31:0] mu_dar;
 
 // what a load delivers to its register
 wire [63:0] mem_ldata = (mem_fp & mem_fsgl) ? fp_single_to_double(mu_rdata[31:0]) : mu_rdata;
@@ -894,7 +973,61 @@ DSPPC604_mem_unit mem_unit
 	.ljust       (mem_ljust),
 	.wdata       (mem_wdata),
 	.resp_valid  (mu_resp),
+	.resp_fault  (mu_fault),
 	.rdata       (mu_rdata),
+	.dbus_req    (mu_req),
+	.dbus_we     (mu_we),
+	.dbus_addr   (mu_addr),
+	.dbus_be     (mu_be),
+	.dbus_wdata  (mu_wdata),
+	.dbus_gnt    (mu_gnt),
+	.dbus_rvalid (mu_rvalid),
+	.dbus_fault  (mu_bfault),
+	.dbus_rdata  (mu_bus_rdata)
+);
+
+assign mem_leave = mem_valid & (~(mem_load | mem_store) | mu_resp);
+assign mem_fault = mem_valid & mu_resp & mu_fault;
+
+DSPPC604_mmu #(.TLB_BITS (TLB_BITS)) mmu
+(
+	.clk         (clk),
+	.reset       (reset),
+	.msr_ir      (msr[MSR_IR]),
+	.msr_dr      (msr[MSR_DR]),
+	.msr_pr      (msr[MSR_PR]),
+	.bat         (bat),
+	.sr          (sr),
+	.sdr1        (sdr1),
+	.tlbie       (ex_leave & ~ex_abort & is_tlbie),
+	.tlbie_ea    (op_b),
+	.i_req       (if_req),
+	.i_addr      (if_addr),
+	.i_addr_next (pc_ahead),
+	.i_gnt       (if_gnt),
+	.i_rvalid    (if_rvalid),
+	.i_rdata     (if_rdata),
+	.i_fault     (if_fault),
+	.i_srr1      (if_srr1),
+	.ibus_req    (ibus_req),
+	.ibus_addr   (ibus_addr),
+	.ibus_gnt    (ibus_gnt),
+	.ibus_rvalid (ibus_rvalid),
+	.ibus_rdata  (ibus_rdata),
+	.d_pre       (ex_leave & ~ex_abort & (ex_dec.mem_rd | ex_dec.mem_wr)),
+	.d_ea_next   (int_result),
+	.d_req       (mu_req),
+	.d_we        (mu_we),
+	.d_addr      (mu_addr),
+	.d_be        (mu_be),
+	.d_wdata     (mu_wdata),
+	.d_ea        (mem_ea),
+	.d_gnt       (mu_gnt),
+	.d_rvalid    (mu_rvalid),
+	.d_rdata     (mu_bus_rdata),
+	.d_fault     (mu_bfault),
+	.d_dsisr     (mu_dsisr),
+	.d_dar       (mu_dar),
 	.dbus_req    (dbus_req),
 	.dbus_we     (dbus_we),
 	.dbus_addr   (dbus_addr),
@@ -904,8 +1037,6 @@ DSPPC604_mem_unit mem_unit
 	.dbus_rvalid (dbus_rvalid),
 	.dbus_rdata  (dbus_rdata)
 );
-
-assign mem_leave = mem_valid & (~(mem_load | mem_store) | mu_resp);
 
 always_ff @(posedge clk) begin
 	if (mem_leave) mem_valid <= 1'b0;
@@ -943,7 +1074,7 @@ end
 //  WB
 // ============================================================================
 always_ff @(posedge clk) begin
-	wb_valid <= mem_leave;
+	wb_valid <= mem_leave & ~mem_fault;
 	if (mem_leave) begin
 		wb_pc     <= mem_pc;
 		wb_insn   <= mem_insn;

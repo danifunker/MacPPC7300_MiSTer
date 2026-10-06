@@ -15,12 +15,13 @@
 //
 //  Handshake: the requester holds req_valid and the request steady until
 //  resp_valid, which is high for one cycle. A store has been written, and a
-//  load's rdata is valid, in that cycle.
+//  load's rdata is valid, in that cycle. With resp_fault the access was not
+//  made (or only its first word was) and the requester takes a DSI.
 //
 //  Bus: word-aligned address, four byte enables. be[3] and bits 31:24 are the
 //  byte at the lowest address. req is held with a stable request until a
 //  cycle with gnt; one rvalid follows each granted request, at least one
-//  cycle later.
+//  cycle later. rvalid with fault means the word could not be translated.
 //
 //============================================================================
 
@@ -39,6 +40,7 @@ module DSPPC604_mem_unit
 	input  logic [63:0] wdata,       // value to store (low word unless 8 bytes)
 
 	output logic        resp_valid,
+	output logic        resp_fault,
 	output logic [63:0] rdata,       // value loaded (low word unless 8 bytes)
 
 	output logic        dbus_req,
@@ -48,6 +50,7 @@ module DSPPC604_mem_unit
 	output logic [31:0] dbus_wdata,
 	input  logic        dbus_gnt,
 	input  logic        dbus_rvalid,
+	input  logic        dbus_fault,
 	input  logic [31:0] dbus_rdata
 );
 
@@ -111,14 +114,15 @@ always_comb begin
 end
 
 assign rdata      = dword ? rwin : {32'd0, lword};
-assign resp_valid = dbus_rvalid & (((state == S_RSP0) & ~two_words) | (state == S_RSP1));
+assign resp_fault = dbus_rvalid & dbus_fault;
+assign resp_valid = dbus_rvalid & (dbus_fault | ((state == S_RSP0) & ~two_words) | (state == S_RSP1));
 
 always_ff @(posedge clk) begin
 	case (state)
 		S_REQ0: if (req_valid & dbus_gnt) state <= S_RSP0;
 		S_RSP0: if (dbus_rvalid) begin
 			word0_q <= dbus_rdata;
-			state   <= two_words ? S_REQ1 : S_REQ0;
+			state   <= (two_words & ~dbus_fault) ? S_REQ1 : S_REQ0;
 		end
 		S_REQ1: if (dbus_gnt) state <= S_RSP1;
 		default: if (dbus_rvalid) state <= S_REQ0;

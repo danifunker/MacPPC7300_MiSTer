@@ -9,8 +9,8 @@
 //  convert and compare instructions.
 //
 //  Not yet: the reservation and cache instructions other than dcbt and dcbtst
-//  (which are hints and stay no-ops). tlbie and tlbsync are accepted and do
-//  nothing until there is an MMU.
+//  (which are hints and stay no-ops). tlbsync is accepted and does nothing,
+//  there being one processor.
 //
 //  Multi-operation instructions (update forms, lmw/stmw, string forms) are
 //  decoded here as their first operation, with dec.seq telling the sequencer
@@ -370,8 +370,18 @@ always_comb begin
 			dec.ra = f_d; dec.ra_rd = 1;
 			dec.rb = f_b; dec.rb_rd = xo10[5];
 		end
-		10'd306, 10'd566: begin // tlbie, tlbsync
+		10'd306: begin // tlbie
+			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_TLBIE; dec.priv = 1;
+			dec.rb = f_b; dec.rb_rd = 1;
+		end
+		10'd566: begin // tlbsync
 			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_NOP; dec.priv = 1;
+		end
+		10'd310, 10'd438: begin // eciwx, ecowx: always a DSI here (EAR[E] is never set by anything)
+			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
+			dec.ra = f_a; dec.ra_rd = a_nz; dec.rb = f_b; dec.rb_rd = 1;
+			dec.mem_ext = 1;
+			if (xo10[7]) dec.mem_wr = 1;
 		end
 		10'd598, 10'd854: begin // sync, eieio
 			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_NOP;

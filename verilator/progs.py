@@ -3,10 +3,12 @@
 
     python progs.py golden OUT [results.csv]     the real-604 integer vectors as code
     python progs.py goldenfp OUT [results.csv]   the real-604 floating-point vectors as code
-    python progs.py random OUT COUNT [SEED]      random instruction stream for lockstep
+    python progs.py random OUT COUNT [SEED] [xlate]  random instruction stream for lockstep,
+                                                 with address translation on if asked
     python progs.py fprandom OUT COUNT [SEED]    random floating-point program, with the
                                                  state fpmodel.py expects after every instruction
     python progs.py exctest OUT                  each exception once, with what its handler must see
+    python progs.py mmutest OUT                  address translation: BATs, page tables, DSI, ISI, tlbie
     python progs.py irqtest OUT [LOOPS]          a computation that interrupts must not disturb
                                                  (run with --irq-every and --tb-run)
 
@@ -80,11 +82,14 @@ def install_handlers(p):
     """Exception handlers at the vectors. They leave SRR0 (advanced) and SRR1
     in r30 and r31, where a lockstep run compares them.
       program, FP unavailable, alignment: step over the instruction
+      DSI: the same, with DAR and DSISR left in r28 and r29
       system call: switch between user and supervisor mode"""
     skip = [mfspr(SRR0, 30), mfspr(SRR1, 31), D(14, 30, 30, 4), mtspr(SRR0, 30), RFI]
     for vec in (0x600, 0x700, 0x800):
         for i, w in enumerate(skip):
             p.data[vec + 4 * i] = w
+    for i, w in enumerate(skip[:2] + [mfspr(19, 28), mfspr(18, 29)] + skip[2:]):
+        p.data[0x300 + 4 * i] = w
     toggle = [mfspr(SRR0, 30), mfspr(SRR1, 31), D(26, 31, 31, MSR_PR), mtspr(SRR1, 31), RFI]
     for i, w in enumerate(toggle):
         p.data[0xC00 + 4 * i] = w
@@ -310,6 +315,232 @@ def fpexctest(out):
     p.words.append(B_SELF)
     p.write(out)
     print("%d instructions, %d checks -> %s" % (len(p.words), len(p.checks), out))
+
+
+# ---- address translation ----------------------------------------------------------
+MSR_IR, MSR_DR = 0x20, 0x10
+IBAT0U, DBAT0U, SDR1 = 528, 536, 25
+
+
+def mtsr(n, rs):
+    return (31 << 26) | (rs << 21) | (n << 16) | (210 << 1)
+
+
+def tlbie(rb):
+    return (31 << 26) | (rb << 11) | (306 << 1)
+
+
+def batu(ea, bl_128k, vs=1, vp=0):
+    """BAT upper word: 128 KB blocks, bl_128k of them (a power of two)."""
+    return (ea & 0xFFFE0000) | ((bl_128k - 1) << 2) | (vs << 1) | vp
+
+
+def batl(pa, pp, wimg=0):
+    return (pa & 0xFFFE0000) | (wimg << 3) | pp
+
+
+def pte_words(vsid, ea, pa, pp, wimg=0, h=0, r=0, c=0):
+    w0 = 0x80000000 | (vsid << 7) | (h << 6) | ((ea >> 22) & 0x3F)
+    w1 = (pa & 0xFFFFF000) | (r << 8) | (c << 7) | (wimg << 3) | pp
+    return w0, w1
+
+
+def pteg_addr(sdr1, vsid, ea, h):
+    hash1 = (vsid & 0x7FFFF) ^ ((ea >> 12) & 0xFFFF)
+    hsh = (~hash1 & 0x7FFFF) if h else hash1
+    return (sdr1 & 0xFFFF0000) | (((hsh >> 10) & (sdr1 & 0x1FF)) << 16) | ((hsh & 0x3FF) << 6)
+
+
+class PageTable:
+    """Places PTEs in a program's memory image: the next free slot of the
+    group the address hashes to. ptes maps each PTE's word-1 address to the
+    value it must hold when the program ends."""
+
+    def __init__(self, p, sdr1, srs):
+        self.p, self.sdr1, self.srs = p, sdr1, srs
+        self.slots = {}
+        self.ptes = {}
+
+    def map(self, ea, pa, pp, wimg=0, h=0, r_final=0, c_final=0):
+        vsid = self.srs[ea >> 28] & 0xFFFFFF
+        grp = pteg_addr(self.sdr1, vsid, ea, h)
+        slot = self.slots.get(grp, 0)
+        assert slot < 8, "page table group full"
+        self.slots[grp] = slot + 1
+        w0, w1 = pte_words(vsid, ea, pa, pp, wimg, h)
+        a = grp + 8 * slot
+        self.p.data[a], self.p.data[a + 4] = w0, w1
+        self.ptes[a + 4] = w1 | (r_final << 8) | (c_final << 7)
+        return a + 4
+
+
+def mmutest(out):
+    """Translation on: BATs, page tables (both hash groups), the referenced and
+    changed bits, every cause of DSI and ISI with the DAR, DSISR and SRR1 it
+    must deliver, accesses that cross into an unmapped page, tlbie, the keys
+    in user mode, eciwx/ecowx. Nothing here is compared with an emulator; the
+    expectations are the architecture's and the 604 manual's."""
+    p = Program()
+    BLR = 0x4E800020
+    st = {"r": [0, 0, 0, 0], "msr": 0}
+
+    # handlers: DSI and the others copy SRR0, SRR1, DAR, DSISR to r3-r6 and
+    # step over the instruction; ISI returns to LR instead (the failed fetch
+    # was a blrl); sc toggles user mode
+    body = [mfspr(SRR0, 3), mfspr(SRR1, 4), mfspr(DAR, 5), mfspr(DSISR, 6)]
+    for vec in (0x300, 0x600, 0x700):
+        for i, w in enumerate(body + [D(14, 30, 3, 4), mtspr(SRR0, 30), RFI]):
+            p.data[vec + 4 * i] = w
+    for i, w in enumerate(body[:2] + [mfspr(LR, 30), mtspr(SRR0, 30), RFI]):
+        p.data[0x400 + 4 * i] = w
+    for i, w in enumerate([mfspr(SRR0, 30), mfspr(SRR1, 31), D(26, 31, 31, MSR_PR), mtspr(SRR1, 31), RFI]):
+        p.data[0xC00 + 4 * i] = w
+
+    def check(tag):
+        p.words.append(NOP)
+        p.checks.append((len(p.words) - 1, check_text(
+            list(st["r"]), 0, 0, 0, 0, [0, 0, 0, 0], tag)))
+
+    def expect(insn, vec, info, dar=None, dsisr=None, pc=None):
+        at = p.pc()
+        p.words.append(insn)
+        st["r"][0] = at if pc is None else pc
+        st["r"][1] = (st["msr"] & 0x87C0FFFF) | info
+        if vec == 0x300:
+            st["r"][2], st["r"][3] = dar, dsisr
+        check("x%03X_%d" % (vec, len(p.checks)))
+
+    def isi(target, info):
+        """blrl to target must take an ISI with these SRR1 bits."""
+        p.words += li32(9, target) + [mtspr(LR, 9)]
+        expect(0x4E800021, 0x400, info, pc=target)                            # blrl
+
+    def load(reg, ra, d, value):
+        """lwz must deliver value, with no exception."""
+        p.words.append(D(32, reg, ra, d))
+        st["r"][reg - 3] = value
+        check("ld%d" % len(p.checks))
+
+    # ---- the map ----
+    # BATs: identity for the first 128 KB (vectors, this code) and the page
+    # table; a read-only data block; a no-access instruction block
+    bats = {
+        IBAT0U: batu(0, 1, vs=1, vp=1), IBAT0U + 1: batl(0, 2),
+        IBAT0U + 2: batu(0x00600000, 1), IBAT0U + 3: batl(0x00020000, 0),
+        DBAT0U: batu(0, 1, vs=1, vp=1), DBAT0U + 1: batl(0, 2),
+        DBAT0U + 2: batu(0x00500000, 1), DBAT0U + 3: batl(0x00320000, 1),
+        DBAT0U + 4: batu(0x00100000, 1), DBAT0U + 5: batl(0x00100000, 2),
+    }
+    # segment registers: 0 plain, 1 no-execute, 2 supervisor key, 3 direct-store
+    srs = {0: 0x10, 1: 0x10000011, 2: 0x40000012, 3: 0x80000013}
+    for n in range(4, 16):
+        srs[n] = 0x20 + n
+    sdr1 = 0x00100000                       # 64 KB table at 1 MB, HTABMASK 0
+    CODE = 0x00020000                       # physical page holding one blr
+    p.data[CODE] = BLR
+
+    table = PageTable(p, sdr1, srs)
+    map_page = table.map
+    ptes = table.ptes
+
+    A, B, U, RO, SEC, TL, XP, XG, RO2 = (0x00200000, 0x00201000, 0x00202000, 0x00203000,
+                                         0x00204000, 0x00205000, 0x00206000, 0x00207000, 0x00209000)
+    map_page(A, 0x00300000, 2, r_final=1, c_final=1)          # loaded then stored: C set by a second walk
+    map_page(B, 0x00301000, 2, r_final=1, c_final=1)
+    map_page(RO, 0x00303000, 3, r_final=1)                    # read-only: a load, then a store that faults
+    map_page(SEC, 0x00304000, 2, h=1, r_final=1)              # in the secondary group
+    tl_pte = map_page(TL, 0x00305000, 2, r_final=1)           # remapped after a tlbie
+    map_page(XP, CODE, 2, r_final=1)                          # executable
+    map_page(XG, CODE, 2, wimg=1, r_final=1)                  # guarded: no fetch, but the walk sets R
+    map_page(RO2, 0x00309000, 3, r_final=1)                   # first touched by a store that faults
+    map_page(0x10000000, CODE, 2)                             # no-execute segment: never walked
+    map_page(0x20000000, CODE, 0, r_final=1)                  # key: no access in supervisor mode, read in user mode
+    map_page(0x30000000, CODE, 2)                             # direct-store segment: never walked
+
+    p.data[0x00301000] = 0x11111111
+    p.data[0x00301FFC] = 0x22222222
+    p.data[0x00303000] = 0x33333333
+    p.data[0x00304000] = 0x44444444
+    p.data[0x00305000] = 0x55555555
+    p.data[0x00306000] = 0x66666666
+    p.data[0x00320000] = 0x77777777
+
+    # ---- set it all up, translation off ----
+    for n, v in srs.items():
+        p.words += li32(7, v) + [mtsr(n, 7)]
+    for n, v in bats.items():
+        p.words += li32(7, v) + [mtspr(n, 7)]
+    p.words += li32(7, sdr1) + [mtspr(SDR1, 7)]
+    p.words += li32(10, B) + li32(11, 0xABCD1234) + li32(12, U) + li32(13, RO) + li32(14, SEC) + li32(15, TL)
+    p.words += li32(16, 0x20000000) + li32(17, 0x30000000) + li32(18, 0x00500000) + li32(19, 0x00301000)
+    p.words += li32(20, A) + li32(21, RO2) + li32(0, 0)
+    p.words += set_msr(MSR_IR | MSR_DR, 7)
+    st["msr"] = MSR_IR | MSR_DR
+
+    # ---- data ----
+    load(5, 10, 0, 0x11111111)                                               # page B
+    p.words.append(D(36, 11, 10, 4))                                         # stw into B: C set
+    p.expect[0x00301004] = 0xABCD1234
+    expect(D(32, 5, 12, 0), 0x300, 0, dar=U, dsisr=0x40000000)               # no page: load
+    expect(D(36, 11, 12, 8), 0x300, 0, dar=U + 8, dsisr=0x42000000)          # ... store
+    expect(D(32, 5, 10, 0xFFE), 0x300, 0, dar=U, dsisr=0x40000000)           # crosses into it
+    expect(D(36, 11, 10, 0xFFE), 0x300, 0, dar=U, dsisr=0x42000000)          # ... the first two bytes are stored
+    p.expect[0x00301FFC] = 0x2222ABCD
+    expect(D(46, 28, 10, 0xFF8), 0x300, 0, dar=U, dsisr=0x40000000)          # lmw r28: two words, then the fault
+    load(5, 13, 0, 0x33333333)                                               # read-only page
+    expect(D(36, 11, 13, 0), 0x300, 0, dar=RO, dsisr=0x0A000000)             # protection, store
+    expect(D(36, 11, 21, 0), 0x300, 0, dar=RO2, dsisr=0x0A000000)            # ... found by the walk itself
+    load(5, 21, 0, 0)
+    load(5, 14, 0, 0x44444444)                                               # secondary hash
+    load(5, 20, 0, 0)                                                        # page A: loaded (R)...
+    p.words.append(D(36, 11, 20, 0x10))                                      # ... then stored (C by a walk)
+    p.expect[0x00300010] = 0xABCD1234
+    expect(D(32, 5, 16, 0), 0x300, 0, dar=0x20000000, dsisr=0x08000000)      # key 1, PP 00
+    expect(D(32, 5, 17, 0), 0x300, 0, dar=0x30000000, dsisr=0x80000000)      # direct-store segment
+    expect(D(36, 11, 17, 4), 0x300, 0, dar=0x30000004, dsisr=0x82000000)
+    load(5, 18, 0, 0x77777777)                                               # read-only BAT
+    expect(D(36, 11, 18, 0), 0x300, 0, dar=0x00500000, dsisr=0x0A000000)
+    expect(X(5, 0, 10, 310), 0x300, 0, dar=B, dsisr=0x00100000)              # eciwx
+    expect(X(11, 0, 10, 438), 0x300, 0, dar=B, dsisr=0x02100000)             # ecowx
+
+    # tlbie: the stale entry is used until it is invalidated
+    load(5, 15, 0, 0x55555555)
+    _, w1 = pte_words(srs[0], TL, 0x00306000, 2)
+    p.words += li32(7, w1) + li32(8, tl_pte) + [D(36, 7, 8, 0)]
+    load(5, 15, 0, 0x55555555)
+    p.words.append(tlbie(15))
+    load(5, 15, 0, 0x66666666)
+    ptes[tl_pte] = w1 | 0x100
+
+    # ---- fetches ----
+    p.words += li32(9, XP) + [mtspr(LR, 9), 0x4E800021]                      # executable page: returns
+    check("x_ok")
+    isi(XG, 0x10000000)                                                      # guarded
+    isi(0x10000000, 0x10000000)                                              # no-execute segment
+    isi(0x20000000, 0x08000000)                                              # key
+    isi(0x30000000, 0x10000000)                                              # direct-store segment
+    isi(0x00208000, 0x40000000)                                              # no page
+    isi(0x00600000, 0x08000000)                                              # IBAT with PP 00
+
+    # ---- user mode: the key of segment 2 is open ----
+    p.words.append(0x44000002)
+    st["msr"] |= MSR_PR
+    check("user")
+    load(5, 16, 0, BLR)
+    expect(D(32, 5, 12, 0), 0x300, 0, dar=U, dsisr=0x40000000)
+    p.words.append(0x44000002)
+    st["msr"] &= ~MSR_PR
+    check("super")
+
+    # ---- off again: physical addresses ----
+    p.words += set_msr(0, 7)
+    st["msr"] = 0
+    load(5, 19, 0, 0x11111111)
+
+    p.expect.update(ptes)
+    p.words.append(B_SELF)
+    p.write(out)
+    print("%d instructions, %d checks, %d memory words -> %s" % (len(p.words), len(p.checks), len(p.expect), out))
 
 
 def irqtest(out, loops):
@@ -548,15 +779,38 @@ def fprandom(out, count, seed):
 
 
 # ---- random instruction streams ------------------------------------------------
-# r0: small index, r1 and r2: data bases. None is ever a random destination, so
-# every access stays inside the initialised data.
-def gen_random(out, count, seed):
+# r0: small index, r1 and r2: data bases. None is ever a random destination;
+# the bases drift upwards by r0 with every update form.
+#
+# With translate, the data regions are page-mapped 4 MB above their virtual
+# addresses (the bases keep their values). The page below each base is
+# read-only and the one above it is missing, so that DSIs happen from the
+# start, and the same again 32 KB and 64 KB up for programs that drift far;
+# the code, the vectors and the page table are reached through a BAT. The
+# random stream then keeps MSR[IR,DR] set, leaves the segment registers alone
+# and includes tlbie.
+PHYS_OFFSET = 0x00400000
+
+
+def gen_random(out, count, seed, translate=False):
     rnd = random.Random(seed)
     p = Program()
 
     for base in (DATA_A & ~3, DATA_B & ~3):
         for a in range(base - DATA_SPAN, base + DATA_SPAN, 4):
-            p.data[a] = rnd.getrandbits(32)
+            p.data[a + (PHYS_OFFSET if translate else 0)] = rnd.getrandbits(32)
+
+    table = None
+    if translate:
+        srs = {n: 0x100 + n for n in range(16)}
+        sdr1 = 0x00100000
+        table = PageTable(p, sdr1, srs)
+        for base in (DATA_A & ~0xFFF, DATA_B & ~0xFFF):
+            for page in range(base - 0x1000, base + 0x20000, 0x1000):
+                if page in (base + 0x1000, base + 0x10000):
+                    continue                                              # the holes
+                ro = page in (base - 0x1000, base + 0x8000)
+                table.map(page, page + PHYS_OFFSET, 3 if ro else 2)
 
     def interesting():
         k = rnd.random()
@@ -568,8 +822,16 @@ def gen_random(out, count, seed):
 
     install_handlers(p)
 
-    # prologue: MSR, then every register and CR, XER, LR, CTR defined
-    p.words += set_msr(0, 3)
+    # prologue: the translation state, MSR, then every register and CR, XER,
+    # LR, CTR defined
+    if translate:
+        for n, v in srs.items():
+            p.words += li32(3, v) + [mtsr(n, 3)]
+        for spr, v in ((IBAT0U, batu(0, 8, 1, 1)), (IBAT0U + 1, batl(0, 2)),
+                       (DBAT0U, batu(0, 8, 1, 1)), (DBAT0U + 1, batl(0, 2)), (SDR1, sdr1)):
+            p.words += li32(3, v) + [mtspr(spr, 3)]
+    msr_base = (MSR_IR | MSR_DR) if translate else 0
+    p.words += set_msr(msr_base, 3)
     p.words += li32(0, rnd.randrange(0, 40))
     p.words += li32(1, DATA_A)
     p.words += li32(2, DATA_B)
@@ -660,7 +922,7 @@ def gen_random(out, count, seed):
         if k == 5:
             t = rd()
             v = rnd.choice((0, MSR_FP, 0x1000, 0x3000, MSR_EE, MSR_EE | MSR_FP, MSR_PR, MSR_PR | MSR_FP))
-            return li32(t, v) + [mtmsr(t)]
+            return li32(t, v | msr_base) + [mtmsr(t)]
         if k in (6, 7):
             spr = rnd.choice((272, 273, 274, 275, 26, 27, 19, 18))
             return [mtspr(spr, rs()) if k == 6 else mfspr(spr, rd())]
@@ -671,7 +933,9 @@ def gen_random(out, count, seed):
         if k == 10:
             n = rnd.randrange(16)
             if bit():
-                return [(31 << 26) | (rs() << 21) | (n << 16) | (210 << 1)]   # mtsr
+                if translate:
+                    return [tlbie(rs())]
+                return [mtsr(n, rs())]
             return [(31 << 26) | (rd() << 21) | (n << 16) | (595 << 1)]       # mfsr
         return [0xFC201090]                                       # fmr f1,f2: traps when MSR[FP] is off
 
@@ -798,12 +1062,14 @@ if __name__ == "__main__":
         exctest(a[1])
     elif len(a) >= 2 and a[0] == "fpexctest":
         fpexctest(a[1])
+    elif len(a) >= 2 and a[0] == "mmutest":
+        mmutest(a[1])
     elif len(a) >= 2 and a[0] == "irqtest":
         irqtest(a[1], int(a[2]) if len(a) > 2 else 3000)
     elif len(a) >= 3 and a[0] == "fprandom":
         fprandom(a[1], int(a[2]), int(a[3]) if len(a) > 3 else 1)
     elif len(a) >= 3 and a[0] == "random":
-        gen_random(a[1], int(a[2]), int(a[3]) if len(a) > 3 else 1)
+        gen_random(a[1], int(a[2]), int(a[3]) if len(a) > 3 else 1, len(a) > 4 and a[4] == "xlate")
     else:
         print(__doc__)
         sys.exit(2)

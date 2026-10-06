@@ -197,6 +197,20 @@ Against the PowerPC 604 User's Manual (sections in parentheses):
     (`ppcopcodes.cpp:811`); `mtxer` keeps 0xE000FF7F on every CPU, i.e. also the
     601's bits 16-23 (`:1149`). [run]
 
+With address translation on:
+
+16. **Guarded memory is not checked**: an instruction fetch from a page or
+    block with G = 1 does not raise an ISI (the OEA and 604 UM 4.5.4 say it
+    does, with SRR1[3]). [read]
+17. **`tlbie` flushes every page translation** (`ppcopcodes.cpp:2204`) instead
+    of the congruence class. The same as a real 604 for software that issues a
+    tlbie for every PTE it changes. [read]
+18. The R bit is set only after the protection check passes, so a protection
+    violation leaves R clear (`ppcmmu.cpp:343-368`); the architecture allows
+    either. C is set on a successful store, as on the 604. [read]
+19. Direct-store segments abort (see `REF_STEP_FAULT`); a real 604 would start
+    a bus transaction and, on this machine, take a DSI with DSISR[0].
+
 Undefined by the architecture, so check against real hardware:
 
 13. `divw`/`divwu` by zero and 0x80000000 / -1 give quotient 0 on non-601 CPUs
@@ -210,6 +224,7 @@ Worked around in this library (they are dingusppc bugs all the same):
     does not reselect the FPU/no-FPU opcode table (`:1089`). `ref_init` fixes up both.
 15. The 601 `div` host crash described under `REF_STEP_FAULT`.
 
-Not verified: anything with address translation on beyond "garbage in does not
-crash"; the 601's POWER instructions; floating point beyond items 4-6; what a
-real 604 does in items 8-13 (the manual is the only source used).
+Not verified: the 601's POWER instructions; floating point beyond items 4-6;
+what a real 604 does in items 8-13 and 16-19 (the manual is the only source
+used). With translation on, dingusppc has agreed with the RTL's walker on the
+page tables' R and C bits over every lockstep program so far.
