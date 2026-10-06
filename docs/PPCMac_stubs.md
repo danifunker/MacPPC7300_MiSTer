@@ -48,9 +48,9 @@ the device reads as zero and writes are ignored.
 | What | The stub | The real thing | Will need it |
 |---|---|---|---|
 | Interrupt registers | Events, mask, clear and levels implemented as dingusppc has them; no source is connected, so events stay 0. | Every device below raises events. | Interrupt-driven code. |
-| DMA channel registers (DBDMA) | Channels 0-3, 8 and A store their registers and read them back; RUN and PAUSE follow writes; ACTIVE is never set and no command is ever fetched. Channels 4-7 (serial) and 9 (sound in) read 0, as in dingusppc. | Each channel runs a program of descriptors from memory (dbdma.cpp). | The startup chime (sound out, channel 8), SCSI, floppy. |
+| DMA channel registers (DBDMA) | Channels 0-3, 8 and A store their registers and read them back; RUN and PAUSE follow writes; ACTIVE is never set and no command is ever fetched. Channels 4-7 (serial) and 9 (sound in) read 0, as in dingusppc. | Each channel runs a program of descriptors from memory (dbdma.cpp). | The startup chime (sound out, channel 8): its command list and samples are in the ROM (the `beep` resource at FFE00010 on; `rom7600/README.md`), so the DMA engine must be able to read the ROM as well as RAM. Then SCSI, floppy. |
 | VIA | Registers implemented; T1 and T2 count at 783,360 Hz and set their flags as dingusppc's do. The shift register stores what is written; nothing ever shifts. | A 6522 with Cuda on port B and the shift register. | - |
-| **Cuda** (power, reset, RTC, PRAM, ADB keyboard and mouse) | **Absent.** Port B's TREQ never changes, the shift register never completes a byte, so every Cuda exchange times out. The ROM's Cuda loops all have counter timeouts (FFF047CC onward). | A 68HC05 microcontroller with its own protocol (viacuda.cpp, 1,000+ lines). | **Where the ROM stops today**: after 18.27 million instructions Open Firmware polls the VIA for Cuda's answer with no timeout (FF80AAC8) and never gets further. Also PRAM settings, the real-time clock, the keyboard and mouse, soft power and restart. dingusppc's ROM run exchanges one packet with it in the first 70,000 instructions; here that exchange times out. |
+| **Cuda** (power, reset, RTC, PRAM, ADB keyboard and mouse) | **Absent.** Port B's TREQ never changes, the shift register never completes a byte, so every Cuda exchange times out. The ROM's Cuda loops all have counter timeouts (FFF047CC onward). | A 68HC05 microcontroller with its own protocol (viacuda.cpp, 1,000+ lines). | **Where the ROM stops today**: after 18.27 million instructions Open Firmware polls the VIA for Cuda's answer with no timeout (FF80AAC8) and never gets further. Also PRAM settings, the real-time clock, the keyboard and mouse, soft power and restart. dingusppc's ROM run exchanges one packet with it in the first 70,000 instructions (an I2C write: command 22, address 88, data 61 55; which device sits at I2C address 88 is not known); here that exchange times out. |
 | ESCC (serial) | A command-register read returns RR0 = 44 (transmit buffer empty) when the register pointer is 0, else 0; the pointer is tracked as on the chip. Data reads 0; nothing is transmitted or received. | Two Z85C30 channels (escc.cpp). | Open Firmware's console on the modem port, the UART debug path if we ever route it here. |
 | AWACS (sound) | Control, codec control, clip count, byte swap and frame count registers stored as in dingusppc; codec status reads 00314000 (available, Crystal, Screamer). No sound. | A codec fed by DMA channel 8. | The startup chime. |
 | NVRAM | 8 KB, implemented, through the address-high latch at 1D000 and the data window at 1F000. Zeros at power-up, as dingusppc without a file; not kept across power-off. | Battery-backed: keeps Open Firmware's settings. | Keeping settings between runs (a save to the SD card, later). |
@@ -61,6 +61,17 @@ the device reads as zero and writes are ignored.
 | MACE Ethernet | Reads 0. | mace.cpp. | Networking. |
 | SWIM3 floppy | Reads 0. | swim3.cpp. | Floppy. |
 | IOBus devices 2, 3, 5 | Read 0. | Absent on a 7600 too (RaDACal, sixty6, board register 2 belong to other models). | - |
+
+## Things the ROM measures that a slower machine changes
+
+- The bus clock: VIA timer 1 measured against the decrementer, so the
+  decrementer must run at bus clock / 4 (12.5 MHz, `TB_HZ`) against the VIA's
+  783,360 Hz. Both are made exactly by phase accumulation in `PPCMac_machine`.
+- The CPU clock: a decrementer-timed loop of eight dependent `addi` and a
+  `bdnz`, assuming one instruction a clock. This core, slower per clock than
+  a 604, will report a lower CPU clock to Open Firmware and Mac OS. That is a
+  true reading of its speed, not a stub; noted so that it does not surprise.
+  (Both from `rom7600/README.md`.)
 
 ## Not on the bus at all yet
 
