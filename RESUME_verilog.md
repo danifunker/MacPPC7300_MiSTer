@@ -1,5 +1,7 @@
 # Resume prompt: DSPPC604 to 66 MHz (M5 step 4), then M6
 
+(The timing pass stopped at 64-65 MHz on 2026-10-06 and the next session goes to M6: its prompt is `RESUME_M6.md`. This file is the timing pass's hand-off, kept for the pending items it names.)
+
 Paste everything below the line into a new session started in `C:\Temp\mistercore\PPC_Mac`.
 
 ---
