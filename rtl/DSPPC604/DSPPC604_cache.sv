@@ -45,7 +45,8 @@
 
 module DSPPC604_cache
 #(
-	parameter bit WRITABLE = 1
+	parameter bit WRITABLE    = 1,
+	parameter bit LATE_ANSWER = 0            // rvalid and rdata from a register, a cycle later
 )
 (
 	input  logic        clk,
@@ -214,6 +215,16 @@ wire unc = k_word & (r_ci | ~enable | (lock & ~hit) | (WRITABLE & r_we & r_wt & 
 
 wire [1:0] wsel = hit ? hit_sel : victim;   // the way a line-zero takes
 
+// the answer: as decided in this cycle, or from a register a cycle later
+logic        ans_now, ans_q;
+logic [31:0] ans_data, ans_data_q;
+always_ff @(posedge clk) begin
+	ans_q      <= ans_now & ~reset;
+	ans_data_q <= ans_data;
+end
+assign rvalid = LATE_ANSWER ? ans_q      : ans_now;
+assign rdata  = LATE_ANSWER ? ans_data_q : ans_data;
+
 // the word a read delivers: the word is picked within each way first
 // (its index is known before the tags are compared), the way last, so that
 // only a four-way choice follows the compare
@@ -241,8 +252,8 @@ always_comb begin
 	tag_wd    = {1'b1, 1'b0, r_tag};
 	data_wd   = mem_rdata;
 	rd_idx    = (state == S_IDLE) ? (snoop_req ? snoop_addr[11:5] : addr[11:5]) : gnt ? addr[11:5] : r_idx;
-	rvalid    = 1'b0;
-	rdata     = hit_word;
+	ans_now    = 1'b0;
+	ans_data     = hit_word;
 	snoop_ack = 1'b0;
 	inv_req   = 1'b0;
 	inv_addr  = r_addr[31:5];
@@ -262,16 +273,16 @@ always_comb begin
 
 	S_LOOK: begin
 		if (unc) ;                                       // -> S_UNC
-		else if (~enable) rvalid = 1'b1;                 // a cache instruction with the cache off
+		else if (~enable) ans_now = 1'b1;                 // a cache instruction with the cache off
 		else if (k_word & hit) begin
-			rvalid = 1'b1;
+			ans_now = 1'b1;
 			if (WRITABLE & r_we) begin
 				data_we[hit_sel] = 1'b1;
 				data_wwe = st_wwe;
 				data_wd  = {8{st_word}};
 				tag_we[hit_sel] = ~r_wt;                 // dirty, unless memory gets it too
 				tag_wd = {1'b1, 1'b1, r_tag};
-				if (r_wt) rvalid = 1'b0;                 // -> S_UNC
+				if (r_wt) ans_now = 1'b0;                 // -> S_UNC
 			end
 		end
 		else if (k_word) ;                               // a miss -> S_WB or S_FILL
@@ -282,17 +293,17 @@ always_comb begin
 				data_wd = '0;
 				tag_we[wsel] = 1'b1;
 				tag_wd = {1'b1, 1'b1, r_tag};
-				rvalid = 1'b1;
+				ans_now = 1'b1;
 			end
 		end
 		else if ((k_flush | k_store) & hit & tag_q[hit_sel].dirty) ;   // -> S_WB
 		else if (k_flush | k_inval) begin
 			if (hit) begin tag_we[hit_sel] = 1'b1; tag_wd = '0; end
-			rvalid = 1'b1;
+			ans_now = 1'b1;
 		end
-		else if (k_store) rvalid = 1'b1;
+		else if (k_store) ans_now = 1'b1;
 		else if (k_icbi) inv_req = 1'b1;                 // -> S_ICBI
-		else rvalid = 1'b1;
+		else ans_now = 1'b1;
 	end
 
 	S_UNC: begin
@@ -301,8 +312,8 @@ always_comb begin
 		mem_line  = 1'b0;
 		mem_wdata = {224'd0, r_wdata};
 		if (mem_ack) begin
-			rvalid = 1'b1;
-			rdata  = mem_rdata[31:0];
+			ans_now = 1'b1;
+			ans_data  = mem_rdata[31:0];
 		end
 	end
 
@@ -316,7 +327,7 @@ always_comb begin
 			tag_we[r_way] = 1'b1;
 			tag_wd = {~(r_snoop_we | k_flush | k_zero), 1'b0, tag_q[r_way].tag};
 			if (~r_after_wb & ~k_zero) begin
-				rvalid    = ~r_snoop;
+				ans_now    = ~r_snoop;
 				snoop_ack = r_snoop;
 			end
 		end
@@ -332,7 +343,7 @@ always_comb begin
 
 	S_ICBI: begin
 		inv_req = 1'b1;
-		rvalid  = inv_ack;
+		ans_now  = inv_ack;
 	end
 
 	S_SNOOP: begin

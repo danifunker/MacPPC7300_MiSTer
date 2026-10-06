@@ -1200,7 +1200,7 @@ DSPPC604_cache #(.WRITABLE (0)) icache
 	.mem_rdata  (mem_rdata)
 );
 
-DSPPC604_cache #(.WRITABLE (1)) dcache
+DSPPC604_cache #(.WRITABLE (1), .LATE_ANSWER (0)) dcache
 (
 	.clk        (clk),
 	.reset      (reset),

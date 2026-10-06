@@ -523,14 +523,29 @@ How the rules apply, decided before step 1 and followed in it:
   choice leaves the lookup's cycle (57.0 to 58.2 MHz; `mtsr` marks the
   copy stale, and a directed case switches VSIDs with translation on).
   14,340 ALMs, 77 RAM blocks.
-- What remains, in order of the slack: the data cache's answer cycle
-  (tag compare, way select, the memory unit's byte formatting) into
-  `wb_result`, about 3.9 ns short at 75 MHz; the forwarding network
-  through the effective-address adder into the MMU and the cache's
-  request; the forwarded operands into the FPU's first stage. The first
-  is the "MEM may split in two" question: a registered cache answer costs
-  every data access a cycle, to be weighed against the clock with the
-  suite's cycle counts.
+- The "MEM may split in two" question, measured: with the data cache
+  answering from a register a cycle later (`LATE_ANSWER`, kept as a
+  parameter), the cache's path leaves the top of the list but the clock
+  only goes from 58.2 to 58.5 MHz, because the next path is 0.1 ns
+  shorter: the operand forwarding muxes into the ALU's adder and shifter.
+  The cost was 9% more cycles on the plain lockstep programs, 12-14% on
+  the translated ones, and 4.34 instead of 3.46 cycles per instruction on
+  the floating-point golden program. So not until EX is faster; the
+  answer stays at one cycle.
+- What remains, in order of the slack, all within about 0.3 ns of each
+  other at 75 MHz (3.6 to 3.9 ns short): the forwarding network into the
+  ALU (the 7-bit compares and the three-way operand muxes, then the adder
+  or rotator, then everything EX decides from the result: the effective
+  address into the MMU's lookup and the cache's request, the alignment
+  checks, the trap compares, the redirect); the data cache's answer cycle
+  into `wb_result`; the forwarded operands into the FPU's first stage.
+  Candidates, none tried: deciding the forwarding selects a cycle earlier
+  at the ID/EX edge (this touches the one hazard mechanism, rule 2, so it
+  is to be agreed first); taking the trap condition from the ALU's
+  compare flags instead of separate comparators; registering the FPU's
+  operands inside the unit (a 9th cycle on an 8-cycle operation); and
+  then the registered cache answer again once EX allows it. The register
+  files in RAM save area, not time, and wait.
 - `DSPPC604_memcdc` carries the memory port into the memory controller's
   clock and the answer back: the request and its write data are captured
   once and stand still while a toggle crosses through two flip-flops, the
