@@ -173,13 +173,18 @@ wire [6:0]       r_idx  = r_addr[11:5];
 wire [TAGW-1:0]  r_tag  = r_addr[31:12];
 wire [2:0]       r_word = r_addr[4:2];
 
-// hit?
+// hit? One bit per way; the answer's way select takes these directly
+// (each way's hit gates its own word), the encoded number serves the rest.
+logic [WAYS-1:0] hit_w;
 logic            hit;
 logic [1:0]      hit_sel;
 always_comb begin
-	hit = 1'b0; hit_sel = 2'd0;
-	for (int w = 0; w < WAYS; w++)
-		if (tag_q[w].valid && tag_q[w].tag == r_tag) begin hit = 1'b1; hit_sel = w[1:0]; end
+	hit_sel = 2'd0;
+	for (int w = 0; w < WAYS; w++) begin
+		hit_w[w] = tag_q[w].valid && tag_q[w].tag == r_tag;
+		if (hit_w[w]) hit_sel = w[1:0];
+	end
+	hit = |hit_w;
 end
 
 // the victim: an invalid way, else what the pseudo-LRU tree says
@@ -231,7 +236,11 @@ assign rdata  = LATE_ANSWER ? ans_data_q : ans_data;
 logic [31:0] way_word [WAYS];
 always_comb
 	for (int w = 0; w < WAYS; w++) way_word[w] = data_q[w][255 - 32*r_word -: 32];
-wire [31:0] hit_word = way_word[hit_sel];
+logic [31:0] hit_word;
+always_comb begin
+	hit_word = '0;
+	for (int w = 0; w < WAYS; w++) hit_word |= way_word[w] & {32{hit_w[w]}};
+end
 
 // the store's bytes merged into that word, which is then written whole
 logic [31:0] st_mask;

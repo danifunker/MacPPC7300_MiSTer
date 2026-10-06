@@ -917,6 +917,37 @@ How the rules apply, decided before step 1 and followed in it:
   data select 1.8, 2.0 ns of routing into the memory unit, its two-word
   window and byte mask 1.0, 1.4 ns into the WB mux. What the fitter adds
   in routing there is what would have to go.
+- Two small ones, built together (2026-10-06, the tenth cut): the
+  sequencer's three index assignments made unconditional after its case
+  (its two nop cases zeroed the whole operation, which put the decoded
+  `seq` back in front of the read indexes: `id_insn` into `ex_a` 2.1 ns
+  short), and the HID0 flash-invalidate registered, so that the commit
+  decision (`ex_abort`, a net of 698 inputs) no longer reaches the data
+  cache's grant and RAM address through `inval_all`, which the cache takes
+  combinationally (2.0 ns short, 730 paths); the invalidation starts a
+  cycle later, which nothing can see, the instruction after the `mtspr`
+  being refetched. Whole suite and both replays green; the cache directed
+  test is 2 cycles longer out of 1,419 (one per flash invalidate), every
+  other count identical. Fit: see the next entry's base.
+- The one-hot way select in the cache's answer, built (2026-10-06, the
+  eleventh cut): each way's hit gates its own word and the four are ORed,
+  instead of an encoded two-bit select with a fan-out of 178 in front of
+  a 4:1 mux; the encoded number stays for the victim and the LRU. Whole
+  suite green, cycle counts identical. On the tenth cut's base: 63.7 MHz
+  worst case (64.2 at the cold corner), 15,678 ALMs, 13,202 registers;
+  the cache's answer into `wb_result` is 1.4 ns short and off the top of
+  the list (the tag RAM's 2.5 ns, the compare 3.0 with a fan-out of 147
+  on each way's hit and 2.3 ns of routing, the AND-OR 0.5, the hit/miss
+  select 2.1, the memory unit's window and mask 1.7, 1.7 ns into the WB
+  mux). What leads now, 2.4 ns short with 392 paths: the memory unit's
+  second-word address, `addr + 4` made with a 32-bit adder in the request
+  cycle for the second word of a misaligned access, through the MMU's
+  translation into the data cache's RAM address (`mem_unit|state.S_REQ1`
+  and `mem_ea` into `word.ram`); a register with the address plus four,
+  loaded with `mem_ea`, and a mux would take the adder out. Then the
+  decode of `mtspr` and the refetching instructions through the redirect
+  into the ITLB's read-ahead (2.0), and the cache's hit decision into
+  the redirect and `pc_f` (1.75).
 
 ### M6: real ROM, first MiSTer build
 
