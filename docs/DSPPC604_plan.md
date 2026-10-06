@@ -928,7 +928,11 @@ How the rules apply, decided before step 1 and followed in it:
   cycle later, which nothing can see, the instruction after the `mtspr`
   being refetched. Whole suite and both replays green; the cache directed
   test is 2 cycles longer out of 1,419 (one per flash invalidate), every
-  other count identical. Fit: see the next entry's base.
+  other count identical. Fit: 64.8 MHz worst case (65.8 at the cold
+  corner), 15,598 ALMs, 13,387 registers; the cache's answer into
+  `wb_result` leads at 2.1 ns short with 1,998 paths, and every other
+  family is above 1.64, that is above the 66 MHz line (1.82) for the
+  first time; ID's residual path is gone.
 - The one-hot way select in the cache's answer, built (2026-10-06, the
   eleventh cut): each way's hit gates its own word and the four are ORed,
   instead of an encoded two-bit select with a fan-out of 178 in front of
@@ -947,7 +951,12 @@ How the rules apply, decided before step 1 and followed in it:
   loaded with `mem_ea`, and a mux would take the adder out. Then the
   decode of `mtspr` and the refetching instructions through the redirect
   into the ITLB's read-ahead (2.0), and the cache's hit decision into
-  the redirect and `pc_f` (1.75).
+  the redirect and `pc_f` (1.75). Between this fit and the tenth cut's,
+  the same families move by up to a nanosecond: the second-word adder is
+  below 1.4 ns short in the one and 2.4 in the other, the cache's answer
+  2.1 and 1.4. So the design sits at the 66 MHz line, each fit putting
+  one family or another just past it; what remains is as much the
+  fitter's placement as the logic.
 
 ### M6: real ROM, first MiSTer build
 
