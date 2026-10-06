@@ -64,8 +64,16 @@
 //    are read a cycle ahead (the predicted fetch address, the effective
 //    address as an access leaves EX), so a hit costs no time.
 //
-//  Not here yet: caches, the reservation and cache instructions, trace and
-//  machine-check exceptions, little-endian mode.
+//  Reservation and cache instructions
+//    lwarx sets the reservation when its load completes; stwcx. is two
+//    operations, the store (made only if the reservation is set, which it
+//    clears) and then CR0 from the outcome, so that no memory operation
+//    writes a status register. dcbz is eight word stores of zero. dcbf,
+//    dcbst, dcbi and icbi translate their address and do nothing else until
+//    there is a cache; dcbt and dcbtst do nothing at all.
+//
+//  Not here yet: caches, trace and machine-check exceptions, little-endian
+//  mode.
 //
 //============================================================================
 
@@ -214,6 +222,8 @@ logic [63:0] mem_result;    // from EX (a load's comes from memory instead)
 logic [31:0] mem_ea;
 logic        mem_load;
 logic        mem_store;
+logic        mem_touch;     // translate only
+logic        mem_line;      // part of a dcbz
 logic [3:0]  mem_n;
 logic        mem_sext;
 logic        mem_brev;
@@ -583,7 +593,8 @@ wire        is_xlate  = is_tlbie | (is_sys & (ex_dec.sys == SYS_MTSR)) |
                         (is_mtspr & ((ex_dec.spr == 10'd25) | (ex_dec.spr[9:4] == 6'b100001)));
 wire [31:0] next_pc   = is_rfi ? {srr0[31:2], 2'b00} : br_taken ? br_target : ex_pc4;
 wire [31:0] vec_base  = {{12{msr[MSR_IP]}}, 8'h00, 12'h000};
-assign redir_pc = mem_fault ? (vec_base | 32'h300) : ex_exc ? (vec_base | {20'd0, exc_vector}) : next_pc;
+assign redir_pc = mem_fault ? (vec_base | (mu_falign ? 32'h600 : 32'h300)) :
+                  ex_exc    ? (vec_base | {20'd0, exc_vector}) : next_pc;
 wire   ex_final = ex_leave & ~ex_exc & ex_last;
 assign redir    = mem_fault |
                   (ex_leave & (ex_exc | (ex_last & (is_rfi | is_mtmsr | is_xlate | (next_pc != ex_pred)))));
@@ -692,9 +703,17 @@ wire        trap_hit = (ex_dec.bo[4] & trap_lts) | (ex_dec.bo[3] & ~trap_lts & ~
                        (ex_dec.bo[1] & trap_ltu) | (ex_dec.bo[0] & ~trap_ltu & ~trap_eq);
 wire x_sc     = is_sys & (ex_dec.sys == SYS_SC);
 wire x_trap   = is_sys & (ex_dec.sys == SYS_TRAP) & trap_hit;
+// the effective address: for dcbz, one word of the line
+wire [31:0] ex_ea = ex_dec.mem_line ? {int_result[31:5], ex_dec.line_word, 2'b00} : int_result;
+
 // the 604 does not perform these accesses unless they are word-aligned
-wire x_align_w = (ex_dec.mem_rd | ex_dec.mem_wr) & ((ex_dec.seq == SEQ_MULTI) | ex_dec.mem_fp) &
+wire x_align_w = (ex_dec.mem_rd | ex_dec.mem_wr) &
+                 ((ex_dec.seq == SEQ_MULTI) | ex_dec.mem_fp | (ex_dec.resv != RESV_NONE)) &
                  (int_result[1:0] != 2'b00);
+// ... and dcbz takes an alignment exception while the data cache is
+// disabled or locked (HID0[DCE], HID0[DLOCK]); the same for a write-through
+// or cache-inhibited page is decided in MEM, where the page is known
+wire x_align_z = ex_dec.mem_line & ex_first & (~hid0[14] | hid0[12]);
 // ... nor a string operation that is not word-aligned and crosses a 4 KB
 // boundary, or is word-aligned and crosses a 256 MB boundary (604 manual
 // 2.3.4.3); checked on its first access, which carries the whole count
@@ -702,7 +721,7 @@ wire [12:0] str_end   = {1'b0, int_result[11:0]} + {6'd0, ex_dec.str_bytes};
 wire        str_4k    = str_end[12] & (str_end[11:0] != 12'd0);
 wire        x_align_s = (ex_dec.str_bytes != 7'd0) & str_4k &
                         ((int_result[1:0] != 2'b00) | (&int_result[27:12]));
-wire x_align  = x_align_w | x_align_s;
+wire x_align  = x_align_w | x_align_s | x_align_z;
 // eciwx and ecowx: a DSI, this machine having no external control facility
 wire x_ecx    = ex_dec.mem_ext;
 
@@ -732,15 +751,34 @@ always_comb begin
 end
 
 // what the alignment handler is told about the instruction
-wire [31:0] align_dsisr = (ex_insn[31:26] == 6'd31)
-	? {15'd0, ex_insn[2:1], ex_insn[6],  ex_insn[10:7],  ex_insn[25:21], ex_insn[20:16]}
-	: {15'd0, 2'b00,        ex_insn[26], ex_insn[30:27], ex_insn[25:21], ex_insn[20:16]};
+function automatic logic [31:0] align_info(input logic [31:0] insn);
+	begin
+		align_info = (insn[31:26] == 6'd31)
+			? {15'd0, insn[2:1], insn[6],  insn[10:7],  insn[25:21], insn[20:16]}
+			: {15'd0, 2'b00,     insn[26], insn[30:27], insn[25:21], insn[20:16]};
+	end
+endfunction
+wire [31:0] align_dsisr = align_info(ex_insn);
 // ... and the DSI handler about eciwx/ecowx: DSISR[11], and [6] for a store
 wire [31:0] ecx_dsisr = 32'h00100000 | (ex_dec.mem_wr ? 32'h02000000 : 32'd0);
 
 // MSR on exception entry: interrupts, translation, floating point and user
 // mode off; ME, IP and ILE kept; LE takes ILE
 wire [31:0] msr_exc = (msr & 32'h00011040) | {31'd0, msr[16]};
+
+// ---- the reservation ---------------------------------------------------------
+// Set when lwarx's load completes, cleared when stwcx.'s store completes,
+// with no address compare (as the 604 and dingusppc). An exception leaves it
+// alone. stwcx. in EX decides on the value as of the end of this cycle, so a
+// lwarx completing in MEM at the same time counts.
+logic resv_valid;
+logic stwcx_ok;        // the last stwcx. found the reservation and stored
+logic mem_resv_set;    // the access in MEM is lwarx's
+logic mem_resv_clr;    // ... stwcx.'s, and was made
+
+wire  mem_done_ok = mem_leave & ~mem_fault;
+wire  resv_next   = (resv_valid | (mem_done_ok & mem_resv_set)) & ~(mem_done_ok & mem_resv_clr);
+wire  stwcx_store = (ex_dec.resv == RESV_STORE) & resv_next;
 
 logic [31:0] cr_next;
 logic [31:0] xer_next;
@@ -810,6 +848,7 @@ always_comb begin
 				fpscr_next = fsys_fpscr;
 				cr_next    = cr_insert(cr, ex_dec.cr_fld, fsys_cr);
 			end
+			SYS_STWCX_CR: cr_next = cr_insert(cr, 3'd0, {2'b00, stwcx_ok, xer[31]});
 			default: ;
 		endcase
 
@@ -828,7 +867,8 @@ wire [6:0]  ex_rd     = ex_dec.frd_wr ? {2'b10, ex_dec.frd} : {1'b0, ex_dec.rd};
 wire        ex_rd_wr  = ex_dec.rd_wr | (ex_dec.frd_wr & (~is_fpu | fpu_result_we));
 
 // what a store writes
-wire [63:0] ex_wdata  = ~ex_dec.mem_fp   ? {32'd0, op_c} :
+wire [63:0] ex_wdata  = ex_dec.mem_line  ? 64'd0 :
+                        ~ex_dec.mem_fp   ? {32'd0, op_c} :
                         ex_dec.mem_fsgl  ? {32'd0, fp_double_to_single(fop_b)} : fop_b;
 
 always_ff @(posedge clk) begin
@@ -870,6 +910,10 @@ always_ff @(posedge clk) begin
 		dec_r      <= dec_r - 32'd1;
 		if (dec_r == 32'd0) dec_pending <= 1'b1;
 	end
+
+	// the reservation
+	resv_valid <= resv_next;
+	if (ex_leave & ~ex_abort & (ex_dec.resv == RESV_STORE)) stwcx_ok <= stwcx_store;
 
 	// commit CR, XER, LR, CTR, FPSCR, MSR and the SPRs
 	if (ex_leave & ~ex_abort) begin
@@ -922,18 +966,20 @@ always_ff @(posedge clk) begin
 		if (irq_dec) dec_pending <= 1'b0;
 	end
 
-	// ... for the access in MEM that cannot be made (EX did not commit)
+	// ... for the access in MEM that cannot be made (EX did not commit): a
+	// DSI, or the alignment exception of dcbz on a page it may not touch
 	if (mem_fault) begin
 		ex_valid <= 1'b0;
 		srr0  <= mem_pc;
 		srr1  <= msr & SRR1_MASK;
 		msr   <= msr_exc;
 		dar   <= mu_dar;
-		dsisr <= mu_dsisr;
+		dsisr <= mu_falign ? align_info(mem_insn) : mu_dsisr;
 	end
 
 	if (reset) begin
 		ex_valid    <= 1'b0;
+		resv_valid  <= 1'b0;
 		cr          <= 32'd0;
 		xer         <= 32'd0;
 		lr          <= 32'd0;
@@ -953,9 +999,11 @@ end
 // ============================================================================
 logic        mu_resp;
 logic        mu_fault;
+logic        mu_falign;     // ... and it is an alignment exception, not a DSI
 logic [63:0] mu_rdata;
 logic [31:0] mu_dsisr;
 logic [31:0] mu_dar;
+logic        mu_btouch;     // the bus request is a translation only
 
 // what a load delivers to its register
 wire [63:0] mem_ldata = (mem_fp & mem_fsgl) ? fp_single_to_double(mu_rdata[31:0]) : mu_rdata;
@@ -966,6 +1014,7 @@ DSPPC604_mem_unit mem_unit
 	.reset       (reset),
 	.req_valid   (mem_valid & (mem_load | mem_store)),
 	.we          (mem_store),
+	.touch       (mem_touch),
 	.addr        (mem_ea),
 	.nbytes      (mem_n),
 	.sext        (mem_sext),
@@ -977,6 +1026,7 @@ DSPPC604_mem_unit mem_unit
 	.rdata       (mu_rdata),
 	.dbus_req    (mu_req),
 	.dbus_we     (mu_we),
+	.dbus_touch  (mu_btouch),
 	.dbus_addr   (mu_addr),
 	.dbus_be     (mu_be),
 	.dbus_wdata  (mu_wdata),
@@ -1015,9 +1065,11 @@ DSPPC604_mmu #(.TLB_BITS (TLB_BITS)) mmu
 	.ibus_rvalid (ibus_rvalid),
 	.ibus_rdata  (ibus_rdata),
 	.d_pre       (ex_leave & ~ex_abort & (ex_dec.mem_rd | ex_dec.mem_wr)),
-	.d_ea_next   (int_result),
+	.d_ea_next   (ex_ea),
 	.d_req       (mu_req),
 	.d_we        (mu_we),
+	.d_touch     (mu_btouch),
+	.d_line      (mem_line),
 	.d_addr      (mu_addr),
 	.d_be        (mu_be),
 	.d_wdata     (mu_wdata),
@@ -1026,6 +1078,7 @@ DSPPC604_mmu #(.TLB_BITS (TLB_BITS)) mmu
 	.d_rvalid    (mu_rvalid),
 	.d_rdata     (mu_bus_rdata),
 	.d_fault     (mu_bfault),
+	.d_falign    (mu_falign),
 	.d_dsisr     (mu_dsisr),
 	.d_dar       (mu_dar),
 	.dbus_req    (dbus_req),
@@ -1049,9 +1102,13 @@ always_ff @(posedge clk) begin
 		mem_rd     <= ex_rd;
 		mem_rd_wr  <= ex_rd_wr;
 		mem_result <= ex_result;
-		mem_ea     <= int_result;
+		mem_ea     <= ex_ea;
 		mem_load   <= ex_dec.mem_rd;
-		mem_store  <= ex_dec.mem_wr;
+		mem_store  <= ex_dec.mem_wr & ((ex_dec.resv != RESV_STORE) | stwcx_store);
+		mem_touch  <= ex_dec.mem_touch;
+		mem_line   <= ex_dec.mem_line;
+		mem_resv_set <= (ex_dec.resv == RESV_SET);
+		mem_resv_clr <= stwcx_store;
 		mem_n      <= ex_dec.mem_n;
 		mem_sext   <= ex_dec.mem_sext;
 		mem_brev   <= ex_dec.mem_brev;

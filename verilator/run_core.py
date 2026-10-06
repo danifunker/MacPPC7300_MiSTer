@@ -120,6 +120,7 @@ def main():
         ("each exception once", ["exctest"], ["--stall", "10"]),
         ("floating-point enabled exceptions", ["fpexctest"], []),
         ("address translation, DSI, ISI", ["mmutest"], ["--stall", "20", "--seed", "5"]),
+        ("lwarx/stwcx., dcbz, cache ops", ["resvtest"], ["--stall", "25"]),
         ("external interrupts", ["irqtest", "3000"], ["--irq-every", "97", "--stall", "10"]),
         ("decrementer interrupts", ["irqtest", "3000"], ["--tb-run"]),
         ("both, with wait states", ["irqtest", "3000"], ["--irq-every", "61", "--tb-run", "--stall", "30"]),

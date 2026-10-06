@@ -297,6 +297,20 @@ int main(int argc, char** argv) {
 						// two places where dingusppc sets SRR1 bits it should not
 						if (vec == 0xC00) ref_set_spr(27, ref_get_spr(27) & ~0x00020000u);
 						if (vec == 0x800) ref_set_spr(27, ref_get_spr(27) & ~0x00100000u);
+						// dingusppc clears CR0 before stwcx.'s store, so a DSI there
+						// leaves CR0 changed; a 604 leaves it alone (the programs keep
+						// the code where its address is its physical address)
+						if (vec == 0x300) {
+							const uint8_t* rm = ref_ram();
+							uint32_t a = ref_get_spr(26) & RAM_MASK & ~3u;
+							uint32_t w = (uint32_t)rm[a] << 24 | (uint32_t)rm[a + 1] << 16 | (uint32_t)rm[a + 2] << 8 | rm[a + 3];
+							if ((w >> 26) == 31 && ((w >> 1) & 0x3FF) == 150) {
+								ref_state_t t{};
+								ref_get_state(&t);
+								t.cr = before.cr;
+								ref_set_state(&t);
+							}
+						}
 						ref_get_state(&before);
 					}
 					if (before.pc != pc) {

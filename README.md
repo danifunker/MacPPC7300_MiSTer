@@ -19,7 +19,8 @@ still the MiSTer template's test pattern.
 | Floating point in the pipeline | the 25,598 FP vectors pass when run as a program; FP loads, stores and FPSCR instructions agree with the software model (no hardware data for those yet) |
 | Exceptions, supervisor state | program, FP unavailable, system call, alignment, external and decrementer interrupts; MSR and the SPRs; checked in lockstep and by directed tests |
 | MMU | BATs, segment registers, hardware page-table walk with R and C bits, ITLB and DTLB, `tlbie`, DSI and ISI; directed tests and lockstep with translation on |
-| Caches, reservation and cache instructions | not started; see [the plan](docs/DSPPC604_plan.md) |
+| `lwarx`/`stwcx.`, `dcbz`, cache instructions | done; the cache instructions translate their address and wait for the caches to have more to do |
+| Caches | not started; see [the plan](docs/DSPPC604_plan.md) |
 | Machine (chipset, video, SCSI, ...) | not started |
 
 Size and speed of what exists, each synthesised on its own for the DE10-Nano's
@@ -175,8 +176,9 @@ Tests the pipeline, five ways:
    instructions) with the state `fpmodel.py` expects after every instruction.
 4. Each exception once, with what its handler must find; address
    translation with every cause of DSI and ISI and the page table's R and C
-   bits; and a loop with known results under thousands of external and
-   decrementer interrupts.
+   bits; `lwarx`/`stwcx.`, `dcbz` and the cache instructions; and a loop
+   with known results under thousands of external and decrementer
+   interrupts.
 5. Random programs in lockstep with dingusppc's interpreter
    (`verilator/ref` builds it as a library from `..\dingusppc`), including
    supervisor instructions, mode switches and exceptions: the registers and

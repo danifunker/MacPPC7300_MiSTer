@@ -45,7 +45,8 @@ package DSPPC604_pkg;
 		SYS_MTMSR,
 		SYS_MFSR,      // segment registers; the number comes from operand B when rb_rd is set
 		SYS_MTSR,
-		SYS_TLBIE      // the effective address is operand B
+		SYS_TLBIE,     // the effective address is operand B
+		SYS_STWCX_CR   // stwcx.'s second operation: CR0 from whether the store was made
 	} sys_op_t;
 
 	// Where a branch goes.
@@ -63,8 +64,17 @@ package DSPPC604_pkg;
 		SEQ_UPDATE,    // load/store with update: the access, then rA <- EA
 		SEQ_MULTI,     // lmw, stmw: one word per register
 		SEQ_STRI,      // lswi, stswi: byte count in the instruction
-		SEQ_STRX       // lswx, stswx: byte count in XER
+		SEQ_STRX,      // lswx, stswx: byte count in XER
+		SEQ_DCBZ,      // dcbz: eight word stores of zero
+		SEQ_STWCX      // stwcx.: the conditional store, then CR0
 	} seq_t;
+
+	// What a load or store does to the reservation.
+	typedef enum logic [1:0] {
+		RESV_NONE,
+		RESV_SET,      // lwarx: set when the load completes
+		RESV_STORE     // stwcx.: store only if set; clear when the store completes
+	} resv_t;
 
 	// Register 32 is a scratch register that only the sequencer can name.
 	localparam logic [5:0] REG_TEMP = 6'd32;
@@ -181,6 +191,10 @@ package DSPPC604_pkg;
 		logic [6:0]  str_bytes;    // string forms: bytes in the whole operation, on its
 		                           // first access only (the alignment check is made there)
 		logic        mem_ext;      // eciwx, ecowx: a DSI, there being no external control facility
+		logic        mem_touch;    // dcbf, dcbst, dcbi, icbi: translate the address, access nothing
+		logic        mem_line;     // dcbz: the access is word line_word of the 32-byte line at EA, data zero
+		logic [2:0]  line_word;
+		resv_t       resv;
 		seq_t        seq;
 
 		// branch

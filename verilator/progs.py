@@ -9,6 +9,7 @@
                                                  state fpmodel.py expects after every instruction
     python progs.py exctest OUT                  each exception once, with what its handler must see
     python progs.py mmutest OUT                  address translation: BATs, page tables, DSI, ISI, tlbie
+    python progs.py resvtest OUT                 lwarx/stwcx., dcbz and the cache instructions
     python progs.py irqtest OUT [LOOPS]          a computation that interrupts must not disturb
                                                  (run with --irq-every and --tb-run)
 
@@ -543,6 +544,149 @@ def mmutest(out):
     print("%d instructions, %d checks, %d memory words -> %s" % (len(p.words), len(p.checks), len(p.expect), out))
 
 
+def resvtest(out):
+    """lwarx/stwcx., dcbz and the cache instructions: CR0 and memory after
+    stwcx. with and without a reservation and across an exception; dcbz
+    zeroing a line, and its alignment exception with the data cache off or
+    on a cache-inhibited page; dcbf/dcbst/icbi/dcbi doing nothing but
+    translating (DSI, protection, the R and C bits); their alignment and
+    privilege rules."""
+    p = Program()
+    HID0, DCE = 1008, 0x4000
+    st = {"r": [0, 0, 0, 0], "cr": 0, "xer": 0, "msr": 0}
+
+    body = [mfspr(SRR0, 3), mfspr(SRR1, 4), mfspr(DAR, 5), mfspr(DSISR, 6)]
+    for vec in (0x300, 0x600, 0x700):
+        for i, w in enumerate(body + [D(14, 30, 3, 4), mtspr(SRR0, 30), RFI]):
+            p.data[vec + 4 * i] = w
+    for i, w in enumerate([mfspr(SRR0, 30), mfspr(SRR1, 31), D(26, 31, 31, MSR_PR), mtspr(SRR1, 31), RFI]):
+        p.data[0xC00 + 4 * i] = w
+
+    def check(tag):
+        p.words.append(NOP)
+        p.checks.append((len(p.words) - 1, check_text(
+            list(st["r"]), st["cr"], st["xer"], 0, 0, [0, 0, 0, 0], tag)))
+
+    def expect(insn, vec, info=0, dar=None, dsisr=None):
+        at = p.pc()
+        p.words.append(insn)
+        st["r"][0] = at
+        st["r"][1] = (st["msr"] & 0x87C0FFFF) | info
+        if dar is not None:
+            st["r"][2], st["r"][3] = dar, dsisr
+        check("x%03X_%d" % (vec, len(p.checks)))
+
+    def x_dsisr(insn):
+        return (((insn >> 1) & 3) << 15) | (((insn >> 6) & 1) << 14) | (((insn >> 7) & 15) << 10) | \
+               (((insn >> 21) & 31) << 5) | ((insn >> 16) & 31)
+
+    def load(reg, ra, d, value):
+        p.words.append(D(32, reg, ra, d))
+        st["r"][reg - 3] = value
+        check("ld%d" % len(p.checks))
+
+    def stwcx(rs, ra, rb, ok):
+        p.words.append(X(rs, ra, rb, 150, 1))
+        st["cr"] = (st["cr"] & 0x0FFFFFFF) | ((0x20000000 if ok else 0) | ((st["xer"] >> 3) & 0x10000000))
+        check("stwcx%d" % len(p.checks))
+
+    LINE = DATA_A + 0x40                     # a line of known words, with neighbours
+    for i in range(-2, 10):
+        p.data[LINE + 4 * i] = 0x11111111 * ((i + 2) % 9 + 1)
+    p.words += set_msr(0, 7)
+    p.words += li32(9, DATA_A) + li32(10, LINE + 0x17) + li32(11, 0xABCD1234) + li32(12, 0x55AA55AA) + li32(0, 0)
+    p.words += li32(13, DATA_A + 2)
+
+    # ---- dcbz with the data cache off: alignment exception ----
+    dcbz = X(0, 0, 10, 1014)
+    expect(dcbz, 0x600, dar=LINE + 0x17, dsisr=x_dsisr(dcbz))
+    p.words += li32(7, DCE) + [mtspr(HID0, 7)]
+    p.words.append(dcbz)                                                     # zeroes LINE .. LINE+1F
+    check("dcbz")
+    for i in range(-2, 10):
+        p.expect[LINE + 4 * i] = 0 if 0 <= i < 8 else 0x11111111 * ((i + 2) % 9 + 1)
+
+    # ---- the reservation ----
+    p.words.append(X(5, 0, 9, 20))                                           # lwarx r5,0,r9
+    st["r"][2] = 0
+    check("lwarx")
+    stwcx(11, 0, 9, True)
+    load(5, 9, 0, 0xABCD1234)
+    stwcx(12, 0, 9, False)                                                   # no reservation: not stored
+    load(5, 9, 0, 0xABCD1234)
+    p.words.append(X(5, 0, 9, 20))
+    p.words.append(0x44000002)                                               # sc: to user mode and ...
+    st["msr"] |= MSR_PR
+    p.words.append(0x44000002)                                               # ... back; the reservation survives
+    st["msr"] &= ~MSR_PR
+    stwcx(12, 0, 9, True)
+    load(5, 9, 0, 0x55AA55AA)
+    p.words += li32(7, 0x80000000) + [mtspr(XER, 7)]                         # SO shows in CR0
+    st["xer"] = 0x80000000
+    p.words.append(X(5, 0, 9, 20))
+    stwcx(11, 0, 9, True)
+    stwcx(11, 0, 9, False)
+    p.words += li32(7, 0) + [mtspr(XER, 7)]
+    st["xer"] = 0
+    lwarx_u = X(5, 0, 13, 20)
+    expect(lwarx_u, 0x600, dar=DATA_A + 2, dsisr=x_dsisr(lwarx_u))          # not word-aligned
+    stwcx_u = X(11, 0, 13, 150, 1)
+    expect(stwcx_u, 0x600, dar=DATA_A + 2, dsisr=x_dsisr(stwcx_u))
+    st["cr"] = st["cr"]                                                      # CR0 untouched by the faulting stwcx.
+
+    # ---- cache instructions, translation off: nothing happens ----
+    for xo in (54, 86, 982, 470):                                            # dcbst dcbf icbi dcbi
+        p.words.append(X(0, 0, 13, xo))
+    check("cacheops")
+    p.words.append(0x44000002)
+    st["msr"] |= MSR_PR
+    expect(X(0, 0, 13, 470), 0x700, info=0x00040000)                        # dcbi is privileged
+    p.words.append(0x44000002)
+    st["msr"] &= ~MSR_PR
+
+    # ---- with translation: the pages decide ----
+    srs = {n: 0x200 + n for n in range(16)}
+    sdr1 = 0x00100000
+    table = PageTable(p, sdr1, srs)
+    RW, CI, RO, HOLE = 0x00700000, 0x00701000, 0x00702000, 0x00703000
+    table.map(RW, 0x00A00000, 2, r_final=1, c_final=1)                      # dcbz zeroes here
+    table.map(CI, 0x00A01000, 2, wimg=4, r_final=1)                         # cache-inhibited: dcbz is alignment
+    table.map(RO, 0x00A02000, 3, r_final=1)                                 # dcbst/dcbf/icbi may, dcbi may not
+    for i in range(8):
+        p.data[0x00A00020 + 4 * i] = 0x22222222
+    for n, v in srs.items():
+        p.words += li32(7, v) + [mtsr(n, 7)]
+    for spr, v in ((IBAT0U, batu(0, 8, 1, 1)), (IBAT0U + 1, batl(0, 2)),
+                   (DBAT0U, batu(0, 8, 1, 1)), (DBAT0U + 1, batl(0, 2)), (SDR1, sdr1)):
+        p.words += li32(7, v) + [mtspr(spr, 7)]
+    p.words += li32(14, RW + 0x2C) + li32(15, CI + 0x10) + li32(16, RO + 0x30) + li32(17, HOLE + 0x40)
+    p.words += set_msr(MSR_IR | MSR_DR, 7)
+    st["msr"] = MSR_IR | MSR_DR
+    p.words.append(X(0, 0, 14, 1014))                                        # dcbz: line at RW+20
+    check("dcbz_x")
+    for i in range(8):
+        p.expect[0x00A00020 + 4 * i] = 0
+    dz = X(0, 0, 15, 1014)
+    expect(dz, 0x600, dar=CI + 0x00, dsisr=x_dsisr(dz))                     # cache-inhibited page: alignment
+    dz = X(0, 0, 17, 1014)
+    expect(dz, 0x300, dar=HOLE + 0x40, dsisr=0x42000000)                    # no page: DSI, a store
+    for xo in (54, 86, 982):                                                 # dcbst dcbf icbi on the read-only page
+        p.words.append(X(0, 0, 16, xo))
+    check("touch_ro")
+    expect(X(0, 0, 16, 470), 0x300, dar=RO + 0x30, dsisr=0x0A000000)        # dcbi: a store
+    expect(X(0, 0, 17, 86), 0x300, dar=HOLE + 0x40, dsisr=0x40000000)       # dcbf: no page
+    expect(X(0, 0, 17, 982), 0x300, dar=HOLE + 0x40, dsisr=0x40000000)      # icbi
+    p.words.append(X(0, 0, 14, 470))                                         # dcbi on the RW page: C set
+    check("dcbi_rw")
+    p.words += set_msr(0, 7)
+    st["msr"] = 0
+
+    p.expect.update(table.ptes)
+    p.words.append(B_SELF)
+    p.write(out)
+    print("%d instructions, %d checks, %d memory words -> %s" % (len(p.words), len(p.checks), len(p.expect), out))
+
+
 def irqtest(out, loops):
     """A loop whose results are known, running with interrupts enabled. The
     external and decrementer handlers each count in memory (00FFFFE0 and
@@ -831,6 +975,7 @@ def gen_random(out, count, seed, translate=False):
                        (DBAT0U, batu(0, 8, 1, 1)), (DBAT0U + 1, batl(0, 2)), (SDR1, sdr1)):
             p.words += li32(3, v) + [mtspr(spr, 3)]
     msr_base = (MSR_IR | MSR_DR) if translate else 0
+    p.words += li32(3, 0xC000) + [mtspr(1008, 3)]                            # HID0: caches on, for dcbz
     p.words += set_msr(msr_base, 3)
     p.words += li32(0, rnd.randrange(0, 40))
     p.words += li32(1, DATA_A)
@@ -941,8 +1086,37 @@ def gen_random(out, count, seed, translate=False):
 
     def memory():
         """A group that loads or stores."""
-        k = rnd.randrange(12)
+        k = rnd.randrange(15)
         d = rnd.randrange(-256, 256)
+        if k == 12:
+            # lwarx/stwcx. on a fixed, always mapped address: dingusppc sets
+            # its reservation before lwarx's load and clears CR0 before
+            # stwcx.'s store, so neither may take a DSI here
+            t = rd()
+            addr = (DATA_A if bit() else (DATA_B & ~3)) + 4 * rnd.randrange(64)
+            words = li32(t, addr)
+
+            def other():
+                u = rd()
+                while u == t:
+                    u = rd()
+                return u
+            if rnd.random() < 0.8:
+                words.append(X(other(), 0, t, 20))                                    # lwarx
+            for _ in range(rnd.randrange(3)):
+                words.append(D(14, other(), 0, rnd.getrandbits(16)))                  # li
+            if rnd.random() < 0.9:
+                words.append(X(rs(), 0, t, 150, 1))                                   # stwcx.
+            return words
+        if k == 13 or (k == 14 and translate):
+            # dcbz on the line the in-page copy of the base points at
+            t = rd()
+            return [M(21, base(), t, 0, 27, 19), X(0, 0, t, 1014)]
+        if k == 14:
+            # the other cache instructions: no-ops on both sides without
+            # translation (dingusppc does not translate them at all)
+            t = rd()
+            return [M(21, base(), t, 0, 27, 19), X(0, 0, t, rnd.choice((54, 86, 982, 470)))]
         if k == 0:
             return [D(rnd.choice((32, 34, 40, 42)), rd(), base(), d)]                 # lwz lbz lhz lha
         if k == 1:
@@ -1064,6 +1238,8 @@ if __name__ == "__main__":
         fpexctest(a[1])
     elif len(a) >= 2 and a[0] == "mmutest":
         mmutest(a[1])
+    elif len(a) >= 2 and a[0] == "resvtest":
+        resvtest(a[1])
     elif len(a) >= 2 and a[0] == "irqtest":
         irqtest(a[1], int(a[2]) if len(a) > 2 else 3000)
     elif len(a) >= 3 and a[0] == "fprandom":

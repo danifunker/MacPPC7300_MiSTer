@@ -76,6 +76,8 @@ module DSPPC604_mmu
 	input  logic [31:0] d_ea_next,
 	input  logic        d_req,
 	input  logic        d_we,
+	input  logic        d_touch,              // translate only, no bus access
+	input  logic        d_line,               // dcbz: alignment exception on a W or I page
 	input  logic [29:0] d_addr,               // word address
 	input  logic [3:0]  d_be,
 	input  logic [31:0] d_wdata,
@@ -84,6 +86,7 @@ module DSPPC604_mmu
 	output logic        d_rvalid,
 	output logic [31:0] d_rdata,
 	output logic        d_fault,              // with d_rvalid: not done, a DSI instead
+	output logic        d_falign,             // ... or an alignment exception (dcbz)
 	output logic [31:0] d_dsisr,
 	output logic [31:0] d_dar,
 
@@ -120,6 +123,7 @@ typedef struct packed {
 typedef struct packed {
 	logic        ok;          // pa is the physical address
 	logic        fault;       // take the exception, with info
+	logic        align;       // ... an alignment exception: dcbz on a W or I page
 	logic        miss;        // no entry: walk
 	logic        cwalk;       // entry found, but a store needs the changed bit set: walk
 	logic [31:0] pa;
@@ -139,6 +143,7 @@ function automatic xl_t translate(
 	input logic             on,         // MSR[IR] or MSR[DR]
 	input logic             fetch,
 	input logic             store,
+	input logic             line,       // dcbz: a W or I page is an alignment exception
 	input logic             pr,
 	input logic [31:0]      ea,
 	input logic [7:0][31:0] b,          // this side's four BAT pairs, upper then lower
@@ -148,27 +153,26 @@ function automatic xl_t translate(
 	logic        bhit;
 	logic [31:0] bpa;
 	logic [1:0]  bpp;
-	logic        bg;
+	logic [3:0]  bwimg;
 	logic [10:0] bl;
-	logic        key, g;
+	logic        key;
 	begin
 		translate = '0;
 
 		// block address translation: the lowest-numbered matching BAT
-		bhit = 1'b0; bpa = 32'd0; bpp = 2'b00; bg = 1'b0;
+		bhit = 1'b0; bpa = 32'd0; bpp = 2'b00; bwimg = 4'd0;
 		for (int i = 3; i >= 0; i--) begin
 			bl = b[2*i][12:2];
 			if ((pr ? b[2*i][0] : b[2*i][1]) && (ea[31:28] == b[2*i][31:28]) &&
 			    ((ea[27:17] & ~bl) == (b[2*i][27:17] & ~bl))) begin
-				bhit = 1'b1;
-				bpa  = {b[2*i+1][31:28], (b[2*i+1][27:17] & ~bl) | (ea[27:17] & bl), ea[16:0]};
-				bpp  = b[2*i+1][1:0];
-				bg   = b[2*i+1][3];
+				bhit  = 1'b1;
+				bpa   = {b[2*i+1][31:28], (b[2*i+1][27:17] & ~bl) | (ea[27:17] & bl), ea[16:0]};
+				bpp   = b[2*i+1][1:0];
+				bwimg = b[2*i+1][6:3];
 			end
 		end
 
 		key = pr ? s[29] : s[30];
-		g   = te.wimg[0];
 
 		if (!on) begin
 			translate.ok = 1'b1;
@@ -180,9 +184,13 @@ function automatic xl_t translate(
 				translate.fault = 1'b1;
 				translate.info  = X_PROT | (store ? X_STORE : 32'd0);
 			end
-			else if (fetch & bg) begin
+			else if (fetch & bwimg[0]) begin
 				translate.fault = 1'b1;
 				translate.info  = X_NOEXEC;
+			end
+			else if (line & (bwimg[3] | bwimg[2])) begin
+				translate.fault = 1'b1;
+				translate.align = 1'b1;
 			end
 			else translate.ok = 1'b1;
 		end
@@ -201,9 +209,13 @@ function automatic xl_t translate(
 				translate.fault = 1'b1;
 				translate.info  = X_PROT | (store ? X_STORE : 32'd0);
 			end
-			else if (fetch & g) begin
+			else if (fetch & te.wimg[0]) begin
 				translate.fault = 1'b1;
 				translate.info  = X_NOEXEC;
+			end
+			else if (line & (te.wimg[3] | te.wimg[2])) begin
+				translate.fault = 1'b1;
+				translate.align = 1'b1;
 			end
 			else if (store & ~te.c) translate.cwalk = 1'b1;
 			else translate.ok = 1'b1;
@@ -274,9 +286,9 @@ end
 wire [31:0] d_ea_w = {d_addr, 2'b00};
 
 xl_t ixl, dxl;
-assign ixl = translate(msr_ir, 1'b1, 1'b0, msr_pr, i_addr, bat[7:0],  sr[i_addr[31:28]],
+assign ixl = translate(msr_ir, 1'b1, 1'b0, 1'b0, msr_pr, i_addr, bat[7:0],  sr[i_addr[31:28]],
                        itlb_valid[i_idx], itlb_q);
-assign dxl = translate(msr_dr, 1'b0, d_we, msr_pr, d_ea_w, bat[15:8], sr[d_ea_w[31:28]],
+assign dxl = translate(msr_dr, 1'b0, d_we, d_line, msr_pr, d_ea_w, bat[15:8], sr[d_ea_w[31:28]],
                        dtlb_valid[d_idx], dtlb_q);
 
 // ============================================================================
@@ -297,6 +309,8 @@ logic [31:0] w_ea;
 logic [23:0] w_vsid;
 logic        w_key;
 logic        w_store;
+logic        w_line;         // dcbz: no C bit for a page it will not be allowed to touch
+logic        w_cstore;       // the store will be made: set C
 logic        w_h;            // on the secondary hash
 logic [2:0]  w_i;
 logic [31:0] w_w1;           // PTE word 1 as read
@@ -342,6 +356,8 @@ always_ff @(posedge clk) begin
 		w_key        <= w_start_d ? (msr_pr ? sr[d_ea_w[31:28]][29] : sr[d_ea_w[31:28]][30])
 		                          : (msr_pr ? sr[i_addr[31:28]][29] : sr[i_addr[31:28]][30]);
 		w_store      <= w_start_d & d_we;
+		w_line       <= w_start_d & d_line;
+		w_cstore     <= 1'b0;
 		w_h          <= 1'b0;
 		w_i          <= 3'd0;
 		w_found      <= 1'b0;
@@ -374,9 +390,13 @@ always_ff @(posedge clk) begin
 				end
 				else if (w_moved) begin w_abort <= 1'b1; w_state <= W_END; end
 				else begin
+					// C only for a store that will be made: not dcbz on a
+					// write-through or cache-inhibited page (W = bit 6, I = bit 5)
+					w_cstore <= w_store & ~(w_line & (dbus_rdata[6] | dbus_rdata[5]));
 					w_need_r <= ~dbus_rdata[8];
-					w_need_c <= w_store & ~dbus_rdata[7];
-					w_state  <= (~dbus_rdata[8] | (w_store & ~dbus_rdata[7])) ? W_WR : W_END;
+					w_need_c <= w_store & ~dbus_rdata[7] & ~(w_line & (dbus_rdata[6] | dbus_rdata[5]));
+					w_state  <= (~dbus_rdata[8] | (w_store & ~dbus_rdata[7] & ~(w_line & (dbus_rdata[6] | dbus_rdata[5]))))
+					            ? W_WR : W_END;
 				end
 			end
 			default: w_state <= W_END;      // W_WR
@@ -395,7 +415,7 @@ end
 assign w_we    = w_done & w_found & ~w_pfault & ~w_abort & ~w_moved & ~w_tlbie_seen & ~tlbie;
 assign w_side  = w_side_q;
 assign w_idx   = w_ea[12 +: TLB_BITS];
-assign w_entry = {w_vsid, w_ea[27 -: TAGW], w_w1[31:12], w_w1[7] | w_store, w_w1[6:3], w_w1[1:0]};
+assign w_entry = {w_vsid, w_ea[27 -: TAGW], w_w1[31:12], w_w1[7] | w_cstore, w_w1[6:3], w_w1[1:0]};
 
 // ============================================================================
 //  The data bus: the walker between the memory unit's accesses
@@ -413,22 +433,24 @@ end
 // ============================================================================
 //  The data side
 // ============================================================================
-typedef enum logic [1:0] {
+typedef enum logic [2:0] {
 	D_IDLE,
 	D_WALK,
 	D_RETRY,     // the entry was loaded: read it again
-	D_FAULT      // answer with the fault this cycle
+	D_FAULT,     // answer with the fault this cycle
+	D_TOUCH      // answer a translation-only request this cycle
 } dstate_t;
 
 dstate_t     d_state;
 logic [31:0] d_info_q;
 logic [31:0] d_dar_q;
+logic        d_align_q;
 
 wire         d_ready = ~msr_dr | d_fresh;
 wire [31:0]  d_dar_now = (d_addr == d_ea[31:2]) ? d_ea : d_ea_w;
 
 // the data side's own bus request
-wire d_dreq = (d_state == D_IDLE) & d_req & d_ready & dxl.ok & ~w_bus;
+wire d_dreq = (d_state == D_IDLE) & d_req & d_ready & dxl.ok & ~d_touch & ~w_bus;
 
 always_comb begin
 	d_rd    = 1'b0;
@@ -437,7 +459,7 @@ always_comb begin
 	case (d_state)
 		D_IDLE: if (d_req) begin
 			if (~d_ready)                   d_rd  = 1'b1;
-			else if (dxl.ok)                d_gnt = dbus_gnt & ~w_bus;
+			else if (dxl.ok)                d_gnt = d_touch | (dbus_gnt & ~w_bus);
 			else if (dxl.fault)             d_gnt = 1'b1;
 			else                            w_req_d = 1'b1;     // miss or cwalk
 		end
@@ -453,27 +475,31 @@ always_ff @(posedge clk) begin
 	case (d_state)
 		D_IDLE: if (d_req & d_ready) begin
 			if (dxl.fault) begin
-				d_state  <= D_FAULT;
-				d_info_q <= dxl.info;
-				d_dar_q  <= d_dar_now;
+				d_state   <= D_FAULT;
+				d_info_q  <= dxl.info;
+				d_align_q <= dxl.align;
+				d_dar_q   <= d_dar_now;
 			end
+			else if (dxl.ok & d_touch) d_state <= D_TOUCH;
 			else if (~dxl.ok & w_start_d) d_state <= D_WALK;
 		end
 		D_WALK: if (w_done) begin
 			if (~w_found) begin
-				d_state  <= D_FAULT;
-				d_info_q <= X_NOPAGE | (d_we ? X_STORE : 32'd0);
-				d_dar_q  <= d_dar_now;
+				d_state   <= D_FAULT;
+				d_info_q  <= X_NOPAGE | (d_we ? X_STORE : 32'd0);
+				d_align_q <= 1'b0;
+				d_dar_q   <= d_dar_now;
 			end
 			else if (w_pfault) begin
-				d_state  <= D_FAULT;
-				d_info_q <= X_PROT | (d_we ? X_STORE : 32'd0);
-				d_dar_q  <= d_dar_now;
+				d_state   <= D_FAULT;
+				d_info_q  <= X_PROT | (d_we ? X_STORE : 32'd0);
+				d_align_q <= 1'b0;
+				d_dar_q   <= d_dar_now;
 			end
 			else d_state <= D_RETRY;
 		end
 		D_RETRY: d_state <= D_IDLE;
-		default: d_state <= D_IDLE;         // D_FAULT
+		default: d_state <= D_IDLE;         // D_FAULT, D_TOUCH
 	endcase
 
 	if (d_dreq & dbus_gnt) d_outstanding <= 1'b1;
@@ -485,9 +511,10 @@ always_ff @(posedge clk) begin
 	end
 end
 
-assign d_rvalid = (d_outstanding & dbus_rvalid) | (d_state == D_FAULT);
+assign d_rvalid = (d_outstanding & dbus_rvalid) | (d_state == D_FAULT) | (d_state == D_TOUCH);
 assign d_rdata  = dbus_rdata;
 assign d_fault  = (d_state == D_FAULT);
+assign d_falign = d_align_q;
 assign d_dsisr  = d_info_q;
 assign d_dar    = d_dar_q;
 

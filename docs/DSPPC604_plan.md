@@ -240,7 +240,8 @@ cleared) were each caught by the directed tests.
 
 Left for later, with the milestone that needs them:
 
-- DSI and ISI, `lwarx`/`stwcx.`, the remaining cache instructions: M5.
+- DSI and ISI, `lwarx`/`stwcx.`, the remaining cache instructions: M5
+  (done in its steps 1 and 2).
 - Machine check, trace, the 604's breakpoint and performance-monitor
   interrupts, soft reset, power saving, little-endian mode: no milestone;
   what each would take is under "Known behaviour and open items" below.
@@ -341,6 +342,7 @@ How the rules apply, decided before step 1 and followed in it:
   speculative fetch walks the table.
 - Quartus, whole CPU: 12,049 ALMs (29%), 7 RAM blocks (the two TLBs, the
   branch target buffer, SPRG0-3), 61-65 MHz worst case over three runs.
+  (Measured before step 2, which adds little.)
   The MMU itself is about 1,200 ALMs. The slowest paths are the operand
   forwarding network into the ALU and FPU, as before; the MMU adds to its
   fanout (the DTLB's read-ahead address comes off the effective-address
@@ -350,6 +352,42 @@ How the rules apply, decided before step 1 and followed in it:
   ITLB ahead with the *redirect* address put branch resolution in front of
   the RAM, so it reads ahead with the predicted address and re-reads after
   a redirect into another page. For step 4.
+
+**Step 2, the reservation and cache instructions: done 2026-10-05.**
+
+- `lwarx` is a load that sets the reservation when it completes; `stwcx.`
+  is two operations from the sequencer: the store, made only if the
+  reservation is set and clearing it when it completes, then CR0 from the
+  outcome (EQ for stored, SO from XER). So no memory operation writes a
+  status register, and a `stwcx.` that takes a DSI leaves both CR0 and the
+  reservation alone. There is no address compare and an exception does
+  not clear the reservation, as on the 604 and in dingusppc. Both
+  instructions take the alignment exception at a non-word-aligned address.
+- `dcbz` is eight word stores of zero from the sequencer. It takes the
+  alignment exception with the data cache disabled or locked (HID0[DCE],
+  HID0[DLOCK]; DAR is the address as computed), decided in EX, and on a
+  write-through or cache-inhibited page (DAR is the line), decided in MEM
+  by the translation, through the same path as a DSI; the walker does not
+  set C for a `dcbz` it then refuses. A DSI on `dcbz` names the line.
+- `dcbf`, `dcbst`, `dcbi` and `icbi` translate their address like a load
+  (`dcbi` like a store, and it is privileged), so they take the DSIs and
+  set the R and C bits the architecture gives them, and otherwise do
+  nothing until there is a cache. `dcbt` and `dcbtst` stay no-ops.
+- Verified: a directed program (23 checks, 23 memory words: CR0 and memory
+  after `stwcx.` with and without a reservation, across `sc` into user mode
+  and back, with XER[SO]; `dcbz` zeroing a line and leaving its neighbours;
+  all three alignment cases; the cache instructions on read-only, missing
+  and cache-inhibited pages with the R and C bits), and the random lockstep
+  programs, which now include `lwarx`/`stwcx.` pairs, `dcbz` (hundreds of
+  DSIs on it with translation on) and, without translation, the other
+  cache instructions. Three deliberate bugs each caught.
+- Where dingusppc cannot be the reference: it sets its reservation before
+  `lwarx`'s load and clears CR0 before `stwcx.`'s store, so the random
+  programs keep the pair on a fixed, always mapped and word-aligned address
+  (it has no alignment check either), and the test bench restores CR0
+  after a `stwcx.` that faulted; its `dcbf`, `dcbst`, `dcbi` and `icbi` do
+  nothing at all (no translation, no R bit), so the translated programs
+  leave them out; it never takes `dcbz`'s alignment exceptions.
 
 ### M6: real ROM, first MiSTer build
 
@@ -420,6 +458,12 @@ run on a real 604 can settle.
   `frsqrte` 2, plus 6 if an operand is denormal. A data access takes two
   cycles on the test bench bus until there is a cache.
 - `dcbt` and `dcbtst` do nothing, which the architecture allows for hints.
+  `dcbf`, `dcbst`, `dcbi` and `icbi` translate their address and do nothing
+  else until there is a cache (M5 step 3).
+- The reservation has no address: `stwcx.` succeeds after any `lwarx`, as
+  on the 604 and in dingusppc, and survives exceptions. `lwarx` and
+  `stwcx.` to a write-through page do not take the DSI the architecture
+  allows (manual Table 4-9); whether a 604 does is unknown.
 - Address translation: the TLBs are direct-mapped with 64 entries (the 604's
   are two-way with 128), so a program that alternates between two pages of
   the same index walks the table for each; software cannot tell otherwise.
@@ -483,7 +527,8 @@ run on a real 604 can settle.
   Interrupt tests use fixed addresses: handlers count at
   `00FFFFE0`/`00FFFFE4` and acknowledge at `00FFFFF0`.
 - Deliberate-bug checks: four bugs in the integer pipeline, five in the FP
-  pipeline, three in the exception logic, five in the MMU; each was caught.
+  pipeline, three in the exception logic, five in the MMU, three in the
+  reservation and `dcbz` logic; each was caught.
 - With translation on, the random programs keep the code under a BAT (no
   speculative fetch reaches the page table), never touch a direct-store or
   guarded page, and only `tlbie` entries whose PTEs have not changed.
