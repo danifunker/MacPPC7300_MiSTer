@@ -783,6 +783,31 @@ How the rules apply, decided before step 1 and followed in it:
   target buffer's read address (2.5), a forwarded operand into the FPU's
   first stage (2.3) and into `mem_result` (2.2). 66 MHz needs every path
   above about 1.8 ns short at this constraint.
+- The commit enable's fan-out, built (2026-10-06, the seventh cut): only
+  `mem_valid` waits for the abort decision; MEM's data registers load on
+  `ex_leave` alone, a dropped operation's values included, since everything
+  that reads them (the memory unit's request, the forwarding compares, the
+  fault, WB) is qualified by `mem_valid`. Nothing a handler can see changes
+  on an aborted operation (rule 1); the hazard mechanism is untouched. Whole
+  suite and both replays green, cycle counts identical. 62.3 MHz worst
+  case (63.1 at the cold corner), 14,366 ALMs, 11,161 registers.
+  `ex_abort` is now on none of the reported paths; the commit enable
+  appears once, fed by the data cache's hit decision through `mem_ready`
+  (fan-out 43) and the enable (21) into XER at about zero slack. The 2,000
+  slowest paths are now one family, 2.3 to 2.7 ns short: a single loaded by
+  `lfs`, converted in WB (the leading-zero count and shift, 3 ns) and
+  forwarded into an FPU operation that finishes in its request cycle, the
+  NaN class into FPSCR, the enabled-exception decision `x_fpen`, the
+  redirect into `pc_f` and the branch target buffer's read address; the
+  same head runs into the FPU's first stage (2.3), its compare into CR
+  (1.7) and `fsel` and the moves into `mem_result` (1.1). Two ways to
+  take it off, both to be measured: the FPU operand register
+  (`FPU_OPERAND_REG`, a cycle per floating-point instruction), or one more
+  term in the one stall condition, an FP operation whose operand is an
+  `lfs` single still in WB waiting a cycle as it waits for a load in MEM
+  (the "held here" capture then has a whole cycle for the conversion),
+  which costs a cycle only within two instructions of the `lfs` but
+  changes how a hazard is handled, so it is for the owner to decide.
 
 ### M6: real ROM, first MiSTer build
 

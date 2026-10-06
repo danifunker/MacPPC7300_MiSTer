@@ -1301,11 +1301,18 @@ assign mem_wdata = sel_i ? im_wdata : dm_wdata;
 assign im_ack    = mem_ack &  sel_i;
 assign dm_ack    = mem_ack & ~sel_i;
 
+// The operation leaving EX enters MEM. Only mem_valid waits for the abort
+// decision, the last thing EX knows: the data registers load whenever EX
+// leaves, a dropped operation's values included, because everything that
+// reads them (the memory unit's request, the forwarding compares, the
+// fault, WB) is qualified by mem_valid, so an aborted operation's values
+// are never seen. That keeps ex_abort's fan-out to the registers that
+// commit state.
 always_ff @(posedge clk) begin
 	if (mem_leave) mem_valid <= 1'b0;
+	if (ex_leave & ~ex_abort) mem_valid <= 1'b1;
 
-	if (ex_leave & ~ex_abort) begin
-		mem_valid  <= 1'b1;
+	if (ex_leave) begin
 		mem_pc     <= ex_pc;
 		mem_insn   <= ex_insn;
 		mem_last   <= ex_last;
