@@ -760,6 +760,29 @@ How the rules apply, decided before step 1 and followed in it:
   same-cycle hit stays unless the answer moves (`LATE_ANSWER`, 9-14 % of
   the cycles); the tag RAM in MLABs instead of M10Ks (about 1 ns of its
   2.5 ns clock-to-out, for 18 MLABs).
+- The string operation's 4 KB check from the operands, built (2026-10-06,
+  the sixth cut): the first access crosses when its last byte is in
+  another page than its first, which `a[11:0] + b[11:0] + (count - 1)`
+  and the carry out of `a[11:0] + b[11:0]` decide without the ALU (the
+  bit above the page offset of the first differs from the carry of the
+  second); the 256 MB check and the word-alignment bits take the adder's
+  sum as before. Written as one three-input expression, Quartus built two
+  adders in series, 4.2 ns from the operand mux to `x_align`: 60.8 MHz,
+  and the top path (3.0 ns short) ran from the forwarding compare through
+  that check and `x_align` into the redirect and the branch target
+  buffer's read address. Written as a 3:2 compression into one adder,
+  beside the 12-bit adder for the carry: 61.7 MHz worst case (61.9 at the
+  hot corner), 14,290 ALMs, 11,308 registers, 77 RAM blocks. Whole suite
+  and both replays green, every cycle count unchanged. The EX decision
+  family is off the top of the list. What leads now, at 75 MHz: the data
+  cache's answer into `wb_result` (2.8 ns short: the tag RAM's 2.5 ns
+  clock-to-out, the valid and tag compare, the way select with a fan-out
+  of 173 and 1.9 ns of routing, the memory unit's byte shift), a
+  forwarded operand through the ALU into CR (2.6), ID's decode and
+  register read into `ex_b` (2.5), the exception redirect into the branch
+  target buffer's read address (2.5), a forwarded operand into the FPU's
+  first stage (2.3) and into `mem_result` (2.2). 66 MHz needs every path
+  above about 1.8 ns short at this constraint.
 
 ### M6: real ROM, first MiSTer build
 

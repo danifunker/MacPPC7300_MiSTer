@@ -12,6 +12,9 @@
                                        cell by cell
     python syn\\check.py core --report-only --paths 40
                                        the same from the last compile
+    python syn\\check.py core --report-only --to "*wb_result*" --to "*pc_f*"
+                                       the slowest path into the registers
+                                       matching each pattern, cell by cell
 
 Builds a throw-away Quartus project in syn/build/<target>, with every port
 except the clock as a virtual pin, compiles it (synthesis, fit, timing) and
@@ -162,12 +165,15 @@ def worst_paths(top, build, count):
         print("  %7.3f  (%4d)  %s -> %s" % (slack, n, src, dst))
 
 
-def detail_paths(top, build, count):
-    """Print the slowest paths cell by cell: where each spends its time."""
-    txt = os.path.join(build, "detail.txt")
-    rc = sta(top, build, ["report_timing -setup -npaths %d -detail full_path -file detail.txt" % count], "detail")
+def detail_paths(top, build, count, to=None):
+    """Print the slowest paths cell by cell: where each spends its time.
+    With a pattern, the slowest paths into the registers it matches."""
+    tag = "detail" if to is None else "detail_" + re.sub(r"[^A-Za-z0-9]+", "_", to).strip("_")
+    txt = os.path.join(build, tag + ".txt")
+    flt = "" if to is None else " -to [get_keepers {%s}]" % to
+    rc = sta(top, build, ["report_timing -setup -npaths %d -detail full_path%s -file %s.txt" % (count, flt, tag)], tag)
     if rc or not os.path.exists(txt):
-        print("could not report the paths in detail; see detail.log")
+        print("could not report the paths in detail; see %s.log" % tag)
         return
     n = 0
     inpath = False
@@ -176,7 +182,8 @@ def detail_paths(top, build, count):
             if "Data Arrival Path" in line:
                 n += 1
                 inpath = True
-                print("\npath %d, cell by cell (arrival ns, step ns, kind, fan-out, element):" % n)
+                print("\npath %d%s, cell by cell (arrival ns, step ns, kind, fan-out, element):"
+                      % (n, "" if to is None else " into " + to))
                 continue
             if "Data Required Path" in line:
                 inpath = False
@@ -201,6 +208,8 @@ def main():
     ap.add_argument("--report-only", action="store_true", help="re-read the reports of the last run")
     ap.add_argument("--paths", type=int, default=0, metavar="N", help="also list the N slowest distinct paths")
     ap.add_argument("--detail", type=int, default=0, metavar="N", help="also print the N slowest paths cell by cell")
+    ap.add_argument("--to", action="append", metavar="PATTERN",
+                    help="also print the slowest path into the registers matching PATTERN cell by cell (repeatable)")
     args = ap.parse_args()
 
     top = TARGETS[args.target]
@@ -224,6 +233,8 @@ def main():
         worst_paths(top, build, args.paths)
     if args.detail:
         detail_paths(top, build, args.detail)
+    for pattern in args.to or []:
+        detail_paths(top, build, 1, pattern)
     return rc
 
 

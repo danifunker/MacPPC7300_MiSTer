@@ -777,9 +777,21 @@ wire x_align_w = (ex_dec.mem_rd | ex_dec.mem_wr) &
 wire x_align_z = ex_zero & (~hid0[14] | hid0[12]);
 // ... nor a string operation that is not word-aligned and crosses a 4 KB
 // boundary, or is word-aligned and crosses a 256 MB boundary (604 manual
-// 2.3.4.3); checked on its first access, which carries the whole count
-wire [12:0] str_end   = {1'b0, int_sum[11:0]} + {6'd0, ex_dec.str_bytes};
-wire        str_4k    = str_end[12] & (str_end[11:0] != 12'd0);
+// 2.3.4.3); checked on its first access, which carries the whole count.
+// The 4 KB test is made from the operands beside the adder (every access is
+// a plain A + B), not from its sum, which put the adder in series with it.
+// The operation crosses when its last byte is in another page than its
+// first: with t = a[11:0] + b[11:0] + (count - 1) and c the carry out of
+// a[11:0] + b[11:0], the last byte's offset in the first byte's page is
+// t - 4096 c, and t[12] differs from c exactly when that reaches 4096. The
+// three-input sum is written as a 3:2 compression and one adder, so that
+// it is one carry chain beside the other and not two in series.
+wire [6:0]  str_last  = ex_dec.str_bytes - 7'd1;
+wire [11:0] str_x     = op_a[11:0] ^ op_b[11:0] ^ {5'd0, str_last};
+wire [11:0] str_k     = (op_a[11:0] & op_b[11:0]) | ((op_a[11:0] | op_b[11:0]) & {5'd0, str_last});
+wire [12:0] str_lo    = {1'b0, op_a[11:0]} + {1'b0, op_b[11:0]};
+wire [13:0] str_end   = {2'b00, str_x} + {1'b0, str_k, 1'b0};
+wire        str_4k    = str_end[12] ^ str_lo[12];
 wire        x_align_s = (ex_dec.str_bytes != 7'd0) & str_4k &
                         ((int_sum[1:0] != 2'b00) | (&int_sum[27:12]));
 wire x_align  = x_align_w | x_align_s | x_align_z;
