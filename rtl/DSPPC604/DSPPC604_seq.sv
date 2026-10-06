@@ -10,7 +10,6 @@
 //    lmw, stmw       one word access per register
 //    lswi, stswi     one access of up to four bytes per register
 //    lswx, stswx     scratch <- (rA|0) + rB, then as lswi/stswi from scratch
-//    dcbz            eight word stores of zero
 //    stwcx.          the conditional store, then CR0 from its outcome
 //
 //  Every other instruction passes through as one operation.
@@ -72,11 +71,6 @@ always_comb begin
 			uop.rd     = dec.ra;
 			uop.rd_wr  = 1'b1;
 		end
-	end
-
-	SEQ_DCBZ: begin
-		uop.line_word = step[2:0];
-		last = (step == 6'd7);
 	end
 
 	SEQ_STWCX: begin

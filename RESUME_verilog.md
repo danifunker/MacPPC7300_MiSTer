@@ -1,10 +1,10 @@
-# Resume prompt: DSPPC604, milestone M5 from step 3
+# Resume prompt: DSPPC604, milestone M5 step 4 (timing and area)
 
 Paste everything below the line into a new session started in `C:\Temp\mistercore\PPC_Mac`.
 
 ---
 
-I'm building a MiSTer FPGA core (DE10-Nano, Cyclone V) with a PowerPC CPU called `DSPPC604`. The first machine to target is the Power Macintosh 7600; the eventual goal is the Apple Pippin. This session continues the CPU: it runs the whole 604 instruction set that software uses, with exceptions, supervisor state and address translation, on a simple word bus with no caches. Next are the caches and the line-fill bus to the SDRAM, then timing.
+I'm building a MiSTer FPGA core (DE10-Nano, Cyclone V) with a PowerPC CPU called `DSPPC604`. The first machine to target is the Power Macintosh 7600; the eventual goal is the Apple Pippin. This session continues the CPU: it is functionally complete for the software we target (the 604 instruction set, exceptions, supervisor state, address translation, caches, a line port to memory with its clock crossing). What is left of M5 is the timing and area pass; after that comes M6, the real ROM in simulation and the first MiSTer build.
 
 Read these first. They are the source of truth and override anything remembered:
 
@@ -14,18 +14,16 @@ Read these first. They are the source of truth and override anything remembered:
 
 ## Where things stand (2026-10-05, end of day)
 
-- **M0-M4 done, M5 steps 1 and 2 done**, all committed on `main`, nothing pushed. `rtl\DSPPC604\DSPPC604.sv` is a six-stage pipeline with the integer units, the FPU, exceptions, interrupts, MSR and the SPRs, the reservation, `dcbz` and the cache instructions (which translate their address and do nothing else yet); `DSPPC604_mmu.sv` sits between it and the buses: BATs, segment registers, a 64-entry direct-mapped TLB per side, a hardware page-table walk with R and C bits, DSI and ISI, `tlbie`.
+- **M0-M4 done, M5 steps 1-3 done**, all committed on `main`, nothing pushed. `rtl\DSPPC604\DSPPC604.sv` is a six-stage pipeline with the integer units, the FPU, exceptions, interrupts, MSR and the SPRs, the reservation and the cache instructions; `DSPPC604_mmu.sv` (BATs, segment registers, a 64-entry TLB per side, a hardware page-table walk with R and C bits, DSI and ISI, `tlbie`) sits between the pipeline and two `DSPPC604_cache` instances (16 KB, four-way, 32-byte lines, write-back, pseudo-LRU; `dcbz`/`dcbf`/`dcbst`/`dcbi`/`icbi`; HID0's enable, lock and invalidate bits); one memory port leaves the CPU (a line or a word, request held until acknowledged, data whole) with a snoop port for DMA, and `DSPPC604_memcdc.sv` carries that port into another clock.
 - `python verilator\run.py`: 37,174 single-instruction vectors recorded on a real 604, all pass.
-- `python verilator\run_core.py`: the vectors as programs, random FP programs against `fpmodel.py`, directed exception, interrupt, translation and reservation tests, and random programs in lockstep with dingusppc, with and without translation (47 runs, about 540,000 lockstep instructions; 300 programs without translation passed as well, before step 2).
-- Quartus (`python syn\check.py core`): 12,049 ALMs (29%), 61-65 MHz worst case depending on the run, measured before step 2. The slowest paths are the operand forwarding network into the ALU and FPU; the timing pass is step 4.
+- `python verilator\run_core.py`: the vectors as programs, random FP programs against `fpmodel.py`, directed exception, interrupt, translation, reservation and cache tests (the last with a DMA engine on the snoop port), random programs in lockstep with dingusppc with and without translation, and the clock crossing at four ratios (52 runs, about 540,000 lockstep instructions). The test bench writes back the lines the data cache may hold dirty through the snoop port when a program ends, so memory comparisons see them.
+- Quartus (`python syn\check.py core`): see the plan's M5 step 3 for the numbers with the caches; before them 12,049 ALMs (29%) and 61-65 MHz worst case. The slowest paths are the operand forwarding network into the ALU and FPU.
 - A second session works on real-hardware tests from `RESUME_hardware.md`, inside `ppctest\` only. Its changes there are uncommitted and are not yours to commit.
 
 ## What I want from this session
 
-Milestone M5 from the plan, in this order, each step verified before the next:
-
-3. Instruction and data caches in block RAM with 32-byte lines, and the memory side as a line-fill bus. Decided: main memory is the MiSTer SDRAM module (64 or 128 MB fitted), and the machine's installed RAM is a core option of 6, 16, 24, 32, 64 or 128 MB. The bus therefore targets the SDRAM controller on its own clock; the clock crossing is part of this step. Things already in place for it: the TLBs are read a cycle ahead (what a virtually indexed, physically tagged cache needs); the memory unit's "touch" requests are where `dcbf`, `dcbst`, `dcbi` and `icbi` will become cache operations; `dcbz` is eight word stores today and should become a line allocate; the page attributes (WIMG) come out of the MMU with every translation; HID0[ICE], [DCE], [ILOCK], [DLOCK] and the invalidate bits are stored but only DCE and DLOCK are looked at (by `dcbz`). Writes to memory by anything other than the CPU (disk DMA, the HPS loading a ROM) must go through or invalidate the data cache. The lockstep test bench models the bus as one word per request with random wait states; it will need a line-fill model.
-4. The timing and area pass: register files in RAM, the FPU's input path, the forwarding network's fanout (the DTLB's read-ahead address comes off the effective-address adder), 66 MHz with margin and 75 if it can be had.
+1. **M5 step 4, the timing and area pass.** Target 66 MHz with margin, 75 if it can be had; 50 is the floor. Known gains, none tried yet: the register files and SPRs are flip-flops (MLAB/M10K would save most of the area beyond the units); the forwarded operands run straight into the ALU and the FPU's first stage, which sets the clock; the DTLB's read-ahead address hangs off the effective-address adder; `ex_leave` gained terms (`mem_fault`) with every milestone; the caches' tag compare and way select sit in the answer cycle after the MMU's translation. Measure before and after each change with `python syn\check.py core --paths 10`; the fitter's results swing by several MHz between runs, so judge by the slack of the named paths, not by Fmax alone. Keep every change checked by the whole suite.
+2. Then **M6**: run the 7600's ROM (version `077D.28F2`) from the reset vector in Verilator against a stub machine, in lockstep with dingusppc, until it needs hardware that is not there; then the CPU in the MiSTer project with memory and the ROM, a first bitstream that executes ROM code and reports over the UART. The SDRAM controller behind `DSPPC604_memcdc` is part of this. Note for it: with translation off the 604 treats memory as cacheable, so device registers must be reached through BATs with I = 1, which is what the ROM sets up; if early ROM code touches a device with translation off, that will show up in lockstep.
 
 Before changing how state is committed or how hazards are handled, check the change against the rules in the plan and tell me.
 

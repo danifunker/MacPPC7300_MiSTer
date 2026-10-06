@@ -19,8 +19,10 @@ still the MiSTer template's test pattern.
 | Floating point in the pipeline | the 25,598 FP vectors pass when run as a program; FP loads, stores and FPSCR instructions agree with the software model (no hardware data for those yet) |
 | Exceptions, supervisor state | program, FP unavailable, system call, alignment, external and decrementer interrupts; MSR and the SPRs; checked in lockstep and by directed tests |
 | MMU | BATs, segment registers, hardware page-table walk with R and C bits, ITLB and DTLB, `tlbie`, DSI and ISI; directed tests and lockstep with translation on |
-| `lwarx`/`stwcx.`, `dcbz`, cache instructions | done; the cache instructions translate their address and wait for the caches to have more to do |
-| Caches | not started; see [the plan](docs/DSPPC604_plan.md) |
+| `lwarx`/`stwcx.`, `dcbz`, cache instructions | done |
+| Caches | two 16 KB four-way caches with 32-byte lines (the 604's shape), write-back, one line port to memory, a snoop port for DMA; directed tests and the whole suite through them |
+| Clock crossing to the SDRAM controller | done, checked at several clock ratios; the controller itself comes with the machine |
+| Timing and area pass | next; see [the plan](docs/DSPPC604_plan.md) |
 | Machine (chipset, video, SCSI, ...) | not started |
 
 Size and speed of what exists, each synthesised on its own for the DE10-Nano's
@@ -82,7 +84,9 @@ not by drift.
   (`DSPPC604_fpu`, `DSPPC604_int_unit`, ...).
 - Built-in caches: yes. A pipelined CPU on MiSTer memory needs instruction and
   data caches in block RAM. The cache line is 32 bytes, as on the 604, 603 and
-  750, because `dcbz` makes that size visible to software.
+  750, because `dcbz` makes that size visible to software. Anything else that
+  reads or writes memory (DMA, the HPS) goes through the CPU's snoop port
+  first; that is the whole coherence protocol.
 - Clock target: 66 MHz, 75 MHz if it can be had; 50 MHz is the floor.
 - Results the architecture leaves undefined follow the real chip where we have
   data. Divide by zero and `0x80000000 / -1` return what a real 604 returns.
@@ -167,7 +171,7 @@ the rest, so they can never hide a real failure or be hidden by one.
 python verilator\run_core.py
 ```
 
-Tests the pipeline, five ways:
+Tests the pipeline, six ways:
 
 1. The real-604 integer vectors, assembled into one program and run with and
    without random bus wait states.
@@ -176,14 +180,18 @@ Tests the pipeline, five ways:
    instructions) with the state `fpmodel.py` expects after every instruction.
 4. Each exception once, with what its handler must find; address
    translation with every cause of DSI and ISI and the page table's R and C
-   bits; `lwarx`/`stwcx.`, `dcbz` and the cache instructions; and a loop
-   with known results under thousands of external and decrementer
-   interrupts.
+   bits; `lwarx`/`stwcx.`, `dcbz` and the cache instructions; the caches
+   (evictions, write-back, every cache instruction and HID0 bit seen
+   through a cache-inhibited alias, self-modifying code, DMA through the
+   snoop port); and a loop with known results under thousands of external
+   and decrementer interrupts.
 5. Random programs in lockstep with dingusppc's interpreter
    (`verilator/ref` builds it as a library from `..\dingusppc`), including
    supervisor instructions, mode switches and exceptions: the registers and
    MSR are compared after every instruction and memory at the end. Then the
    same with address translation on, page faults included.
+6. The memory port carried across a clock boundary, at several clock
+   ratios.
 
 `--seeds N` runs more random programs.
 

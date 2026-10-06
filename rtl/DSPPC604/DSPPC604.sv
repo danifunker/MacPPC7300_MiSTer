@@ -25,10 +25,13 @@
 //    Invariant: an operation that accesses memory writes none of CR, XER, LR,
 //    CTR and FPSCR.
 //
-//  Buses
-//    Both buses use req/gnt for the address and one rvalid per granted
-//    request, at least a cycle later. The data bus is described in
-//    DSPPC604_mem_unit.
+//  Caches and memory
+//    Two DSPPC604_cache instances, 16 KB each, answer the fetch and the
+//    memory unit through req/gnt and one rvalid per granted request, a
+//    cycle later on a hit; the MMU translates in the request cycle, in
+//    between. Their line requests share one memory port, data first. A
+//    snoop port keeps them coherent with whatever else reads or writes
+//    memory.
 //
 //  Branch prediction
 //    A small branch target buffer is read with the fetch address. Every
@@ -91,22 +94,24 @@ module DSPPC604
 	input  logic        ext_irq,         // external interrupt request, level
 	input  logic        tb_tick,         // one clock: advance the time base and decrementer
 
-	// instruction bus
-	output logic        ibus_req,
-	output logic [31:0] ibus_addr,
-	input  logic        ibus_gnt,
-	input  logic        ibus_rvalid,
-	input  logic [31:0] ibus_rdata,
+	// memory: one line (32 bytes) or one word with byte enables, read or
+	// write; req stays up until ack, one request outstanding. Word 0 of a
+	// line, the lowest address, is in bits 255-224; a word is in bits 31-0.
+	output logic        mem_req,
+	output logic        mem_we,
+	output logic        mem_line,
+	output logic [31:2] mem_addr,
+	output logic [3:0]  mem_be,
+	output logic [255:0] mem_wdata,
+	input  logic        mem_ack,
+	input  logic [255:0] mem_rdata,
 
-	// data bus
-	output logic        dbus_req,
-	output logic        dbus_we,
-	output logic [29:0] dbus_addr,
-	output logic [3:0]  dbus_be,
-	output logic [31:0] dbus_wdata,
-	input  logic        dbus_gnt,
-	input  logic        dbus_rvalid,
-	input  logic [31:0] dbus_rdata,
+	// snoop: anything else about to read (snoop_we = 0) or write memory
+	// presents the line first and goes ahead after the acknowledge
+	input  logic        snoop_req,
+	input  logic        snoop_we,
+	input  logic [31:5] snoop_addr,
+	output logic        snoop_ack,
 
 	// retirement trace for the test bench: one pulse per operation leaving
 	// the pipeline, with the state as that instruction left it
@@ -122,7 +127,15 @@ module DSPPC604
 	output logic [31:0] trace_lr,
 	output logic [31:0] trace_ctr,
 	output logic [31:0] trace_fpscr,
-	output logic [31:0] trace_msr
+	output logic [31:0] trace_msr,
+	// ... and every data access as it reaches the data cache, so that the
+	// test bench can see stores the cache absorbs
+	output logic        trace_dreq,
+	output logic        trace_dwe,
+	output logic [2:0]  trace_dkind,
+	output logic [31:2] trace_daddr,
+	output logic [3:0]  trace_dbe,
+	output logic [31:0] trace_dwdata
 );
 
 import DSPPC604_pkg::*;
@@ -222,15 +235,14 @@ logic [63:0] mem_result;    // from EX (a load's comes from memory instead)
 logic [31:0] mem_ea;
 logic        mem_load;
 logic        mem_store;
-logic        mem_touch;     // translate only
-logic        mem_line;      // part of a dcbz
+ck_t         mem_cop;       // what the access asks of the cache
 logic [3:0]  mem_n;
 logic        mem_sext;
 logic        mem_brev;
 logic        mem_ljust;
 logic        mem_fp;
 logic        mem_fsgl;
-logic [63:0] mem_wdata;
+logic [63:0] mem_sdata;     // the value a store writes
 logic [31:0] mem_t_cr, mem_t_xer, mem_t_lr, mem_t_ctr, mem_t_fpscr, mem_t_msr;
 
 // WB
@@ -273,9 +285,33 @@ logic        if_fault;
 logic [31:0] if_srr1;
 
 logic        mu_req, mu_we, mu_gnt, mu_rvalid, mu_bfault;
+ck_t         mu_kind;
 logic [29:0] mu_addr;
 logic [3:0]  mu_be;
 logic [31:0] mu_wdata, mu_bus_rdata;
+
+// ---- the buses between the MMU and the caches -------------------------------
+logic        ib_req, ib_gnt, ib_rvalid, ib_ci;
+logic [31:0] ib_addr, ib_rdata;
+logic        db_req, db_we, db_gnt, db_rvalid, db_ci, db_wt;
+ck_t         db_kind;
+logic [29:0] db_addr;
+logic [3:0]  db_be;
+logic [31:0] db_wdata, db_rdata;
+
+// ---- the caches' memory and invalidate ports --------------------------------
+logic         im_req, im_we, im_line, im_ack;
+logic [31:2]  im_addr;
+logic [3:0]   im_be;
+logic [255:0] im_wdata;
+logic         dm_req, dm_we, dm_line, dm_ack;
+logic [31:2]  dm_addr;
+logic [3:0]   dm_be;
+logic [255:0] dm_wdata;
+logic         dc_inv_req, dc_inv_ack;      // icbi, from the data cache to the instruction cache
+logic [31:5]  dc_inv_addr;
+logic         ic_snoop_ack, dc_snoop_ack;
+logic         ic_inval, dc_inval;          // HID0[ICFI], [DCFI]
 
 // ============================================================================
 //  IF1, IF2
@@ -589,8 +625,8 @@ wire        is_rfi    = is_sys & (ex_dec.sys == SYS_RFI);
 wire        is_mtmsr  = is_sys & (ex_dec.sys == SYS_MTMSR);
 wire        is_mtspr  = is_sys & (ex_dec.sys == SYS_MTSPR);
 wire        is_tlbie  = is_sys & (ex_dec.sys == SYS_TLBIE);
-wire        is_xlate  = is_tlbie | (is_sys & (ex_dec.sys == SYS_MTSR)) |
-                        (is_mtspr & ((ex_dec.spr == 10'd25) | (ex_dec.spr[9:4] == 6'b100001)));
+wire        is_xlate  = is_tlbie | (is_sys & ((ex_dec.sys == SYS_MTSR) | (ex_dec.sys == SYS_ISYNC))) |
+                        (is_mtspr & ((ex_dec.spr == 10'd25) | (ex_dec.spr[9:4] == 6'b100001) | (ex_dec.spr == 10'd1008)));
 wire [31:0] next_pc   = is_rfi ? {srr0[31:2], 2'b00} : br_taken ? br_target : ex_pc4;
 wire [31:0] vec_base  = {{12{msr[MSR_IP]}}, 8'h00, 12'h000};
 assign redir_pc = mem_fault ? (vec_base | (mu_falign ? 32'h600 : 32'h300)) :
@@ -703,8 +739,9 @@ wire        trap_hit = (ex_dec.bo[4] & trap_lts) | (ex_dec.bo[3] & ~trap_lts & ~
                        (ex_dec.bo[1] & trap_ltu) | (ex_dec.bo[0] & ~trap_ltu & ~trap_eq);
 wire x_sc     = is_sys & (ex_dec.sys == SYS_SC);
 wire x_trap   = is_sys & (ex_dec.sys == SYS_TRAP) & trap_hit;
-// the effective address: for dcbz, one word of the line
-wire [31:0] ex_ea = ex_dec.mem_line ? {int_result[31:5], ex_dec.line_word, 2'b00} : int_result;
+// the effective address: for dcbz, the line
+wire        ex_zero = (ex_dec.cop == CK_ZERO);
+wire [31:0] ex_ea   = ex_zero ? {int_result[31:5], 5'b00000} : int_result;
 
 // the 604 does not perform these accesses unless they are word-aligned
 wire x_align_w = (ex_dec.mem_rd | ex_dec.mem_wr) &
@@ -713,7 +750,7 @@ wire x_align_w = (ex_dec.mem_rd | ex_dec.mem_wr) &
 // ... and dcbz takes an alignment exception while the data cache is
 // disabled or locked (HID0[DCE], HID0[DLOCK]); the same for a write-through
 // or cache-inhibited page is decided in MEM, where the page is known
-wire x_align_z = ex_dec.mem_line & ex_first & (~hid0[14] | hid0[12]);
+wire x_align_z = ex_zero & (~hid0[14] | hid0[12]);
 // ... nor a string operation that is not word-aligned and crosses a 4 KB
 // boundary, or is word-aligned and crosses a 256 MB boundary (604 manual
 // 2.3.4.3); checked on its first access, which carries the whole count
@@ -867,8 +904,7 @@ wire [6:0]  ex_rd     = ex_dec.frd_wr ? {2'b10, ex_dec.frd} : {1'b0, ex_dec.rd};
 wire        ex_rd_wr  = ex_dec.rd_wr | (ex_dec.frd_wr & (~is_fpu | fpu_result_we));
 
 // what a store writes
-wire [63:0] ex_wdata  = ex_dec.mem_line  ? 64'd0 :
-                        ~ex_dec.mem_fp   ? {32'd0, op_c} :
+wire [63:0] ex_wdata  = ~ex_dec.mem_fp   ? {32'd0, op_c} :
                         ex_dec.mem_fsgl  ? {32'd0, fp_double_to_single(fop_b)} : fop_b;
 
 always_ff @(posedge clk) begin
@@ -946,7 +982,7 @@ always_ff @(posedge clk) begin
 				10'd954:  pmc2  <= op_a;
 				10'd955:  sia   <= op_a;
 				10'd959:  sda   <= op_a;
-				10'd1008: hid0  <= op_a;
+				10'd1008: hid0  <= op_a & ~32'h00000C00;    // ICFI and DCFI act once and clear
 				10'd1010: iabr  <= op_a;
 				10'd1013: dabr  <= op_a;
 				default:  if (ex_dec.spr[9:4] == 6'b100001) bat[ex_dec.spr[3:0]] <= op_a;
@@ -1003,7 +1039,6 @@ logic        mu_falign;     // ... and it is an alignment exception, not a DSI
 logic [63:0] mu_rdata;
 logic [31:0] mu_dsisr;
 logic [31:0] mu_dar;
-logic        mu_btouch;     // the bus request is a translation only
 
 // what a load delivers to its register
 wire [63:0] mem_ldata = (mem_fp & mem_fsgl) ? fp_single_to_double(mu_rdata[31:0]) : mu_rdata;
@@ -1014,19 +1049,19 @@ DSPPC604_mem_unit mem_unit
 	.reset       (reset),
 	.req_valid   (mem_valid & (mem_load | mem_store)),
 	.we          (mem_store),
-	.touch       (mem_touch),
+	.kind        (mem_cop),
 	.addr        (mem_ea),
 	.nbytes      (mem_n),
 	.sext        (mem_sext),
 	.brev        (mem_brev),
 	.ljust       (mem_ljust),
-	.wdata       (mem_wdata),
+	.wdata       (mem_sdata),
 	.resp_valid  (mu_resp),
 	.resp_fault  (mu_fault),
 	.rdata       (mu_rdata),
 	.dbus_req    (mu_req),
 	.dbus_we     (mu_we),
-	.dbus_touch  (mu_btouch),
+	.dbus_kind   (mu_kind),
 	.dbus_addr   (mu_addr),
 	.dbus_be     (mu_be),
 	.dbus_wdata  (mu_wdata),
@@ -1059,17 +1094,17 @@ DSPPC604_mmu #(.TLB_BITS (TLB_BITS)) mmu
 	.i_rdata     (if_rdata),
 	.i_fault     (if_fault),
 	.i_srr1      (if_srr1),
-	.ibus_req    (ibus_req),
-	.ibus_addr   (ibus_addr),
-	.ibus_gnt    (ibus_gnt),
-	.ibus_rvalid (ibus_rvalid),
-	.ibus_rdata  (ibus_rdata),
+	.ibus_req    (ib_req),
+	.ibus_addr   (ib_addr),
+	.ibus_ci     (ib_ci),
+	.ibus_gnt    (ib_gnt),
+	.ibus_rvalid (ib_rvalid),
+	.ibus_rdata  (ib_rdata),
 	.d_pre       (ex_leave & ~ex_abort & (ex_dec.mem_rd | ex_dec.mem_wr)),
 	.d_ea_next   (ex_ea),
 	.d_req       (mu_req),
 	.d_we        (mu_we),
-	.d_touch     (mu_btouch),
-	.d_line      (mem_line),
+	.d_kind      (mu_kind),
 	.d_addr      (mu_addr),
 	.d_be        (mu_be),
 	.d_wdata     (mu_wdata),
@@ -1081,15 +1116,144 @@ DSPPC604_mmu #(.TLB_BITS (TLB_BITS)) mmu
 	.d_falign    (mu_falign),
 	.d_dsisr     (mu_dsisr),
 	.d_dar       (mu_dar),
-	.dbus_req    (dbus_req),
-	.dbus_we     (dbus_we),
-	.dbus_addr   (dbus_addr),
-	.dbus_be     (dbus_be),
-	.dbus_wdata  (dbus_wdata),
-	.dbus_gnt    (dbus_gnt),
-	.dbus_rvalid (dbus_rvalid),
-	.dbus_rdata  (dbus_rdata)
+	.dbus_req    (db_req),
+	.dbus_we     (db_we),
+	.dbus_kind   (db_kind),
+	.dbus_addr   (db_addr),
+	.dbus_be     (db_be),
+	.dbus_wdata  (db_wdata),
+	.dbus_ci     (db_ci),
+	.dbus_wt     (db_wt),
+	.dbus_gnt    (db_gnt),
+	.dbus_rvalid (db_rvalid),
+	.dbus_rdata  (db_rdata)
 );
+
+// ============================================================================
+//  The caches, the memory port, the snoop port
+// ============================================================================
+// HID0: bits 16-21 are ICE, DCE, ILOCK, DLOCK, ICFI, DCFI
+wire hid0_ice = hid0[15], hid0_dce = hid0[14], hid0_ilock = hid0[13], hid0_dlock = hid0[12];
+wire hid0_wr  = ex_leave & ~ex_abort & is_mtspr & (ex_dec.spr == 10'd1008);
+assign ic_inval = hid0_wr & op_a[11];
+assign dc_inval = hid0_wr & op_a[10];
+
+// An external snoop goes to both caches, each of which answers in its own
+// time; the answer goes out when both have. The data cache's icbi goes to
+// the instruction cache's snoop port when no external snoop is in progress.
+logic ic_snoop_done, dc_snoop_done;
+always_ff @(posedge clk) begin
+	if (~snoop_req | reset) begin
+		ic_snoop_done <= 1'b0;
+		dc_snoop_done <= 1'b0;
+	end
+	else begin
+		if (ic_snoop_ack) ic_snoop_done <= 1'b1;
+		if (dc_snoop_ack) dc_snoop_done <= 1'b1;
+	end
+end
+// (the icbi is served as soon as the instruction cache's part of an external
+// snoop is done, so that a data cache waiting on it cannot hold the snoop up)
+wire        ic_ext        = snoop_req & ~ic_snoop_done;
+wire        ic_snoop_req  = ic_ext | dc_inv_req;
+wire        ic_snoop_we   = ic_ext ? snoop_we   : 1'b1;
+wire [31:5] ic_snoop_addr = ic_ext ? snoop_addr : dc_inv_addr;
+wire        dc_snoop_req  = snoop_req & ~dc_snoop_done;
+assign snoop_ack  = snoop_req & (ic_snoop_ack | ic_snoop_done) & (dc_snoop_ack | dc_snoop_done);
+assign dc_inv_ack = ~ic_ext & ic_snoop_ack;
+
+DSPPC604_cache #(.WRITABLE (0)) icache
+(
+	.clk        (clk),
+	.reset      (reset),
+	.enable     (hid0_ice),
+	.lock       (hid0_ilock),
+	.inval_all  (ic_inval),
+	.req        (ib_req),
+	.we         (1'b0),
+	.kind       (CK_WORD),
+	.addr       (ib_addr[31:2]),
+	.be         (4'b1111),
+	.wdata      (32'd0),
+	.ci         (ib_ci),
+	.wt         (1'b0),
+	.gnt        (ib_gnt),
+	.rvalid     (ib_rvalid),
+	.rdata      (ib_rdata),
+	/* verilator lint_off PINCONNECTEMPTY */
+	.inv_req    (),
+	.inv_addr   (),
+	/* verilator lint_on PINCONNECTEMPTY */
+	.inv_ack    (1'b0),
+	.snoop_req  (ic_snoop_req),
+	.snoop_we   (ic_snoop_we),
+	.snoop_addr (ic_snoop_addr),
+	.snoop_ack  (ic_snoop_ack),
+	.mem_req    (im_req),
+	.mem_we     (im_we),
+	.mem_line   (im_line),
+	.mem_addr   (im_addr),
+	.mem_be     (im_be),
+	.mem_wdata  (im_wdata),
+	.mem_ack    (im_ack),
+	.mem_rdata  (mem_rdata)
+);
+
+DSPPC604_cache #(.WRITABLE (1)) dcache
+(
+	.clk        (clk),
+	.reset      (reset),
+	.enable     (hid0_dce),
+	.lock       (hid0_dlock),
+	.inval_all  (dc_inval),
+	.req        (db_req),
+	.we         (db_we),
+	.kind       (db_kind),
+	.addr       (db_addr),
+	.be         (db_be),
+	.wdata      (db_wdata),
+	.ci         (db_ci),
+	.wt         (db_wt),
+	.gnt        (db_gnt),
+	.rvalid     (db_rvalid),
+	.rdata      (db_rdata),
+	.inv_req    (dc_inv_req),
+	.inv_addr   (dc_inv_addr),
+	.inv_ack    (dc_inv_ack),
+	.snoop_req  (dc_snoop_req),
+	.snoop_we   (snoop_we),
+	.snoop_addr (snoop_addr),
+	.snoop_ack  (dc_snoop_ack),
+	.mem_req    (dm_req),
+	.mem_we     (dm_we),
+	.mem_line   (dm_line),
+	.mem_addr   (dm_addr),
+	.mem_be     (dm_be),
+	.mem_wdata  (dm_wdata),
+	.mem_ack    (dm_ack),
+	.mem_rdata  (mem_rdata)
+);
+
+// the memory port: data before instructions, a request once started keeps it
+logic mem_owner_i;      // the instruction cache's request is on the port
+logic mem_busy;
+always_ff @(posedge clk) begin
+	if (mem_ack) mem_busy <= 1'b0;
+	else if (~mem_busy & (dm_req | im_req)) begin
+		mem_busy    <= 1'b1;
+		mem_owner_i <= ~dm_req;
+	end
+	if (reset) mem_busy <= 1'b0;
+end
+wire sel_i = mem_busy ? mem_owner_i : ~dm_req;
+assign mem_req   = sel_i ? im_req   : dm_req;
+assign mem_we    = sel_i ? im_we    : dm_we;
+assign mem_line  = sel_i ? im_line  : dm_line;
+assign mem_addr  = sel_i ? im_addr  : dm_addr;
+assign mem_be    = sel_i ? im_be    : dm_be;
+assign mem_wdata = sel_i ? im_wdata : dm_wdata;
+assign im_ack    = mem_ack &  sel_i;
+assign dm_ack    = mem_ack & ~sel_i;
 
 always_ff @(posedge clk) begin
 	if (mem_leave) mem_valid <= 1'b0;
@@ -1105,8 +1269,7 @@ always_ff @(posedge clk) begin
 		mem_ea     <= ex_ea;
 		mem_load   <= ex_dec.mem_rd;
 		mem_store  <= ex_dec.mem_wr & ((ex_dec.resv != RESV_STORE) | stwcx_store);
-		mem_touch  <= ex_dec.mem_touch;
-		mem_line   <= ex_dec.mem_line;
+		mem_cop    <= ex_dec.cop;
 		mem_resv_set <= (ex_dec.resv == RESV_SET);
 		mem_resv_clr <= stwcx_store;
 		mem_n      <= ex_dec.mem_n;
@@ -1115,7 +1278,7 @@ always_ff @(posedge clk) begin
 		mem_ljust  <= ex_dec.mem_ljust;
 		mem_fp     <= ex_dec.mem_fp;
 		mem_fsgl   <= ex_dec.mem_fsgl;
-		mem_wdata  <= ex_wdata;
+		mem_sdata  <= ex_wdata;
 		mem_t_cr   <= cr_next;
 		mem_t_xer  <= xer_next;
 		mem_t_lr   <= lr_next;
@@ -1168,5 +1331,11 @@ assign trace_lr      = wb_t_lr;
 assign trace_ctr     = wb_t_ctr;
 assign trace_fpscr   = wb_t_fpscr;
 assign trace_msr     = wb_t_msr;
+assign trace_dreq    = db_req & db_gnt;
+assign trace_dwe     = db_we;
+assign trace_dkind   = db_kind;
+assign trace_daddr   = db_addr;
+assign trace_dbe     = db_be;
+assign trace_dwdata  = db_wdata;
 
 endmodule

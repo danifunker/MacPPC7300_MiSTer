@@ -1,5 +1,7 @@
-// Runs a program on the DSPPC604 pipeline, with a memory model on its two
-// buses, and checks it in up to three ways:
+// Runs a program on the DSPPC604 pipeline, with a memory model on its line
+// port (random wait states; at the end every line the data cache may hold
+// dirty is written back through the snoop port), and checks it in up to
+// three ways:
 //
 //   C records in the program file: the architectural state after a given
 //       instruction retires must equal recorded values (golden vectors from a
@@ -27,6 +29,7 @@
 #include <map>
 #include <memory>
 #include <random>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -59,15 +62,13 @@ struct Options {
 	long show = 10;
 };
 
-// One side of the bus protocol: req/gnt, then one rvalid per granted request.
-struct Bus {
-	bool pending = false;          // a granted request has not been answered
-	int wait = 0;                  // cycles until it may be
-	bool we = false;
-	uint32_t addr = 0, be = 0, wdata = 0;
-	bool gnt = true;               // inputs presented to the core this cycle
-	bool rvalid = false;
-	uint32_t rdata = 0;
+// The memory port: a request (one line or one word) is acknowledged after
+// a random number of wait cycles, with the data.
+struct Mem {
+	bool pending = false;          // a request is in progress
+	int wait = 0;                  // cycles until it is answered
+	bool ack = false;              // presented to the core this cycle
+	uint32_t rdata[8] = {0};
 };
 
 uint32_t rd32(const std::vector<uint8_t>& m, uint32_t a) {
@@ -180,7 +181,7 @@ int main(int argc, char** argv) {
 	std::mt19937 rng(opt.seed);
 	auto stalled = [&]() { return opt.stall > 0 && (int)(rng() % 100) < opt.stall; };
 
-	Bus ib, db;
+	Mem mm;
 	uint32_t gpr[32] = {0};
 	uint64_t fpr[32] = {0};
 	uint64_t cycles = 0, retired = 0;
@@ -188,60 +189,124 @@ int main(int argc, char** argv) {
 	bool done = false, diverged = false;
 	bool irq = false;
 	long irq_count = 0, irq_acks = 0;
+	// lines the data cache may hold dirty: every line stored to or zeroed,
+	// written back through the snoop port when the program has ended
+	std::set<uint32_t> touched;
+	// the snoop port: driven by the DMA engine below while the program runs,
+	// and at the end to collect the dirty lines
+	bool snoop_req = false, snoop_we = false;
+	uint32_t snoop_addr = 0;
+	// A DMA engine, for the cache test: a store to 00FFFFF4 starts a write of
+	// 64 bytes at 00FFF000 (pattern from the value stored), a store to
+	// 00FFFFF8 a read of them whose checksum is then written to 00FFFFFC.
+	// Every line is snooped first, as the bus demands.
+	const uint32_t DMA_BUF = 0x00FFF000, DMA_RESULT = 0x00FFFFFC;
+	int dma_step = 0;                     // 0 idle; 1-2 the buffer's lines; 3 the result word
+	bool dma_write = false, dma_gap = false;
+	uint32_t dma_value = 0, dma_sum = 0;
 
 	auto drive = [&]() {
 		dut->ext_irq = irq;
 		dut->tb_tick = opt.tb_run;
-		dut->ibus_gnt = ib.gnt; dut->ibus_rvalid = ib.rvalid; dut->ibus_rdata = ib.rdata;
-		dut->dbus_gnt = db.gnt; dut->dbus_rvalid = db.rvalid; dut->dbus_rdata = db.rdata;
+		dut->mem_ack = mm.ack;
+		for (int i = 0; i < 8; i++) dut->mem_rdata[i] = mm.rdata[i];
+		dut->snoop_req = snoop_req; dut->snoop_we = snoop_we; dut->snoop_addr = snoop_addr >> 5;
 	};
 
-	// The request seen in this cycle, and what the bus shows in the next one.
-	auto step_bus = [&](Bus& b, bool req, bool we, uint32_t addr, uint32_t be, uint32_t wdata) {
-		bool answered = b.rvalid;
-		if (answered) b.pending = false;
-		if (req && b.gnt) {
-			b.pending = true;
-			b.we = we; b.addr = addr; b.be = be; b.wdata = wdata;
-			b.wait = 0;
-			while (stalled()) b.wait++;
-		} else if (b.pending && !answered && b.wait > 0) {
-			b.wait--;
+	// The request seen in this cycle, and what the port shows in the next one.
+	// Word k of a line, the lowest address first, is in bits 255-32k downward:
+	// Verilator's chunk 7-k.
+	auto step_mem = [&](bool req, bool we, bool line, uint32_t addr, uint32_t be, const uint32_t* wdata) {
+		bool answered = mm.ack;             // the request seen in this cycle is the one just answered
+		if (answered) mm.pending = false;
+		mm.ack = false;
+		if (req && !mm.pending && !answered) {
+			mm.pending = true;
+			mm.wait = 1;                       // the earliest answer is in the next cycle
+			while (stalled()) mm.wait++;
 		}
-		b.rvalid = false;
-		if (b.pending && b.wait == 0) {
-			// answer in the next cycle (at least one cycle after the grant)
-			b.rvalid = true;
-			if (b.we) wr32(mem, b.addr, b.wdata, b.be);
-			b.rdata = b.we ? 0 : rd32(mem, b.addr);
+		if (mm.pending) {
+			if (--mm.wait == 0) {
+				mm.ack = true;
+				if (line) {
+					uint32_t base = addr & ~31u;
+					for (int k = 0; k < 8; k++) {
+						if (we) wr32(mem, base + 4 * k, wdata[7 - k], 0xF);
+						mm.rdata[7 - k] = rd32(mem, base + 4 * k);
+					}
+				} else {
+					if (we) wr32(mem, addr, wdata[0], be);
+					mm.rdata[0] = rd32(mem, addr);
+				}
+			}
 		}
-		// a new request can be taken when nothing is outstanding, or the
-		// outstanding one is answered in that same cycle
-		b.gnt = (!b.pending || b.rvalid) && !stalled();
 	};
+
+	bool snoop_acked = false;      // the snoop port acknowledged in the last cycle
 
 	auto tick = [&]() {
 		drive();
 		dut->clk = 0; dut->eval();
-		bool ireq = dut->ibus_req, dreq = dut->dbus_req;
-		uint32_t iaddr = dut->ibus_addr;
-		bool dwe = dut->dbus_we;
-		uint32_t daddr = (uint32_t)dut->dbus_addr << 2, dbe = dut->dbus_be, dwd = dut->dbus_wdata;
+		snoop_acked = dut->snoop_ack;
+		bool req = dut->mem_req, we = dut->mem_we, line = dut->mem_line;
+		uint32_t addr = (uint32_t)dut->mem_addr << 2, be = dut->mem_be;
+		uint32_t wdata[8];
+		for (int i = 0; i < 8; i++) wdata[i] = dut->mem_wdata[i];
+		// data accesses as they reach the cache
+		bool dreq = dut->trace_dreq, dwe = dut->trace_dwe;
+		uint32_t dkind = dut->trace_dkind, daddr = (uint32_t)dut->trace_daddr << 2;
+		if (opt.trace && dreq)
+			std::printf("%10llu        data %s kind %u at %08X be %X %08X\n", (unsigned long long)cycles,
+				dwe ? "write" : "read ", dkind, daddr, (unsigned)dut->trace_dbe, (uint32_t)dut->trace_dwdata);
+		if (opt.trace && req && !mm.pending)
+			std::printf("%10llu        memory %s %s at %08X\n", (unsigned long long)cycles,
+				we ? "write" : "read ", line ? "line" : "word", addr);
 		dut->clk = 1; dut->eval();
-		step_bus(ib, ireq, false, iaddr, 0xF, 0);
+		step_mem(req, we, line, addr, be, wdata);
+		if (dreq && (dwe || dkind == 1)) touched.insert(daddr & ~31u);
 		// the handler acknowledges an interrupt by storing to this address
-		if (dreq && db.gnt && dwe && daddr == 0x00FFFFF0) { irq = false; irq_acks++; }
-		step_bus(db, dreq, dwe, daddr, dbe, dwd);
+		if (dreq && dwe && dkind == 0 && daddr == 0x00FFFFF0) { irq = false; irq_acks++; }
+		// the cache test starts a DMA transfer by storing to these
+		if (dreq && dwe && dkind == 0 && (daddr == 0x00FFFFF4 || daddr == 0x00FFFFF8) && dma_step == 0) {
+			dma_write = daddr == 0x00FFFFF4;
+			dma_value = dut->trace_dwdata;
+			dma_sum   = 0;
+			dma_step  = 1;
+		}
+		// the DMA engine: snoop, then access memory, one line at a time
+		if (dma_step >= 1 && dma_step <= 3) {
+			if (!snoop_req) {
+				if (dma_gap) dma_gap = false;                       // a cycle between snoops
+				else {
+					snoop_req  = true;
+					snoop_we   = dma_write || dma_step == 3;
+					snoop_addr = (dma_step == 3) ? DMA_RESULT : DMA_BUF + 32 * (dma_step - 1);
+				}
+			}
+			else if (snoop_acked) {
+				snoop_req = false;
+				dma_gap   = true;
+				if (dma_step <= 2) {
+					uint32_t base = DMA_BUF + 32 * (dma_step - 1);
+					for (int i = 0; i < 8; i++) {
+						if (dma_write) wr32(mem, base + 4 * i, dma_value + 0x01010101u * (uint32_t)(8 * (dma_step - 1) + i), 0xF);
+						else dma_sum += rd32(mem, base + 4 * i);
+					}
+				}
+				else wr32(mem, DMA_RESULT, dma_write ? 1 : dma_sum, 0xF);
+				dma_step++;
+				if (dma_step == 4) dma_step = 0;
+			}
+		}
 		cycles++;
 		if (opt.irq_every && !irq && cycles % opt.irq_every == 0) { irq = true; irq_count++; }
 	};
 
 	dut->reset_pc = reset_pc;
 	dut->reset = 1;
-	ib.gnt = db.gnt = false;
 	tick(); tick();
 	dut->reset = 0;
-	ib = Bus(); db = Bus();
+	mm = Mem();
 
 	while (!done && cycles < opt.max_cycles) {
 		tick();
@@ -321,6 +386,12 @@ int main(int argc, char** argv) {
 					}
 					int rc = ref_step();
 					ref_get_state(&s);
+					if (opt.trace)
+						for (unsigned i = 0; i < ref_last_store_count(); i++) {
+							uint32_t a; unsigned sz; uint64_t v;
+							ref_last_store(i, &a, &sz, &v);
+							std::printf("            reference stores %u bytes %0*llX at %08X\n", sz, 2 * sz, (unsigned long long)v, a);
+						}
 
 					// divw/divwu results the architecture leaves undefined: the
 					// core follows the real 604, the reference does not
@@ -343,8 +414,8 @@ int main(int argc, char** argv) {
 					            s.lr == dut->trace_lr && s.ctr == dut->trace_ctr && s.msr == dut->trace_msr;
 					for (int r = 0; r < 32 && same; r++) same = s.gpr[r] == gpr[r];
 					if (!same) {
-						std::printf("MISMATCH after %llu instructions at %08X insn=%08X (reference step returned %X)\n",
-							(unsigned long long)retired, pc, insn, rc);
+						std::printf("MISMATCH after %llu instructions at %08X insn=%08X (reference step returned %X; r0=%08X r1=%08X r2=%08X)\n",
+							(unsigned long long)retired, pc, insn, rc, gpr[0], gpr[1], gpr[2]);
 						for (int r = 0; r < 32; r++)
 							if (s.gpr[r] != gpr[r]) std::printf("  r%-2d   reference %08X  core %08X\n", r, s.gpr[r], gpr[r]);
 						if (s.cr != dut->trace_cr)   std::printf("  cr    reference %08X  core %08X\n", s.cr, dut->trace_cr);
@@ -362,8 +433,16 @@ int main(int argc, char** argv) {
 		}
 	}
 
-	// let the last store reach memory
-	for (int i = 0; i < 8; i++) tick();
+	// let the last access finish, then have the cache write back every line
+	// it may hold dirty, through the snoop port as a DMA engine would
+	for (int i = 0; i < 16; i++) tick();
+	for (uint32_t a : touched) {
+		snoop_req = true; snoop_we = false; snoop_addr = a;
+		int n = 0;
+		do { tick(); } while (!snoop_acked && ++n < 1000);
+		snoop_req = false;
+		tick();
+	}
 	dut->final();
 
 	bool mem_ok = true;

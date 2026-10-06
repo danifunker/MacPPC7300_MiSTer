@@ -389,6 +389,121 @@ How the rules apply, decided before step 1 and followed in it:
   nothing at all (no translation, no R bit), so the translated programs
   leave them out; it never takes `dcbz`'s alignment exceptions.
 
+**Step 3, caches and the memory bus: design, decided before building.**
+
+- Each cache is the 604's shape: 16 KB, four ways of 128 sets of 32-byte
+  lines, indexed by address bits 11-5. Those bits are inside the page
+  offset, so the index is the same virtual and physical and nothing can
+  alias; the tag is the physical page number. The data cache is write-back
+  with a dirty bit per line and write-allocate; the instruction cache is
+  read-only. Replacement is a pseudo-LRU tree (three bits per set).
+- The caches are drop-in replacements for the two buses the pipeline has
+  today: a request with the physical address from the MMU (which
+  translates in the request cycle), the line read with the index at that
+  edge, the tag compared in the next cycle, and the answer one cycle after
+  the request on a hit, exactly the test bench bus's timing. So the
+  pipeline's fetch and MEM stages do not change and neither does the
+  cycle count of a hit. The memory unit never issues two requests in
+  consecutive cycles, so a store's write to the data RAM is never read in
+  the same cycle; no bypass is needed.
+- The page table walker reads and writes through the data cache, as the
+  604's table search does: a page table entry software just wrote is in
+  the cache, not in memory.
+- The request kinds the data cache serves, from the memory unit through
+  the MMU: word read and write with byte enables; line zero (`dcbz`, one
+  operation again, allocating without a fill); flush (`dcbf`: write back
+  and invalidate), store (`dcbst`: write back), invalidate (`dcbi`, and
+  `icbi` which is passed to the instruction cache); and uncached word
+  accesses for pages with I = 1, HID0 off, or a locked cache's misses.
+  With translation off the attributes are the architecture's default,
+  cacheable (W = 0, I = 0); device registers are reached through BATs
+  with I = 1, as the ROM sets them up.
+- HID0: ICE and DCE enable, ILOCK and DLOCK treat misses as
+  cache-inhibited, ICFI and DCFI invalidate everything without write-back
+  and clear themselves the cycle after (manual 2.1.2).
+- One memory port leaves the CPU, data before instructions: a request
+  (level, until acknowledged) for one 32-byte line or one word with byte
+  enables, read or write, with the whole line of write data presented in
+  parallel and the whole line of read data returned with the acknowledge.
+  One request outstanding. That is the shape the clock crossing to the
+  SDRAM controller wants: the request and its data stand still while a
+  toggle crosses, the answer and its data stand still while another
+  toggles back. Critical-word-first and a second outstanding request are
+  later refinements, if the measured speed asks for them.
+- Coherence with the rest of the machine: a snoop port. Anything that
+  reads or writes memory behind the CPU's back (disk DMA, the HPS loading
+  a ROM, video) presents the line address first; the data cache writes the
+  line back if it is dirty, invalidates it for a write, and acknowledges;
+  the instruction cache invalidates for a write. The external access goes
+  ahead after the acknowledge. Nothing else keeps the caches coherent,
+  there being one processor.
+- For the tests: the test bench's memory model serves the line port with
+  random wait states, and the lockstep programs end by flushing the data
+  region with `dcbf` so that the final memory comparison with dingusppc,
+  which has no cache, sees the written-back data. A directed test covers
+  hits, misses, evictions and write-back, every cache instruction, the
+  snoop port and the HID0 bits.
+
+**Step 3, the caches and the clock crossing: done 2026-10-05.**
+
+- `DSPPC604_cache`, twice, as designed above: 16 KB, four ways of 128 sets
+  of 32-byte lines, pseudo-LRU, write-back and write-allocate on the data
+  side, read-only on the instruction side; `dcbz` allocates a zero line
+  without a fill (one operation again, not eight); `dcbf`, `dcbst`, `dcbi`
+  do what they say; `icbi` reaches the instruction cache through the data
+  cache; uncached words for cache-inhibited pages, a disabled cache or a
+  locked cache's misses; write-through stores update a line if present
+  and go to memory, allocating nothing. HID0[ICE], [DCE], [ILOCK], [DLOCK],
+  [ICFI], [DCFI] as the manual says, the two invalidate bits acting once
+  and clearing themselves (a 128-cycle sweep, also after reset). The page
+  table walker goes through the data cache.
+- A read hit takes the next request behind it, so fetches flow one per
+  cycle; a store's RAM write happens in its answer cycle, which nothing
+  else reads (the memory unit and the walker leave a cycle between
+  accesses).
+- `isync` now refetches, like `mtmsr`: a `blrl` whose target the branch
+  target buffer knows is fetched before an `icbi` ahead of it completes,
+  and the architecture's `isync` is what discards that. `mtspr` to HID0
+  refetches too.
+- The snoop port: both caches answer in their own time (a dirty line is
+  written back first), the core combines the answers, and the instruction
+  cache serves an `icbi` as soon as its own part of an external snoop is
+  done so that neither can hold up the other.
+- The test bench's memory model serves the line port with random wait
+  states; the lines the data cache may hold dirty are collected from a new
+  trace port (every data access as it reaches the cache) and written back
+  through the snoop port when the program ends, as a DMA engine would, so
+  that the memory comparisons see them. The same trace port carries the
+  interrupt tests' acknowledge store, which the cache would otherwise
+  absorb. The bench also has a DMA engine on the snoop port.
+- Verified: everything that ran before runs through the caches (48 runs);
+  a directed program (30 checks, 34 memory words) with nine lines in one
+  set (evictions and write-back), what memory holds after `dcbf`, `dcbst`,
+  `dcbi` and DCFI, with the cache locked or off, and on a write-through
+  page, all seen through a cache-inhibited alias of the same physical page;
+  self-modifying code with `dcbst`/`icbi`/`isync` and with ICFI; DMA in and
+  out through the snoop port, with the CPU holding the lines clean and then
+  dirty. Three deliberate bugs (dirty bit not set, write-back to the wrong
+  address, snoop without write-back) each caught, two of them by the
+  lockstep programs as well.
+- The random lockstep programs lose `dcbi`, which with a real cache throws
+  away stores that dingusppc, having no cache, keeps; the directed tests
+  have it. The end-of-run write-back made the `dcbf` epilogue planned above
+  unnecessary.
+- Cost in cycles: the 131,770-instruction straight-line golden program,
+  every line of which is a compulsory miss, goes from 1.36 to 1.85 cycles
+  per instruction with an ideal line port, and from 4.29 to 2.04 with 60%
+  wait states; the random lockstep programs stay at about 2.6, the caches
+  absorbing their memory traffic entirely.
+- `DSPPC604_memcdc` carries the memory port into the memory controller's
+  clock and the answer back: the request and its write data are captured
+  once and stand still while a toggle crosses through two flip-flops, the
+  read data likewise on the way back. About two cycles of each clock each
+  way. Verified by a two-clock Verilator bench (`cdc_main.cpp`) with random
+  line and word requests against a software memory at 66 against 100, 130,
+  66 and 50 MHz, 100 against 66, and two clocks a hundredth apart. The
+  SDRAM controller on the far side of it belongs to the machine (M6).
+
 ### M6: real ROM, first MiSTer build
 
 - Run the 7600's own ROM from the reset vector in Verilator against a stub

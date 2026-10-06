@@ -3,66 +3,66 @@
 //  Synthesis-only wrapper for the area and timing check of the DSPPC604
 //  pipeline (syn/check.py core).
 //
-//  Bus inputs and outputs are registered here, standing in for the caches
-//  that will sit on these buses. The retirement trace is left unconnected,
-//  as it will be in a real build.
+//  The memory and snoop ports are registered here, standing in for the
+//  clock crossing to the SDRAM controller. The retirement trace is left
+//  unconnected, as it will be in a real build.
 //
 //============================================================================
 
 module DSPPC604_check_core
 (
-	input  logic        clk,
-	input  logic        i_reset,
-	input  logic [31:0] i_reset_pc,
+	input  logic         clk,
+	input  logic         i_reset,
+	input  logic [31:0]  i_reset_pc,
 
-	input  logic        i_ibus_gnt,
-	input  logic        i_ibus_rvalid,
-	input  logic [31:0] i_ibus_rdata,
-	input  logic        i_dbus_gnt,
-	input  logic        i_dbus_rvalid,
-	input  logic [31:0] i_dbus_rdata,
+	input  logic         i_mem_ack,
+	input  logic [255:0] i_mem_rdata,
+	output logic         o_mem_req,
+	output logic         o_mem_we,
+	output logic         o_mem_line,
+	output logic [31:2]  o_mem_addr,
+	output logic [3:0]   o_mem_be,
+	output logic [255:0] o_mem_wdata,
 
-	output logic        o_ibus_req,
-	output logic [31:0] o_ibus_addr,
-	output logic        o_dbus_req,
-	output logic        o_dbus_we,
-	output logic [29:0] o_dbus_addr,
-	output logic [3:0]  o_dbus_be,
-	output logic [31:0] o_dbus_wdata,
-	input  logic        i_ext_irq,
-	input  logic        i_tb_tick
+	input  logic         i_snoop_req,
+	input  logic         i_snoop_we,
+	input  logic [31:5]  i_snoop_addr,
+	output logic         o_snoop_ack,
+
+	input  logic         i_ext_irq,
+	input  logic         i_tb_tick
 );
 
-logic        reset_q;
-logic [31:0] reset_pc_q;
-logic        ibus_gnt_q, ibus_rvalid_q, dbus_gnt_q, dbus_rvalid_q;
-logic [31:0] ibus_rdata_q, dbus_rdata_q;
+logic         reset_q;
+logic [31:0]  reset_pc_q;
+logic         mem_ack_q, snoop_req_q, snoop_we_q;
+logic [255:0] mem_rdata_q;
+logic [31:5]  snoop_addr_q;
+logic         ext_irq_q, tb_tick_q;
 
-logic        ibus_req, dbus_req, dbus_we;
-logic        ext_irq_q, tb_tick_q;
-logic [31:0] ibus_addr, dbus_wdata;
-logic [29:0] dbus_addr;
-logic [3:0]  dbus_be;
+logic         mem_req, mem_we, mem_line, snoop_ack;
+logic [31:2]  mem_addr;
+logic [3:0]   mem_be;
+logic [255:0] mem_wdata;
 
 always_ff @(posedge clk) begin
-	reset_q       <= i_reset;
-	reset_pc_q    <= i_reset_pc;
-	ext_irq_q     <= i_ext_irq;
-	tb_tick_q     <= i_tb_tick;
-	ibus_gnt_q    <= i_ibus_gnt;
-	ibus_rvalid_q <= i_ibus_rvalid;
-	ibus_rdata_q  <= i_ibus_rdata;
-	dbus_gnt_q    <= i_dbus_gnt;
-	dbus_rvalid_q <= i_dbus_rvalid;
-	dbus_rdata_q  <= i_dbus_rdata;
+	reset_q      <= i_reset;
+	reset_pc_q   <= i_reset_pc;
+	ext_irq_q    <= i_ext_irq;
+	tb_tick_q    <= i_tb_tick;
+	mem_ack_q    <= i_mem_ack;
+	mem_rdata_q  <= i_mem_rdata;
+	snoop_req_q  <= i_snoop_req;
+	snoop_we_q   <= i_snoop_we;
+	snoop_addr_q <= i_snoop_addr;
 
-	o_ibus_req    <= ibus_req;
-	o_ibus_addr   <= ibus_addr;
-	o_dbus_req    <= dbus_req;
-	o_dbus_we     <= dbus_we;
-	o_dbus_addr   <= dbus_addr;
-	o_dbus_be     <= dbus_be;
-	o_dbus_wdata  <= dbus_wdata;
+	o_mem_req    <= mem_req;
+	o_mem_we     <= mem_we;
+	o_mem_line   <= mem_line;
+	o_mem_addr   <= mem_addr;
+	o_mem_be     <= mem_be;
+	o_mem_wdata  <= mem_wdata;
+	o_snoop_ack  <= snoop_ack;
 end
 
 /* verilator lint_off PINCONNECTEMPTY */
@@ -73,19 +73,18 @@ DSPPC604 cpu
 	.reset_pc      (reset_pc_q),
 	.ext_irq       (ext_irq_q),
 	.tb_tick       (tb_tick_q),
-	.ibus_req      (ibus_req),
-	.ibus_addr     (ibus_addr),
-	.ibus_gnt      (ibus_gnt_q),
-	.ibus_rvalid   (ibus_rvalid_q),
-	.ibus_rdata    (ibus_rdata_q),
-	.dbus_req      (dbus_req),
-	.dbus_we       (dbus_we),
-	.dbus_addr     (dbus_addr),
-	.dbus_be       (dbus_be),
-	.dbus_wdata    (dbus_wdata),
-	.dbus_gnt      (dbus_gnt_q),
-	.dbus_rvalid   (dbus_rvalid_q),
-	.dbus_rdata    (dbus_rdata_q),
+	.mem_req       (mem_req),
+	.mem_we        (mem_we),
+	.mem_line      (mem_line),
+	.mem_addr      (mem_addr),
+	.mem_be        (mem_be),
+	.mem_wdata     (mem_wdata),
+	.mem_ack       (mem_ack_q),
+	.mem_rdata     (mem_rdata_q),
+	.snoop_req     (snoop_req_q),
+	.snoop_we      (snoop_we_q),
+	.snoop_addr    (snoop_addr_q),
+	.snoop_ack     (snoop_ack),
 	.trace_valid   (),
 	.trace_last    (),
 	.trace_pc      (),
@@ -98,7 +97,13 @@ DSPPC604 cpu
 	.trace_lr      (),
 	.trace_ctr     (),
 	.trace_fpscr   (),
-	.trace_msr     ()
+	.trace_msr     (),
+	.trace_dreq    (),
+	.trace_dwe     (),
+	.trace_dkind   (),
+	.trace_daddr   (),
+	.trace_dbe     (),
+	.trace_dwdata  ()
 );
 /* verilator lint_on PINCONNECTEMPTY */
 

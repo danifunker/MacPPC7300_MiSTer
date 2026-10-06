@@ -10,6 +10,7 @@
     python progs.py exctest OUT                  each exception once, with what its handler must see
     python progs.py mmutest OUT                  address translation: BATs, page tables, DSI, ISI, tlbie
     python progs.py resvtest OUT                 lwarx/stwcx., dcbz and the cache instructions
+    python progs.py cachetest OUT                the caches: write-back, the cache instructions, HID0, DMA
     python progs.py irqtest OUT [LOOPS]          a computation that interrupts must not disturb
                                                  (run with --irq-every and --tb-run)
 
@@ -79,6 +80,15 @@ def set_msr(value, scratch=0):
     return li32(scratch, value) + [mtmsr(scratch)]
 
 
+HID0 = 1008
+HID0_ICE, HID0_DCE = 0x8000, 0x4000
+
+
+def caches_on(scratch=7, value=HID0_ICE | HID0_DCE):
+    """HID0: both caches enabled (they are off after reset)."""
+    return li32(scratch, value) + [mtspr(HID0, scratch)]
+
+
 def install_handlers(p):
     """Exception handlers at the vectors. They leave SRR0 (advanced) and SRR1
     in r30 and r31, where a lockstep run compares them.
@@ -123,7 +133,7 @@ class Program:
 # ---- the golden vectors as one program -----------------------------------------
 def golden(out, path):
     p = Program()
-    p.words += set_msr(0)
+    p.words += caches_on() + set_msr(0)
     n = 0
     with open(path) as fh:
         for r in csv.DictReader(fh):
@@ -168,7 +178,7 @@ def goldenfp(out, path):
     """Each vector: f4-f6 and FPSCR loaded from a constant pool, f3 zeroed, CR
     set, then the instruction. r10 points at the vector's constants."""
     p = Program()
-    p.words += set_msr(MSR_FP)
+    p.words += caches_on() + set_msr(MSR_FP)
     n = 0
     with open(path) as fh:
         for r in csv.DictReader(fh):
@@ -252,6 +262,7 @@ def exctest(out):
         p.checks.append((len(p.words) - 1, check_text(
             st["seen"], 0, xer, 0, st["fpscr"], [0, 0, 0, 0], "noexc%X" % len(p.checks))))
 
+    p.words += caches_on()
     setm(0)
     p.words += li32(1, DATA_A)
     expect(0x44000002, 0, pc_after=True)                          # sc
@@ -298,7 +309,7 @@ def fpexctest(out):
     for i, w in enumerate(body + [D(14, 30, 3, 4), mtspr(SRR0, 30)] + tail):
         p.data[0x700 + 4 * i] = w
     FE0 = 0x800
-    p.words += set_msr(MSR_FP | FE0, 7)
+    p.words += caches_on() + set_msr(MSR_FP | FE0, 7)
     p.words.append((63 << 26) | (6 << 23) | (8 << 12) | (134 << 1))      # mtfsfi 6,8: FPSCR[VE] on
     at = p.pc()
     p.words.append((63 << 26) | (3 << 21) | (0 << 16) | (0 << 11) | (18 << 1))   # fdiv f3,f0,f0: 0/0
@@ -467,6 +478,7 @@ def mmutest(out):
     p.data[0x00320000] = 0x77777777
 
     # ---- set it all up, translation off ----
+    p.words += caches_on()
     for n, v in srs.items():
         p.words += li32(7, v) + [mtsr(n, 7)]
     for n, v in bats.items():
@@ -552,7 +564,7 @@ def resvtest(out):
     translating (DSI, protection, the R and C bits); their alignment and
     privilege rules."""
     p = Program()
-    HID0, DCE = 1008, 0x4000
+    DCE = HID0_DCE
     st = {"r": [0, 0, 0, 0], "cr": 0, "xer": 0, "msr": 0}
 
     body = [mfspr(SRR0, 3), mfspr(SRR1, 4), mfspr(DAR, 5), mfspr(DSISR, 6)]
@@ -593,14 +605,14 @@ def resvtest(out):
     LINE = DATA_A + 0x40                     # a line of known words, with neighbours
     for i in range(-2, 10):
         p.data[LINE + 4 * i] = 0x11111111 * ((i + 2) % 9 + 1)
-    p.words += set_msr(0, 7)
+    p.words += caches_on(7, HID0_ICE) + set_msr(0, 7)
     p.words += li32(9, DATA_A) + li32(10, LINE + 0x17) + li32(11, 0xABCD1234) + li32(12, 0x55AA55AA) + li32(0, 0)
     p.words += li32(13, DATA_A + 2)
 
     # ---- dcbz with the data cache off: alignment exception ----
     dcbz = X(0, 0, 10, 1014)
     expect(dcbz, 0x600, dar=LINE + 0x17, dsisr=x_dsisr(dcbz))
-    p.words += li32(7, DCE) + [mtspr(HID0, 7)]
+    p.words += caches_on(7, HID0_ICE | DCE)
     p.words.append(dcbz)                                                     # zeroes LINE .. LINE+1F
     check("dcbz")
     for i in range(-2, 10):
@@ -676,10 +688,154 @@ def resvtest(out):
     expect(X(0, 0, 16, 470), 0x300, dar=RO + 0x30, dsisr=0x0A000000)        # dcbi: a store
     expect(X(0, 0, 17, 86), 0x300, dar=HOLE + 0x40, dsisr=0x40000000)       # dcbf: no page
     expect(X(0, 0, 17, 982), 0x300, dar=HOLE + 0x40, dsisr=0x40000000)      # icbi
-    p.words.append(X(0, 0, 14, 470))                                         # dcbi on the RW page: C set
+    p.words += li32(18, RW + 0x40)
+    p.words.append(X(0, 0, 18, 470))                                         # dcbi on the RW page (another line): C set
     check("dcbi_rw")
     p.words += set_msr(0, 7)
     st["msr"] = 0
+
+    p.expect.update(table.ptes)
+    p.words.append(B_SELF)
+    p.write(out)
+    print("%d instructions, %d checks, %d memory words -> %s" % (len(p.words), len(p.checks), len(p.expect), out))
+
+
+def cachetest(out):
+    """The caches: evictions and write-back, what memory holds (seen through a
+    cache-inhibited alias of the same physical page) after dcbf, dcbst, dcbi,
+    DCFI, with the data cache locked or off, and on a write-through page;
+    self-modifying code with dcbst/icbi and with ICFI; DMA through the snoop
+    port both ways (the test bench's engine, started by stores to 00FFFFF4
+    and 00FFFFF8)."""
+    p = Program()
+    st = {"r": [0, 0, 0, 0], "cr": 0}
+
+    def check(tag):
+        p.words.append(NOP)
+        p.checks.append((len(p.words) - 1, check_text(
+            list(st["r"]), st["cr"], 0, 0, 0, [0, 0, 0, 0], tag)))
+
+    def load(reg, ra, d, value):
+        p.words.append(D(32, reg, ra, d))
+        st["r"][reg - 3] = value
+        check("ld%d" % len(p.checks))
+
+    # one physical page (PHYS) seen three ways: cacheable at CA, cache-inhibited
+    # at CI, write-through at WT; a second physical page behind CODE, executable
+    PHYS, CODE_PHYS = 0x00A00000, 0x00A01000
+    CA, CI, WT, CODE = 0x00700000, 0x00701000, 0x00702000, 0x00703000
+    srs = {n: 0x300 + n for n in range(16)}
+    sdr1 = 0x00100000
+    table = PageTable(p, sdr1, srs)
+    # CA and CI are walked before the DCFI below, which throws their R and C
+    # updates away with everything else the data cache holds; nothing walks
+    # them again
+    table.map(CA, PHYS, 2)
+    table.map(CI, PHYS, 2, wimg=4)
+    table.map(WT, PHYS, 2, wimg=8, r_final=1, c_final=1)
+    table.map(CODE, CODE_PHYS, 2, r_final=1, c_final=1)
+    BLR = 0x4E800020
+    p.data[CODE_PHYS] = D(14, 3, 0, 0x111)                                   # li r3,0x111
+    p.data[CODE_PHYS + 4] = BLR
+
+    p.words += caches_on() + set_msr(0, 7)
+    for n, v in srs.items():
+        p.words += li32(7, v) + [mtsr(n, 7)]
+    for spr, v in ((IBAT0U, batu(0, 8, 1, 1)), (IBAT0U + 1, batl(0, 2)),
+                   (DBAT0U, batu(0, 8, 1, 1)), (DBAT0U + 1, batl(0, 2)), (SDR1, sdr1)):
+        p.words += li32(7, v) + [mtspr(spr, 7)]
+    p.words += li32(10, CA) + li32(11, CI) + li32(12, WT) + li32(13, CODE) + li32(0, 0)
+    p.words += li32(20, 0x11111111) + li32(21, 0x22222222) + li32(22, 0x33333333) + li32(23, 0x44444444)
+
+    # ---- evictions: nine lines of one set, through the BAT (cacheable) ----
+    base = 0x00400000
+    for k in range(9):
+        p.words += li32(8, base + 0x1000 * k) + li32(9, 0x1000 * k + 7) + [D(36, 9, 8, 0)]
+    for k in range(9):
+        p.words += li32(8, base + 0x1000 * k)
+        load(5, 8, 0, 0x1000 * k + 7)
+    for k in range(9):
+        p.expect[base + 0x1000 * k] = 0x1000 * k + 7
+
+    p.words += set_msr(MSR_IR | MSR_DR, 7)
+
+    # ---- what memory holds: the cache-inhibited alias sees it ----
+    p.words.append(D(36, 20, 10, 0))                                         # stw via CA: dirty in the cache
+    load(5, 11, 0, 0)                                                        # memory still has 0
+    p.words.append(X(0, 0, 10, 86))                                          # dcbf: written back
+    load(5, 11, 0, 0x11111111)
+    p.words.append(D(36, 21, 10, 0))
+    p.words.append(X(0, 0, 10, 54))                                          # dcbst: written back, still cached
+    load(5, 11, 0, 0x22222222)
+    p.words.append(D(36, 22, 10, 0))
+    p.words.append(X(0, 0, 10, 470))                                         # dcbi: the new store is lost
+    load(5, 11, 0, 0x22222222)
+    load(5, 10, 0, 0x22222222)                                               # ... and the cache refetches
+    p.words.append(D(36, 23, 10, 0))
+    p.words += caches_on(7, HID0_ICE | HID0_DCE | 0x0400)                    # DCFI: everything invalid, nothing written
+    load(5, 11, 0, 0x22222222)
+    p.words += caches_on(7, HID0_ICE | HID0_DCE | 0x1000)                    # DLOCK: a miss goes to memory
+    p.words.append(D(36, 20, 10, 4))
+    load(5, 11, 4, 0x11111111)
+    p.words += caches_on(7, HID0_ICE | HID0_DCE)
+    load(5, 10, 4, 0x11111111)                                               # now cached
+    p.words.append(D(36, 21, 10, 4))                                         # dirty
+    load(5, 11, 4, 0x11111111)
+    p.words += caches_on(7, HID0_ICE)                                        # DCE off: memory directly
+    p.words.append(D(36, 22, 10, 8))
+    load(5, 11, 8, 0x33333333)
+    p.words += caches_on(7, HID0_ICE | HID0_DCE)
+    load(5, 10, 4, 0x22222222)                                               # the dirty line is still there
+    p.words.append(D(36, 23, 12, 0x20))                                      # write-through: memory at once
+    load(5, 11, 0x20, 0x44444444)
+    load(5, 12, 0x20, 0x44444444)
+    p.words.append(X(0, 0, 10, 86))                                          # dcbf line 0 (dirty: 22222222 at +4)
+    p.words.append(X(0, 0, 12, 86))
+    p.expect[PHYS] = 0x22222222
+    p.expect[PHYS + 4] = 0x22222222
+    p.expect[PHYS + 8] = 0                      # the dirty line, filled before the store made with the cache off, covers it
+    p.expect[PHYS + 0x20] = 0x44444444
+
+    # ---- self-modifying code: li r3,0x111 becomes li r3,0x222 ----
+    p.words += [mtspr(LR, 13), 0x4E800021]                                   # blrl: r3 = 0x111
+    st["r"][0] = 0x111
+    check("code1")
+    p.words += li32(9, D(14, 3, 0, 0x222)) + [D(36, 9, 13, 0)]               # store the new instruction
+    p.words += [X(0, 0, 13, 54), X(0, 0, 13, 982), 0x4C00012C]               # dcbst, icbi, isync
+    p.words += [mtspr(LR, 13), 0x4E800021]
+    st["r"][0] = 0x222
+    check("code2")
+    p.words += li32(9, D(14, 3, 0, 0x333)) + [D(36, 9, 13, 0), X(0, 0, 13, 54)]
+    p.words += caches_on(7, HID0_ICE | HID0_DCE | 0x0800) + [0x4C00012C]     # ICFI
+    p.words += [mtspr(LR, 13), 0x4E800021]
+    st["r"][0] = 0x333
+    check("code3")
+    p.expect[CODE_PHYS] = D(14, 3, 0, 0x333)
+
+    # ---- DMA: the engine writes 64 bytes the CPU has cached, then reads 64 the CPU dirtied ----
+    p.words += set_msr(0, 7)
+    BUF, RESULT, GO_W, GO_R = 0x00FFF000, 0x00FFFFFC, 0x00FFFFF4, 0x00FFFFF8
+    p.words += li32(14, BUF) + li32(15, RESULT) + li32(16, GO_W) + li32(17, GO_R)
+    p.words.append(D(36, 0, 15, 0))                                          # result <- 0
+    load(5, 14, 0, 0)                                                        # the buffer is cached (zero)
+    load(5, 14, 32, 0)
+    p.words += li32(9, 0x5A000000) + [D(36, 9, 16, 0)]                       # start the DMA write
+    wait = [D(32, 3, 15, 0), (11 << 26) | (0 << 23) | (3 << 16) | 0, (16 << 26) | (12 << 21) | (2 << 16) | 0xFFF8]
+    p.words += wait                                                          # until result != 0: lwz, cmpwi, beq -8
+    st["r"][0] = 1
+    st["cr"] = 0x40000000                                                    # the compare: 1 > 0
+    load(5, 14, 0, 0x5A000000)                                               # the CPU sees the DMA's data
+    load(5, 14, 60, 0x5A000000 + 15 * 0x01010101)
+    for i in range(16):
+        p.words += li32(9, 0x0C000000 + i) + [D(36, 9, 14, 4 * i)]          # dirty the buffer
+    p.words.append(D(36, 0, 15, 0))
+    p.words.append(D(36, 9, 17, 0))                                          # start the DMA read
+    p.words += wait
+    st["r"][0] = (16 * 0x0C000000 + sum(range(16))) & 0xFFFFFFFF            # its checksum of what the CPU wrote
+    st["cr"] = 0x80000000                                                    # negative
+    check("dma")
+    for i in range(16):
+        p.expect[BUF + 4 * i] = 0x0C000000 + i
 
     p.expect.update(table.ptes)
     p.words.append(B_SELF)
@@ -704,7 +860,7 @@ def irqtest(out, loops):
     for i, w in enumerate(dec):
         p.data[0x900 + 4 * i] = w
 
-    p.words += set_msr(0, 7)
+    p.words += caches_on() + set_msr(0, 7)
     p.words += li32(1, DATA_A) + li32(3, 1) + li32(4, 0) + li32(5, 0) + li32(6, 0)
     p.words += li32(7, 100) + [mtspr(DEC, 7)]
     p.words += li32(7, loops) + [mtspr(CTR, 7)]
@@ -783,7 +939,7 @@ def fprandom(out, count, seed):
         st["cr"] = (st["cr"] & ~(0xF << sh)) | (val << sh)
 
     # prologue: bases, an index, and every source register loaded
-    p.words += set_msr(MSR_FP)
+    p.words += caches_on() + set_msr(MSR_FP)
     p.words += li32(10, POOL_BASE) + li32(11, SCRATCH) + li32(12, 8) + li32(9, SCRATCH + 0x800)
     for r in range(0, 8):
         i = rnd.randrange(256)
@@ -975,7 +1131,7 @@ def gen_random(out, count, seed, translate=False):
                        (DBAT0U, batu(0, 8, 1, 1)), (DBAT0U + 1, batl(0, 2)), (SDR1, sdr1)):
             p.words += li32(3, v) + [mtspr(spr, 3)]
     msr_base = (MSR_IR | MSR_DR) if translate else 0
-    p.words += li32(3, 0xC000) + [mtspr(1008, 3)]                            # HID0: caches on, for dcbz
+    p.words += caches_on(3)
     p.words += set_msr(msr_base, 3)
     p.words += li32(0, rnd.randrange(0, 40))
     p.words += li32(1, DATA_A)
@@ -1113,10 +1269,12 @@ def gen_random(out, count, seed, translate=False):
             t = rd()
             return [M(21, base(), t, 0, 27, 19), X(0, 0, t, 1014)]
         if k == 14:
-            # the other cache instructions: no-ops on both sides without
-            # translation (dingusppc does not translate them at all)
+            # dcbst, dcbf, icbi: invisible to the program on both sides without
+            # translation (dingusppc does not translate them at all). Not dcbi:
+            # it throws away stores the data cache still holds, which dingusppc,
+            # having no cache, would keep.
             t = rd()
-            return [M(21, base(), t, 0, 27, 19), X(0, 0, t, rnd.choice((54, 86, 982, 470)))]
+            return [M(21, base(), t, 0, 27, 19), X(0, 0, t, rnd.choice((54, 86, 982)))]
         if k == 0:
             return [D(rnd.choice((32, 34, 40, 42)), rd(), base(), d)]                 # lwz lbz lhz lha
         if k == 1:
@@ -1240,6 +1398,8 @@ if __name__ == "__main__":
         mmutest(a[1])
     elif len(a) >= 2 and a[0] == "resvtest":
         resvtest(a[1])
+    elif len(a) >= 2 and a[0] == "cachetest":
+        cachetest(a[1])
     elif len(a) >= 2 and a[0] == "irqtest":
         irqtest(a[1], int(a[2]) if len(a) > 2 else 3000)
     elif len(a) >= 3 and a[0] == "fprandom":

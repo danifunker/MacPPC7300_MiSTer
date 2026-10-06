@@ -12,8 +12,8 @@
 //                   crossed
 //    8 bytes        a double, at a word-aligned address only (the 604 takes
 //                   an alignment exception otherwise); always two accesses
-//    touch          one request that only translates the address (the cache
-//                   instructions until there is a cache): no data moves
+//    kind           other than a load or store (the cache instructions): one
+//                   request, which the cache carries out; no data moves
 //
 //  Handshake: the requester holds req_valid and the request steady until
 //  resp_valid, which is high for one cycle. A store has been written, and a
@@ -34,7 +34,7 @@ module DSPPC604_mem_unit
 
 	input  logic        req_valid,
 	input  logic        we,
-	input  logic        touch,
+	input  DSPPC604_pkg::ck_t kind,
 	input  logic [31:0] addr,
 	input  logic [3:0]  nbytes,      // 1 to 4, or 8
 	input  logic        sext,        // load: sign-extend a halfword
@@ -48,7 +48,7 @@ module DSPPC604_mem_unit
 
 	output logic        dbus_req,
 	output logic        dbus_we,
-	output logic        dbus_touch,
+	output DSPPC604_pkg::ck_t dbus_kind,
 	output logic [29:0] dbus_addr,
 	output logic [3:0]  dbus_be,
 	output logic [31:0] dbus_wdata,
@@ -57,6 +57,8 @@ module DSPPC604_mem_unit
 	input  logic        dbus_fault,
 	input  logic [31:0] dbus_rdata
 );
+
+import DSPPC604_pkg::*;
 
 typedef enum logic [1:0] {
 	S_REQ0,      // first (or only) word: waiting for the grant
@@ -71,6 +73,7 @@ logic [31:0] word0_q;
 wire       dword     = nbytes[3];
 wire [2:0] n         = nbytes[2:0];
 wire [1:0] offset    = addr[1:0];
+wire       touch     = (kind != CK_WORD);
 wire [2:0] last      = {1'b0, offset} + n - 3'd1;      // offset of the last byte
 wire       two_words = ~touch & (dword | last[2]);
 wire [31:0] w        = wdata[31:0];
@@ -96,7 +99,7 @@ wire second = (state == S_REQ1) | (state == S_RSP1);
 
 assign dbus_req   = (req_valid & (state == S_REQ0)) | (state == S_REQ1);
 assign dbus_we    = we;
-assign dbus_touch = touch;
+assign dbus_kind  = kind;
 assign dbus_addr  = addr[31:2] + {29'd0, second};
 assign dbus_be    = touch ? 4'b0000 : second ? bewin[3:0] : bewin[7:4];
 assign dbus_wdata = second ? wwin[31:0] : wwin[63:32];

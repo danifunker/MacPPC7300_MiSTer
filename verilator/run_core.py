@@ -18,6 +18,8 @@
    supervisor instructions, mode switches and exceptions: after every
    instruction the registers and MSR must match, and at the end the memory.
    Then the same with address translation on.
+6. The memory port carried across a clock boundary, at several clock
+   ratios, with random requests checked against a software memory.
 
 Runs from Windows (through WSL) or directly under Linux.
 """
@@ -121,6 +123,7 @@ def main():
         ("floating-point enabled exceptions", ["fpexctest"], []),
         ("address translation, DSI, ISI", ["mmutest"], ["--stall", "20", "--seed", "5"]),
         ("lwarx/stwcx., dcbz, cache ops", ["resvtest"], ["--stall", "25"]),
+        ("caches, cache ops, HID0, DMA", ["cachetest"], ["--stall", "30", "--seed", "7"]),
         ("external interrupts", ["irqtest", "3000"], ["--irq-every", "97", "--stall", "10"]),
         ("decrementer interrupts", ["irqtest", "3000"], ["--tb-run"]),
         ("both, with wait states", ["irqtest", "3000"], ["--irq-every", "61", "--tb-run", "--stall", "30"]),
@@ -155,6 +158,19 @@ def main():
                 if l.endswith("per instruction)"):
                     total += int(l.split()[0])
     print("%d random instructions compared" % total)
+
+    # 6. the memory port across two clocks
+    r = run(["make", "-s", "-C", HERE, "cdc", "BUILD=" + build])
+    if r.returncode:
+        print(r.stdout)
+        print("building the clock-crossing bench failed")
+        return 1
+    print("the memory port across a clock boundary (CPU against memory clock):")
+    for pa, pb, label in ((15152, 10000, "66 against 100 MHz"), (15152, 7692, "66 against 130 MHz"),
+                          (15152, 15152, "66 against 66 MHz"), (10000, 15152, "100 against 66 MHz")):
+        r = run([os.path.join(build, "cdc", "cdc_tb"), "--count", "5000", "--pa", str(pa), "--pb", str(pb),
+                 "--stall", "30", "--seed", "3"])
+        report("  " + label, r)
 
     print("\nRESULT: %s" % ("PASS" if failures == 0 else "FAIL (%d runs)" % failures))
     return 0 if failures == 0 else 1

@@ -46,7 +46,8 @@ package DSPPC604_pkg;
 		SYS_MFSR,      // segment registers; the number comes from operand B when rb_rd is set
 		SYS_MTSR,
 		SYS_TLBIE,     // the effective address is operand B
-		SYS_STWCX_CR   // stwcx.'s second operation: CR0 from whether the store was made
+		SYS_STWCX_CR,  // stwcx.'s second operation: CR0 from whether the store was made
+		SYS_ISYNC      // refetch: what was fetched ahead may be stale (icbi, a changed context)
 	} sys_op_t;
 
 	// Where a branch goes.
@@ -65,9 +66,18 @@ package DSPPC604_pkg;
 		SEQ_MULTI,     // lmw, stmw: one word per register
 		SEQ_STRI,      // lswi, stswi: byte count in the instruction
 		SEQ_STRX,      // lswx, stswx: byte count in XER
-		SEQ_DCBZ,      // dcbz: eight word stores of zero
 		SEQ_STWCX      // stwcx.: the conditional store, then CR0
 	} seq_t;
+
+	// What a data access asks of the cache.
+	typedef enum logic [2:0] {
+		CK_WORD,       // a load or store
+		CK_ZERO,       // dcbz: the whole line, zero
+		CK_FLUSH,      // dcbf: write back and invalidate
+		CK_STORE,      // dcbst: write back
+		CK_INVAL,      // dcbi: invalidate
+		CK_ICBI        // icbi: invalidate in the instruction cache
+	} ck_t;
 
 	// What a load or store does to the reservation.
 	typedef enum logic [1:0] {
@@ -191,9 +201,7 @@ package DSPPC604_pkg;
 		logic [6:0]  str_bytes;    // string forms: bytes in the whole operation, on its
 		                           // first access only (the alignment check is made there)
 		logic        mem_ext;      // eciwx, ecowx: a DSI, there being no external control facility
-		logic        mem_touch;    // dcbf, dcbst, dcbi, icbi: translate the address, access nothing
-		logic        mem_line;     // dcbz: the access is word line_word of the 32-byte line at EA, data zero
-		logic [2:0]  line_word;
+		ck_t         cop;          // the cache instructions: what the access asks of the cache
 		resv_t       resv;
 		seq_t        seq;
 

@@ -2,6 +2,7 @@
 #
 #   make            build $(BUILD)/vector_tb   single-instruction golden vectors
 #   make core       build $(BUILD)/core/core_tb   programs on the pipeline
+#   make cdc        build $(BUILD)/cdc/cdc_tb   the memory port across two clocks
 #   make lint       Verilator lint only
 #   make clean
 #
@@ -52,11 +53,22 @@ $(CORE_DIR)/core_tb: $(RTL_SRCS) $(HERE)core_main.cpp $(RTL)/DSPPC604.qip $(HERE
 		> $(CORE_DIR)/build.log 2>&1 || (cat $(CORE_DIR)/build.log; false)
 	@grep -E '^%Warning' $(CORE_DIR)/build.log || true
 
+cdc: $(BUILD)/cdc/cdc_tb
+
+$(BUILD)/cdc/cdc_tb: $(RTL)/DSPPC604_memcdc.sv $(HERE)cdc_main.cpp $(HERE)Makefile
+	@mkdir -p $(BUILD)/cdc
+	@$(VERILATOR) $(VFLAGS) --top-module DSPPC604_memcdc -Mdir $(BUILD)/cdc -o cdc_tb \
+		-CFLAGS "-O2 -std=c++17" \
+		$(RTL)/DSPPC604_memcdc.sv $(HERE)cdc_main.cpp \
+		> $(BUILD)/cdc/build.log 2>&1 || (cat $(BUILD)/cdc/build.log; false)
+	@grep -E '^%Warning' $(BUILD)/cdc/build.log || true
+
 lint:
 	$(VERILATOR) --lint-only $(WARN) --top-module vector_dut $(RTL_SRCS) $(HERE)vector_dut.sv
 	$(VERILATOR) --lint-only $(WARN) --top-module DSPPC604 $(RTL_SRCS)
+	$(VERILATOR) --lint-only $(WARN) --top-module DSPPC604_memcdc $(RTL)/DSPPC604_memcdc.sv
 
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all core lint clean
+.PHONY: all core cdc lint clean

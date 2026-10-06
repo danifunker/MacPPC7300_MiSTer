@@ -8,10 +8,10 @@
 //  and from CR, LR, CTR and XER) and the floating-point arithmetic, move,
 //  convert and compare instructions.
 //
-//  dcbt and dcbtst are hints and stay no-ops; dcbst, dcbf, dcbi and icbi
-//  translate their address (so they can take a DSI) and do nothing else
-//  until there is a cache. tlbsync is accepted and does nothing, there being
-//  one processor.
+//  dcbt and dcbtst are hints and stay no-ops; dcbz, dcbst, dcbf, dcbi and
+//  icbi are data accesses of their own kind (dec.cop), which the data cache
+//  carries out. tlbsync is accepted and does nothing, there being one
+//  processor.
 //
 //  Multi-operation instructions (update forms, lmw/stmw, string forms) are
 //  decoded here as their first operation, with dec.seq telling the sequencer
@@ -148,7 +148,7 @@ always_comb begin
 			endcase
 		end
 		10'd150: begin // isync
-			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_NOP;
+			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_ISYNC;
 		end
 		10'd50: begin // rfi
 			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_RFI; dec.priv = 1;
@@ -296,17 +296,20 @@ always_comb begin
 			dec.rc = f_d; dec.rc_rd = 1;
 			dec.mem_wr = 1; dec.resv = RESV_STORE; dec.seq = SEQ_STWCX;
 		end
-		10'd1014: begin // dcbz: eight word stores of zero
+		10'd1014: begin // dcbz: the line, zero
 			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
 			dec.ra = f_a; dec.ra_rd = a_nz; dec.rb = f_b; dec.rb_rd = 1;
-			dec.mem_wr = 1; dec.mem_line = 1; dec.seq = SEQ_DCBZ;
+			dec.mem_wr = 1; dec.cop = CK_ZERO;
 		end
-		10'd54, 10'd86, 10'd470, 10'd982: begin // dcbst, dcbf, dcbi, icbi: translate the address
+		10'd54, 10'd86, 10'd470, 10'd982: begin // dcbst, dcbf, dcbi, icbi
 			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
 			dec.ra = f_a; dec.ra_rd = a_nz; dec.rb = f_b; dec.rb_rd = 1;
-			dec.mem_touch = 1;
-			if (xo10 == 10'd470) begin dec.mem_wr = 1; dec.priv = 1; end   // dcbi: a store, supervisor only
-			else dec.mem_rd = 1;
+			case (xo10)
+				10'd54:  begin dec.mem_rd = 1; dec.cop = CK_STORE; end
+				10'd86:  begin dec.mem_rd = 1; dec.cop = CK_FLUSH; end
+				10'd470: begin dec.mem_wr = 1; dec.cop = CK_INVAL; dec.priv = 1; end   // a store, supervisor only
+				default: begin dec.mem_rd = 1; dec.cop = CK_ICBI; end
+			endcase
 		end
 		10'd597, 10'd725: begin // lswi, stswi: bytes at (rA|0), count in the NB field
 			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;

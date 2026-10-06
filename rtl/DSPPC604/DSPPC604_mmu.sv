@@ -67,6 +67,7 @@ module DSPPC604_mmu
 
 	output logic        ibus_req,
 	output logic [31:0] ibus_addr,
+	output logic        ibus_ci,              // the page is cache-inhibited
 	input  logic        ibus_gnt,
 	input  logic        ibus_rvalid,
 	input  logic [31:0] ibus_rdata,
@@ -76,8 +77,7 @@ module DSPPC604_mmu
 	input  logic [31:0] d_ea_next,
 	input  logic        d_req,
 	input  logic        d_we,
-	input  logic        d_touch,              // translate only, no bus access
-	input  logic        d_line,               // dcbz: alignment exception on a W or I page
+	input  DSPPC604_pkg::ck_t d_kind,         // what the cache is asked; dcbz faults on a W or I page
 	input  logic [29:0] d_addr,               // word address
 	input  logic [3:0]  d_be,
 	input  logic [31:0] d_wdata,
@@ -92,13 +92,18 @@ module DSPPC604_mmu
 
 	output logic        dbus_req,
 	output logic        dbus_we,
+	output DSPPC604_pkg::ck_t dbus_kind,
 	output logic [29:0] dbus_addr,
 	output logic [3:0]  dbus_be,
 	output logic [31:0] dbus_wdata,
+	output logic        dbus_ci,              // the page is cache-inhibited
+	output logic        dbus_wt,              // ... write-through
 	input  logic        dbus_gnt,
 	input  logic        dbus_rvalid,
 	input  logic [31:0] dbus_rdata
 );
+
+import DSPPC604_pkg::*;
 
 localparam int TLB_SIZE = 1 << TLB_BITS;
 localparam int TAGW     = 16 - TLB_BITS;      // page index bits above the TLB index
@@ -128,6 +133,7 @@ typedef struct packed {
 	logic        cwalk;       // entry found, but a store needs the changed bit set: walk
 	logic [31:0] pa;
 	logic [31:0] info;
+	logic [3:0]  wimg;        // the page's attributes (the architecture's default when off)
 } xl_t;
 
 // key = 1 forbids: any access with PP = 00, a store unless PP = 10
@@ -175,11 +181,13 @@ function automatic xl_t translate(
 		key = pr ? s[29] : s[30];
 
 		if (!on) begin
-			translate.ok = 1'b1;
-			translate.pa = ea;
+			translate.ok   = 1'b1;
+			translate.pa   = ea;
+			translate.wimg = 4'b0011;
 		end
 		else if (bhit) begin
-			translate.pa = bpa;
+			translate.pa   = bpa;
+			translate.wimg = bwimg;
 			if (fetch ? (bpp == 2'b00) : ((bpp == 2'b00) | (store & (bpp != 2'b10)))) begin
 				translate.fault = 1'b1;
 				translate.info  = X_PROT | (store ? X_STORE : 32'd0);
@@ -204,7 +212,8 @@ function automatic xl_t translate(
 			translate.info  = X_NOEXEC;
 		end
 		else if (tv && te.vsid == s[23:0] && te.tag == ea[27 -: TAGW]) begin
-			translate.pa = {te.rpn, ea[11:0]};
+			translate.pa   = {te.rpn, ea[11:0]};
+			translate.wimg = te.wimg;
 			if (prot_fault(key, te.pp, store)) begin
 				translate.fault = 1'b1;
 				translate.info  = X_PROT | (store ? X_STORE : 32'd0);
@@ -284,6 +293,8 @@ end
 //  The lookups
 // ============================================================================
 wire [31:0] d_ea_w = {d_addr, 2'b00};
+
+wire d_line = (d_kind == CK_ZERO);
 
 xl_t ixl, dxl;
 assign ixl = translate(msr_ir, 1'b1, 1'b0, 1'b0, msr_pr, i_addr, bat[7:0],  sr[i_addr[31:28]],
@@ -433,12 +444,11 @@ end
 // ============================================================================
 //  The data side
 // ============================================================================
-typedef enum logic [2:0] {
+typedef enum logic [1:0] {
 	D_IDLE,
 	D_WALK,
 	D_RETRY,     // the entry was loaded: read it again
-	D_FAULT,     // answer with the fault this cycle
-	D_TOUCH      // answer a translation-only request this cycle
+	D_FAULT      // answer with the fault this cycle
 } dstate_t;
 
 dstate_t     d_state;
@@ -450,7 +460,7 @@ wire         d_ready = ~msr_dr | d_fresh;
 wire [31:0]  d_dar_now = (d_addr == d_ea[31:2]) ? d_ea : d_ea_w;
 
 // the data side's own bus request
-wire d_dreq = (d_state == D_IDLE) & d_req & d_ready & dxl.ok & ~d_touch & ~w_bus;
+wire d_dreq = (d_state == D_IDLE) & d_req & d_ready & dxl.ok & ~w_bus;
 
 always_comb begin
 	d_rd    = 1'b0;
@@ -459,7 +469,7 @@ always_comb begin
 	case (d_state)
 		D_IDLE: if (d_req) begin
 			if (~d_ready)                   d_rd  = 1'b1;
-			else if (dxl.ok)                d_gnt = d_touch | (dbus_gnt & ~w_bus);
+			else if (dxl.ok)                d_gnt = dbus_gnt & ~w_bus;
 			else if (dxl.fault)             d_gnt = 1'b1;
 			else                            w_req_d = 1'b1;     // miss or cwalk
 		end
@@ -480,7 +490,6 @@ always_ff @(posedge clk) begin
 				d_align_q <= dxl.align;
 				d_dar_q   <= d_dar_now;
 			end
-			else if (dxl.ok & d_touch) d_state <= D_TOUCH;
 			else if (~dxl.ok & w_start_d) d_state <= D_WALK;
 		end
 		D_WALK: if (w_done) begin
@@ -499,7 +508,7 @@ always_ff @(posedge clk) begin
 			else d_state <= D_RETRY;
 		end
 		D_RETRY: d_state <= D_IDLE;
-		default: d_state <= D_IDLE;         // D_FAULT, D_TOUCH
+		default: d_state <= D_IDLE;         // D_FAULT
 	endcase
 
 	if (d_dreq & dbus_gnt) d_outstanding <= 1'b1;
@@ -511,18 +520,22 @@ always_ff @(posedge clk) begin
 	end
 end
 
-assign d_rvalid = (d_outstanding & dbus_rvalid) | (d_state == D_FAULT) | (d_state == D_TOUCH);
+assign d_rvalid = (d_outstanding & dbus_rvalid) | (d_state == D_FAULT);
 assign d_rdata  = dbus_rdata;
 assign d_fault  = (d_state == D_FAULT);
 assign d_falign = d_align_q;
 assign d_dsisr  = d_info_q;
 assign d_dar    = d_dar_q;
 
+// the walker's accesses are cacheable words, as the 604's table search's
 assign dbus_req   = w_bus ? w_dreq        : d_dreq;
 assign dbus_we    = w_bus ? w_dwe         : d_we;
+assign dbus_kind  = w_bus ? CK_WORD       : d_kind;
 assign dbus_addr  = w_bus ? w_daddr[31:2] : dxl.pa[31:2];
 assign dbus_be    = w_bus ? w_dbe         : d_be;
 assign dbus_wdata = w_bus ? w_dwdata      : d_wdata;
+assign dbus_ci    = ~w_bus & dxl.wimg[2];
+assign dbus_wt    = ~w_bus & dxl.wimg[3];
 
 // ============================================================================
 //  The instruction side
@@ -579,6 +592,7 @@ end
 
 assign ibus_req  = (i_state == I_IDLE) & i_req & i_ready & ixl.ok;
 assign ibus_addr = ixl.pa;
+assign ibus_ci   = ixl.wimg[2];
 assign i_rvalid  = ibus_rvalid | (i_state == I_FAULT);
 assign i_rdata   = ibus_rdata;
 assign i_fault   = (i_state == I_FAULT);
