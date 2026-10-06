@@ -711,7 +711,14 @@ How the rules apply, decided before step 1 and followed in it:
   SRR0, DAR and `pc_f` (the exception and redirect decisions), the
   forwarding compare of operand C into a register the fitter retimed into
   the decoder's output, the fetch address into the MMU's segment-register
-  read-ahead, and ID's decode and register read into `ex_a`.
+  read-ahead, and ID's decode and register read into `ex_a`. The first of
+  these, cell by cell (`check.py --detail`): `ex_dec.rc` to the compare
+  `fc_mem`, 3.2 ns of which 1.9 is routing; `ex_stall`, `ex_done` (2.0 of
+  routing), `id_take` with a fan-out of 354, ID's load enable with 114,
+  `id_insn`, the decoder, 16.1 ns in all. So in this fit the forwarding
+  compare does head the handshake chain, not retimed; the rule-2 proposal
+  below is what would take it off, and the enables' fan-out is the
+  rule-free part of the same chain.
 - What that says about the remaining candidates. The seven-bit forwarding
   compares are already registers in the fitter's hands (physical synthesis
   retimes them, their inputs all being registers), so the proposal below
@@ -720,7 +727,9 @@ How the rules apply, decided before step 1 and followed in it:
   cache's same-cycle hit decision (which `mem_ready`, hence `ex_leave` and
   the whole fetch handshake, wait for) are what remain. 66 MHz needs 1.8 ns
   from this list, 75 MHz 3.2.
-- **Proposed, to be agreed before it is built (rule 2):** deciding the
+- **Proposed, decided 2026-10-06: not now.** The cuts that touch no rule
+  come first; this is to be revisited with the measured gap in hand if
+  they fall short of 66 MHz. The proposal, kept for then: deciding the
   forwarding selects at the ID/EX edge. Today EX compares, every cycle, the
   seven-bit names of the registers it reads with the destinations of the
   operations in MEM and WB, and the three-way operand muxes follow those

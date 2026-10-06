@@ -5,10 +5,21 @@
     python syn\\check.py fpu            floating-point unit
     python syn\\check.py core           the pipeline (no FPU, caches or MMU yet)
     python syn\\check.py int --mhz 66   constrain to a different clock
+    python syn\\check.py core --paths 40 --detail 2
+                                       ... and the 40 slowest distinct paths
+                                       (one line per family of register pairs,
+                                       with its count), then the two slowest
+                                       cell by cell
+    python syn\\check.py core --report-only --paths 40
+                                       the same from the last compile
 
 Builds a throw-away Quartus project in syn/build/<target>, with every port
 except the clock as a virtual pin, compiles it (synthesis, fit, timing) and
 prints the resource use and Fmax. Needs Quartus 17.0 (Lite is enough).
+
+The Fmax figure swings by 2-3 MHz between fits of near-identical designs;
+judge a change by the named paths' slack, and by what the cell-by-cell
+report says each path spends its time on.
 """
 
 import argparse
@@ -107,32 +118,80 @@ def report(top, build, mhz):
     return 0
 
 
-def worst_paths(top, build, count):
-    """Print the register-to-register pairs behind the slowest paths."""
-    tcl = os.path.join(build, "paths.tcl")
-    txt = os.path.join(build, "paths.txt")
+def sta(top, build, lines, log):
+    """Run quartus_sta on the last compile with the given Tcl lines."""
+    tcl = os.path.join(build, log + ".tcl")
     with open(tcl, "w") as fh:
         fh.write("project_open %s\ncreate_timing_netlist\nread_sdc\nupdate_timing_netlist\n" % top)
-        fh.write("report_timing -setup -npaths %d -detail summary -file paths.txt\n" % (count * 40))
-    with open(os.path.join(build, "paths.log"), "w") as fh:
-        rc = subprocess.call([os.path.join(QUARTUS_BIN, "quartus_sta"), "-t", "paths.tcl"],
-                             cwd=build, stdout=fh, stderr=subprocess.STDOUT)
+        fh.write("\n".join(lines) + "\n")
+    with open(os.path.join(build, log + ".log"), "w") as fh:
+        return subprocess.call([os.path.join(QUARTUS_BIN, "quartus_sta"), "-t", log + ".tcl"],
+                               cwd=build, stdout=fh, stderr=subprocess.STDOUT)
+
+
+def family(name):
+    """A register's name without the bit, the fitter's suffixes (retimed,
+    duplicated, resynthesised copies) and the RAM megafunction's innards, so
+    that every bit of a path between the same two things counts as one."""
+    parts = [re.sub(r"\[\d+\]", "", p) for p in name.split("|")]
+    parts = [p for p in parts if not p.startswith(("altsyncram_", "auto_generated"))]
+    s = "|".join(parts[-2:]) if len(parts) > 1 else parts[0]
+    s = re.sub(r"~.*$", "", s)
+    return re.sub(r"_OTERM\d+|_NEW\d+|_RTM\d+|_RESYN\d+|_DUPLICATE|_Duplicate|__\d+", "", s)
+
+
+def worst_paths(top, build, count):
+    """Print the slowest paths, one line per family of register pairs."""
+    txt = os.path.join(build, "paths.txt")
+    rc = sta(top, build, ["report_timing -setup -npaths %d -detail summary -file paths.txt" % (count * 50)], "paths")
     if rc or not os.path.exists(txt):
         print("could not list paths; see paths.log")
         return
-    seen = []
+    seen = {}
     with open(txt) as fh:
         for line in fh:
             cols = [c.strip() for c in line.split(";")]
             if len(cols) < 5 or not re.match(r"-?\d+\.\d+$", cols[1]):
                 continue
-            # one line per pair of registers, whatever the bit
-            pair = tuple(re.sub(r"\[\d+\]", "[*]", c.split("|", 1)[-1]) for c in cols[2:4])
-            if pair not in [p for _, p in seen]:
-                seen.append((cols[1], pair))
-    print("\nslowest paths (slack ns, from -> to):")
-    for slack, (src, dst) in seen[:count]:
-        print("  %7s  %s -> %s" % (slack, src, dst))
+            pair = (family(cols[2]), family(cols[3]))
+            if pair not in seen:
+                seen[pair] = [float(cols[1]), 0]
+            seen[pair][1] += 1
+    print("\nslowest paths (slack ns, paths in the family, from -> to):")
+    for (src, dst), (slack, n) in list(seen.items())[:count]:
+        print("  %7.3f  (%4d)  %s -> %s" % (slack, n, src, dst))
+
+
+def detail_paths(top, build, count):
+    """Print the slowest paths cell by cell: where each spends its time."""
+    txt = os.path.join(build, "detail.txt")
+    rc = sta(top, build, ["report_timing -setup -npaths %d -detail full_path -file detail.txt" % count], "detail")
+    if rc or not os.path.exists(txt):
+        print("could not report the paths in detail; see detail.log")
+        return
+    n = 0
+    inpath = False
+    with open(txt) as fh:
+        for line in fh:
+            if "Data Arrival Path" in line:
+                n += 1
+                inpath = True
+                print("\npath %d, cell by cell (arrival ns, step ns, kind, fan-out, element):" % n)
+                continue
+            if "Data Required Path" in line:
+                inpath = False
+                continue
+            if not inpath:
+                continue
+            cols = [c.strip() for c in line.split(";")]
+            if len(cols) < 9 or not re.match(r"-?\d+\.\d+$", cols[1]):
+                continue
+            total, incr, kind, fan, elem = cols[1], cols[2], cols[4], cols[5], cols[7]
+            if kind == "IC" and float(incr) < 0.6:
+                continue                              # short routing steps: noise
+            elem = re.sub(r"\|altsyncram[^|]*", "", elem)
+            elem = re.sub(r"^[^|]*\|DSPPC604:cpu\|", "", elem)
+            print("  %7s %6s %-5s %5s  %s" % (total, incr, kind, fan, elem[-100:]))
 
 
 def main():
@@ -140,7 +199,8 @@ def main():
     ap.add_argument("target", choices=sorted(TARGETS))
     ap.add_argument("--mhz", type=float, default=75.0, help="clock constraint (default 75)")
     ap.add_argument("--report-only", action="store_true", help="re-read the reports of the last run")
-    ap.add_argument("--paths", type=int, default=0, metavar="N", help="also list the N slowest paths")
+    ap.add_argument("--paths", type=int, default=0, metavar="N", help="also list the N slowest distinct paths")
+    ap.add_argument("--detail", type=int, default=0, metavar="N", help="also print the N slowest paths cell by cell")
     args = ap.parse_args()
 
     top = TARGETS[args.target]
@@ -162,6 +222,8 @@ def main():
     rc = report(top, build, args.mhz)
     if args.paths:
         worst_paths(top, build, args.paths)
+    if args.detail:
+        detail_paths(top, build, args.detail)
     return rc
 
 
