@@ -877,6 +877,29 @@ How the rules apply, decided before step 1 and followed in it:
   into the fetch handshake and ID's load (2.4); the forwarding compares
   through the effective address into the data cache's request (2.4). The
   `lfs` stall (0.2 %) would replace this parameter if chosen.
+- The register-read indexes off the decoder's case tree, built (2026-10-06,
+  the eighth cut): which field names each operand is a small function of
+  the opcode (A is rS, the rD field, for the rotates, the logical and
+  shift instructions and the moves to CR, the SPRs, MSR and the segment
+  registers; B is rA for `rlwimi`; C is always rS), decided at the top of
+  the decoder instead of in each arm of its case, so the register file's
+  33:1 read mux starts from the instruction word; the sequencer's
+  overrides of the indexes (the scratch register for `lswx` and `stswx`,
+  the next register of a multiple or string store) are gated by its own
+  step and a direct opcode compare for `lswx`/`stswx` (an input of the
+  sequencer, which also decides its wait for XER, so the decoder is out of
+  the fetch handshake) instead of the decoded `seq` field; at step 0 the
+  overrides are identities. The hazard compares still take the decoder's
+  declarations unchanged. Whole suite and both replays green, cycle counts
+  identical. 64.1 MHz worst case (65.2 at the cold corner), 15,556 ALMs,
+  13,554 registers: ID's family is gone from the 4,000 slowest paths. What
+  leads, 2.3 ns short: a forwarded operand A through the operand mux (3 ns
+  with routing), the string operation's 4 KB adders (2.5) and `x_align`
+  into `ex_abort`, then 6 ns of redirect logic and routing into the branch
+  target buffer's read address; then the operand into the data cache's
+  request (2.0) and the cache's answer into `wb_result` (2.0: the tag
+  RAM's 2.5 ns, the compare, the way select with a fan-out of 178, 2.1 ns
+  of routing into the memory unit's byte shift). 66 MHz needs 1.8.
 
 ### M6: real ROM, first MiSTer build
 

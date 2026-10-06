@@ -421,6 +421,10 @@ DSPPC604_decode decode
 	.dec  (id_dec)
 );
 
+// lswx and stswx, from the opcode bits: the sequencer's wait for XER must
+// not come through the decoder (see wait_xer there)
+wire id_strx = (id_insn[31:26] == 6'd31) & ((id_insn[10:1] == 10'd533) | (id_insn[10:1] == 10'd661));
+
 DSPPC604_seq seq
 (
 	.clk       (clk),
@@ -429,6 +433,7 @@ DSPPC604_seq seq
 	.valid     (id_valid),
 	.dec       (id_dec),
 	.nb        (id_insn[15:11]),
+	.strx      (id_strx),
 	.xer_count (xer[6:0]),
 	.take      (id_take),
 	.uop       (id_uop),

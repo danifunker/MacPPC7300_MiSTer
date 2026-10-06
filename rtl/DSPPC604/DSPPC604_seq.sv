@@ -25,6 +25,7 @@ module DSPPC604_seq
 	input  logic        valid,        // an instruction is in the decode stage
 	input  DSPPC604_pkg::dec_t dec,   // its decode
 	input  logic [4:0]  nb,           // its NB field, for lswi and stswi
+	input  logic        strx,         // it is lswx or stswx, from the opcode bits directly
 	input  logic [6:0]  xer_count,    // XER byte count, for lswx and stswx
 	input  logic        take,         // the operation shown is accepted this cycle
 
@@ -39,21 +40,26 @@ import DSPPC604_pkg::*;
 logic [5:0] step;
 
 wire        is_load = dec.mem_rd;
-wire [4:0]  base_r  = is_load ? dec.rd[4:0] : dec.rc[4:0];
+wire [4:0]  base_r  = dec.rc[4:0];        // rS or rD: the same field, which the decoder puts in rc for every instruction
 
-// string forms
-wire [6:0]  n_total = (dec.seq == SEQ_STRX) ? xer_count :
+// string forms (strx, from the opcode bits, keeps the decoder's seq field
+// off the register-read indexes)
+wire [6:0]  n_total = strx ? xer_count :
                       (nb == 5'd0) ? 7'd32 : {2'b00, nb};
-wire [5:0]  word_i  = (dec.seq == SEQ_STRX) ? (step - 6'd1) : step;   // which register
+wire [5:0]  word_i  = strx ? (step - 6'd1) : step;                     // which register
 wire [7:0]  done_b  = {word_i, 2'b00};                                  // bytes before it
 wire [7:0]  left_b  = {1'b0, n_total} - done_b;                         // bytes still to go
 wire [4:0]  str_r   = base_r + word_i[4:0];
+
+// The wait for XER holds the handshake with EX and so every stage's load
+// enable; it is decided from the opcode bits the pipeline compares directly,
+// not from the decoder's seq field, which keeps the decoder out of that chain.
+assign wait_xer = strx & (step == 6'd0);
 
 always_comb begin
 	uop      = dec;
 	first    = (step == 6'd0);
 	last     = 1'b1;
-	wait_xer = 1'b0;
 
 	case (dec.seq)
 	SEQ_UPDATE: begin
@@ -90,12 +96,10 @@ always_comb begin
 	SEQ_MULTI: begin
 		uop.imm = dec.imm + {24'd0, step, 2'b00};
 		if (is_load) uop.rd = {1'b0, base_r + step[4:0]};
-		else         uop.rc = {1'b0, base_r + step[4:0]};
 		last = ((base_r + step[4:0]) == 5'd31);
 	end
 
 	SEQ_STRI, SEQ_STRX: begin
-		wait_xer = (dec.seq == SEQ_STRX) & (step == 6'd0);
 		if ((dec.seq == SEQ_STRX) && (n_total == 7'd0)) begin
 			// nothing to move
 			uop       = '0;
@@ -114,7 +118,6 @@ always_comb begin
 		end
 		else begin
 			if (dec.seq == SEQ_STRX) begin
-				uop.ra    = REG_TEMP;
 				uop.ra_rd = 1'b1;
 				uop.rb_rd = 1'b0;
 				uop.b_imm = 1'b1;
@@ -122,7 +125,6 @@ always_comb begin
 			uop.imm   = {24'd0, done_b};
 			uop.mem_n = (left_b >= 8'd4) ? 4'd4 : left_b[3:0];
 			if (is_load) uop.rd = {1'b0, str_r};
-			else         uop.rc = {1'b0, str_r};
 			if (word_i == 6'd0) uop.str_bytes = n_total;
 			last = (left_b <= 8'd4);
 		end
@@ -130,6 +132,15 @@ always_comb begin
 
 	default: ;
 	endcase
+
+	// The read indexes the operations after the first use: the scratch
+	// register for lswx and stswx, the next register for a multiple or
+	// string store. Decided from the step and the opcode bits alone, so that
+	// the register file's read mux does not wait for the decoder's seq field;
+	// at step 0 these are the decoder's own values, and where they do not
+	// apply the operand is not read.
+	if (strx & (step != 6'd0)) uop.ra = REG_TEMP;
+	if (step != 6'd0)          uop.rc = {1'b0, str_r};
 end
 
 always_ff @(posedge clk) begin

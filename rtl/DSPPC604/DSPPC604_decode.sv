@@ -39,6 +39,22 @@ wire        f_oe = insn[10];
 wire        f_rc = insn[0];
 wire        a_nz = (insn[20:16] != 5'd0); // (rA|0) reads a register
 
+// Which field names each operand is a small function of the opcode, decided
+// here and not in the case below, so that the register file's read mux does
+// not wait for the whole decode. A is rS (the rD field) for the rotates, the
+// logical and shift instructions and the moves to CR, the SPRs, MSR and the
+// segment registers; B is rA for rlwimi; C, the value a store writes, is rS.
+wire x31_a_rs = (xo10 == 10'd26)  | (xo10 == 10'd922) | (xo10 == 10'd954) |             // cntlzw, extsh, extsb
+                (xo10 == 10'd28)  | (xo10 == 10'd60)  | (xo10 == 10'd124) |             // and, andc, nor
+                (xo10 == 10'd284) | (xo10 == 10'd316) | (xo10 == 10'd412) |             // eqv, xor, orc
+                (xo10 == 10'd444) | (xo10 == 10'd476) |                                  // or, nand
+                (xo10 == 10'd24)  | (xo10 == 10'd536) | (xo10 == 10'd792) | (xo10 == 10'd824) |   // slw, srw, sraw, srawi
+                (xo10 == 10'd144) | (xo10 == 10'd467) | (xo10 == 10'd146) |             // mtcrf, mtspr, mtmsr
+                (xo10 == 10'd210) | (xo10 == 10'd242);                                   // mtsr, mtsrin
+wire a_is_rs  = (opcd == 6'd20) | (opcd == 6'd21) | (opcd == 6'd23) |                   // rlwimi, rlwinm, rlwnm
+                (opcd[5:2] == 4'b0110) | (opcd[5:1] == 5'b01110) |                       // ori ... andis. (24-29)
+                ((opcd == 6'd31) & x31_a_rs);
+
 wire [31:0] simm  = {{16{insn[15]}}, insn[15:0]};
 wire [31:0] uimm  = {16'd0, insn[15:0]};
 wire [31:0] shimm = {insn[15:0], 16'd0};
@@ -62,6 +78,9 @@ always_comb begin
 	dec.crm    = insn[19:12];
 	dec.spr    = {insn[15:11], insn[20:16]};
 	dec.mem_n  = 4'd4;
+	dec.ra     = a_is_rs ? f_d : f_a;        // read only when ra_rd says so, below
+	dec.rb     = (opcd == 6'd20) ? f_a : f_b;
+	dec.rc     = f_d;
 
 	case (opcd)
 
@@ -69,7 +88,7 @@ always_comb begin
 	6'd3: begin // twi: a compare in the ALU (b - a), the TO field decides in EX
 		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_CMP; dec.trap = 1;
 		dec.ic.inv_a = 1; dec.ic.cin = CIN_ONE;
-		dec.ra = f_a; dec.ra_rd = 1; dec.b_imm = 1; dec.imm = simm;
+		dec.ra_rd = 1; dec.b_imm = 1; dec.imm = simm;
 	end
 	6'd17: begin // sc
 		dec.valid = insn[1]; dec.unit = UNIT_SYS; dec.sys = SYS_SC;
@@ -78,34 +97,34 @@ always_comb begin
 	// ---- integer, immediate operand ---------------------------------------
 	6'd7: begin // mulli
 		dec.valid = 1; dec.unit = UNIT_MUL;
-		dec.ra = f_a; dec.ra_rd = 1; dec.b_imm = 1; dec.imm = simm;
+		dec.ra_rd = 1; dec.b_imm = 1; dec.imm = simm;
 		dec.rd = f_d; dec.rd_wr = 1;
 		dec.ic.is_signed = 1;
 	end
 	6'd8: begin // subfic
 		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
-		dec.ra = f_a; dec.ra_rd = 1; dec.b_imm = 1; dec.imm = simm;
+		dec.ra_rd = 1; dec.b_imm = 1; dec.imm = simm;
 		dec.rd = f_d; dec.rd_wr = 1;
 		dec.ic.inv_a = 1; dec.ic.cin = CIN_ONE; dec.ca_wr = 1;
 	end
 	6'd10, 6'd11: begin // cmpli, cmpi: the adder forms b - a, its flags are the compare
 		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_CMP;
 		dec.ic.inv_a = 1; dec.ic.cin = CIN_ONE;
-		dec.ra = f_a; dec.ra_rd = 1; dec.b_imm = 1;
+		dec.ra_rd = 1; dec.b_imm = 1;
 		dec.imm = opcd[0] ? simm : uimm;
 		dec.ic.is_signed = opcd[0];
 		dec.cr_wr = 1; dec.cr_fld = insn[25:23];
 	end
 	6'd12, 6'd13: begin // addic, addic.
 		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
-		dec.ra = f_a; dec.ra_rd = 1; dec.b_imm = 1; dec.imm = simm;
+		dec.ra_rd = 1; dec.b_imm = 1; dec.imm = simm;
 		dec.rd = f_d; dec.rd_wr = 1;
 		dec.ca_wr = 1;
 		dec.cr_wr = opcd[0];
 	end
 	6'd14, 6'd15: begin // addi, addis: (rA|0)
 		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
-		dec.ra = f_a; dec.ra_rd = a_nz; dec.b_imm = 1;
+		dec.ra_rd = a_nz; dec.b_imm = 1;
 		dec.imm = opcd[0] ? shimm : simm;
 		dec.rd = f_d; dec.rd_wr = 1;
 	end
@@ -163,15 +182,15 @@ always_comb begin
 	6'd20: begin // rlwimi: A = rS, B = rA (the word being inserted into)
 		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ROT;
 		dec.ic.rot_op = ROT_RLWIMI;
-		dec.ra = f_d; dec.ra_rd = 1; dec.rb = f_a; dec.rb_rd = 1;
+		dec.ra_rd = 1; dec.rb_rd = 1;
 		dec.rd = f_a; dec.rd_wr = 1;
 		dec.cr_wr = f_rc;
 	end
 	6'd21, 6'd23: begin // rlwinm, rlwnm
 		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ROT;
 		dec.ic.rot_op = ROT_RLWINM;
-		dec.ra = f_d; dec.ra_rd = 1;
-		dec.rb = f_b; dec.rb_rd = opcd[1]; dec.ic.sh_reg = opcd[1];
+		dec.ra_rd = 1;
+		dec.rb_rd = opcd[1]; dec.ic.sh_reg = opcd[1];
 		dec.rd = f_a; dec.rd_wr = 1;
 		dec.cr_wr = f_rc;
 	end
@@ -180,7 +199,7 @@ always_comb begin
 	6'd24, 6'd25, 6'd26, 6'd27, 6'd28, 6'd29: begin
 		// ori, oris, xori, xoris, andi., andis.
 		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_LOGIC;
-		dec.ra = f_d; dec.ra_rd = 1; dec.b_imm = 1;
+		dec.ra_rd = 1; dec.b_imm = 1;
 		dec.imm = opcd[0] ? shimm : uimm;
 		dec.rd = f_a; dec.rd_wr = 1;
 		case (opcd[2:1])
@@ -196,27 +215,27 @@ always_comb begin
 		10'd0, 10'd32: begin // cmp, cmpl
 			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_CMP;
 			dec.ic.inv_a = 1; dec.ic.cin = CIN_ONE;
-			dec.ra = f_a; dec.ra_rd = 1; dec.rb = f_b; dec.rb_rd = 1;
+			dec.ra_rd = 1; dec.rb_rd = 1;
 			dec.ic.is_signed = ~xo10[5];
 			dec.cr_wr = 1; dec.cr_fld = insn[25:23];
 		end
 		10'd26: begin // cntlzw
 			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_CNTLZ;
-			dec.ra = f_d; dec.ra_rd = 1;
+			dec.ra_rd = 1;
 			dec.rd = f_a; dec.rd_wr = 1;
 			dec.cr_wr = f_rc;
 		end
 		10'd922, 10'd954: begin // extsh, extsb
 			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_EXTS;
 			dec.ic.ext_byte = xo10[5];
-			dec.ra = f_d; dec.ra_rd = 1;
+			dec.ra_rd = 1;
 			dec.rd = f_a; dec.rd_wr = 1;
 			dec.cr_wr = f_rc;
 		end
 		10'd28, 10'd60, 10'd124, 10'd284, 10'd316, 10'd412, 10'd444, 10'd476: begin
 			// and, andc, nor, eqv, xor, orc, or, nand
 			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_LOGIC;
-			dec.ra = f_d; dec.ra_rd = 1; dec.rb = f_b; dec.rb_rd = 1;
+			dec.ra_rd = 1; dec.rb_rd = 1;
 			dec.rd = f_a; dec.rd_wr = 1;
 			dec.cr_wr = f_rc;
 			case (xo10)
@@ -235,7 +254,7 @@ always_comb begin
 			dec.ic.rot_op = (xo10 == 10'd24)  ? ROT_SLW :
 			                (xo10 == 10'd536) ? ROT_SRW : ROT_SRAW;
 			dec.ic.sh_reg = 1;
-			dec.ra = f_d; dec.ra_rd = 1; dec.rb = f_b; dec.rb_rd = 1;
+			dec.ra_rd = 1; dec.rb_rd = 1;
 			dec.rd = f_a; dec.rd_wr = 1;
 			dec.ca_wr = (xo10 == 10'd792);
 			dec.cr_wr = f_rc;
@@ -243,7 +262,7 @@ always_comb begin
 		10'd824: begin // srawi
 			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ROT;
 			dec.ic.rot_op = ROT_SRAW;
-			dec.ra = f_d; dec.ra_rd = 1;
+			dec.ra_rd = 1;
 			dec.rd = f_a; dec.rd_wr = 1;
 			dec.ca_wr = 1;
 			dec.cr_wr = f_rc;
@@ -254,7 +273,7 @@ always_comb begin
 		10'd534, 10'd790: begin
 			// lwzx lwzux lbzx lbzux lhzx lhzux lhax lhaux lwbrx lhbrx
 			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
-			dec.ra = f_a; dec.ra_rd = a_nz; dec.rb = f_b; dec.rb_rd = 1;
+			dec.ra_rd = a_nz; dec.rb_rd = 1;
 			dec.rd = f_d; dec.rd_wr = 1;
 			dec.mem_rd = 1;
 			case (xo10)
@@ -273,8 +292,8 @@ always_comb begin
 		10'd151, 10'd183, 10'd215, 10'd247, 10'd407, 10'd439, 10'd662, 10'd918: begin
 			// stwx stwux stbx stbux sthx sthux stwbrx sthbrx
 			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
-			dec.ra = f_a; dec.ra_rd = a_nz; dec.rb = f_b; dec.rb_rd = 1;
-			dec.rc = f_d; dec.rc_rd = 1;
+			dec.ra_rd = a_nz; dec.rb_rd = 1;
+			dec.rc_rd = 1;
 			dec.mem_wr = 1;
 			case (xo10)
 				10'd151: begin end
@@ -289,24 +308,24 @@ always_comb begin
 		end
 		10'd20: begin // lwarx
 			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
-			dec.ra = f_a; dec.ra_rd = a_nz; dec.rb = f_b; dec.rb_rd = 1;
+			dec.ra_rd = a_nz; dec.rb_rd = 1;
 			dec.rd = f_d; dec.rd_wr = 1;
 			dec.mem_rd = 1; dec.resv = RESV_SET;
 		end
 		10'd150: begin // stwcx.: the store, then CR0. Without Rc the 604 calls it illegal (measured)
 			dec.valid = f_rc; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
-			dec.ra = f_a; dec.ra_rd = a_nz; dec.rb = f_b; dec.rb_rd = 1;
-			dec.rc = f_d; dec.rc_rd = 1;
+			dec.ra_rd = a_nz; dec.rb_rd = 1;
+			dec.rc_rd = 1;
 			dec.mem_wr = 1; dec.resv = RESV_STORE; dec.seq = SEQ_STWCX;
 		end
 		10'd1014: begin // dcbz: the line, zero
 			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
-			dec.ra = f_a; dec.ra_rd = a_nz; dec.rb = f_b; dec.rb_rd = 1;
+			dec.ra_rd = a_nz; dec.rb_rd = 1;
 			dec.mem_wr = 1; dec.cop = CK_ZERO;
 		end
 		10'd54, 10'd86, 10'd470, 10'd982: begin // dcbst, dcbf, dcbi, icbi
 			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
-			dec.ra = f_a; dec.ra_rd = a_nz; dec.rb = f_b; dec.rb_rd = 1;
+			dec.ra_rd = a_nz; dec.rb_rd = 1;
 			case (xo10)
 				10'd54:  begin dec.mem_rd = 1; dec.cop = CK_STORE; end
 				10'd86:  begin dec.mem_rd = 1; dec.cop = CK_FLUSH; end
@@ -316,22 +335,22 @@ always_comb begin
 		end
 		10'd597, 10'd725: begin // lswi, stswi: bytes at (rA|0), count in the NB field
 			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
-			dec.ra = f_a; dec.ra_rd = a_nz; dec.b_imm = 1;
+			dec.ra_rd = a_nz; dec.b_imm = 1;
 			dec.mem_ljust = 1; dec.seq = SEQ_STRI;
-			if (xo10[7]) begin dec.rc = f_d; dec.rc_rd = 1; dec.mem_wr = 1; end
+			if (xo10[7]) begin dec.rc_rd = 1; dec.mem_wr = 1; end
 			else         begin dec.rd = f_d; dec.rd_wr = 1; dec.mem_rd = 1; end
 		end
 		10'd533, 10'd661: begin // lswx, stswx: bytes at (rA|0) + rB, count in XER
 			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
-			dec.ra = f_a; dec.ra_rd = a_nz; dec.rb = f_b; dec.rb_rd = 1;
+			dec.ra_rd = a_nz; dec.rb_rd = 1;
 			dec.mem_ljust = 1; dec.seq = SEQ_STRX;
-			if (xo10[7]) begin dec.rc = f_d; dec.rc_rd = 1; dec.mem_wr = 1; end
+			if (xo10[7]) begin dec.rc_rd = 1; dec.mem_wr = 1; end
 			else         begin dec.rd = f_d; dec.rd_wr = 1; dec.mem_rd = 1; end
 		end
 
 		10'd535, 10'd567, 10'd599, 10'd631: begin // lfsx lfsux lfdx lfdux
 			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
-			dec.ra = f_a; dec.ra_rd = a_nz; dec.rb = f_b; dec.rb_rd = 1;
+			dec.ra_rd = a_nz; dec.rb_rd = 1;
 			dec.frd_wr = 1;
 			dec.mem_rd = 1; dec.mem_fp = 1;
 			dec.mem_fsgl = ~xo10[6]; dec.mem_n = xo10[6] ? 4'd8 : 4'd4;
@@ -339,7 +358,7 @@ always_comb begin
 		end
 		10'd663, 10'd695, 10'd727, 10'd759, 10'd983: begin // stfsx stfsux stfdx stfdux stfiwx
 			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
-			dec.ra = f_a; dec.ra_rd = a_nz; dec.rb = f_b; dec.rb_rd = 1;
+			dec.ra_rd = a_nz; dec.rb_rd = 1;
 			dec.frb = insn[25:21]; dec.frb_rd = 1;
 			dec.mem_wr = 1; dec.mem_fp = 1;
 			if (xo10 == 10'd983) begin
@@ -358,7 +377,7 @@ always_comb begin
 		end
 		10'd144: begin // mtcrf
 			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MTCRF;
-			dec.ra = f_d; dec.ra_rd = 1;
+			dec.ra_rd = 1;
 		end
 		10'd512: begin // mcrxr
 			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MCRXR;
@@ -371,7 +390,7 @@ always_comb begin
 		10'd467: begin // mtspr
 			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MTSPR;
 			dec.priv = dec.spr[4];
-			dec.ra = f_d; dec.ra_rd = 1;
+			dec.ra_rd = 1;
 		end
 		10'd371: begin // mftb: the time base, readable in user mode
 			dec.unit = UNIT_SYS; dec.sys = SYS_MFSPR;
@@ -382,7 +401,7 @@ always_comb begin
 		10'd4: begin // tw: as twi
 			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_CMP; dec.trap = 1;
 			dec.ic.inv_a = 1; dec.ic.cin = CIN_ONE;
-			dec.ra = f_a; dec.ra_rd = 1; dec.rb = f_b; dec.rb_rd = 1;
+			dec.ra_rd = 1; dec.rb_rd = 1;
 		end
 		10'd83: begin // mfmsr
 			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MFMSR; dec.priv = 1;
@@ -390,28 +409,28 @@ always_comb begin
 		end
 		10'd146: begin // mtmsr
 			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MTMSR; dec.priv = 1;
-			dec.ra = f_d; dec.ra_rd = 1;
+			dec.ra_rd = 1;
 		end
 		10'd595, 10'd659: begin // mfsr, mfsrin
 			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MFSR; dec.priv = 1;
-			dec.rb = f_b; dec.rb_rd = xo10[7];   // mfsrin takes the number from rB
+			dec.rb_rd = xo10[7];   // mfsrin takes the number from rB
 			dec.rd = f_d; dec.rd_wr = 1;
 		end
 		10'd210, 10'd242: begin // mtsr, mtsrin
 			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_MTSR; dec.priv = 1;
-			dec.ra = f_d; dec.ra_rd = 1;
-			dec.rb = f_b; dec.rb_rd = xo10[5];
+			dec.ra_rd = 1;
+			dec.rb_rd = xo10[5];
 		end
 		10'd306: begin // tlbie
 			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_TLBIE; dec.priv = 1;
-			dec.rb = f_b; dec.rb_rd = 1;
+			dec.rb_rd = 1;
 		end
 		10'd566: begin // tlbsync
 			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_NOP; dec.priv = 1;
 		end
 		10'd310, 10'd438: begin // eciwx, ecowx: always a DSI here (EAR[E] is never set by anything)
 			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
-			dec.ra = f_a; dec.ra_rd = a_nz; dec.rb = f_b; dec.rb_rd = 1;
+			dec.ra_rd = a_nz; dec.rb_rd = 1;
 			dec.mem_ext = 1;
 			if (xo10[7]) dec.mem_wr = 1;
 		end
@@ -430,7 +449,7 @@ always_comb begin
 				// subfc, addc, subf, neg, subfe, adde,
 				// subfze, addze, subfme, addme, add
 				dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
-				dec.ra = f_a; dec.ra_rd = 1; dec.rb = f_b; dec.rb_rd = 1;
+				dec.ra_rd = 1; dec.rb_rd = 1;
 				dec.rd = f_d; dec.rd_wr = 1;
 				dec.ic.oe = f_oe; dec.ov_wr = f_oe;
 				dec.cr_wr = f_rc;
@@ -465,14 +484,14 @@ always_comb begin
 			end
 			9'd11, 9'd75: begin // mulhwu, mulhw
 				dec.valid = 1; dec.unit = UNIT_MUL;
-				dec.ra = f_a; dec.ra_rd = 1; dec.rb = f_b; dec.rb_rd = 1;
+				dec.ra_rd = 1; dec.rb_rd = 1;
 				dec.rd = f_d; dec.rd_wr = 1;
 				dec.ic.is_signed = xo9[6]; dec.ic.mul_high = 1;
 				dec.cr_wr = f_rc;
 			end
 			9'd235: begin // mullw
 				dec.valid = 1; dec.unit = UNIT_MUL;
-				dec.ra = f_a; dec.ra_rd = 1; dec.rb = f_b; dec.rb_rd = 1;
+				dec.ra_rd = 1; dec.rb_rd = 1;
 				dec.rd = f_d; dec.rd_wr = 1;
 				dec.ic.is_signed = 1;
 				dec.ic.oe = f_oe; dec.ov_wr = f_oe;
@@ -480,7 +499,7 @@ always_comb begin
 			end
 			9'd459, 9'd491: begin // divwu, divw
 				dec.valid = 1; dec.unit = UNIT_DIV;
-				dec.ra = f_a; dec.ra_rd = 1; dec.rb = f_b; dec.rb_rd = 1;
+				dec.ra_rd = 1; dec.rb_rd = 1;
 				dec.rd = f_d; dec.rd_wr = 1;
 				dec.ic.is_signed = xo9[5];
 				dec.ic.oe = f_oe; dec.ov_wr = f_oe;
@@ -496,7 +515,7 @@ always_comb begin
 	6'd32, 6'd33, 6'd34, 6'd35, 6'd40, 6'd41, 6'd42, 6'd43: begin
 		// lwz lwzu lbz lbzu lhz lhzu lha lhau
 		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
-		dec.ra = f_a; dec.ra_rd = a_nz; dec.b_imm = 1; dec.imm = simm;
+		dec.ra_rd = a_nz; dec.b_imm = 1; dec.imm = simm;
 		dec.rd = f_d; dec.rd_wr = 1;
 		dec.mem_rd = 1;
 		dec.mem_n  = opcd[3] ? 4'd2 : opcd[1] ? 4'd1 : 4'd4;
@@ -506,28 +525,28 @@ always_comb begin
 	6'd36, 6'd37, 6'd38, 6'd39, 6'd44, 6'd45: begin
 		// stw stwu stb stbu sth sthu
 		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
-		dec.ra = f_a; dec.ra_rd = a_nz; dec.b_imm = 1; dec.imm = simm;
-		dec.rc = f_d; dec.rc_rd = 1;
+		dec.ra_rd = a_nz; dec.b_imm = 1; dec.imm = simm;
+		dec.rc_rd = 1;
 		dec.mem_wr = 1;
 		dec.mem_n  = opcd[3] ? 4'd2 : opcd[1] ? 4'd1 : 4'd4;
 		if (opcd[0]) dec.seq = SEQ_UPDATE;
 	end
 	6'd46: begin // lmw
 		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
-		dec.ra = f_a; dec.ra_rd = a_nz; dec.b_imm = 1; dec.imm = simm;
+		dec.ra_rd = a_nz; dec.b_imm = 1; dec.imm = simm;
 		dec.rd = f_d; dec.rd_wr = 1;
 		dec.mem_rd = 1; dec.seq = SEQ_MULTI;
 	end
 	6'd47: begin // stmw
 		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
-		dec.ra = f_a; dec.ra_rd = a_nz; dec.b_imm = 1; dec.imm = simm;
-		dec.rc = f_d; dec.rc_rd = 1;
+		dec.ra_rd = a_nz; dec.b_imm = 1; dec.imm = simm;
+		dec.rc_rd = 1;
 		dec.mem_wr = 1; dec.seq = SEQ_MULTI;
 	end
 
 	6'd48, 6'd49, 6'd50, 6'd51: begin // lfs lfsu lfd lfdu
 		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
-		dec.ra = f_a; dec.ra_rd = a_nz; dec.b_imm = 1; dec.imm = simm;
+		dec.ra_rd = a_nz; dec.b_imm = 1; dec.imm = simm;
 		dec.frd_wr = 1;
 		dec.mem_rd = 1; dec.mem_fp = 1;
 		dec.mem_fsgl = ~opcd[1]; dec.mem_n = opcd[1] ? 4'd8 : 4'd4;
@@ -535,7 +554,7 @@ always_comb begin
 	end
 	6'd52, 6'd53, 6'd54, 6'd55: begin // stfs stfsu stfd stfdu
 		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_ADD;
-		dec.ra = f_a; dec.ra_rd = a_nz; dec.b_imm = 1; dec.imm = simm;
+		dec.ra_rd = a_nz; dec.b_imm = 1; dec.imm = simm;
 		dec.frb = insn[25:21]; dec.frb_rd = 1;
 		dec.mem_wr = 1; dec.mem_fp = 1;
 		dec.mem_fsgl = ~opcd[1]; dec.mem_n = opcd[1] ? 4'd8 : 4'd4;
