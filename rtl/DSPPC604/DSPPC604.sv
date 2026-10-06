@@ -1083,6 +1083,7 @@ DSPPC604_mmu #(.TLB_BITS (TLB_BITS)) mmu
 	.msr_pr      (msr[MSR_PR]),
 	.bat         (bat),
 	.sr          (sr),
+	.sr_changed  (ex_leave & ~ex_abort & is_sys & (ex_dec.sys == SYS_MTSR)),
 	.sdr1        (sdr1),
 	.tlbie       (ex_leave & ~ex_abort & is_tlbie),
 	.tlbie_ea    (op_b),

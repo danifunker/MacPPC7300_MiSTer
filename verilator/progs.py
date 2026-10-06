@@ -373,8 +373,9 @@ class PageTable:
         self.slots = {}
         self.ptes = {}
 
-    def map(self, ea, pa, pp, wimg=0, h=0, r_final=0, c_final=0):
-        vsid = self.srs[ea >> 28] & 0xFFFFFF
+    def map(self, ea, pa, pp, wimg=0, h=0, r_final=0, c_final=0, vsid=None):
+        if vsid is None:
+            vsid = self.srs[ea >> 28] & 0xFFFFFF
         grp = pteg_addr(self.sdr1, vsid, ea, h)
         slot = self.slots.get(grp, 0)
         assert slot < 8, "page table group full"
@@ -524,6 +525,19 @@ def mmutest(out):
     p.words.append(tlbie(15))
     load(5, 15, 0, 0x66666666)
     ptes[tl_pte] = w1 | 0x100
+
+    # mtsr with translation on: the same address under two VSIDs
+    VS = 0x0020A000
+    map_page(VS, 0x0030A000, 2, r_final=1)                                   # under segment 0's VSID (0x10)
+    map_page(VS, 0x0030B000, 2, r_final=1, vsid=0x40)                        # under the VSID 0x40
+    p.data[0x0030A000] = 0xAAAAAAAA
+    p.data[0x0030B000] = 0xBBBBBBBB
+    p.words += li32(22, VS)
+    load(5, 22, 0, 0xAAAAAAAA)
+    p.words += li32(7, 0x40) + [mtsr(0, 7)]
+    load(5, 22, 0, 0xBBBBBBBB)
+    p.words += li32(7, srs[0]) + [mtsr(0, 7)]
+    load(5, 22, 0, 0xAAAAAAAA)
 
     # ---- fetches ----
     p.words += li32(9, XP) + [mtspr(LR, 9), 0x4E800021]                      # executable page: returns

@@ -51,6 +51,7 @@ module DSPPC604_mmu
 	input  logic        msr_pr,
 	input  logic [15:0][31:0] bat,            // SPR 528-543: IBAT0U, IBAT0L, ... DBAT3U, DBAT3L
 	input  logic [15:0][31:0] sr,
+	input  logic        sr_changed,           // one cycle: mtsr is writing one of them
 	input  logic [31:0] sdr1,
 	input  logic        tlbie,                // one cycle: invalidate tlbie_ea's entries
 	input  logic [31:0] tlbie_ea,
@@ -255,23 +256,37 @@ logic [TLB_BITS-1:0] w_idx;
 tlbe_t             w_entry;
 
 wire [19:0]         d_page   = d_addr[29:10];
-wire                i_fresh  = (i_page_q == i_addr[31:12]);
-wire                d_fresh  = (d_page_q == d_page);
+// a segment register written since the read-ahead makes it stale too
+logic               i_stale, d_stale;
+wire                i_fresh  = (i_page_q == i_addr[31:12]) & ~i_stale;
+wire                d_fresh  = (d_page_q == d_page) & ~d_stale;
 logic               d_rd;                          // read the DTLB for d_page now
 wire [TLB_BITS-1:0] i_idx    = i_addr[12 +: TLB_BITS];
 wire [TLB_BITS-1:0] d_idx    = d_page[TLB_BITS-1:0];
 
-// the reads: ahead for what comes next, or again for the request in hand
+// the reads: ahead for what comes next, or again for the request in hand;
+// the segment register goes with them, so that its 16:1 choice is not in
+// the lookup's cycle (a fresh page means a fresh segment register too)
 wire [19:0]         i_rpage  = i_fresh ? i_addr_next[31:12] : i_addr[31:12];
 wire [19:0]         d_rpage  = d_pre ? d_ea_next[31:12] : d_page;
+logic [31:0]        i_sr_q, d_sr_q;
 
 always_ff @(posedge clk) begin
 	itlb_q   <= itlb_mem[i_rpage[TLB_BITS-1:0]];
 	i_page_q <= i_rpage;
+	i_sr_q   <= sr[i_rpage[19:16]];
 	if (d_pre | d_rd) begin
 		dtlb_q   <= dtlb_mem[d_rpage[TLB_BITS-1:0]];
 		d_page_q <= d_rpage;
+		d_sr_q   <= sr[d_rpage[19:16]];
 	end
+	// mtsr: what was read ahead is read again (the write lands at this edge)
+	if (sr_changed)      begin i_stale <= 1'b1; d_stale <= 1'b1; end
+	else begin
+		if (~i_fresh)        i_stale <= 1'b0;
+		if (d_pre | d_rd)    d_stale <= 1'b0;
+	end
+	if (reset) begin i_stale <= 1'b0; d_stale <= 1'b0; end
 	if (w_we &  w_side) itlb_mem[w_idx] <= w_entry;
 	if (w_we & ~w_side) dtlb_mem[w_idx] <= w_entry;
 end
@@ -297,9 +312,9 @@ wire [31:0] d_ea_w = {d_addr, 2'b00};
 wire d_line = (d_kind == CK_ZERO);
 
 xl_t ixl, dxl;
-assign ixl = translate(msr_ir, 1'b1, 1'b0, 1'b0, msr_pr, i_addr, bat[7:0],  sr[i_addr[31:28]],
+assign ixl = translate(msr_ir, 1'b1, 1'b0, 1'b0, msr_pr, i_addr, bat[7:0],  i_sr_q,
                        itlb_valid[i_idx], itlb_q);
-assign dxl = translate(msr_dr, 1'b0, d_we, d_line, msr_pr, d_ea_w, bat[15:8], sr[d_ea_w[31:28]],
+assign dxl = translate(msr_dr, 1'b0, d_we, d_line, msr_pr, d_ea_w, bat[15:8], d_sr_q,
                        dtlb_valid[d_idx], dtlb_q);
 
 // ============================================================================

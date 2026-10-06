@@ -214,10 +214,13 @@ wire unc = k_word & (r_ci | ~enable | (lock & ~hit) | (WRITABLE & r_we & r_wt & 
 
 wire [1:0] wsel = hit ? hit_sel : victim;   // the way a line-zero takes
 
-// the word a read delivers (the line flattened first: Quartus 17 has no
-// variable part-select of a two-dimensional array)
-wire [255:0] hit_flat = data_q[hit_sel];
-wire [31:0]  hit_word = hit_flat[255 - 32*r_word -: 32];
+// the word a read delivers: the word is picked within each way first
+// (its index is known before the tags are compared), the way last, so that
+// only a four-way choice follows the compare
+logic [31:0] way_word [WAYS];
+always_comb
+	for (int w = 0; w < WAYS; w++) way_word[w] = data_q[w][255 - 32*r_word -: 32];
+wire [31:0] hit_word = way_word[hit_sel];
 
 // the store's bytes merged into that word, which is then written whole
 logic [31:0] st_mask;

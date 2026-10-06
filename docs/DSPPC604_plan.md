@@ -513,6 +513,24 @@ How the rules apply, decided before step 1 and followed in it:
   conversion into `wb_result`: the cache's answer cycle and the memory
   unit's formatting in one cycle, which is where the plan said MEM might
   have to split. For step 4, together with the forwarding network.
+
+**Step 4, timing and area: in progress.**
+
+- Two cuts with no cost in cycles, each measured on its own: the cache
+  picks the word within each way before the tags are compared, so only a
+  four-way choice follows the compare (55.2 to 57.0 MHz); the MMU reads
+  the segment register a cycle ahead with the TLB entry, so its 16:1
+  choice leaves the lookup's cycle (57.0 to 58.2 MHz; `mtsr` marks the
+  copy stale, and a directed case switches VSIDs with translation on).
+  14,340 ALMs, 77 RAM blocks.
+- What remains, in order of the slack: the data cache's answer cycle
+  (tag compare, way select, the memory unit's byte formatting) into
+  `wb_result`, about 3.9 ns short at 75 MHz; the forwarding network
+  through the effective-address adder into the MMU and the cache's
+  request; the forwarded operands into the FPU's first stage. The first
+  is the "MEM may split in two" question: a registered cache answer costs
+  every data access a cycle, to be weighed against the clock with the
+  suite's cycle counts.
 - `DSPPC604_memcdc` carries the memory port into the memory controller's
   clock and the answer back: the request and its write data are captured
   once and stand still while a toggle crosses through two flip-flops, the
