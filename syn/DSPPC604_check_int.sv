@@ -131,7 +131,11 @@ DSPPC604_int_unit int_unit
 	.result     (result),
 	.ca_out     (ca_out),
 	.ov_out     (ov_out),
-	.cr_out     (cr_out)
+	.cr_out     (cr_out),
+	.sum        (),
+	.cmp_lts    (),
+	.cmp_ltu    (),
+	.cmp_eq     ()
 );
 
 always_ff @(posedge clk) begin

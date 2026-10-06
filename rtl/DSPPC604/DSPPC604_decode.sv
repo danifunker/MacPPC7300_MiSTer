@@ -66,8 +66,9 @@ always_comb begin
 	case (opcd)
 
 	// ---- traps and system call ---------------------------------------------
-	6'd3: begin // twi
-		dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_TRAP;
+	6'd3: begin // twi: a compare in the ALU (b - a), the TO field decides in EX
+		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_CMP; dec.trap = 1;
+		dec.ic.inv_a = 1; dec.ic.cin = CIN_ONE;
 		dec.ra = f_a; dec.ra_rd = 1; dec.b_imm = 1; dec.imm = simm;
 	end
 	6'd17: begin // sc
@@ -87,8 +88,9 @@ always_comb begin
 		dec.rd = f_d; dec.rd_wr = 1;
 		dec.ic.inv_a = 1; dec.ic.cin = CIN_ONE; dec.ca_wr = 1;
 	end
-	6'd10, 6'd11: begin // cmpli, cmpi
+	6'd10, 6'd11: begin // cmpli, cmpi: the adder forms b - a, its flags are the compare
 		dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_CMP;
+		dec.ic.inv_a = 1; dec.ic.cin = CIN_ONE;
 		dec.ra = f_a; dec.ra_rd = 1; dec.b_imm = 1;
 		dec.imm = opcd[0] ? simm : uimm;
 		dec.ic.is_signed = opcd[0];
@@ -193,6 +195,7 @@ always_comb begin
 		case (xo10)
 		10'd0, 10'd32: begin // cmp, cmpl
 			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_CMP;
+			dec.ic.inv_a = 1; dec.ic.cin = CIN_ONE;
 			dec.ra = f_a; dec.ra_rd = 1; dec.rb = f_b; dec.rb_rd = 1;
 			dec.ic.is_signed = ~xo10[5];
 			dec.cr_wr = 1; dec.cr_fld = insn[25:23];
@@ -376,8 +379,9 @@ always_comb begin
 			dec.spr = dec.spr[0] ? 10'd285 : 10'd284;
 			dec.rd = f_d; dec.rd_wr = 1;
 		end
-		10'd4: begin // tw
-			dec.valid = 1; dec.unit = UNIT_SYS; dec.sys = SYS_TRAP;
+		10'd4: begin // tw: as twi
+			dec.valid = 1; dec.unit = UNIT_ALU; dec.ic.alu_op = ALU_CMP; dec.trap = 1;
+			dec.ic.inv_a = 1; dec.ic.cin = CIN_ONE;
 			dec.ra = f_a; dec.ra_rd = 1; dec.rb = f_b; dec.rb_rd = 1;
 		end
 		10'd83: begin // mfmsr

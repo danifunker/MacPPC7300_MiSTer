@@ -16,11 +16,14 @@ module DSPPC604_alu
 	input  logic        ca_in,
 
 	output logic [31:0] result,
+	output logic [31:0] sum,         // the adder's sum on its own: the effective address of a memory access
 	output logic        ca_out,
 	output logic        ov_out,
-	output logic        lt,          // compare results, A against B
+	output logic        lt,          // compare results, A against B, signed or not as ctl says
 	output logic        gt,
-	output logic        eq
+	output logic        eq,
+	output logic        lt_s,        // ... and both at once, for the trap instructions
+	output logic        lt_u
 );
 
 import DSPPC604_pkg::*;
@@ -43,10 +46,15 @@ end
 wire add_ov = (add_a[31] == b[31]) & (add_sum[31] != add_a[31]);
 
 // ---- compare ---------------------------------------------------------------
+// From the adder: a compare (and a trap) is decoded as b - a, so the carry
+// out and the true sign of the sum say how A and B stand, signed and
+// unsigned at once, without comparators of their own.
 always_comb begin
-	eq = (a == b);
-	lt = ctl.is_signed ? ($signed(a) < $signed(b)) : (a < b);
-	gt = ~lt & ~eq;
+	eq   = (a == b);
+	lt_u = add_sum[32] & ~eq;                 // b - a has no borrow and is not zero
+	lt_s = ~(add_sum[31] ^ add_ov) & ~eq;     // b - a is positive, overflow allowed for
+	lt   = ctl.is_signed ? lt_s : lt_u;
+	gt   = ~lt & ~eq;
 end
 
 // ---- logic -----------------------------------------------------------------
@@ -121,6 +129,8 @@ function automatic logic [5:0] clz32(input logic [31:0] v);
 endfunction
 
 // ---- result ----------------------------------------------------------------
+assign sum = add_sum[31:0];
+
 always_comb begin
 	ca_out = add_sum[32];
 	ov_out = add_ov;

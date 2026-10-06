@@ -120,7 +120,13 @@ DSPPC604_int_unit int_unit
 	.result     (int_result),
 	.ca_out     (int_ca),
 	.ov_out     (int_ov),
-	.cr_out     (int_cr)
+	.cr_out     (int_cr),
+	/* verilator lint_off PINCONNECTEMPTY */
+	.sum        (),
+	.cmp_lts    (),
+	.cmp_ltu    (),
+	.cmp_eq     ()
+	/* verilator lint_on PINCONNECTEMPTY */
 );
 
 logic        fpu_resp;

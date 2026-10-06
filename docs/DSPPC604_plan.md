@@ -626,6 +626,122 @@ How the rules apply, decided before step 1 and followed in it:
   line and word requests against a software memory at 66 against 100, 130,
   66 and 50 MHz, 100 against 66, and two clocks a hundredth apart. The
   SDRAM controller on the far side of it belongs to the machine (M6).
+- 2026-10-06, after the 7300 corrections: the same RTL fitted again came
+  out at 56.0 MHz worst case (14,254 ALMs, 11,900 registers, 77 RAM
+  blocks), 2 MHz under the earlier run of nearly the same design: the
+  fitter's swing. Of the 400 slowest paths, 394 ran from the data cache's
+  tag RAM to `wb_result` (4.4 ns short at 75 MHz), 5 from the forwarding
+  select `fa_wb` to the data cache's RAM address (4.0 ns), 1 from the tag
+  RAM to a forwarded operand (3.9 ns); the FPU's operand path was not among
+  them this time.
+- The trap condition from the ALU's compare flags, built: `tw` and `twi`
+  are decoded as a compare in the ALU (b - a, as `cmp` now is too) and the
+  TO field tests the adder's carry, sign and overflow; the three
+  comparators on the forwarded operands are gone, and `cmp` no longer has
+  comparators of its own either. No cycles cost; the whole suite and
+  `run.py` on both vector files pass. Fmax: see below.
+- A register on the FPU's operands, built behind `OPERAND_REG` (a
+  parameter of `DSPPC604_fpu`, `FPU_OPERAND_REG` on the core): the
+  operands, control and FPSCR are taken into registers in the request
+  cycle and the unit works from those a cycle later, so the forwarding
+  network ends at a register. Cost: one cycle on every floating-point
+  instruction (the moves, `fsel` and the compares one instead of none):
+  3.46 to 3.53 cycles per instruction on the floating-point golden program,
+  3.74 to 3.81 on the 7300's, 4.3-4.8 to 4.7-5.3 on the random
+  floating-point programs (dense with floating point), integer code
+  untouched. Whole suite green either way. Fmax: see below.
+- Fmax with the trap change (FPU register off): 57.4 MHz worst case,
+  14,002 ALMs (252 fewer: the comparators), 11,839 registers; with the FPU
+  register on as well: 54.8 MHz, 13,888 ALMs, 11,590 registers, and no FPU
+  path among the 1,600 slowest (it had been 2.6 ns short with the register
+  off). The Fmax figures swing with the fitter by 2-3 MHz between runs of
+  near-identical designs; the slowest paths are the same every time and are
+  what to judge by.
+- The slowest paths cell by cell (`quartus_sta` with `report_timing -detail
+  full_path`, on the trap-change fit, 75 MHz constraint):
+  - Tag RAM to `wb_result`, 3.9 ns short: the tag RAM's output register
+    (the M10K's own, 2.5 ns clock-to-out where a flip-flop takes 0.6) is
+    6.5 ns after the clock edge; the four-way compare and the way select
+    take it to 12.1; the memory unit's byte shift to 14.4; then **6.5 ns of
+    `lfs`'s single-to-double conversion** (the leading-zero count, the
+    exponent subtract and the final mux, with 3.6 ns of routing) to 20.9.
+    The conversion sat in series on every load.
+  - A forwarding select to the MEM registers' enables, 3.3 ns short: the
+    operand mux (1.4 ns of routing), the rotator and the ALU's result mux
+    (5.5 ns), the string operation's 4 KB-boundary adder and compare
+    (1.9 ns), `ex_abort` with its fan-out of 295, and 2 ns of routing to
+    each enable. The rotator is on the path because the result mux waits
+    for its slowest input, whatever the instruction; the effective address
+    and both alignment checks took the result mux's output.
+  - `ex_dec.frc` to the FPU's `fin_result`, 2.6 ns short (register off):
+    the seven-bit forwarding compare in two levels, 4.1 ns with routing; the
+    operand mux, 1.7; the FPU's operand classes, special results and result
+    mux, 8.5.
+  - Forwarding selects and `wb_result` to the caches' RAM address ports and
+    the data cache's LRU array, 3.8 to 4.3 ns short: the handshake chain.
+    `ex_stall` (the forwarding compares) and the units' responses decide
+    `ex_leave`, which decides `id_take`, `if2_leave` and `if_req` in the
+    same cycle, and the caches take a request combinationally, so the
+    instruction cache's read index waits on EX's hazard decision.
+- Two more cuts without a cycle's cost, built on that: the conversion of a
+  single loaded by `lfs` is made in WB from the registered word (`wb_value`,
+  which the FPR write and the forwarding from WB use; a GPR never needs it),
+  and the effective address, both alignment checks and DAR take the adder's
+  sum straight from the ALU (`sum`, a new output) instead of the result
+  mux. Whole suite and both vector replays green, cycle counts unchanged.
+  Fmax with both, the trap change and the FPU register on: 58.5 MHz worst
+  case (60.4 MHz at the hot corner), 15,579 ALMs, 13,691 registers (the
+  fitter's retiming and duplication grew: the cache path is no longer the
+  one it works on). The cache path went from 4.4 to 3.1 ns short and from
+  the top of the list to sixth. What is on top now, 3.2 ns short, in one
+  family: from a forwarding select (one the fitter had already retimed into
+  a register of its own) through the operand mux (2.0 ns), the ALU's adder
+  (2.3), the string operation's 4 KB adder and compare (1.7), `x_align`
+  and `ex_abort` with a fan-out of 600 (1.1 plus 1.7 of routing), the commit
+  enable `ex_leave & ~ex_abort` with a fan-out of 157 (1.4), into the CTR's
+  next-value mux and a register the fitter retimed into the middle of
+  `ctr - 1`. Then the branch condition into the branch target buffer's
+  write (3.1), the cache's answer into `wb_result` (3.1), and the cache's
+  hit decision into the data RAM's write data (2.5).
+- What that says about the remaining candidates. The seven-bit forwarding
+  compares are already registers in the fitter's hands (physical synthesis
+  retimes them, their inputs all being registers), so the proposal below
+  would buy less than the 4 ns the compare shows in a path where the fitter
+  did not retime it; the string check, the commit enable's fan-out and the
+  cache's same-cycle hit decision (which `mem_ready`, hence `ex_leave` and
+  the whole fetch handshake, wait for) are what remain. 66 MHz needs 1.8 ns
+  from this list, 75 MHz 3.2.
+- **Proposed, to be agreed before it is built (rule 2):** deciding the
+  forwarding selects at the ID/EX edge. Today EX compares, every cycle, the
+  seven-bit names of the registers it reads with the destinations of the
+  operations in MEM and WB, and the three-way operand muxes follow those
+  compares; the compare sits in front of the ALU, the FPU and everything EX
+  decides. The proposal keeps the one set of comparisons and the one stall
+  condition that rule 2 asks for, but makes them at the ID/EX edge, against
+  the operation that is moving from EX to MEM and the one moving from MEM to
+  WB, and carries the outcome into EX as a two-bit source per operand (own
+  value, MEM, WB). While an operation is held in EX the sources age by rule:
+  MEM becomes WB when MEM's operation leaves, and WB becomes the captured
+  value a cycle later (what the "held here" code does today), and nothing
+  new can enter MEM in the meantime. The stall condition (the source is a
+  load in MEM) reads the same two bits. What changes is when the comparison
+  is made, not how many there are or who declares the registers; the
+  decoder's declarations stay the one source. Cost: a few flip-flops; no
+  cycles. Expected gain: the seven-bit compares and their fan-out leave the
+  EX cycle for good, where today the fitter's retiming does it for some
+  paths and not others (the FPU's operand path showed the compare at 4.1 ns
+  with the FPU register off); the stall decision `ex_stall` becomes a
+  register's output, which shortens the fetch handshake chain that waits
+  on it. Measured value unknown until built; the fitter's own retiming
+  makes it smaller than first thought.
+- Also open, no rule touched, in the order of likely gain: the string
+  operation's 4 KB check from the operands in parallel with the adder (a
+  three-input 13-bit add; about 1.7 ns off the commit-enable chain);
+  registering the data cache's hit for the *handshake only* while the
+  data still answers in the same cycle is not possible, so the cache's
+  same-cycle hit stays unless the answer moves (`LATE_ANSWER`, 9-14 % of
+  the cycles); the tag RAM in MLABs instead of M10Ks (about 1 ns of its
+  2.5 ns clock-to-out, for 18 MLABs).
 
 ### M6: real ROM, first MiSTer build
 

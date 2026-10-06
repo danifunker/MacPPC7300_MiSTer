@@ -39,7 +39,6 @@ package DSPPC604_pkg;
 		SYS_MTFSB1,
 		SYS_MCRFS,
 		SYS_SC,        // system call
-		SYS_TRAP,      // tw, twi: the TO field is in bo
 		SYS_RFI,
 		SYS_MFMSR,
 		SYS_MTMSR,
@@ -91,7 +90,7 @@ package DSPPC604_pkg;
 
 	typedef enum logic [2:0] {
 		ALU_ADD,       // adder: add, subtract, negate
-		ALU_CMP,       // compare; only a CR field is produced
+		ALU_CMP,       // compare: decoded as b - a (inv_a, CIN_ONE), the adder's flags say the rest
 		ALU_LOGIC,
 		ALU_ROT,       // rotates and shifts, through one rotator and mask
 		ALU_CNTLZ,
@@ -177,6 +176,7 @@ package DSPPC604_pkg;
 		unit_t       unit;
 		logic        priv;         // supervisor only
 		logic        fp_use;       // needs MSR[FP]
+		logic        trap;         // tw, twi: a compare in the ALU; the TO field is in bo
 
 		logic [5:0]  ra;
 		logic        ra_rd;

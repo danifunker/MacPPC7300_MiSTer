@@ -21,7 +21,8 @@
 //    General and floating-point registers are written in WB and forwarded
 //    from MEM and WB. One operation writes at most one of them; a register is
 //    named by seven bits, the top one set for a floating-point register.
-//    Memory is written in MEM.
+//    Memory is written in MEM. A single loaded by lfs is converted to a
+//    double in WB, from the registered word.
 //    Invariant: an operation that accesses memory writes none of CR, XER, LR,
 //    CTR and FPSCR.
 //
@@ -84,6 +85,7 @@ module DSPPC604
 #(
 	parameter int          BTB_BITS = 7,              // branch target buffer entries, as a power of two
 	parameter int          TLB_BITS = 6,              // entries in each TLB, as a power of two
+	parameter int          FPU_OPERAND_REG = 0,       // the FPU takes its operands into a register first (a cycle each)
 	parameter logic [31:0] PVR      = 32'h00040303    // processor version: 604 revision 3.3
 )
 (
@@ -254,7 +256,14 @@ logic        wb_last;
 logic [6:0]  wb_rd;
 logic        wb_rd_wr;
 logic [63:0] wb_result;
+logic        wb_fsgl;       // ... is a single loaded by lfs, still as it was in memory
 logic [31:0] wb_t_cr, wb_t_xer, wb_t_lr, wb_t_ctr, wb_t_fpscr, wb_t_msr;
+
+// The value WB writes and forwards. lfs's single-to-double conversion (a
+// leading-zero count and a shift for denormals) is made here, from the
+// registered word, rather than in the cache's answer cycle, where it sat in
+// series with the tag compare and the way select on the slowest path.
+wire [63:0] wb_value = wb_fsgl ? fp_single_to_double(wb_result[31:0]) : wb_result;
 
 // ---- stage handshakes ------------------------------------------------------
 logic        redir;         // EX redirects the fetch at the end of this cycle
@@ -445,7 +454,7 @@ endfunction
 
 function automatic logic [63:0] ff_read(input logic [4:0] idx);
 	begin
-		ff_read = (wb_valid & wb_rd_wr & (wb_rd == {2'b10, idx})) ? wb_result : fpr[idx];
+		ff_read = (wb_valid & wb_rd_wr & (wb_rd == {2'b10, idx})) ? wb_value : fpr[idx];
 	end
 endfunction
 
@@ -501,9 +510,9 @@ wire ffa_wb  = wb_valid  & wb_rd_wr  & ex_dec.fra_rd & (wb_rd == {2'b10, ex_dec.
 wire ffb_wb  = wb_valid  & wb_rd_wr  & ex_dec.frb_rd & (wb_rd == {2'b10, ex_dec.frb});
 wire ffc_wb  = wb_valid  & wb_rd_wr  & ex_dec.frc_rd & (wb_rd == {2'b10, ex_dec.frc});
 
-wire [63:0] fop_a = ffa_mem ? mem_result : ffa_wb ? wb_result : ex_fa;
-wire [63:0] fop_b = ffb_mem ? mem_result : ffb_wb ? wb_result : ex_fb;
-wire [63:0] fop_c = ffc_mem ? mem_result : ffc_wb ? wb_result : ex_fc;
+wire [63:0] fop_a = ffa_mem ? mem_result : ffa_wb ? wb_value : ex_fa;
+wire [63:0] fop_b = ffb_mem ? mem_result : ffb_wb ? wb_value : ex_fb;
+wire [63:0] fop_c = ffc_mem ? mem_result : ffc_wb ? wb_value : ex_fc;
 
 // a load's data is not there until it reaches WB
 wire ex_stall = mem_load & (fa_mem | fb_mem | fc_mem | ffa_mem | ffb_mem | ffc_mem);
@@ -513,9 +522,11 @@ wire is_int = (ex_dec.unit == UNIT_ALU) | (ex_dec.unit == UNIT_MUL) | (ex_dec.un
 
 logic        int_resp;
 logic [31:0] int_result;
+logic [31:0] int_sum;                      // the adder alone: the effective address
 logic        int_ca;
 logic        int_ov;
 logic [3:0]  int_cr;
+logic        int_lts, int_ltu, int_eq;     // the ALU's compare, for the traps
 /* verilator lint_off UNUSEDSIGNAL */
 logic        int_ready;
 /* verilator lint_on UNUSEDSIGNAL */
@@ -539,9 +550,13 @@ DSPPC604_int_unit int_unit
 	.resp_valid (int_resp),
 	.resp_ready (mem_ready),
 	.result     (int_result),
+	.sum        (int_sum),
 	.ca_out     (int_ca),
 	.ov_out     (int_ov),
-	.cr_out     (int_cr)
+	.cr_out     (int_cr),
+	.cmp_lts    (int_lts),
+	.cmp_ltu    (int_ltu),
+	.cmp_eq     (int_eq)
 );
 
 // ---- floating-point unit ---------------------------------------------------
@@ -557,7 +572,7 @@ logic        fpu_ready;
 logic        fpu_fex;
 /* verilator lint_on UNUSEDSIGNAL */
 
-DSPPC604_fpu fpu
+DSPPC604_fpu #(.OPERAND_REG (FPU_OPERAND_REG)) fpu
 (
 	.clk        (clk),
 	.reset      (reset),
@@ -740,23 +755,22 @@ wire x_ill    = ex_ill | x_spr;
 wire x_fpu    = ex_dec.fp_use & ~msr[MSR_FP];
 assign x_pre  = irq_ext | irq_dec | x_isi | fpe_pend | x_priv | x_ill | x_fpu;
 
-// conditions that come out of executing it
-wire        trap_lts = ($signed(op_a) < $signed(op_b));
-wire        trap_ltu = (op_a < op_b);
-wire        trap_eq  = (op_a == op_b);
-wire        trap_hit = (ex_dec.bo[4] & trap_lts) | (ex_dec.bo[3] & ~trap_lts & ~trap_eq) |
-                       (ex_dec.bo[2] & trap_eq) |
-                       (ex_dec.bo[1] & trap_ltu) | (ex_dec.bo[0] & ~trap_ltu & ~trap_eq);
+// conditions that come out of executing it: a trap instruction compares in
+// the ALU and its TO field tests the flags
+wire        trap_hit = (ex_dec.bo[4] & int_lts) | (ex_dec.bo[3] & ~int_lts & ~int_eq) |
+                       (ex_dec.bo[2] & int_eq) |
+                       (ex_dec.bo[1] & int_ltu) | (ex_dec.bo[0] & ~int_ltu & ~int_eq);
 wire x_sc     = is_sys & (ex_dec.sys == SYS_SC);
-wire x_trap   = is_sys & (ex_dec.sys == SYS_TRAP) & trap_hit;
-// the effective address: for dcbz, the line
+wire x_trap   = is_int & ex_dec.trap & trap_hit;
+// the effective address: the adder's sum on its own (every memory access is
+// an add), ahead of the result mux the rotator feeds too; for dcbz, the line
 wire        ex_zero = (ex_dec.cop == CK_ZERO);
-wire [31:0] ex_ea   = ex_zero ? {int_result[31:5], 5'b00000} : int_result;
+wire [31:0] ex_ea   = ex_zero ? {int_sum[31:5], 5'b00000} : int_sum;
 
 // the 604 does not perform these accesses unless they are word-aligned
 wire x_align_w = (ex_dec.mem_rd | ex_dec.mem_wr) &
                  ((ex_dec.seq == SEQ_MULTI) | ex_dec.mem_fp | (ex_dec.resv != RESV_NONE)) &
-                 (int_result[1:0] != 2'b00);
+                 (int_sum[1:0] != 2'b00);
 // ... and dcbz takes an alignment exception while the data cache is
 // disabled or locked (HID0[DCE], HID0[DLOCK]); the same for a write-through
 // or cache-inhibited page is decided in MEM, where the page is known
@@ -764,10 +778,10 @@ wire x_align_z = ex_zero & (~hid0[14] | hid0[12]);
 // ... nor a string operation that is not word-aligned and crosses a 4 KB
 // boundary, or is word-aligned and crosses a 256 MB boundary (604 manual
 // 2.3.4.3); checked on its first access, which carries the whole count
-wire [12:0] str_end   = {1'b0, int_result[11:0]} + {6'd0, ex_dec.str_bytes};
+wire [12:0] str_end   = {1'b0, int_sum[11:0]} + {6'd0, ex_dec.str_bytes};
 wire        str_4k    = str_end[12] & (str_end[11:0] != 12'd0);
 wire        x_align_s = (ex_dec.str_bytes != 7'd0) & str_4k &
-                        ((int_result[1:0] != 2'b00) | (&int_result[27:12]));
+                        ((int_sum[1:0] != 2'b00) | (&int_sum[27:12]));
 wire x_align  = x_align_w | x_align_s | x_align_z;
 // eciwx and ecowx: a DSI, this machine having no external control facility
 wire x_ecx    = ex_dec.mem_ext;
@@ -952,9 +966,9 @@ always_ff @(posedge clk) begin
 		if (fa_wb & ~fa_mem) ex_a <= wb_result[31:0];
 		if (fb_wb & ~fb_mem) ex_b <= wb_result[31:0];
 		if (fc_wb & ~fc_mem) ex_c <= wb_result[31:0];
-		if (ffa_wb & ~ffa_mem) ex_fa <= wb_result;
-		if (ffb_wb & ~ffb_mem) ex_fb <= wb_result;
-		if (ffc_wb & ~ffc_mem) ex_fc <= wb_result;
+		if (ffa_wb & ~ffa_mem) ex_fa <= wb_value;
+		if (ffb_wb & ~ffb_mem) ex_fb <= wb_value;
+		if (ffc_wb & ~ffc_mem) ex_fc <= wb_value;
 	end
 
 	// time base and decrementer
@@ -1018,7 +1032,7 @@ always_ff @(posedge clk) begin
 		srr1 <= (msr & SRR1_MASK) | exc_info;
 		msr  <= msr_exc;
 		if ((x_align | x_ecx) & ~x_pre) begin
-			dar   <= int_result;
+			dar   <= int_sum;
 			dsisr <= x_align ? align_dsisr : ecx_dsisr;
 		end
 		if (irq_dec) dec_pending <= 1'b0;
@@ -1061,9 +1075,6 @@ logic        mu_falign;     // ... and it is an alignment exception, not a DSI
 logic [63:0] mu_rdata;
 logic [31:0] mu_dsisr;
 logic [31:0] mu_dar;
-
-// what a load delivers to its register
-wire [63:0] mem_ldata = (mem_fp & mem_fsgl) ? fp_single_to_double(mu_rdata[31:0]) : mu_rdata;
 
 DSPPC604_mem_unit mem_unit
 (
@@ -1324,7 +1335,8 @@ always_ff @(posedge clk) begin
 		wb_last   <= mem_last;
 		wb_rd     <= mem_rd;
 		wb_rd_wr  <= mem_rd_wr;
-		wb_result <= mem_load ? mem_ldata : mem_result;
+		wb_result <= mem_load ? mu_rdata : mem_result;
+		wb_fsgl   <= mem_load & mem_fp & mem_fsgl;
 		wb_t_cr   <= mem_t_cr;
 		wb_t_xer  <= mem_t_xer;
 		wb_t_lr   <= mem_t_lr;
@@ -1334,7 +1346,7 @@ always_ff @(posedge clk) begin
 	end
 
 	if (wb_valid & wb_rd_wr) begin
-		if (wb_rd[6]) fpr[wb_rd[4:0]] <= wb_result;
+		if (wb_rd[6]) fpr[wb_rd[4:0]] <= wb_value;
 		else          gpr[wb_rd[5:0]] <= wb_result[31:0];
 	end
 
@@ -1347,7 +1359,7 @@ assign trace_pc      = wb_pc;
 assign trace_insn    = wb_insn;
 assign trace_reg_we  = wb_rd_wr;
 assign trace_reg_idx = wb_rd;
-assign trace_reg_val = wb_result;
+assign trace_reg_val = wb_value;
 assign trace_cr      = wb_t_cr;
 assign trace_xer     = wb_t_xer;
 assign trace_lr      = wb_t_lr;

@@ -40,9 +40,14 @@ module DSPPC604_int_unit
 	output logic        resp_valid,
 	input  logic        resp_ready,
 	output logic [31:0] result,
+	output logic [31:0] sum,         // the ALU's adder alone (a + b): a memory access's effective address,
+	                                 // ahead of the result mux that the rotator feeds too
 	output logic        ca_out,      // new XER[CA], for instructions that set it
 	output logic        ov_out,      // new XER[OV], for instructions with OE
-	output logic [3:0]  cr_out       // CR field: LT GT EQ SO
+	output logic [3:0]  cr_out,      // CR field: LT GT EQ SO
+	output logic        cmp_lts,     // the ALU's compare, signed and unsigned at once (traps)
+	output logic        cmp_ltu,
+	output logic        cmp_eq
 );
 
 import DSPPC604_pkg::*;
@@ -62,12 +67,17 @@ DSPPC604_alu alu
 	.b      (b),
 	.ca_in  (ca_in),
 	.result (alu_result),
+	.sum    (sum),
 	.ca_out (alu_ca),
 	.ov_out (alu_ov),
 	.lt     (alu_lt),
 	.gt     (alu_gt),
-	.eq     (alu_eq)
+	.eq     (alu_eq),
+	.lt_s   (cmp_lts),
+	.lt_u   (cmp_ltu)
 );
+
+assign cmp_eq = alu_eq;
 
 // ---- multiply and divide ---------------------------------------------------
 typedef enum logic [1:0] {

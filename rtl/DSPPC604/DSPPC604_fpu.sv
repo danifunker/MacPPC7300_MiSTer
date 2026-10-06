@@ -31,9 +31,17 @@
 //  denormalised is delivered as a signed zero and reported as an inexact
 //  underflow; denormal operands are computed with as in IEEE mode.
 //
+//  OPERAND_REG = 1 takes the operands, control and FPSCR into registers in
+//  the request cycle and works from those a cycle later, so the requester's
+//  forwarding network ends at a register; every instruction then takes one
+//  cycle more (the moves and compares one instead of none).
+//
 //============================================================================
 
 module DSPPC604_fpu
+#(
+	parameter int OPERAND_REG = 0
+)
 (
 	input  logic        clk,
 	input  logic        reset,
@@ -116,27 +124,40 @@ function automatic logic [4:0] fprf_of(input logic [63:0] x, input logic den_in)
 	end
 endfunction
 
+// ---- the request as the unit sees it ----------------------------------------
+// With OPERAND_REG everything below works from these registers, filled in
+// the request cycle; without it, from the ports.
+logic [63:0] a_q, b_q, c_q;
+fpu_ctl_t    ctl_q;
+logic [31:0] fpscr_i_q;
+wire [63:0]  ia     = (OPERAND_REG != 0) ? a_q : a;
+wire [63:0]  ib     = (OPERAND_REG != 0) ? b_q : b;
+wire [63:0]  ic     = (OPERAND_REG != 0) ? c_q : c;
+wire [31:0]  ifpscr = (OPERAND_REG != 0) ? fpscr_i_q : fpscr_in;
+fpu_ctl_t    ictl;
+assign ictl = (OPERAND_REG != 0) ? ctl_q : ctl;
+
 // ---- operand classes -------------------------------------------------------
-wire        a_s = a[63];
-wire        b_s = b[63];
-wire        c_s = c[63];
-wire        a_ez = (a[62:52] == 11'd0), a_ef = (a[62:52] == 11'h7FF), a_fz = (a[51:0] == 52'd0);
-wire        b_ez = (b[62:52] == 11'd0), b_ef = (b[62:52] == 11'h7FF), b_fz = (b[51:0] == 52'd0);
-wire        c_ez = (c[62:52] == 11'd0), c_ef = (c[62:52] == 11'h7FF), c_fz = (c[51:0] == 52'd0);
+wire        a_s = ia[63];
+wire        b_s = ib[63];
+wire        c_s = ic[63];
+wire        a_ez = (ia[62:52] == 11'd0), a_ef = (ia[62:52] == 11'h7FF), a_fz = (ia[51:0] == 52'd0);
+wire        b_ez = (ib[62:52] == 11'd0), b_ef = (ib[62:52] == 11'h7FF), b_fz = (ib[51:0] == 52'd0);
+wire        c_ez = (ic[62:52] == 11'd0), c_ef = (ic[62:52] == 11'h7FF), c_fz = (ic[51:0] == 52'd0);
 wire        a_zero = a_ez & a_fz, a_den = a_ez & ~a_fz, a_inf = a_ef & a_fz, a_nan = a_ef & ~a_fz;
 wire        b_zero = b_ez & b_fz, b_den = b_ez & ~b_fz, b_inf = b_ef & b_fz, b_nan = b_ef & ~b_fz;
 wire        c_zero = c_ez & c_fz, c_den = c_ez & ~c_fz, c_inf = c_ef & c_fz, c_nan = c_ef & ~c_fz;
-wire        a_snan = a_nan & ~a[51];
-wire        b_snan = b_nan & ~b[51];
-wire        c_snan = c_nan & ~c[51];
+wire        a_snan = a_nan & ~ia[51];
+wire        b_snan = b_nan & ~ib[51];
+wire        c_snan = c_nan & ~ic[51];
 
 // magnitude m * 2**e for a finite operand; a denormal has exponent field 1
-wire [52:0] a_m = {~a_ez, a[51:0]};
-wire [52:0] b_m = {~b_ez, b[51:0]};
-wire [52:0] c_m = {~c_ez, c[51:0]};
-wire signed [13:0] a_e = $signed({3'b000, a_ez ? 11'd1 : a[62:52]}) - 14'sd1075;
-wire signed [13:0] b_e = $signed({3'b000, b_ez ? 11'd1 : b[62:52]}) - 14'sd1075;
-wire signed [13:0] c_e = $signed({3'b000, c_ez ? 11'd1 : c[62:52]}) - 14'sd1075;
+wire [52:0] a_m = {~a_ez, ia[51:0]};
+wire [52:0] b_m = {~b_ez, ib[51:0]};
+wire [52:0] c_m = {~c_ez, ic[51:0]};
+wire signed [13:0] a_e = $signed({3'b000, a_ez ? 11'd1 : ia[62:52]}) - 14'sd1075;
+wire signed [13:0] b_e = $signed({3'b000, b_ez ? 11'd1 : ib[62:52]}) - 14'sd1075;
+wire signed [13:0] c_e = $signed({3'b000, c_ez ? 11'd1 : ic[62:52]}) - 14'sd1075;
 
 // ---- what the instruction is ----------------------------------------------
 logic op_simple;    // answered in the request cycle
@@ -151,7 +172,7 @@ logic use_a, use_b, use_c;
 always_comb begin
 	op_simple = 0; op_fma = 0; op_div = 0; op_rsq = 0; op_int = 0;
 	op_sub = 0; op_neg = 0; use_a = 0; use_b = 0; use_c = 0;
-	case (ctl.op)
+	case (ictl.op)
 		FPU_ADD:    begin use_a = 1; use_b = 1; end
 		FPU_SUB:    begin use_a = 1; use_b = 1; op_sub = 1; end
 		FPU_MUL:    begin use_a = 1; use_c = 1; end
@@ -170,7 +191,7 @@ always_comb begin
 end
 
 // rounded to single precision: opcode 59, and frsp
-wire op_sgl = ctl.single | (ctl.op == FPU_RSP);
+wire op_sgl = ictl.single | (ictl.op == FPU_RSP);
 
 // ---- moves, select and compare: combinational ------------------------------
 logic [63:0] simple_result;
@@ -180,8 +201,8 @@ logic [3:0]  simple_cr;
 wire cmp_un = a_nan | b_nan;
 wire cmp_bz = a_zero & b_zero;
 wire cmp_lt = ~cmp_un & ~cmp_bz & ((a_s & ~b_s) |
-              (~a_s & ~b_s & (a[62:0] < b[62:0])) | (a_s & b_s & (a[62:0] > b[62:0])));
-wire cmp_eq = ~cmp_un & (cmp_bz | (a == b));
+              (~a_s & ~b_s & (ia[62:0] < ib[62:0])) | (a_s & b_s & (ia[62:0] > ib[62:0])));
+wire cmp_eq = ~cmp_un & (cmp_bz | (ia == ib));
 wire cmp_gt = ~cmp_un & ~cmp_lt & ~cmp_eq;
 wire [3:0] cmp_cc = {cmp_lt, cmp_gt, cmp_eq, cmp_un};
 
@@ -192,21 +213,21 @@ always_comb begin : simple_ops
 	set_bits = 32'd0;
 	cmp_snan = a_snan | b_snan;
 
-	simple_result = b;
-	simple_fpscr  = fpscr_in;
-	simple_cr     = fpscr_in[31:28];
+	simple_result = ib;
+	simple_fpscr  = ifpscr;
+	simple_cr     = ifpscr[31:28];
 
-	case (ctl.op)
-		FPU_NEG:  simple_result = {~b[63], b[62:0]};
-		FPU_ABS:  simple_result = {1'b0, b[62:0]};
-		FPU_NABS: simple_result = {1'b1, b[62:0]};
-		FPU_SEL:  simple_result = (~a_nan & (a_zero | ~a_s)) ? c : b;
+	case (ictl.op)
+		FPU_NEG:  simple_result = {~ib[63], ib[62:0]};
+		FPU_ABS:  simple_result = {1'b0, ib[62:0]};
+		FPU_NABS: simple_result = {1'b1, ib[62:0]};
+		FPU_SEL:  simple_result = (~a_nan & (a_zero | ~a_s)) ? ic : ib;
 		FPU_CMPU, FPU_CMPO: begin
 			set_bits[B_VXSNAN] = cmp_snan;
-			if (ctl.op == FPU_CMPO)
-				set_bits[B_VXVC] = cmp_snan ? ~fpscr_in[B_VE] : cmp_un;
-			simple_fpscr = fpscr_update(fpscr_in, set_bits, 1'b0, 1'b0, 1'b0,
-			                            1'b1, {fpscr_in[16], cmp_cc});
+			if (ictl.op == FPU_CMPO)
+				set_bits[B_VXVC] = cmp_snan ? ~ifpscr[B_VE] : cmp_un;
+			simple_fpscr = fpscr_update(ifpscr, set_bits, 1'b0, 1'b0, 1'b0,
+			                            1'b1, {ifpscr[16], cmp_cc});
 			simple_cr = cmp_cc;
 		end
 		default: ;
@@ -222,14 +243,14 @@ logic        sp_fprf_we;
 
 wire        sb_eff  = b_s ^ op_sub;           // sign frB contributes with
 wire        s_prod  = a_s ^ c_s;
-wire        rn_down = (fpscr_in[1:0] == 2'b11);
+wire        rn_down = (ifpscr[1:0] == 2'b11);
 wire        imz     = (a_inf & c_zero) | (a_zero & c_inf);
 wire        nan_any  = (use_a & a_nan)  | (use_b & b_nan)  | (use_c & c_nan);
 wire        snan_any = (use_a & a_snan) | (use_b & b_snan) | (use_c & c_snan);
 
 // the NaN operand that propagates: frA first, then frB, then frC; made
 // quiet, and for single precision without the bits a single cannot hold
-wire [63:0] nan_pick = (use_a & a_nan) ? a : (use_b & b_nan) ? b : c;
+wire [63:0] nan_pick = (use_a & a_nan) ? ia : (use_b & b_nan) ? ib : ic;
 wire [63:0] nan_res  = {nan_pick[63:52], 1'b1, nan_pick[50:29], op_sgl ? 29'd0 : nan_pick[28:0]};
 
 always_comb begin : special_results
@@ -241,7 +262,7 @@ always_comb begin : special_results
 	sp_fprf_we = 1'b1;
 	is_nan     = 1'b0;
 
-	case (ctl.op)
+	case (ictl.op)
 	FPU_ADD, FPU_SUB: begin
 		if (nan_any) begin
 			sp_valid = 1; sp_result = nan_res; is_nan = 1;
@@ -321,7 +342,7 @@ always_comb begin : special_results
 		if (nan_any) begin
 			sp_valid = 1; sp_result = nan_res; is_nan = 1;
 		end
-		else if (b_inf | b_zero) begin sp_valid = 1; sp_result = b; end
+		else if (b_inf | b_zero) begin sp_valid = 1; sp_result = ib; end
 	end
 
 	FPU_CTIW, FPU_CTIWZ: begin
@@ -363,6 +384,7 @@ end
 // ---- state -----------------------------------------------------------------
 typedef enum logic [3:0] {
 	S_IDLE,
+	S_OPND,     // OPERAND_REG: the operands are in their registers
 	S_PREA,     // normalise denormal operands, two cycles each
 	S_PREB,
 	S_PREC,
@@ -720,72 +742,27 @@ always_comb begin : round_pack
 end
 
 // ---- sequencing ------------------------------------------------------------
-wire start    = req_valid & (state == S_IDLE) & ~op_simple;
+wire take     = req_valid & (state == S_IDLE);                            // a request arrives
+wire go       = (OPERAND_REG != 0) ? (state == S_OPND) : take;            // ... and its operands are in hand
+wire start    = go & ~op_simple;
 wire need_pre = (use_a & a_den) | (use_b & b_den) | (use_c & c_den);
 
 always_ff @(posedge clk) begin
 	case (state)
 	S_IDLE: begin
-		if (start) begin
-			sgl_q   <= op_sgl;
-			int_q   <= op_int;
-			div_q   <= op_div;
-			rsq_q   <= op_rsq;
-			neg_q   <= op_neg;
-			rc_q    <= ctl.rc;
-			rn_q    <= (ctl.op == FPU_CTIWZ) ? 2'b01 : fpscr_in[1:0];
-			fpscr_q <= fpscr_in;
-
-			// x * y + z
-			mx <= a_m;  ex <= a_e;
-			my <= c_m;  ey <= c_e;
-			mz <= b_m;  ez <= b_e;
-			s_p    <= s_prod;
-			s_z    <= sb_eff;
-			p_zero <= a_zero | c_zero;
-			z_zero <= b_zero;
-
-			case (ctl.op)
-			FPU_ADD, FPU_SUB: begin        // a * 1 + b
-				my <= 53'h10000000000000;  ey <= -14'sd52;
-				s_p    <= a_s;
-				p_zero <= a_zero;
-			end
-			FPU_MUL: begin                 // a * c, no addend
-				mz     <= 53'd0;
-				s_z    <= s_prod;
-				z_zero <= 1'b1;
-			end
-			FPU_DIV: begin                 // a / b
-				s_p <= a_s ^ b_s;
-			end
-			FPU_RES: begin                 // 1 / b
-				mx  <= 53'h10000000000000;  ex <= -14'sd52;
-				s_p <= b_s;
-			end
-			FPU_RSP, FPU_CTIW, FPU_CTIWZ: begin   // b alone
-				mx     <= 53'd0;
-				s_p    <= b_s;
-				s_z    <= b_s;
-				p_zero <= 1'b1;
-			end
-			default: ;
-			endcase
-
-			if (sp_valid) begin
-				fin_result  <= sp_result;
-				fin_set     <= sp_set;
-				fin_fr      <= 1'b0;
-				fin_fi      <= 1'b0;
-				fin_fprf_we <= sp_fprf_we;
-				fin_den     <= 1'b0;
-				state       <= S_DONE;
-			end
-			else if (need_pre) state <= S_PREA;
-			else if (op_div)   state <= S_DIV0;
-			else if (op_rsq)   state <= S_RSQ;
-			else               state <= S_MUL1;
+		if (take) begin
+			a_q       <= a;
+			b_q       <= b;
+			c_q       <= c;
+			ctl_q     <= ctl;
+			fpscr_i_q <= fpscr_in;
+			if (OPERAND_REG != 0) state <= S_OPND;
 		end
+	end
+
+	S_OPND: begin
+		// a move, select or compare answers from here; the rest start below
+		if (op_simple & resp_ready) state <= S_IDLE;
 	end
 
 	S_PREA: begin
@@ -944,6 +921,67 @@ always_ff @(posedge clk) begin
 	end
 	endcase
 
+	if (start) begin
+		sgl_q   <= op_sgl;
+		int_q   <= op_int;
+		div_q   <= op_div;
+		rsq_q   <= op_rsq;
+		neg_q   <= op_neg;
+		rc_q    <= ictl.rc;
+		rn_q    <= (ictl.op == FPU_CTIWZ) ? 2'b01 : ifpscr[1:0];
+		fpscr_q <= ifpscr;
+
+		// x * y + z
+		mx <= a_m;  ex <= a_e;
+		my <= c_m;  ey <= c_e;
+		mz <= b_m;  ez <= b_e;
+		s_p    <= s_prod;
+		s_z    <= sb_eff;
+		p_zero <= a_zero | c_zero;
+		z_zero <= b_zero;
+
+		case (ictl.op)
+		FPU_ADD, FPU_SUB: begin        // a * 1 + b
+			my <= 53'h10000000000000;  ey <= -14'sd52;
+			s_p    <= a_s;
+			p_zero <= a_zero;
+		end
+		FPU_MUL: begin                 // a * c, no addend
+			mz     <= 53'd0;
+			s_z    <= s_prod;
+			z_zero <= 1'b1;
+		end
+		FPU_DIV: begin                 // a / b
+			s_p <= a_s ^ b_s;
+		end
+		FPU_RES: begin                 // 1 / b
+			mx  <= 53'h10000000000000;  ex <= -14'sd52;
+			s_p <= b_s;
+		end
+		FPU_RSP, FPU_CTIW, FPU_CTIWZ: begin   // b alone
+			mx     <= 53'd0;
+			s_p    <= b_s;
+			s_z    <= b_s;
+			p_zero <= 1'b1;
+		end
+		default: ;
+		endcase
+
+		if (sp_valid) begin
+			fin_result  <= sp_result;
+			fin_set     <= sp_set;
+			fin_fr      <= 1'b0;
+			fin_fi      <= 1'b0;
+			fin_fprf_we <= sp_fprf_we;
+			fin_den     <= 1'b0;
+			state       <= S_DONE;
+		end
+		else if (need_pre) state <= S_PREA;
+		else if (op_div)   state <= S_DIV0;
+		else if (op_rsq)   state <= S_RSQ;
+		else               state <= S_MUL1;
+	end
+
 	if (state == S_IDLE) pre_phase <= 1'b0;
 	if (reset | flush) state <= S_IDLE;
 end
@@ -968,7 +1006,7 @@ always_comb begin
 		cr_out     = done_fpscr[31:28];
 	end
 	else begin
-		resp_valid = req_valid & (state == S_IDLE) & op_simple;
+		resp_valid = req_valid & go & op_simple;
 		result     = simple_result;
 		result_we  = 1'b1;
 		fpscr_out  = simple_fpscr;
