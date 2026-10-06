@@ -22,7 +22,7 @@ still the MiSTer template's test pattern.
 | `lwarx`/`stwcx.`, `dcbz`, cache instructions | done |
 | Caches | two 16 KB four-way caches with 32-byte lines (the 604's shape), write-back, one line port to memory, a snoop port for DMA; directed tests and the whole suite through them |
 | Clock crossing to the SDRAM controller | done, checked at several clock ratios; the controller itself comes with the machine |
-| Timing and area pass | in progress: 55 to 62.3 MHz so far with seven cuts that cost no cycles; what remains and what it would cost is in [the plan](docs/DSPPC604_plan.md) |
+| Timing and area pass | in progress: 55 to 62.3 MHz so far with seven cuts that cost no cycles, then the FPU operand register on (2 % of floating-point cycles) to take its forwarding path off the list; what remains and what it would cost is in [the plan](docs/DSPPC604_plan.md) |
 | Machine (chipset, video, SCSI, ...) | not started |
 
 Size and speed of what exists, each synthesised on its own for the DE10-Nano's
@@ -30,7 +30,7 @@ FPGA with Quartus 17.0 (`syn\check.py`), constrained to 75 MHz:
 
 | Block | ALMs | DSP blocks | Worst-case Fmax |
 |---|---|---|---|
-| The whole CPU (pipeline, FPU, exceptions, SPRs, MMU, two 16 KB caches), after the timing pass's first seven cuts (2026-10-06) | 14,366 (34%), 77 RAM blocks | 7 | 62.3 MHz |
+| The whole CPU (pipeline, FPU, exceptions, SPRs, MMU, two 16 KB caches), after the timing pass's first seven cuts and the FPU operand register (2026-10-06) | 15,480 (37%), 77 RAM blocks | 7 | 60.3 MHz (62.3 with the register off: the fitter's swing) |
 | The same when the caches were first added | 14,234 (34%), 77 RAM blocks | 7 | 55.2 MHz |
 | The same before the caches | 12,049 (29%) | 7 | 61-65 MHz (three runs) |
 | The same before the MMU | 10,781 (26%) | 7 | 69.5 MHz |
@@ -41,12 +41,10 @@ So the CPU is above its 50 MHz floor and below the 66 MHz target, and the
 timing pass is in progress (the plan's M5 step 4 has every measurement).
 The Fmax figure swings by 2-3 MHz between fits of near-identical designs;
 the slowest paths, taken apart cell by cell, are the measure. What sets the
-clock now is a single loaded by `lfs`, converted in WB and forwarded into
-an FPU operation that finishes in its request cycle and on into FPSCR, the
-exception decision and the redirect of the fetch; then the data cache's
-answer, made in the cycle after the request from the tag RAM's output, and
-ID's decode and register read. The register files and SPRs are still
-flip-flops, the main area to be had.
+clock now is ID's decode into the register-read muxes, then the data
+cache's answer, made in the cycle after the request from the tag RAM's
+output, and the cache's hit decision into the fetch handshake. The register
+files and SPRs are still flip-flops, the main area to be had.
 
 ## Decisions that are locked in
 

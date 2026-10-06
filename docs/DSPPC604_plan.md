@@ -808,6 +808,75 @@ How the rules apply, decided before step 1 and followed in it:
   (the "held here" capture then has a whole cycle for the conversion),
   which costs a cycle only within two instructions of the `lfs` but
   changes how a hazard is handled, so it is for the owner to decide.
+- The branch target buffer taught a cycle later, built and measured, not
+  taken (2026-10-06). From registered copies of index, tag, target and
+  counter, the branch condition leaves the RAM's write cycle; no cycle
+  changes. But Quartus then adds pass-through logic to the three arrays to
+  deliver the new entry to a fetch that reads it at the same edge (the
+  mapper's warning 276020): 674 more registers, new endpoints on the fetch
+  address path (`id_insn` into `btb_*_bypass`), 59.7 MHz, and `ramstyle =
+  "no_rw_check"` on the arrays is ignored (a bit-identical refit). Written
+  as the RAM works, the read synchronous with the next fetch address and
+  the old entry on a read-during-write: no pass-through, 13,781 ALMs,
+  11,318 registers, 58.9 MHz in a fit led by the `lfs` family, and every
+  random lockstep program 0.13 to 0.30 % longer (a two-instruction loop
+  reads its branch's entry in the cycle it is written and mispredicts
+  once more), the golden, floating-point and directed programs unchanged.
+  And the write path has not been among the slowest families since the
+  sixth cut: the buffer's endpoints in the lists are its read address,
+  reached from the exception and branch decisions through the redirect,
+  which this does not touch. So it buys nothing now and costs either logic
+  or cycles; if the write path ever returns to the top, the synchronous
+  read is the form, at that cost. The RTL stays as after the seventh cut.
+- The `lfs` stall, measured on a copy of the tree (2026-10-06): one more
+  term in the stall condition, `wb_fsgl & (ffa_wb | ffb_wb | ffc_wb)`, and
+  EX's floating-point operand muxes taking from WB the word as loaded
+  (`wb_result`) instead of `wb_value`, so that a single's conversion is on
+  no path into the FPU; the "held here" capture and ID's read keep the
+  converted value. The stall alone changes nothing for timing: the path
+  through the mux exists whether or not the stall makes it a don't-care.
+  With both: the whole `lfs` family gone from the 4,000 slowest paths,
+  62.8 MHz worst case on a fit that still carried the buffer's
+  pass-through logic, 14,434 ALMs; the five random floating-point programs
+  0.17 to 0.21 % longer, the 45 other runs identical. What leads then, 1.7
+  to 2.5 ns short: the data cache's answer into `wb_result`, the decoder
+  into the fetch handshake (through the sequencer's wait for XER), the
+  register-read indexes out of the decoder's case tree, and the branch
+  condition into the redirect through the compare of `next_pc` with the
+  prediction. Not committed: it changes how a hazard is handled (rule 2's
+  one stall condition gains a case), for the owner to decide against the
+  FPU operand register's 2 to 10 %.
+- The data cache's tag RAM in MLABs: not to be had from Quartus 17
+  (2026-10-06). Six forms were tried with map-only runs on a copy of the
+  tree, each a minute: `ramstyle = "MLAB"` alone and with `no_rw_check`
+  on the struct-typed two-dimensional array (behind a `TAG_MLAB`
+  parameter, in a generate branch), on a plain-vector array per way in the
+  data RAMs' own shape, on a module-level plain array, as the comment
+  pragma `/* synthesis ramstyle = "MLAB" */`, and a `RAMSTYLE_ATTRIBUTE
+  MLAB` instance assignment with an explicit and a wildcard target. Every
+  one inferred the RAM with `RAM_BLOCK_TYPE = AUTO` and the fitter put it
+  in M10Ks (the one full fit was bit-identical to the seventh cut's); the
+  data RAMs' `no_rw_check` shows the same, their read-during-write mode
+  being `OLD_DATA` on every RAM. So this flow takes no RAM style
+  attribute, and the tag RAM's 2.5 ns clock-to-out stays unless the RAM
+  is instantiated as a primitive, which the CPU does not do. The RTL is
+  unchanged.
+- The list above exhausted at 62.3 MHz, the FPU operand register on
+  (`FPU_OPERAND_REG = 1`, 2026-10-06), as the plan's fallback: the `lfs`
+  family is gone from the lists. Cost measured on this base: 2.0 % on the
+  floating-point golden programs (3.46 to 3.53 and 3.74 to 3.81 cycles per
+  instruction), 9 to 10 % on the random floating-point programs, 0.02 to
+  0.05 % on the lockstep programs, the integer golden programs unchanged.
+  Fit: 60.3 MHz worst case (62.5 at the cold corner), 15,480 ALMs, 13,573
+  registers (the fitter's duplication grew by 2,400). What leads now, with
+  nothing of the FPU in the 4,000 slowest paths: ID's decode into the
+  register-read muxes, 3.3 ns short with 1,335 paths (`id_insn` through
+  the decoder's case tree to its `seq` field, the sequencer's selects for
+  the read indexes with a fan-out of 163, three levels of the 33:1 mux);
+  the data cache's answer into `wb_result` (2.5); the cache's hit decision
+  into the fetch handshake and ID's load (2.4); the forwarding compares
+  through the effective address into the data cache's request (2.4). The
+  `lfs` stall (0.2 %) would replace this parameter if chosen.
 
 ### M6: real ROM, first MiSTer build
 
