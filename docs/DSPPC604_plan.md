@@ -16,7 +16,7 @@ working sessions, not calendar promises.
 | M3 | Pipeline, user-mode integer | golden vectors pass *through the pipeline*; lockstep against a reference on random code | done 2026-10-05 |
 | M4 | Supervisor state, exceptions, FP in the pipeline | exception and SPR tests; lockstep with exceptions; interrupt tests | done 2026-10-05 |
 | M5 | MMU and caches | translation and cache tests; lockstep with translation on | done 2026-10-06 (timing pass stopped at 64-65 MHz) |
-| M6 | Real ROM in simulation, first MiSTer build | the 7600 ROM runs from reset until it needs hardware; timing met at 66 MHz or better | in progress: the ROM runs in simulation to Open Firmware's wait for Cuda (2026-10-06) |
+| M6 | Real ROM in simulation, first MiSTer build | the 7600 ROM runs from reset until it needs hardware; timing met at 66 MHz or better | done 2026-10-06, apart from timing: the ROM runs in simulation and on the board, identically, to Open Firmware's wait for Cuda; the CPU's clock closes at 64.6 MHz (65 asked) |
 
 ## Rules that keep the pipeline from growing special cases
 
@@ -1092,6 +1092,30 @@ error (96 MB reaches the board's second rank); 1.87-1.91 cycles per
 instruction. The UART is read over SSH from /dev/ttyS1 with the core's UART
 mode left at None.
 
+**Step 4, the ROM on the board, done 2026-10-06.** The 7600's ROM as
+`games/PPCMac/boot.rom` (loaded at core start), 16 MB, 65 MHz. The second
+build adds two readout rows (device writes, and the instructions retired at
+the last of them; 25,051 ALMs, the CPU's clock closing at 64.64 MHz) to
+compare the path, not only the end, with the simulation:
+
+| | Simulation (`run_machine.py`) | Board |
+|---|---|---|
+| Device writes before the endless poll | 26,771 | 26,771 |
+| Instructions before the last device write | 18,273,776 | 18,273,773 |
+| Where it loops | FF809C7C-FF80BB00, FF838BC0-FF838EA0 | FF80BAFC, FF838BC0-FF838E98 sampled |
+| What it polls, MSR | F3017A00 (the VIA's flags), 00003070 | the same |
+
+The three instructions are the measurement: the board latches the retired
+count when the write is acknowledged, with the writing instruction and the
+two before it still in the pipeline, where the simulation counts the
+instructions before the writing one. So the first bitstream executes the
+7600's ROM exactly as the simulation does, through the hardware
+initialisation, RAM sizing and 18 million instructions of Open Firmware, to
+where Open Firmware waits for Cuda. `docs/PPCMac_board_rom_20261006.png` is
+the screen at that point. M6's remaining bullet, timing closure at 66 MHz
+and then 75, stays open: the CPU's clock closes at 64.6 MHz in both builds
+and the board runs at 65 MHz.
+
 After M6 the work is the machine, which gets its own plan.
 
 ## Known behaviour and open items
@@ -1283,5 +1307,5 @@ run on a real 604 can settle.
 | ~~now~~ | ~~When the 7300 is running tests: build the extra floating-point vector set listed under M2?~~ Done 2026-10-06: the version-4 set ran on the 7300, with a supervisor-mode second stage; M2 and M4 have what it changed. |
 | M6 or later | Trace and the IABR, cheap now that their SRR1 is measured: add them when a debugger or the ROM's own tests want them, or leave them out? |
 | M3 | Is dingusppc built as a library acceptable as the lockstep reference, given it is the reference trusted most? |
-| M5 | ~~Main memory on the SDRAM module or on the HPS DDR3?~~ Decided 2026-10-05: the SDRAM module, 64-128 MB fitted; the machine offers 6, 16, 24, 32, 64 or 128 MB. The line-fill bus therefore targets the SDRAM controller, which runs on its own clock, so M5 includes the clock crossing. |
+| M5 | ~~Main memory on the SDRAM module or on the HPS DDR3?~~ Decided 2026-10-05: the SDRAM module, 64-128 MB fitted; the machine offers 6, 16, 24, 32, 64 or 128 MB (changed 2026-10-06 to 6, 16, 24, 48, 64 and 96 MB on the 128 MB module, the ROM taking its top 4 MB; 128 MB would need the ROM elsewhere and is left out). The line-fill bus therefore targets the SDRAM controller, which runs on its own clock, so M5 includes the clock crossing. |
 | M6 | With measured speed in hand: stay with the 7600, or model a slower machine first? |

@@ -1,5 +1,7 @@
 # Resume prompt: M6, the 7600's ROM in simulation, then the first MiSTer build
 
+(M6 was done on 2026-10-06; the next session's prompt is `RESUME_machine.md`. This file is kept as the specification the machine was built to.)
+
 Paste everything below the line into a new session started in `C:\Temp\mistercore\PPC_Mac`.
 
 ---

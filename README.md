@@ -30,6 +30,7 @@ debug readout (rows of squares), not yet a Mac.
 | Memory-test boot program | selectable in place of the ROM; passes in the bench over 1 and 6 MB and finds an injected fault |
 | SDRAM controller | `rtl/machine/PPCMac_sdram.sv`, adapted from Sorgelig's; passes its bench against a model of the 128 MB board that checks every command and timing |
 | First bitstream | `PPCMac.sv`: CPU at 65 MHz, SDRAM at 100 MHz, ROM upload, OSD options, debug readout on screen and UART; on the board the memory test passes at every RAM size (6-96 MB) |
+| The 7600's ROM on the board | runs exactly as in simulation: the same 26,771 device writes, the last after the same 18.27 million instructions, then the same wait for Cuda |
 | Machine (video, SCSI, Cuda, sound, ...) | not started |
 
 The first full build of the core (2026-10-06: the CPU at 65 MHz, the
@@ -39,10 +40,11 @@ framework), Quartus 17.0, slow 100 C model; this is the number that counts:
 | Build | ALMs | RAM blocks | DSP blocks | CPU clock closes at |
 |---|---|---|---|---|
 | `PPCMac` with the memory test, 2026-10-06 | 24,757 of 41,910 (59%); the CPU 13,883, the machine 2,673, the SDRAM controller 367, the readout 455 | 144 of 553 (26%) | 40 of 112 (36%) | 64.59 MHz (65 MHz asked: slack -0.099 ns); memory 107.3 MHz (100 asked) |
+| The same with fourteen readout rows (the committed tree) | 25,051 (60%) | 144 | 40 | 64.64 MHz (slack -0.086 ns); memory 110.7 MHz |
 
 On the board (DE10-Nano, 128 MB SDRAM) the memory test passes at every RAM
 size the OSD offers (6 to 96 MB, three or more passes each, no error) at
-65 MHz.
+65 MHz, and the 7600's ROM runs exactly as in simulation.
 
 Each block synthesised on its own for the DE10-Nano's FPGA with Quartus
 17.0 (`syn\check.py`), constrained to 75 MHz:
@@ -141,10 +143,13 @@ not by drift.
 
 **Memory**
 
-- Main memory lives on the MiSTer SDRAM module; a 64 MB or 128 MB module is
-  expected. The machine's installed RAM is a core option: 6, 16, 24, 32, 64
-  or 128 MB (6 MB is the Pippin's). The caches fill their lines from the
-  SDRAM, so the cache line-fill bus is designed for that controller.
+- Main memory lives on the MiSTer SDRAM module, the 128 MB one (the board
+  here has it). The machine's installed RAM is a core option: 6, 16, 24, 48,
+  64 or 96 MB (changed 2026-10-06 from 6, 16, 24, 32, 64, 128: the ROM takes
+  the module's top 4 MB, so 124 MB is the most a 128 MB module allows; 6 MB
+  is the Pippin's). The caches fill their lines from the SDRAM, so the cache
+  line-fill bus is designed for that controller. 128 MB of RAM would need the
+  ROM elsewhere (the HPS's DDR3 or a second SDRAM board): left out for now.
 
 **Still open**
 
