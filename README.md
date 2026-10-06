@@ -22,7 +22,7 @@ still the MiSTer template's test pattern.
 | `lwarx`/`stwcx.`, `dcbz`, cache instructions | done |
 | Caches | two 16 KB four-way caches with 32-byte lines (the 604's shape), write-back, one line port to memory, a snoop port for DMA; directed tests and the whole suite through them |
 | Clock crossing to the SDRAM controller | done, checked at several clock ratios; the controller itself comes with the machine |
-| Timing and area pass | next; see [the plan](docs/DSPPC604_plan.md) |
+| Timing and area pass | in progress: 55 to 59.5 MHz so far with five cuts that cost no cycles; what remains and what it would cost is in [the plan](docs/DSPPC604_plan.md) |
 | Machine (chipset, video, SCSI, ...) | not started |
 
 Size and speed of what exists, each synthesised on its own for the DE10-Nano's
@@ -30,18 +30,23 @@ FPGA with Quartus 17.0 (`syn\check.py`), constrained to 75 MHz:
 
 | Block | ALMs | DSP blocks | Worst-case Fmax |
 |---|---|---|---|
-| The whole CPU (pipeline, FPU, exceptions, SPRs, MMU, two 16 KB caches) | 14,234 (34%), 77 RAM blocks | 7 | 55.2 MHz |
+| The whole CPU (pipeline, FPU, exceptions, SPRs, MMU, two 16 KB caches), after the timing pass's first five cuts (2026-10-06) | 14,212 (34%), 77 RAM blocks | 7 | 59.5 MHz |
+| The same when the caches were first added | 14,234 (34%), 77 RAM blocks | 7 | 55.2 MHz |
 | The same before the caches | 12,049 (29%) | 7 | 61-65 MHz (three runs) |
 | The same before the MMU | 10,781 (26%) | 7 | 69.5 MHz |
 | The integer pipeline alone, before the FPU was connected | 3,208 (8%) | 3 | 78.6 MHz |
 | Floating-point unit alone | 3,303 (8%) | 4 | 73.5 MHz |
 
-So the CPU is above its 50 MHz floor and below the 66 MHz target. No effort
-has gone into timing yet; it is the next step of the plan. The slowest
-paths are known: the data cache's tag compare, way select and the memory
-unit's byte formatting share one cycle on the way to the register file, and
-the forwarded operands run straight into the ALU and the FPU's first stage.
-The register files and SPRs are still flip-flops, the main area to be had.
+So the CPU is above its 50 MHz floor and below the 66 MHz target, and the
+timing pass is in progress (the plan's M5 step 4 has every measurement).
+The Fmax figure swings by 2-3 MHz between fits of near-identical designs;
+the slowest paths, taken apart cell by cell, are the measure. What sets the
+clock now is the chain in EX from a forwarded operand through the adder and
+the alignment checks to the commit and exception decisions and their
+fan-out, then the branch target buffer's write off the branch condition,
+and the data cache's hit decision, made in the cycle after the request and
+waited for by the whole pipeline. The register files and SPRs are still
+flip-flops, the main area to be had.
 
 ## Decisions that are locked in
 

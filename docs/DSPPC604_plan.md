@@ -703,6 +703,15 @@ How the rules apply, decided before step 1 and followed in it:
   `ctr - 1`. Then the branch condition into the branch target buffer's
   write (3.1), the cache's answer into `wb_result` (3.1), and the cache's
   hit decision into the data RAM's write data (2.5).
+- The configuration committed (the three cuts, the FPU register off):
+  59.5 MHz worst case (59.6 at the hot corner), 14,212 ALMs, 11,103
+  registers, 77 RAM blocks, 7 DSP blocks. Its slowest paths, 3.2 to
+  3.5 ns short at 75 MHz, are the same family as above from the other
+  end: a forwarded operand through the adder and the alignment checks into
+  SRR0, DAR and `pc_f` (the exception and redirect decisions), the
+  forwarding compare of operand C into a register the fitter retimed into
+  the decoder's output, the fetch address into the MMU's segment-register
+  read-ahead, and ID's decode and register read into `ex_a`.
 - What that says about the remaining candidates. The seven-bit forwarding
   compares are already registers in the fitter's hands (physical synthesis
   retimes them, their inputs all being registers), so the proposal below
