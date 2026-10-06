@@ -1,5 +1,7 @@
 //============================================================================
 //
+//  PPCMac: a PowerPC Macintosh (the Power Macintosh 7600) for MiSTer
+//
 //  This program is free software; you can redistribute it and/or modify it
 //  under the terms of the GNU General Public License as published by the Free
 //  Software Foundation; either version 2 of the License, or (at your option)
@@ -15,20 +17,36 @@
 //  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //
 //============================================================================
+//
+//  Three clocks from one PLL (rtl/pll.v):
+//    clk_vid  20 MHz   the debug readout's picture and UART (the template's video timing)
+//    clk_cpu  CPU_MHZ  the CPU and the machine (PPCMac_system)
+//    clk_mem  100 MHz  the SDRAM controller, hps_io and the ROM upload
+//
+//  The CPU is held in reset while RESET, the OSD's reset or the button is
+//  down, while the SDRAM is not ready, while a ROM is being uploaded, until
+//  a ROM has been uploaded (unless the OSD boots the memory test), and for a
+//  moment after the RAM size or boot option changes. The ROM goes into the
+//  top 4 MB of the 128 MB SDRAM board, written byte by byte from the OSD's
+//  file upload (index 1, or index 0: a boot.rom in the core's folder is
+//  loaded at start).
+//
+//============================================================================
 
 module emu
 (
 	`include "sys/emu_ports.vh"
 );
 
+localparam int CPU_MHZ = 65;            // 60 and 70 also work with the PLL (VCO 1200, 1400 MHz)
+
 ///////// Default values for ports not used in this core /////////
 
 assign ADC_BUS  = 'Z;
 assign USER_OUT = '1;
-assign {UART_RTS, UART_TXD, UART_DTR} = 0;
+assign {UART_RTS, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
-assign {SDRAM_DQ, SDRAM_A, SDRAM_BA, SDRAM_CLK, SDRAM_CKE, SDRAM_DQML, SDRAM_DQMH, SDRAM_nWE, SDRAM_nCAS, SDRAM_nRAS, SDRAM_nCS} = 'Z;
-assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;  
+assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;
 
 assign VGA_SL = 0;
 assign VGA_F1 = 0;
@@ -54,42 +72,53 @@ wire [1:0] ar = status[122:121];
 assign VIDEO_ARX = (!ar) ? 12'd4 : (ar - 1'd1);
 assign VIDEO_ARY = (!ar) ? 12'd3 : 12'd0;
 
-`include "build_id.v" 
+`include "build_id.v"
 localparam CONF_STR = {
-	"PPCMac;;",
+	"PPCMac;UART115200;",
+	"-;",
+	"F1,ROM,Load ROM;",
+	"O[3:1],RAM,16 MB,24 MB,48 MB,64 MB,96 MB,6 MB;",
+	"O[4],Boot,ROM,Memory test;",
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
-	"O[2],TV Mode,NTSC,PAL;",
-	"O[4:3],Noise,White,Red,Green,Blue;",
-	"-;",
-	"P1,Test Page 1;",
-	"P1-;",
-	"P1-, -= Options in page 1 =-;",
-	"P1-;",
-	"P1O[5],Option 1-1,Off,On;",
-	"d0P1F1,BIN;",
-	"H0P1O[10],Option 1-2,Off,On;",
-	"-;",
-	"P2,Test Page 2;",
-	"P2-;",
-	"P2-, -= Options in page 2 =-;",
-	"P2-;",
-	"P2S0,DSK;",
-	"P2O[7:6],Option 2,1,2,3,4;",
-	"-;",
+	"O[5],TV Mode,NTSC,PAL;",
 	"-;",
 	"T[0],Reset;",
 	"R[0],Reset and close OSD;",
-	"v,0;", // [optional] config version 0-99. 
-	        // If CONF_STR options are changed in incompatible way, then change version number too,
-			  // so all options will get default values on first start.
-	"V,v",`BUILD_DATE 
+	"v,0;",
+	"V,v",`BUILD_DATE
 };
 
-wire forced_scandoubler;
-wire   [1:0] buttons;
+// the build date, YYMMDD in ASCII, as BCD 20YYMMDD for the debug readout
+localparam [47:0] BD = `BUILD_DATE;
+localparam [31:0] BUILD = {8'h20, BD[43:40], BD[35:32], BD[27:24], BD[19:16], BD[11:8], BD[3:0]};
+
+///////////////////////   CLOCKS   ///////////////////////////////
+
+wire clk_vid, clk_cpu, clk_mem, pll_locked;
+pll #(.CPU_FREQ(CPU_MHZ == 60 ? "60.000000 MHz" : CPU_MHZ == 70 ? "70.000000 MHz" : "65.000000 MHz")) pll
+(
+	.refclk(CLK_50M),
+	.rst(0),
+	.outclk_0(clk_vid),
+	.outclk_1(clk_cpu),
+	.outclk_2(clk_mem),
+	.locked(pll_locked)
+);
+
+wire clk_sys = clk_mem;
+
+///////////////////////   HPS   ///////////////////////////////
+
+wire        forced_scandoubler;
+wire  [1:0] buttons;
 wire [127:0] status;
-wire  [10:0] ps2_key;
+wire        ioctl_download;
+wire [15:0] ioctl_index;
+wire        ioctl_wr;
+wire [26:0] ioctl_addr;
+wire  [7:0] ioctl_dout;
+wire        ioctl_wait;
 
 hps_io #(.CONF_STR(CONF_STR)) hps_io
 (
@@ -99,75 +128,205 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 	.gamma_bus(),
 
 	.forced_scandoubler(forced_scandoubler),
-
 	.buttons(buttons),
 	.status(status),
-	.status_menumask({status[5]}),
-	
-	.ps2_key(ps2_key)
+	.status_menumask(16'd0),
+
+	.ioctl_download(ioctl_download),
+	.ioctl_index(ioctl_index),
+	.ioctl_wr(ioctl_wr),
+	.ioctl_addr(ioctl_addr),
+	.ioctl_dout(ioctl_dout),
+	.ioctl_wait(ioctl_wait)
 );
 
-///////////////////////   CLOCKS   ///////////////////////////////
+///////////////////////   OPTIONS AND RESET (memory clock)   ///////////////////////////////
 
-wire clk_sys;
-pll pll
-(
-	.refclk(CLK_50M),
-	.rst(0),
-	.outclk_0(clk_sys)
-);
+reg  [7:0] ram_mb;
+always @(posedge clk_mem) begin
+	case (status[3:1])
+		3'd1:    ram_mb <= 8'd24;
+		3'd2:    ram_mb <= 8'd48;
+		3'd3:    ram_mb <= 8'd64;
+		3'd4:    ram_mb <= 8'd96;
+		3'd5:    ram_mb <= 8'd6;
+		default: ram_mb <= 8'd16;
+	endcase
+end
+wire boot_memtest = status[4];
 
-wire reset = RESET | status[0] | buttons[1];
-
-wire [1:0] col = status[4:3];
-
-wire HBlank;
-wire HSync;
-wire VBlank;
-wire VSync;
-wire ce_pix;
-wire hvcnt_atzero;
-wire [7:0] video;
-
-// Leave H/V sync always on. This stabilizes the video output while the core
-// is in reset. This example releases the reset when H/V counters are at zero.
-reg reset_core = 1;
-always @(posedge clk_sys) begin
-	if(reset) reset_core <= 1;
-	else if(hvcnt_atzero) reset_core <= 0;
+// the ROM upload: index 1 from the OSD, index 0 a boot.rom loaded at start
+wire rom_index = ioctl_index[7:0] == 8'd0 || ioctl_index[7:0] == 8'd1;
+wire rom_wr    = ioctl_download & rom_index & ioctl_wr;
+reg  rom_loaded = 0, dl_q = 0, rom_dl = 0;
+always @(posedge clk_mem) begin
+	dl_q <= ioctl_download;
+	if (ioctl_download & ~dl_q & rom_index) begin rom_dl <= 1; rom_loaded <= 0; end
+	if (~ioctl_download & dl_q & rom_dl) begin rom_dl <= 0; rom_loaded <= 1; end
 end
 
-mycore mycore
+reg  [1:0] locked_m = 0;
+always @(posedge clk_mem) locked_m <= {locked_m[0], pll_locked};
+wire sdram_init = ~locked_m[1];
+wire sdram_ready;
+
+// a change of RAM size or boot option resets the CPU for a moment
+reg  [3:0] cfg_q;
+reg  [7:0] cfg_hold = 8'hFF;
+reg  [2:0] reset_in;
+always @(posedge clk_mem) begin
+	reset_in <= {reset_in[1:0], RESET | status[0] | buttons[1]};
+	cfg_q <= status[4:1];
+	if (cfg_q != status[4:1]) cfg_hold <= 8'hFF;
+	else if (cfg_hold != 0) cfg_hold <= cfg_hold - 1'd1;
+end
+
+reg cpu_reset_m = 1;
+always @(posedge clk_mem)
+	cpu_reset_m <= reset_in[2] | ~sdram_ready | rom_dl | (~boot_memtest & ~rom_loaded) | (cfg_hold != 0);
+
+// into the CPU's clock (the options are quasi-static: they change only with the reset held)
+reg [2:0] cpu_reset_s = 3'b111;
+reg [7:0] ram_mb_c [2];
+reg [1:0] boot_memtest_c;
+always @(posedge clk_cpu) begin
+	cpu_reset_s    <= {cpu_reset_s[1:0], cpu_reset_m};
+	ram_mb_c[0]    <= ram_mb;
+	ram_mb_c[1]    <= ram_mb_c[0];
+	boot_memtest_c <= {boot_memtest_c[0], boot_memtest};
+end
+wire cpu_reset = cpu_reset_s[2];
+
+///////////////////////   THE MACHINE   ///////////////////////////////
+
+wire         b_req, b_we, b_line, b_ack;
+wire [31:2]  b_addr;
+wire  [3:0]  b_be;
+wire [255:0] b_wdata, b_rdata;
+
+wire         cpu_req, cpu_we, cpu_line, cpu_ack, cpu_irq, cpu_tb_tick;
+wire [31:2]  cpu_addr;
+wire  [3:0]  cpu_be;
+wire [255:0] cpu_wdata, cpu_rdata;
+wire  [31:0] dbg_status, dbg_passes, dbg_errors, dbg_first;
+wire         trace_valid, trace_last, trace_reg_we, trace_dreq, trace_dwe;
+wire  [31:0] trace_pc, trace_insn, trace_cr, trace_xer, trace_lr, trace_ctr, trace_fpscr, trace_msr, trace_dwdata;
+wire   [6:0] trace_reg_idx;
+wire  [63:0] trace_reg_val;
+wire   [2:0] trace_dkind;
+wire  [31:2] trace_daddr;
+wire   [3:0] trace_dbe;
+
+PPCMac_system #(.CPU_HZ(CPU_MHZ * 1000000), .TB_HZ(12500000), .SDRAM_MB(128)) system
 (
-	.clk(clk_sys),
-	.reset(reset_core),
+	.clk(clk_cpu),
+	.reset(cpu_reset),
+	.reset_pc(32'hFFF00100),
+	.ram_mb(ram_mb_c[1]),
+	.boot_memtest(boot_memtest_c[1]),
 
-	.pal(status[2]),
-	.scandouble(forced_scandoubler),
+	.clk_b(clk_mem),
+	.reset_b(cpu_reset_m),
+	.b_req, .b_we, .b_line, .b_addr, .b_be, .b_wdata, .b_ack, .b_rdata,
 
-	.ce_pix(ce_pix),
-	.hvcnt_atzero(hvcnt_atzero),
-
-	.HBlank(HBlank),
-	.HSync(HSync),
-	.VBlank(VBlank),
-	.VSync(VSync),
-
-	.video(video)
+	.cpu_req, .cpu_we, .cpu_line, .cpu_addr, .cpu_be, .cpu_wdata, .cpu_ack, .cpu_rdata, .cpu_irq, .cpu_tb_tick,
+	.dbg_status, .dbg_passes, .dbg_errors, .dbg_first,
+	.trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_reg_we, .trace_reg_idx, .trace_reg_val,
+	.trace_cr, .trace_xer, .trace_lr, .trace_ctr, .trace_fpscr, .trace_msr,
+	.trace_dreq, .trace_dwe, .trace_dkind, .trace_daddr, .trace_dbe, .trace_dwdata
 );
 
-assign CLK_VIDEO = clk_sys;
-assign CE_PIXEL = ce_pix;
+///////////////////////   SDRAM   ///////////////////////////////
 
-assign VGA_DE = ~(HBlank | VBlank);
-assign VGA_HS = HSync;
-assign VGA_VS = VSync;
-assign VGA_G  = (!col || col == 2) ? video : 8'd0;
-assign VGA_R  = (!col || col == 1) ? video : 8'd0;
-assign VGA_B  = (!col || col == 3) ? video : 8'd0;
+wire [15:0] sd_dq_out;
+wire        sd_dq_oe;
+assign SDRAM_DQ = sd_dq_oe ? sd_dq_out : 16'hZZZZ;
 
-reg  [26:0] act_cnt;
-always @(posedge clk_sys) act_cnt <= act_cnt + 1'd1; 
-assign LED_USER    = act_cnt[26]  ? act_cnt[25:18]  > act_cnt[7:0]  : act_cnt[25:18]  <= act_cnt[7:0];
+PPCMac_sdram #(.CLK_MHZ(100)) sdram
+(
+	.clk(clk_mem),
+	.init(sdram_init),
+	.ready(sdram_ready),
+
+	.req(b_req), .we(b_we), .line(b_line), .addr(b_addr[26:2]), .be(b_be), .wdata(b_wdata),
+	.ack(b_ack), .rdata(b_rdata),
+
+	.up_wr(rom_wr),
+	.up_addr(27'h7C00000 + ioctl_addr),      // the top 4 MB of the 128 MB board
+	.up_data(ioctl_dout),
+	.up_busy(ioctl_wait),
+
+	.SDRAM_A, .SDRAM_BA, .SDRAM_nCS, .SDRAM_nRAS, .SDRAM_nCAS, .SDRAM_nWE,
+	.SDRAM_DQML, .SDRAM_DQMH, .SDRAM_CKE,
+	.dq_out(sd_dq_out), .dq_oe(sd_dq_oe), .dq_in(SDRAM_DQ)
+);
+
+// SDRAM_CLK is the memory clock inverted, from a DDR output register, as in
+// Sorgelig's sdram.sv
+altddio_out
+#(
+	.extend_oe_disable("OFF"),
+	.intended_device_family("Cyclone V"),
+	.invert_output("OFF"),
+	.lpm_hint("UNUSED"),
+	.lpm_type("altddio_out"),
+	.oe_reg("UNREGISTERED"),
+	.power_up_high("OFF"),
+	.width(1)
+)
+sdramclk_ddr
+(
+	.datain_h(1'b0),
+	.datain_l(1'b1),
+	.outclock(clk_mem),
+	.dataout(SDRAM_CLK),
+	.aclr(1'b0),
+	.aset(1'b0),
+	.oe(1'b1),
+	.outclocken(1'b1),
+	.sclr(1'b0),
+	.sset(1'b0)
+);
+
+///////////////////////   THE DEBUG READOUT   ///////////////////////////////
+
+wire       hblank, hsync, vblank, vsync, ce_pix;
+wire [7:0] dbg_r, dbg_g, dbg_b;
+wire       led_user;
+
+PPCMac_debug #(.BUILD(BUILD), .VID_HZ(20000000), .BAUD(115200)) debug
+(
+	.clk_cpu(clk_cpu),
+	.cpu_reset(cpu_reset),
+	.trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_msr,
+	.cpu_req, .cpu_we, .cpu_ack, .cpu_addr,
+	.mt_passes(dbg_passes), .mt_errors(dbg_errors), .mt_first(dbg_first), .mt_status(dbg_status),
+	.led(led_user),
+
+	.rom_loaded(rom_loaded),
+	.sdram_ready(sdram_ready),
+	.boot_memtest(boot_memtest),
+	.pll_locked(pll_locked),
+	.ram_mb(ram_mb),
+
+	.clk_vid(clk_vid),
+	.pal(status[5]),
+	.scandouble(forced_scandoubler),
+	.ce_pix(ce_pix),
+	.hblank(hblank), .hsync(hsync), .vblank(vblank), .vsync(vsync),
+	.r(dbg_r), .g(dbg_g), .b(dbg_b),
+	.uart_txd(UART_TXD)
+);
+
+assign CLK_VIDEO = clk_vid;
+assign CE_PIXEL  = ce_pix;
+assign VGA_DE    = ~(hblank | vblank);
+assign VGA_HS    = hsync;
+assign VGA_VS    = vsync;
+assign VGA_R     = dbg_r;
+assign VGA_G     = dbg_g;
+assign VGA_B     = dbg_b;
+
+assign LED_USER  = led_user;
 
 endmodule

@@ -1,5 +1,10 @@
+// PPCMac: three outputs (see pll.v): video 20 MHz, the CPU, memory 100 MHz.
+// With the CPU at 65 MHz the VCO is 1300 MHz (C = 65, 20, 13); 60 and 70 MHz
+// give 1200 and 1400 MHz.
 `timescale 1ns/10ps
-module  pll_0002(
+module  pll_0002 #(
+	parameter CPU_FREQ = "65.000000 MHz"
+) (
 
 	// interface 'refclk'
 	input wire refclk,
@@ -7,8 +12,10 @@ module  pll_0002(
 	// interface 'reset'
 	input wire rst,
 
-	// interface 'outclk0'
+	// interfaces 'outclk0' to 'outclk2'
 	output wire outclk_0,
+	output wire outclk_1,
+	output wire outclk_2,
 
 	// interface 'locked'
 	output wire locked
@@ -18,14 +25,14 @@ module  pll_0002(
 		.fractional_vco_multiplier("false"),
 		.reference_clock_frequency("50.0 MHz"),
 		.operation_mode("direct"),
-		.number_of_clocks(1),
+		.number_of_clocks(3),
 		.output_clock_frequency0("20.000000 MHz"),
 		.phase_shift0("0 ps"),
 		.duty_cycle0(50),
-		.output_clock_frequency1("0 MHz"),
+		.output_clock_frequency1(CPU_FREQ),
 		.phase_shift1("0 ps"),
 		.duty_cycle1(50),
-		.output_clock_frequency2("0 MHz"),
+		.output_clock_frequency2("100.000000 MHz"),
 		.phase_shift2("0 ps"),
 		.duty_cycle2(50),
 		.output_clock_frequency3("0 MHz"),
@@ -77,7 +84,7 @@ module  pll_0002(
 		.pll_subtype("General")
 	) altera_pll_i (
 		.rst	(rst),
-		.outclk	({outclk_0}),
+		.outclk	({outclk_2, outclk_1, outclk_0}),
 		.locked	(locked),
 		.fboutclk	( ),
 		.fbclk	(1'b0),

@@ -4,6 +4,7 @@
 #   make core       build $(BUILD)/core/core_tb   programs on the pipeline
 #   make cdc        build $(BUILD)/cdc/cdc_tb   the memory port across two clocks
 #   make machine    build $(BUILD)/machine/machine_tb   the whole machine (PPCMac_system) running a ROM
+#   make sdram      build $(BUILD)/sdram/sdram_tb   the SDRAM controller against a model of the board
 #   make lint       Verilator lint only
 #   make clean
 #
@@ -70,6 +71,16 @@ $(MACH_DIR)/machine_tb: $(RTL_SRCS) $(MACH_SRCS) $(HERE)core_main.cpp $(RTL)/DSP
 		> $(MACH_DIR)/build.log 2>&1 || (cat $(MACH_DIR)/build.log; false)
 	@grep -E '^%Warning' $(MACH_DIR)/build.log || true
 
+sdram: $(BUILD)/sdram/sdram_tb
+
+$(BUILD)/sdram/sdram_tb: $(RTL)/DSPPC604_memcdc.sv $(MACH)/PPCMac_sdram.sv $(HERE)sdram_tb_top.sv $(HERE)sdram_main.cpp $(HERE)Makefile
+	@mkdir -p $(BUILD)/sdram
+	@$(VERILATOR) $(VFLAGS) --top-module sdram_tb_top -Mdir $(BUILD)/sdram -o sdram_tb \
+		-CFLAGS "-O2 -std=c++17" \
+		$(RTL)/DSPPC604_memcdc.sv $(MACH)/PPCMac_sdram.sv $(HERE)sdram_tb_top.sv $(HERE)sdram_main.cpp \
+		> $(BUILD)/sdram/build.log 2>&1 || (cat $(BUILD)/sdram/build.log; false)
+	@grep -E '^%Warning' $(BUILD)/sdram/build.log || true
+
 cdc: $(BUILD)/cdc/cdc_tb
 
 $(BUILD)/cdc/cdc_tb: $(RTL)/DSPPC604_memcdc.sv $(HERE)cdc_main.cpp $(HERE)Makefile
@@ -85,8 +96,10 @@ lint:
 	$(VERILATOR) --lint-only $(WARN) --top-module DSPPC604 $(RTL_SRCS)
 	$(VERILATOR) --lint-only $(WARN) --top-module DSPPC604_memcdc $(RTL)/DSPPC604_memcdc.sv
 	$(VERILATOR) --lint-only $(WARN) --top-module PPCMac_system $(RTL_SRCS) $(MACH_SRCS)
+	$(VERILATOR) --lint-only $(WARN) --top-module sdram_tb_top $(RTL)/DSPPC604_memcdc.sv $(MACH)/PPCMac_sdram.sv $(HERE)sdram_tb_top.sv
+	$(VERILATOR) --lint-only $(WARN) --top-module PPCMac_debug $(MACH)/PPCMac_debug.sv
 
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all core machine cdc lint clean
+.PHONY: all core machine sdram cdc lint clean

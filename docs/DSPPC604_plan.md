@@ -1043,8 +1043,54 @@ them). Passes in the bench over 1 MB (3 passes, 3.3 million instructions
 each) and 6 MB with 30 % wait states and a 133 MHz memory clock; an injected
 single-bit fault is found at its address.
 
-Next: step 3, the SDRAM controller with its own bench, then the first
-Quartus build of `PPCMac`.
+**Step 3, the SDRAM controller, verified in its bench 2026-10-06.**
+`rtl/machine/PPCMac_sdram.sv`, adapted from Sorgelig's MiSTer `sdram.sv` as
+used unmodified in the Quadra 800 core (hardware-tested at 99 MHz, eight-beat
+bursts, CAS 2) and the Sun-3 core: kept are the power-up sequence, the mode
+word, the refresh pairs for the two ranks of the 128 MB board, ACTIVE to
+READ/WRITE in two clocks and PRECHARGE to ACTIVE in three, the read capture
+three clocks after the READ and the data bus from registers; the request side
+is new, one row opened and closed per request (no open pages yet). A line is
+two eight-beat READs back to back (sixteen beats without a gap, the choice
+the prompt left to the controller, made because the proven controller runs
+bursts of eight) or sixteen single WRITEs; a word is two halfwords with DQMH
+and DQML from the byte enables. The ROM upload is a second, lower-priority
+port pairing bytes into halfwords. `verilator/sdram_main.cpp` runs it behind
+the clock crossing against a model of the board that holds the data and
+checks every command and timing (power-up, tRCD, tRP, tRAS, tRC, tRRD, tWR,
+tRFC, tMRD, refresh debt, bus turnaround, DQM on reads), with the CDC
+bench's request patterns and a ROM upload alongside: 40,000 requests per run
+at CPU clocks from 50 to 100 MHz against the 100 MHz controller, every read
+right, no protocol error, the whole 128 MB matching at the end. Three
+deliberate bugs were each caught (capture a clock early, refresh every 9 us,
+the model's tRCD tightened to 25 ns); a fourth (tRCD of one clock) hung the
+controller's state machine, which the model reported as missed refreshes.
+Step 7 of `run_core.py`.
+
+The MiSTer top (`PPCMac.sv`): one PLL with three outputs (video 20 MHz as the
+template had it, the CPU at `CPU_MHZ` = 65, memory 100 MHz, from a 1300 MHz
+VCO; 60 and 70 MHz also divide), `hps_io` and the SDRAM controller in the
+memory clock, the CPU held in reset as the prompt specifies, the ROM upload
+into the top 4 MB (index 1 from the OSD, or index 0, a `boot.rom` loaded at
+core start), the OSD's RAM sizes 16, 24, 48, 64, 96 and 6 MB (16 the
+default) and Boot ROM or Memory test, and `PPCMac_debug.sv`: twelve rows of
+32 squares on the template's video timing and the same rows as hex on the
+UART once a second. `PPCMac.sdc` makes the three clocks asynchronous (every
+crossing is a two-flip-flop toggle or quasi-static). `syn/mister.py` puts
+the core and ROM on the MiSTer over SSH, sets the options, loads the core,
+takes a screenshot and reads the UART.
+
+The first build (29 minutes): 24,757 ALMs (59 %; the CPU 13,883, smaller
+than its stand-alone 15,678 at the 75 MHz constraint), 144 RAM blocks, 40
+DSP blocks (the CPU's 7, the rest the framework's scaler and audio), the SDRAM
+pins' registers packed in the I/O cells. Slow 100 C model: the CPU's clock
+closes at 64.59 MHz against the 65 asked (slack -0.099 ns, the same as the
+CPU's stand-alone fits), memory 107.3 MHz against 100, video 45.7 against 20.
+**On the board, at 65 MHz, the memory test passes at every RAM size the OSD
+offers**: 6, 16, 24, 48, 64 and 96 MB, three to twenty passes each, no
+error (96 MB reaches the board's second rank); 1.87-1.91 cycles per
+instruction. The UART is read over SSH from /dev/ttyS1 with the core's UART
+mode left at None.
 
 After M6 the work is the machine, which gets its own plan.
 

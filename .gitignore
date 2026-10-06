@@ -61,6 +61,9 @@ RESUME_hardware.md
 # the disassembly of the 7600's ROM: Apple's code, kept local like the ROM
 rom7600/
 
+# the MiSTer's address on this LAN (syn/mister.py)
+syn/mister_host
+
 # Verilator, stand-alone Quartus check and Python build output
 obj_dir/
 verilator/build/

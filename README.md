@@ -3,8 +3,9 @@
 A PowerPC Macintosh core for the [MiSTer](https://github.com/MiSTer-devel) FPGA
 platform. Work in progress: the CPU is built and verified, and the machine
 around it (the Power Macintosh 7600) has begun: in simulation the 7600's own
-ROM runs from reset into Open Firmware. The bitstream this tree builds today
-is still the MiSTer template's test pattern.
+ROM runs from reset into Open Firmware. The bitstream this tree builds runs
+the CPU and the machine on the DE10-Nano with the SDRAM; its screen shows a
+debug readout (rows of squares), not yet a Mac.
 
 `PPCMac` is a working name and may change.
 
@@ -12,7 +13,7 @@ is still the MiSTer template's test pattern.
 
 | Piece | State |
 |---|---|
-| Project skeleton (MiSTer framework, Quartus project) | imported, unmodified template |
+| Project skeleton (MiSTer framework, Quartus project) | the template's framework, unmodified; its demo logic replaced by the machine |
 | Golden-vector test bench (Verilator) | working, one command |
 | DSPPC604 integer execute unit | all 11,576 real-604 vectors pass |
 | DSPPC604 floating-point unit | all 25,598 real-604 vectors pass, and all 64,013 of the 7300 run (non-IEEE mode, every exception enable, the whole `frsqrte` table); 1.8 million random vectors agree with the software model |
@@ -27,10 +28,24 @@ is still the MiSTer template's test pattern.
 | Machine: the 7600's address map and device stubs | `rtl/machine/`: Hammerhead, Bandit and Chaos configuration space, Grand Central (interrupt and DMA registers, VIA with timers, NVRAM, board register, SCC and sound registers) as register stubs that answer as dingusppc's devices do; [docs/PPCMac_stubs.md](docs/PPCMac_stubs.md) lists every stub and what it leaves out |
 | The 7600's ROM in simulation | runs from the reset vector in lockstep with dingusppc for 150 million instructions with no difference; reaches Open Firmware, which after 18.3 million instructions waits for Cuda (the ADB/power microcontroller, not built) and polls for it forever |
 | Memory-test boot program | selectable in place of the ROM; passes in the bench over 1 and 6 MB and finds an injected fault |
+| SDRAM controller | `rtl/machine/PPCMac_sdram.sv`, adapted from Sorgelig's; passes its bench against a model of the 128 MB board that checks every command and timing |
+| First bitstream | `PPCMac.sv`: CPU at 65 MHz, SDRAM at 100 MHz, ROM upload, OSD options, debug readout on screen and UART; on the board the memory test passes at every RAM size (6-96 MB) |
 | Machine (video, SCSI, Cuda, sound, ...) | not started |
 
-Size and speed of what exists, each synthesised on its own for the DE10-Nano's
-FPGA with Quartus 17.0 (`syn\check.py`), constrained to 75 MHz:
+The first full build of the core (2026-10-06: the CPU at 65 MHz, the
+machine, the SDRAM controller at 100 MHz, the debug readout, the MiSTer
+framework), Quartus 17.0, slow 100 C model; this is the number that counts:
+
+| Build | ALMs | RAM blocks | DSP blocks | CPU clock closes at |
+|---|---|---|---|---|
+| `PPCMac` with the memory test, 2026-10-06 | 24,757 of 41,910 (59%); the CPU 13,883, the machine 2,673, the SDRAM controller 367, the readout 455 | 144 of 553 (26%) | 40 of 112 (36%) | 64.59 MHz (65 MHz asked: slack -0.099 ns); memory 107.3 MHz (100 asked) |
+
+On the board (DE10-Nano, 128 MB SDRAM) the memory test passes at every RAM
+size the OSD offers (6 to 96 MB, three or more passes each, no error) at
+65 MHz.
+
+Each block synthesised on its own for the DE10-Nano's FPGA with Quartus
+17.0 (`syn\check.py`), constrained to 75 MHz:
 
 | Block | ALMs | DSP blocks | Worst-case Fmax |
 |---|---|---|---|
@@ -220,7 +235,7 @@ the rest, so they can never hide a real failure or be hidden by one.
 python verilator\run_core.py
 ```
 
-Tests the pipeline, six ways:
+Tests the pipeline, and the memory path behind it, seven ways:
 
 1. The real-604 integer vectors, assembled into one program and run with and
    without random bus wait states.
@@ -242,6 +257,12 @@ Tests the pipeline, six ways:
    same with address translation on, page faults included.
 6. The memory port carried across a clock boundary, at several clock
    ratios.
+7. The SDRAM controller (`rtl/machine/PPCMac_sdram.sv`) behind the clock
+   crossing, against a behavioural model of the 128 MB board in
+   `verilator/sdram_main.cpp` that holds the data and checks every command
+   and timing: the power-up sequence, tRCD, tRP, tRAS, tRC, tWR, tRFC,
+   refresh at 7.8 us, bus turnaround; random line and word requests and a
+   ROM upload, every read checked and the whole 128 MB compared at the end.
 
 `--seeds N` runs more random programs.
 
@@ -296,7 +317,8 @@ size and maximum clock. `--paths 10` also lists the slowest paths.
 | `sys/` | MiSTer framework (do not edit) |
 | `rtl/DSPPC604/` | the CPU |
 | `rtl/machine/` | the machine: the 7600's address map and device stubs (`PPCMac_*`) |
-| `rtl/` (other files) | template demo logic, to be replaced by the machine |
+| `rtl/pll.v`, `rtl/pll/` | the core's PLL (the template's, edited to three outputs) |
+| `syn/mister.py` | puts the core and ROM on the MiSTer over SSH, sets options, loads, screenshots, reads the UART |
 | `verilator/` | test benches (single instructions, programs on the pipeline, the whole machine) and the floating-point software model |
 | `verilator/ref/` | dingusppc's interpreter as a library, for lockstep runs |
 | `verilator/machref/` | dingusppc's whole 7600, headless, logging every device access |

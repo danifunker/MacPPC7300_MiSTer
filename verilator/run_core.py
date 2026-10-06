@@ -20,6 +20,8 @@
    Then the same with address translation on.
 6. The memory port carried across a clock boundary, at several clock
    ratios, with random requests checked against a software memory.
+7. The SDRAM controller behind the crossing, against a model of the 128 MB
+   board that checks every command and timing (sdram_main.cpp).
 
 Runs from Windows (through WSL) or directly under Linux.
 """
@@ -191,6 +193,17 @@ def main():
                           (15152, 15152, "66 against 66 MHz"), (10000, 15152, "100 against 66 MHz")):
         r = run([os.path.join(build, "cdc", "cdc_tb"), "--count", "5000", "--pa", str(pa), "--pb", str(pb),
                  "--stall", "30", "--seed", "3"])
+        report("  " + label, r)
+
+    # 7. the SDRAM controller against a model of the board, through the crossing
+    r = run(["make", "-s", "-C", HERE, "sdram", "BUILD=" + build])
+    if r.returncode:
+        print(r.stdout)
+        print("building the SDRAM bench failed")
+        return 1
+    print("the SDRAM controller against a model of the 128 MB board (100 MHz):")
+    for seed, pa, label in ((1, 15385, "CPU at 65 MHz"), (2, 20000, "CPU at 50 MHz"), (3, 10000, "CPU at 100 MHz")):
+        r = run([os.path.join(build, "sdram", "sdram_tb"), "--count", "20000", "--seed", str(seed), "--pa", str(pa)])
         report("  " + label, r)
 
     print("\nRESULT: %s" % ("PASS" if failures == 0 else "FAIL (%d runs)" % failures))
