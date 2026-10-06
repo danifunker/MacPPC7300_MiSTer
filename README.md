@@ -22,7 +22,7 @@ still the MiSTer template's test pattern.
 | `lwarx`/`stwcx.`, `dcbz`, cache instructions | done |
 | Caches | two 16 KB four-way caches with 32-byte lines (the 604's shape), write-back, one line port to memory, a snoop port for DMA; directed tests and the whole suite through them |
 | Clock crossing to the SDRAM controller | done, checked at several clock ratios; the controller itself comes with the machine |
-| Timing and area pass | in progress: 55 to 64.1 MHz so far with eight cuts that cost no cycles, plus the FPU operand register on (2 % of floating-point cycles) to take its forwarding path off the list; what remains and what it would cost is in [the plan](docs/DSPPC604_plan.md) |
+| Timing and area pass | in progress: 55 to 64 MHz so far with nine cuts that cost no cycles, plus the FPU operand register on (2 % of floating-point cycles) to take its forwarding path off the list; what remains and what it would cost is in [the plan](docs/DSPPC604_plan.md) |
 | Machine (chipset, video, SCSI, ...) | not started |
 
 Size and speed of what exists, each synthesised on its own for the DE10-Nano's
@@ -30,7 +30,7 @@ FPGA with Quartus 17.0 (`syn\check.py`), constrained to 75 MHz:
 
 | Block | ALMs | DSP blocks | Worst-case Fmax |
 |---|---|---|---|
-| The whole CPU (pipeline, FPU, exceptions, SPRs, MMU, two 16 KB caches), after the timing pass's first eight cuts and the FPU operand register (2026-10-06) | 15,556 (37%), 77 RAM blocks | 7 | 64.1 MHz |
+| The whole CPU (pipeline, FPU, exceptions, SPRs, MMU, two 16 KB caches), after the timing pass's first nine cuts and the FPU operand register (2026-10-06) | 15,564 (37%), 77 RAM blocks | 7 | 62.9-64.1 MHz (two fits) |
 | The same when the caches were first added | 14,234 (34%), 77 RAM blocks | 7 | 55.2 MHz |
 | The same before the caches | 12,049 (29%) | 7 | 61-65 MHz (three runs) |
 | The same before the MMU | 10,781 (26%) | 7 | 69.5 MHz |

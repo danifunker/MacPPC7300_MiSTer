@@ -900,6 +900,23 @@ How the rules apply, decided before step 1 and followed in it:
   request (2.0) and the cache's answer into `wb_result` (2.0: the tag
   RAM's 2.5 ns, the compare, the way select with a fan-out of 178, 2.1 ns
   of routing into the memory unit's byte shift). 66 MHz needs 1.8.
+- The string check once per source of A, built (2026-10-06, the ninth
+  cut): the 4 KB test is made for the register, for MEM's result and for
+  WB's, and the forwarding selects choose among the three bits, so the
+  32-bit operand mux (3 ns with routing) is not in front of it; B is the
+  sequencer's displacement, so `ex_b` is B. About 60 ALMs. Whole suite and
+  both replays green, cycle counts identical. The family is gone from the
+  list. 62.9 MHz worst case in this fit, with the cache's answer swung
+  from 2.0 to 2.6 ns short on the same logic (3,567 paths; the fitter's
+  variance on a path with 3.4 ns of routing in it) and ID's residual path
+  2.1 ns short: the sequencer's `uop = '0` in its two nop cases zeroes the
+  index fields behind the decoded `seq`, which the next cut takes out.
+  The cell-by-cell report of the cache's answer, after the tag RAM's
+  2.5 ns: the valid and tag compare 2.3, the encoded way select with a
+  fan-out of 178 and 1.9 ns of routing, the way mux 0.9, the hit/miss
+  data select 1.8, 2.0 ns of routing into the memory unit, its two-word
+  window and byte mask 1.0, 1.4 ns into the WB mux. What the fitter adds
+  in routing there is what would have to go.
 
 ### M6: real ROM, first MiSTer build
 
