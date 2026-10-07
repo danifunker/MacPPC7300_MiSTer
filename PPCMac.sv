@@ -298,9 +298,10 @@ wire       hblank, hsync, vblank, vsync, ce_pix;
 wire [7:0] dbg_r, dbg_g, dbg_b;
 wire       led_user;
 
-PPCMac_debug #(.BUILD(BUILD), .VID_HZ(20000000), .BAUD(115200)) debug
+PPCMac_debug #(.BUILD(BUILD), .CPU_HZ(CPU_MHZ * 1000000), .VID_HZ(20000000), .BAUD(115200)) debug
 (
 	.clk_cpu(clk_cpu),
+	.mach_reset(cpu_reset),
 	.cpu_reset(cpu_held),
 	.trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_msr,
 	.cpu_req, .cpu_we, .cpu_ack, .cpu_addr,

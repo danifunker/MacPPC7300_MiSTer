@@ -1,7 +1,9 @@
 # machref: dingusppc's whole 7600, headless, logging every device access
 
-`machref` builds a complete dingusppc machine (the Power Macintosh 7600 by
-default) with all its devices, runs a ROM from the reset vector, and writes a
+`machref` builds a complete dingusppc machine (the Power Macintosh 7300 by
+default, the real machine we measure; dingusppc builds the 7600 from the same
+definition with the same devices) with all its devices, runs a ROM from the
+reset vector, and writes a
 log of every access the CPU makes to a device. It is the reference for the
 device side of `rtl/machine/PPCMac_machine.sv`: which registers the ROM
 touches, in what order, and what dingusppc's devices answer. The CPU itself is
@@ -25,12 +27,13 @@ chime can finish. GPL-3.0-or-later, as dingusppc.
 Under WSL:
 
     make -C /mnt/c/Temp/mistercore/PPC_Mac/verilator/machref
-    ~/.cache/ppcmac/machref/machref --rom /mnt/c/Temp/mistercore/PPC_Mac/ppctest/runs/my7600.rom \
-        --max 50000000 --sample 1000000 --log m.log
+    ~/.cache/ppcmac/machref/machref --rom /mnt/c/Temp/mistercore/PPC_Mac/ppctest/runs/my7300.rom \
+        --max 100000000 --sample 1000000 --log m.log
 
-A clean build compiles all of dingusppc (about two minutes); 50 million
-instructions run in under a second. Options: `--machine pm7600` (any
-dingusppc machine), `--ram MB` (made of DIMMs of 4 MB or more), `--cpu 604`,
+A clean build compiles all of dingusppc (about two minutes); 100 million
+instructions run in a few seconds. Options: `--machine pm7300` (any
+dingusppc machine; `pm7600` for the 7600's ROM, though the two are built
+alike), `--ram MB` (made of DIMMs of 4 MB or more), `--cpu 604`,
 `--pvr 00040303` (the 604 measured on the 7600 and 7300, set after the
 machine is built), `--max N` instructions, `--sample N` (log the pc every N
 instructions), `--trace-from N --trace-count M` (log M instructions from the

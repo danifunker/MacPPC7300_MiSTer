@@ -10,8 +10,13 @@
 //  for more:
 //
 //    00000-07FFF  interrupt registers: events, mask, clear, levels
-//                 (grandcentral.cpp:306-318, 432-449; no source raises an
-//                 event yet, so the CPU's interrupt is never requested)
+//                 (grandcentral.cpp:296-307, 432-449, 525-589; MAME's
+//                 heathrow.cpp macio_device::set_irq_line): each source's
+//                 line sets its event bit on a rising edge, or on either
+//                 edge when the mask's top bit selects 68k mode (Mac OS's
+//                 NanoKernel runs it so, and reads the levels to follow the
+//                 line both ways); the CPU's interrupt is any event that is
+//                 unmasked. Sources so far: the VIA (12)
 //    08000-0FFFF  DMA channel registers, 256 bytes per channel
 //                 (grandcentral.cpp:250-305; dbdma.cpp:307-380): stored and
 //                 read back; a channel never runs (there is no bus master)
@@ -30,7 +35,9 @@
 //    18000        MESH SCSI              reads 0
 //    19000        Ethernet address ROM   08 00 07 44 55 66 00 00
 //    1A000        board register 1       E13F (machinetnt.cpp:98-106)
-//    1B000-1C000  no device              reads 0
+//    1B000        RaDACal (the Control   reads 0 (control.cpp:156; no video
+//                 video's RAMDAC)        yet)
+//    1C000        no device              reads 0
 //    1D000        NVRAM address, high    (macio.h:94-107)
 //    1E000        no device on a 7600    reads 0 (board register 2 needs Bandit 2)
 //    1F000        NVRAM data, 8 KB       (macio.h:109-125; nvram.cpp:41-60)
@@ -74,8 +81,16 @@ wire [3:0]  sub    = addr[15:12];               // device number in device space
 wire        single = (be == 4'b1000) | (be == 4'b0100) | (be == 4'b0010) | (be == 4'b0001);
 
 // ---- interrupt registers (little-endian inside, as dingusppc keeps them) ------------
-logic [31:0] int_mask, int_events;
-wire  [31:0] int_levels = 32'h0000_0800;        // dingusppc ORs in bit 11 (grandcentral.cpp:315)
+// The sources' lines, numbered as Grand Central numbers them
+// (grandcentral.cpp:467-523): 0C Curio, 0D MESH, 0E MACE, 0F/10 SCC A/B,
+// 11 AWACS, 12 the VIA, 13 SWIM3; 00-0A the DMA channels. int_lines_q is
+// each line as last seen: the levels register, and the edge detector.
+logic [31:0] int_mask, int_events, int_lines_q;
+logic        via_irq;                           // the VIA's IRQ: an enabled flag is set
+wire  [31:0] int_lines  = {13'h0, via_irq, 18'h0};
+wire  [31:0] int_levels = int_lines_q | 32'h0000_0800;   // dingusppc ORs in bit 11 (grandcentral.cpp:306)
+wire         int_68k    = int_mask[31];         // MACIO_INT_MODE: an event at either edge
+wire  [31:0] int_chg    = int_lines ^ int_lines_q;
 assign irq = |(int_events & int_mask & 32'h7FFF_FFFF);
 
 // ---- DMA channels: 0-3 Curio, floppy, Ethernet out and in; 8 sound out; A MESH ----
@@ -136,6 +151,7 @@ logic        cb1_q;                  // CB1 as last seen
 logic        cb2_q;                  // what the VIA drives on CB2
 wire  [3:0]  via_reg    = addr[12:9];
 wire  [7:0]  via_ifr_rd = {|(via_ifr[6:0] & via_ier[6:0]), via_ifr[6:0]};
+assign via_irq = via_ifr_rd[7];
 wire  [7:0]  via_pb_rd  = (via_orb & via_ddrb) | ({4'b0000, cuda_treq, 3'b000} & ~via_ddrb);
 
 assign via_tip     = ~via_ddrb[5] | via_orb[5];
@@ -311,6 +327,14 @@ always_ff @(posedge clk) begin
 		endcase
 	end
 
+	// the sources' lines: an event at a rising edge, or at either edge in
+	// 68k mode; in native mode a falling edge takes the event away
+	// (set_irq_line, which MAME's devices call when a line changes). An edge
+	// in the cycle of a clear is a new event and stays.
+	for (int i = 0; i < 32; i++)
+		if (int_chg[i]) int_events[i] <= int_68k | int_lines[i];
+	int_lines_q <= int_lines;
+
 	if (sel & dma & we & ch_ok) begin
 		case (off[7:2])
 			6'd0: begin
@@ -390,8 +414,9 @@ always_ff @(posedge clk) begin
 	if (sr_flag) via_ifr[2] <= 1'b1;
 
 	if (reset) begin
-		int_mask   <= 32'h0;
-		int_events <= 32'h0;
+		int_mask    <= 32'h0;
+		int_events  <= 32'h0;
+		int_lines_q <= 32'h0;
 		for (int i = 0; i < NCH; i++) begin
 			ch_stat[i] <= 16'h0;
 			ch_cmd[i]  <= 32'h0;

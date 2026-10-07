@@ -2,10 +2,11 @@
 
 A PowerPC Macintosh core for the [MiSTer](https://github.com/MiSTer-devel) FPGA
 platform. Work in progress: the CPU is built and verified, and the machine
-around it (the Power Macintosh 7600) has begun: in simulation the 7600's own
-ROM runs from reset into Open Firmware. The bitstream this tree builds runs
-the CPU and the machine on the DE10-Nano with the SDRAM; its screen shows a
-debug readout (rows of squares), not yet a Mac.
+around it (the Power Macintosh 7300/7600) has begun: the 7300's and the
+7600's own ROMs run from reset through Open Firmware into Mac OS, in
+simulation and on the board. The bitstream this tree builds runs the CPU and
+the machine on the DE10-Nano with the SDRAM; its screen shows a debug
+readout (rows of squares), not yet a Mac.
 
 `PPCMac` is a working name and may change.
 
@@ -26,12 +27,13 @@ debug readout (rows of squares), not yet a Mac.
 | Clock crossing to the SDRAM controller | done, checked at several clock ratios; the controller itself comes with the machine |
 | Timing and area pass | in progress: 55 to 64-65 MHz so far with eleven cuts that cost no cycles, plus the FPU operand register on (2 % of floating-point cycles) to take its forwarding path off the list; the slowest families now sit at the 66 MHz line and move across it with the fitter's placement; what remains and what it would cost is in [the plan](docs/DSPPC604_plan.md) |
 | Machine: the 7600's address map and device stubs | `rtl/machine/`: Hammerhead, Bandit and Chaos configuration space, Grand Central (interrupt and DMA registers, VIA with timers, NVRAM, board register, SCC and sound registers) as register stubs that answer as dingusppc's devices do; [docs/PPCMac_stubs.md](docs/PPCMac_stubs.md) lists every stub and what it leaves out |
-| The 7600's ROM in simulation | runs from the reset vector in lockstep with dingusppc, Cuda answering, for 60 million instructions with no difference (2026-10-07): through Open Firmware (which waits for Cuda at 18.3 million and gets its answer), the NanoKernel's start-up and into Mac OS's 68k emulator, running in user mode from 28 million on. Before Cuda existed, 150 million instructions to Open Firmware's endless poll for it |
+| The ROM in simulation | the 7300's (the reference) and the 7600's each run from the reset vector in lockstep with dingusppc, Cuda answering, for 60 million instructions with no difference (2026-10-07): through Open Firmware (which waits for Cuda at 18.3 million and gets its answer), the NanoKernel's start-up and into Mac OS's 68k emulator, running in user mode from 28 million on. Before Cuda existed, 150 million instructions to Open Firmware's endless poll for it |
 | Memory-test boot program | selectable in place of the ROM; passes in the bench over 1 and 6 MB and finds an injected fault |
 | SDRAM controller | `rtl/machine/PPCMac_sdram.sv`, adapted from Sorgelig's; passes its bench against a model of the 128 MB board that checks every command and timing |
 | First bitstream | `PPCMac.sv`: CPU at 65 MHz, SDRAM at 100 MHz, ROM upload, OSD options, debug readout on screen and UART; on the board the memory test passes at every RAM size (6-96 MB) |
 | The 7600's ROM on the board | runs exactly as in simulation: the same 26,771 device writes, the last after the same 18.27 million instructions, then the same wait for Cuda (before Cuda was built) |
-| Cuda (ADB, power, reset, clock, PRAM) | the real chip: a 68HC05 (`rtl/machine/PPCMac_hc05.sv`, checked instruction by instruction against MAME's 6805 core) running Apple's firmware 341S0060 (Cuda 2.40), behind Grand Central's VIA with a real shift register; it holds the CPU in reset until its firmware powers the machine up. The firmware is the 7300's own: read out of its chip through the VIA (`cudadump/`, 2026-10-07), byte for byte MAME's dump. In simulation the ROM's Cuda traffic goes through and the ROM runs on through the NanoKernel into Mac OS (the CPU bug the lockstep found at 24.4 million instructions is fixed: the plan's M6 section). Not yet on the board; nothing on its ADB or I2C lines yet |
+| Cuda (ADB, power, reset, clock, PRAM) | the real chip: a 68HC05 (`rtl/machine/PPCMac_hc05.sv`, checked instruction by instruction against MAME's 6805 core) running Apple's firmware 341S0060 (Cuda 2.40), behind Grand Central's VIA with a real shift register; it holds the CPU in reset until its firmware powers the machine up. The firmware is the 7300's own: read out of its chip through the VIA (`cudadump/`, 2026-10-07), byte for byte MAME's dump. In simulation the ROM's Cuda traffic goes through and the ROM runs on through the NanoKernel into Mac OS (the CPU bug the lockstep found at 24.4 million instructions is fixed: the plan's M6 section). On the board (2026-10-07) Cuda releases the CPU 1,284 ms after the machine's reset and both ROMs run through Open Firmware into Mac OS. Nothing on its ADB or I2C lines yet |
+| Interrupts | Grand Central's events, mask and levels as MAME's and dingusppc's; the VIA is the first source (2026-10-07): the 7300's ROM runs 100 million instructions in lockstep with Mac OS's timer interrupts, its device traffic matching dingusppc's through Mac OS's start-up to where Mac OS probes MESH ([docs/PPCMac_plan.md](docs/PPCMac_plan.md), milestone I) |
 | Machine (video, SCSI, sound, ...) | not started |
 
 The first full build of the core (2026-10-06: the CPU at 65 MHz, the
@@ -41,11 +43,15 @@ framework), Quartus 17.0, slow 100 C model; this is the number that counts:
 | Build | ALMs | RAM blocks | DSP blocks | CPU clock closes at |
 |---|---|---|---|---|
 | `PPCMac` with the memory test, 2026-10-06 | 24,757 of 41,910 (59%); the CPU 13,883, the machine 2,673, the SDRAM controller 367, the readout 455 | 144 of 553 (26%) | 40 of 112 (36%) | 64.59 MHz (65 MHz asked: slack -0.099 ns); memory 107.3 MHz (100 asked) |
-| The same with fourteen readout rows (the committed tree) | 25,051 (60%) | 144 | 40 | 64.64 MHz (slack -0.086 ns); memory 110.7 MHz |
+| The same with fourteen readout rows | 25,051 (60%) | 144 | 40 | 64.64 MHz (slack -0.086 ns); memory 110.7 MHz |
+| With Cuda, 2026-10-07 | 25,521 (61%) | 153 | 41 | 61.26 MHz (slack -0.939 ns; every failing path inside the CPU, decode into the branch target buffer); memory 107.8 MHz. Runs on the board at 65 MHz |
 
 On the board (DE10-Nano, 128 MB SDRAM) the memory test passes at every RAM
 size the OSD offers (6 to 96 MB, three or more passes each, no error) at
-65 MHz, and the 7600's ROM runs exactly as in simulation.
+65 MHz, the 7600's ROM ran exactly as in simulation before Cuda, and with
+Cuda both ROMs run through Open Firmware into Mac OS (2026-10-07). The
+slow 100 C model is pessimistic for a board on a desk: the build with Cuda
+misses 65 MHz there by 0.94 ns and runs.
 
 Each block synthesised on its own for the DE10-Nano's FPGA with Quartus
 17.0 (`syn\check.py`), constrained to 75 MHz:
@@ -93,8 +99,13 @@ not by drift.
   `960E4BE9`, the "7300/7600/8600/9600" ROM, which later 7600s carried too.
   The 7600's own ROM (`my7600.rom`: `077D.28F2`, checksum `9630C68B`, the
   "7200/7500/8500/9500 v2" ROM, Open Firmware 1.0.5) stays as a second test:
-  M6 and Cuda were proven on it. The benches, `machref` and the board's
-  `boot.rom` move to the 7300's ROM in the next machine session.
+  M6 and Cuda were proven on it. Since 2026-10-07 the benches
+  (`run_machine.py`, `--rom7600` for the other), `machref` (`pm7300`) and
+  the board's `boot.rom` use the 7300's ROM. The two share Open Firmware
+  1.0.5 and the 68k emulator byte for byte; `rom7300/README.md`
+  (git-ignored) says where the rest differs.
+- The machine's own plan, with its milestones and rules, is
+  [docs/PPCMac_plan.md](docs/PPCMac_plan.md).
 - Long-term goal: the Apple/Bandai Pippin (a PowerPC 603).
 - This CPU will be a good deal slower than a real 604 (see below), so the
   first machine may yet change to something more modest. Nothing
@@ -290,12 +301,13 @@ python verilator\run_machine.py --boot memtest --memtest-passes 2
 
 Runs the whole machine (`PPCMac_system`: the CPU, the 7600's address map and
 device stubs, the clock crossing, and a software memory in its own clock
-standing in for the SDRAM) on the 7600's ROM from the reset vector, in
+standing in for the SDRAM) on the 7300's ROM (`--rom7600` for the 7600's,
+`--rom FILE` for any) from the reset vector, in
 lockstep with dingusppc: every device read returns the same value to both
 (the reference has no devices; it is handed what the machine answered), and
 the registers and MSR are compared after every instruction. About 400,000
 instructions a second. `--dev-log FILE` writes every device access;
-`verilator\machref` runs dingusppc's whole 7600 (all its devices, headless)
+`verilator\machref` runs dingusppc's whole 7300 (all its devices, headless)
 and writes the same log, and `verilator\machref\devdiff.py` compares the two
 to show where the stubs answer differently. The second command runs the
 memory-test boot program instead of the ROM (1 MB unless `--ram`;
@@ -360,6 +372,7 @@ size and maximum clock. `--paths 10` also lists the slowest paths.
 | `verilator/ref/` | dingusppc's interpreter as a library, for lockstep runs |
 | `verilator/machref/` | dingusppc's whole 7600, headless, logging every device access |
 | `verilator/hc05ref/` | MAME's 6805 core as a library, for Cuda's lockstep runs |
+| `docs/PPCMac_plan.md` | the machine's plan: milestones, rules, what the ROM asks for next |
 | `docs/PPCMac_stubs.md` | everything the machine stubs, simplifies or leaves out |
 | `syn/` | stand-alone area and timing checks |
 | `ppctest/` | tool that builds the test disk for real Macs and decodes its results |

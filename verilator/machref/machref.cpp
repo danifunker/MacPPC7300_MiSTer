@@ -1,11 +1,12 @@
 /*
- * machref.cpp - a whole dingusppc machine (the Power Macintosh 7600 by
- * default), headless, running a ROM from the reset vector and logging every
- * access the CPU makes to a device. It is the reference for the device side
- * of PPCMac_machine: which registers the ROM touches, in what order, and what
- * dingusppc's devices answer.
+ * machref.cpp - a whole dingusppc machine (the Power Macintosh 7300 by
+ * default, the real machine we measure; dingusppc builds the 7600 from the
+ * same definition), headless, running a ROM from the reset vector and
+ * logging every access the CPU makes to a device. It is the reference for
+ * the device side of PPCMac_machine: which registers the ROM touches, in
+ * what order, and what dingusppc's devices answer.
  *
- *   machref --rom FILE [--machine pm7600] [--ram MB] [--cpu 604] [--pvr HEX]
+ *   machref --rom FILE [--machine pm7300] [--ram MB] [--cpu 604] [--pvr HEX]
  *           [--max N] [--log FILE] [--sample N] [--trace-from N --trace-count M]
  *
  * Log lines (numbers in hex except the instruction count):
@@ -126,7 +127,7 @@ void watch(uint64_t, uint64_t) {
 }
 
 void usage() {
-    std::printf("usage: machref --rom FILE [--machine pm7600] [--ram MB] [--cpu 604] [--pvr HEX]\n"
+    std::printf("usage: machref --rom FILE [--machine pm7300] [--ram MB] [--cpu 604] [--pvr HEX]\n"
                 "               [--max N] [--log FILE] [--sample N] [--trace-from N --trace-count M]\n"
                 "               [--set NAME=VALUE ...]\n");
 }
@@ -134,7 +135,7 @@ void usage() {
 } // namespace
 
 int main(int argc, char **argv) {
-    std::string rom_path, machine = "pm7600", log_path = "machref.log", cpu = "604";
+    std::string rom_path, machine = "pm7300", log_path = "machref.log", cpu = "604";
     unsigned ram_mb = 16;
     uint32_t pvr = 0x00040303;            // the 604 measured on the 7600 and 7300: revision 3.3
     uint64_t trace_from = 0, trace_count = 0;

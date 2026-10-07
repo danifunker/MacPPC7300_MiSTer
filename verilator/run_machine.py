@@ -3,11 +3,15 @@
 
     python verilator\\run_machine.py [machine_tb options]
 
-Defaults: the 7600's ROM (ppctest/runs/my7600.rom), 16 MB of RAM, in lockstep
-with dingusppc. Every option is passed to machine_tb (see core_main.cpp);
---no-lockstep runs the machine alone, --rom FILE another ROM. Examples:
+Defaults: the 7300's ROM (ppctest/runs/my7300.rom, 077D.34F2: the reference
+since 2026-10-07, the 7300 being the real machine we measure), 16 MB of RAM,
+in lockstep with dingusppc. Every option is passed to machine_tb (see
+core_main.cpp); --no-lockstep runs the machine alone, --rom FILE another ROM,
+--rom7600 the 7600's own (my7600.rom, 077D.28F2), the second ROM that must
+keep passing. Examples:
 
     python verilator\\run_machine.py --max-instr 1000000 --progress 100000
+    python verilator\\run_machine.py --rom7600 --max-instr 60000000 --progress 2000000
     python verilator\\run_machine.py --dev-log dev.log --max-instr 200000
     python verilator\\run_machine.py --trace-from 5000 --trace-count 50
     python verilator\\run_machine.py --boot memtest --memtest-passes 2      (1 MB unless --ram)
@@ -58,11 +62,12 @@ def main():
 
     memtest = "memtest" in args
     lockstep = "--no-lockstep" not in args and not memtest
-    args = [a for a in args if a != "--no-lockstep"]
+    rom = "my7600.rom" if "--rom7600" in args else "my7300.rom"
+    args = [a for a in args if a not in ("--no-lockstep", "--rom7600")]
     if memtest and "--ram" not in args:
         args += ["--ram", "1"]            # the walk is slow in simulation
     if "--rom" not in args and not memtest:
-        args = ["--rom", os.path.join(HERE, "..", "ppctest", "runs", "my7600.rom")] + args
+        args = ["--rom", os.path.join(HERE, "..", "ppctest", "runs", rom)] + args
     if lockstep and "--lockstep" not in args:
         args = ["--lockstep"] + args
 

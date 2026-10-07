@@ -16,7 +16,9 @@
 //     4  the MSR as the last instruction left it
 //     5  the last address the CPU put on its memory port
 //     6  status: 31 ROM loaded, 30 SDRAM ready, 29 CPU in reset, 28 stuck,
-//        27 booting the memory test, 26 PLL locked, 23-16 RAM in MB
+//        27 booting the memory test, 26 PLL locked, 23-16 RAM in MB,
+//        15-0 how long Cuda held the CPU in reset after the machine's
+//        reset, in milliseconds (its cold start: about 1,284, 0504)
 //     7  the build date, BCD: 20YYMMDD
 //     8  memory test: passes completed      9  errors
 //    10  address of the first error        11  its status word
@@ -24,9 +26,10 @@
 //    13  instructions retired before the last of them
 //
 //  The three groups (0-7, 8-11, 12-13) have colours of their own. Rows 12
-//  and 13 compare a run with the simulation's: the 7600's ROM makes 26,771
-//  device writes, the last after 18,273,776 instructions, before Open
-//  Firmware waits for Cuda (docs/DSPPC604_plan.md, M6).
+//  and 13 compare a run with the simulation's (run_machine.py --dev-log):
+//  before Cuda was built, the 7600's ROM made 26,771 device writes, the
+//  last after 18,273,776 instructions, before Open Firmware waited for it
+//  forever (docs/DSPPC604_plan.md, M6).
 //
 //  "Stuck" is nothing retired for 2^24 CPU clocks while out of reset. The
 //  LED toggles every 2^20 instructions retired and stays on when stuck.
@@ -44,13 +47,15 @@
 module PPCMac_debug
 #(
 	parameter logic [31:0] BUILD   = 32'h0,
+	parameter int          CPU_HZ  = 65_000_000,
 	parameter int          VID_HZ  = 20_000_000,
 	parameter int          BAUD    = 115_200
 )
 (
 	// the CPU's clock
 	input  logic        clk_cpu,
-	input  logic        cpu_reset,
+	input  logic        mach_reset,         // the machine's reset (Cuda starts when it ends)
+	input  logic        cpu_reset,          // the CPU's: the machine's, or Cuda holding it
 	input  logic        trace_valid,
 	input  logic        trace_last,
 	input  logic [31:0] trace_pc,
@@ -121,6 +126,24 @@ end
 assign stuck = &idle;
 assign led   = stuck | retired[20];
 
+// how long Cuda holds the CPU after the machine's reset, in milliseconds
+localparam int MS_DIV = CPU_HZ / 1000;
+logic [16:0] ms_div;
+logic [15:0] hold_ms;
+always_ff @(posedge clk_cpu) begin
+	if (cpu_reset) begin
+		if (ms_div == 17'(MS_DIV - 1)) begin
+			ms_div <= 17'd0;
+			if (~&hold_ms) hold_ms <= hold_ms + 16'd1;
+		end
+		else ms_div <= ms_div + 17'd1;
+	end
+	if (mach_reset) begin
+		ms_div  <= 17'd0;
+		hold_ms <= 16'd0;
+	end
+end
+
 // ---- the crossing: a snapshot once a frame -------------------------------------------------
 logic        req_v, ack_c;                  // toggles: video asks, CPU answers
 logic [2:0]  req_sync;
@@ -140,7 +163,7 @@ always_ff @(posedge clk_cpu) begin
 		snap[11] <= mt_status;
 		snap[12] <= dev_writes;
 		snap[13] <= dev_last;
-		snap[6]  <= {2'b00, cpu_reset, stuck, 28'h0};   // the rest is made in the video clock
+		snap[6]  <= {2'b00, cpu_reset, stuck, 12'h0, hold_ms};  // the rest is made in the video clock
 		snap[7]  <= 32'h0;
 		ack_c <= ~ack_c;
 	end
@@ -186,6 +209,7 @@ logic [2:0]  ack_sync;
 logic [5:0]  st_sync [2];                   // status bits through two flip-flops
 logic [7:0]  ram_q [2];
 logic [1:0]  cpu_flags;
+logic [15:0] hold_q;
 logic        vblank_q;
 always_ff @(posedge clk_vid) begin
 	st_sync[0] <= {rom_loaded, sdram_ready, 1'b0, 1'b0, boot_memtest, pll_locked};
@@ -198,8 +222,9 @@ always_ff @(posedge clk_vid) begin
 	if (ack_sync[2] ^ ack_sync[1]) begin
 		for (int i = 0; i < NROWS; i++) row[i] <= snap[i];
 		cpu_flags <= snap[6][29:28];                        // CPU in reset, stuck
+		hold_q    <= snap[6][15:0];                         // Cuda's hold, ms
 	end
-	row[6] <= {st_sync[1][5], st_sync[1][4], cpu_flags, st_sync[1][1], st_sync[1][0], 2'b00, ram_q[1], 16'h0};
+	row[6] <= {st_sync[1][5], st_sync[1][4], cpu_flags, st_sync[1][1], st_sync[1][0], 2'b00, ram_q[1], hold_q};
 	row[7] <= BUILD;
 end
 

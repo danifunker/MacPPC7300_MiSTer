@@ -962,8 +962,9 @@ How the rules apply, decided before step 1 and followed in it:
 
 - Run the 7600's own ROM from the reset vector in Verilator against a stub
   machine, in lockstep with dingusppc, until it needs hardware that is not
-  there. The 7300's ROM (`ppctest/runs/my7300.rom`, checksum `5B38E8BD`) is
-  dumped too.
+  there. The 7300's ROM (`ppctest/runs/my7300.rom`: `077D.34F2`, header
+  checksum `960E4BE9`, CRC32 `7910CDF9`) is dumped too, and is the
+  reference ROM since 2026-10-07 (below).
 - Put the CPU in the MiSTer project with memory and the ROM; get a first
   bitstream that executes ROM code and reports over the UART.
 - Timing closure at 66 MHz, then try 75.
@@ -1178,6 +1179,20 @@ give the address, 00FEA000.
   installing the PTE, had to be given to the reference. No device stopped
   the run; the device traffic after Open Firmware is small (22 accesses
   between 33 and 60 million instructions).
+
+**The 7300's ROM as the reference, 2026-10-07.** `run_machine.py` now runs
+the 7300's ROM (077D.34F2) by default and the 7600's with `--rom7600`. The
+two ROMs share Open Firmware, the 68k emulator and its opcode table byte
+for byte and differ in the start-up code, the NanoKernel and a few drivers
+(`rom7300/README.md`, git-ignored like `rom7600/`, has the disassembly and
+where every address quoted here moves to: FFF047C0 is FFF0499C there, the
+NanoKernel's addresses stay). The 34F2 ROM runs 60 million instructions in
+lockstep with no difference, 2.20 cycles per instruction, through Open
+Firmware into Mac OS's 68k emulator; the same `dcbst` DSI at 33,173,502.
+Against dingusppc's whole 7300 (`machref --machine pm7300`) its device
+traffic parts where the 7600's did: Cuda's timing, and the periodic VIA
+interrupt dingusppc services from 28.8 million instructions on. The
+machine's own plan, `docs/PPCMac_plan.md`, takes it from here.
 
 ## Known behaviour and open items
 
