@@ -83,8 +83,17 @@ not by drift.
 **Machine**
 
 - First target: the Power Macintosh 7600 (the 7300/7500/7600/8500/9500 board
-  family), with its single internal SCSI controller. The reference ROM is the
-  one dumped from a real 7600: version `077D.28F2`, Open Firmware 1.0.5.
+  family), with its single internal SCSI controller. The 7300 is the same
+  machine to this core: dingusppc builds both from one definition with the
+  same devices (`machinetnt.cpp`), the 7300 defaulting to a 604e.
+- The real machine we measure is the 7300 (changed 2026-10-06: the 7600 no
+  longer powers on). So the reference ROM becomes the 7300's
+  (`ppctest/runs/my7300.rom`): version `077D.34F2`, header checksum
+  `960E4BE9`, the "7300/7600/8600/9600" ROM, which later 7600s carried too.
+  The 7600's own ROM (`my7600.rom`: `077D.28F2`, checksum `9630C68B`, the
+  "7200/7500/8500/9500 v2" ROM, Open Firmware 1.0.5) stays as a second test:
+  M6 and Cuda were proven on it. The benches, `machref` and the board's
+  `boot.rom` move to the 7300's ROM in the next machine session.
 - Long-term goal: the Apple/Bandai Pippin (a PowerPC 603).
 - This CPU will be a good deal slower than a real 604 (see below), so the
   first machine may yet change to something more modest. Nothing
