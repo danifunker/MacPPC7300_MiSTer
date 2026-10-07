@@ -111,6 +111,32 @@ struct Options {
 	std::vector<std::string> serial_in;   // lines typed at the modem port, one at each prompt
 	std::string serial_log;        // what the machine sent on the modem port
 	bool serial_stop = false;      // stop at the prompt after the last line (or the first prompt)
+	unsigned monitor = 13;         // 13: Apple's 13-inch RGB (dingusppc's default); 16: the 16-inch
+	uint64_t frame_at = 0;         // after this many instructions, write the next whole frame
+	std::string frame_out;         // ... to this file (PPM)
+};
+
+// The VRAM's DDR3 (the framework's DDRAM port, Avalon) and the picture: a
+// 4 MB memory at the core's DDR3 base, reads answered after a few cycles,
+// one beat a cycle, BUSY now and then when --stall asks for it.
+struct Ddr {
+	static const uint32_t BASE = 0x06000000;   // 64-bit words: byte 3000_0000
+	static const uint32_t WORDS = (4u << 20) / 8;
+	std::vector<uint64_t> m = std::vector<uint64_t>(WORDS, 0);
+	bool busy = false;
+	struct Rd { uint32_t addr; unsigned left; int wait; };
+	std::deque<Rd> rq;             // reads accepted, in order
+	uint32_t wr_addr = 0;          // the write burst in progress: its next word, and words left
+	unsigned wr_left = 0;
+	bool ready = false;
+	uint64_t dout = 0;
+};
+
+struct Frame {
+	enum { WAIT, ARMED, TAKING, DONE } st = WAIT;
+	std::vector<std::vector<uint32_t>> rows;
+	bool in_line = false;
+	bool vb_q = true;
 };
 
 // The memory port: a request (one line or one word) is acknowledged after
@@ -156,6 +182,10 @@ void usage() {
 		"                   (\"> \"); repeat for more lines\n"
 		"  --serial-log FILE  write what the machine sends on the modem port\n"
 		"  --serial-stop    end the run at the prompt after the last line typed\n"
+		"  --monitor 13|16  the monitor's sense code: Apple's 13-inch (640 x 480, the default,\n"
+		"                   dingusppc's) or 16-inch RGB (832 x 624)\n"
+		"  --frame-at N --frame-out FILE   after N instructions, write the next whole\n"
+		"                   frame of the Control video's picture (PPM)\n"
 #else
 		"usage: core_tb --prog FILE [options]\n"
 		"  --irq-every N    raise the external interrupt every N cycles; a store to\n"
@@ -441,6 +471,9 @@ int main(int argc, char** argv) {
 		else if (a == "--serial-in") opt.serial_in.push_back(next());
 		else if (a == "--serial-log") opt.serial_log = next();
 		else if (a == "--serial-stop") opt.serial_stop = true;
+		else if (a == "--monitor") opt.monitor = (unsigned)std::atoi(next().c_str());
+		else if (a == "--frame-at") opt.frame_at = std::strtoull(next().c_str(), nullptr, 0);
+		else if (a == "--frame-out") opt.frame_out = next();
 		else { usage(); return a == "--help" ? 0 : 2; }
 	}
 #ifdef PPCMAC_MACHINE
@@ -565,6 +598,10 @@ int main(int argc, char** argv) {
 	auto stalled = [&]() { return opt.stall > 0 && (int)(rng() % 100) < opt.stall; };
 
 	Mem mm;
+#ifdef PPCMAC_MACHINE
+	Ddr ddr;
+	Frame fr;
+#endif
 	uint32_t gpr[32] = {0};
 	std::pair<unsigned, uint64_t> beats[8];   // the register writes the core reported for this instruction
 	int beats_n = 0;
@@ -597,6 +634,79 @@ int main(int argc, char** argv) {
 		dut->nv_ld_data = nv_ld >= 0 ? nvimg[nv_ld] : 0;
 		dut->b_ack = mm.ack;
 		for (int i = 0; i < 8; i++) dut->b_rdata[i] = mm.rdata[i];
+		dut->mon_std = opt.monitor == 16 ? 7 : 6;
+		dut->mon_ext = opt.monitor == 16 ? 0x2D : 0x2B;
+		dut->ddr_busy = ddr.busy;
+		dut->ddr_dout_ready = ddr.ready;
+		dut->ddr_dout = ddr.dout;
+	};
+
+	// the VRAM's DDR3, on a rising edge of the memory's clock: what the port
+	// shows in the coming cycle, from what the core drives in it
+	auto ddr_edge = [&]() {
+		ddr.ready = false;
+		if (!ddr.rq.empty()) {
+			Ddr::Rd& r = ddr.rq.front();
+			if (r.wait > 0) r.wait--;
+			else {
+				ddr.dout  = ddr.m[(r.addr - Ddr::BASE) % Ddr::WORDS];
+				ddr.ready = true;
+				r.addr++;
+				if (--r.left == 0) ddr.rq.pop_front();
+			}
+		}
+		bool rd = dut->ddr_rd, we = dut->ddr_we;
+		uint32_t addr = dut->ddr_addr;
+		unsigned cnt = dut->ddr_burstcnt;
+		ddr.busy = (rd || we) && stalled();
+		if ((rd || we) && (addr < Ddr::BASE || addr >= Ddr::BASE + Ddr::WORDS)) {
+			static int notes = 0;
+			if (notes++ < 5) std::printf("note: DDR3 access at word %08X, outside the VRAM\n", addr);
+		}
+		if (!ddr.busy && rd) ddr.rq.push_back({addr, cnt ? cnt : 1, 4});
+		if (!ddr.busy && we) {
+			if (ddr.wr_left == 0) { ddr.wr_addr = addr; ddr.wr_left = cnt ? cnt : 1; }
+			uint64_t& w = ddr.m[(ddr.wr_addr - Ddr::BASE) % Ddr::WORDS];
+			uint64_t din = dut->ddr_din;
+			unsigned be = dut->ddr_be;
+			for (int k = 0; k < 8; k++)
+				if (be & (1u << k)) w = (w & ~(0xFFull << (8 * k))) | (din & (0xFFull << (8 * k)));
+			ddr.wr_addr++;
+			ddr.wr_left--;
+		}
+	};
+
+	// the picture: after --frame-at instructions, the next whole frame
+	auto frame_edge = [&]() {
+		if (opt.frame_out.empty() || fr.st == Frame::DONE) return;
+		if (fr.st == Frame::WAIT && retired >= opt.frame_at) fr.st = Frame::ARMED;
+		if (!dut->vid_ce) return;
+		bool vb = dut->vid_vblank, hb = dut->vid_hblank;
+		if (fr.st == Frame::ARMED && fr.vb_q && !vb) { fr.st = Frame::TAKING; fr.rows.clear(); fr.in_line = false; }
+		if (fr.st == Frame::TAKING) {
+			if (!vb && !hb) {
+				if (!fr.in_line) { fr.rows.emplace_back(); fr.in_line = true; }
+				fr.rows.back().push_back((uint32_t)dut->vid_r << 16 | (uint32_t)dut->vid_g << 8 | dut->vid_b);
+			}
+			else fr.in_line = false;
+			if (!fr.vb_q && vb) {
+				size_t w = fr.rows.empty() ? 0 : fr.rows[0].size();
+				FILE* f = std::fopen(opt.frame_out.c_str(), "wb");
+				if (f) {
+					std::fprintf(f, "P6\n%zu %zu\n255\n", w, fr.rows.size());
+					for (auto& row : fr.rows)
+						for (size_t x = 0; x < w; x++) {
+							uint32_t p = x < row.size() ? row[x] : 0;
+							std::fputc(p >> 16, f); std::fputc((p >> 8) & 0xFF, f); std::fputc(p & 0xFF, f);
+						}
+					std::fclose(f);
+				}
+				std::printf("frame: %zu x %zu after %llu instructions, written to %s\n", w, fr.rows.size(),
+					(unsigned long long)retired, opt.frame_out.c_str());
+				fr.st = Frame::DONE;
+			}
+		}
+		fr.vb_q = vb;
 	};
 
 	// the SDRAM's stand-in, on a rising edge of the memory's clock
@@ -643,7 +753,7 @@ int main(int argc, char** argv) {
 			} else {
 				dut->clk_b = !dut->clk_b;
 				dut->eval();
-				if (dut->clk_b) mem_edge();
+				if (dut->clk_b) { mem_edge(); ddr_edge(); frame_edge(); }
 			}
 		}
 		cycles++;

@@ -18,10 +18,18 @@
 //
 //============================================================================
 //
-//  Three clocks from one PLL (rtl/pll.v):
-//    clk_vid  20 MHz   the debug readout's picture and UART (the template's video timing)
+//  Clocks from one PLL (rtl/pll.v):
 //    clk_cpu  CPU_MHZ  the CPU and the machine (PPCMac_system)
-//    clk_mem  100 MHz  the SDRAM controller, hps_io and the ROM upload
+//    clk_mem  100 MHz  the SDRAM controller, hps_io, the ROM upload, the VRAM in
+//                      DDR3 and the Control video's scan-out; also the video
+//                      clock, the debug readout's picture running on a 20 MHz
+//                      enable of it
+//  (outclk_0, 20 MHz, is no longer used.)
+//
+//  The picture (OSD) is the Mac's, Control's scan-out at the mode Mac OS set
+//  (the monitor the sense lines report is an OSD choice: Apple's 16-inch RGB,
+//  832 x 624, or the 13-inch, 640 x 480; it takes effect at the next reset),
+//  or the debug readout's rows of squares.
 //
 //  The machine is held in reset while RESET, the OSD's reset or the button is
 //  down, while the SDRAM is not ready, while a ROM is being uploaded, until
@@ -55,7 +63,6 @@ assign ADC_BUS  = 'Z;
 assign USER_OUT = '1;
 assign {UART_RTS, UART_DTR} = 0;      // (the modem port's handshake lines are not modelled)
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
-assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;
 
 assign VGA_SL = 0;
 assign VGA_F1 = 0;
@@ -89,6 +96,9 @@ localparam CONF_STR = {
 	"O[3:1],RAM,16 MB,24 MB,48 MB,64 MB,96 MB,6 MB;",
 	"O[4],Boot,ROM,Memory test;",
 	"O[6],UART,Modem port,Debug readout;",
+	"-;",
+	"O[7],Picture,Mac,Debug readout;",
+	"O[8],Monitor,16-inch 832x624,13-inch 640x480;",
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"O[5],TV Mode,NTSC,PAL;",
@@ -203,16 +213,22 @@ always @(posedge clk_mem) locked_m <= {locked_m[0], pll_locked};
 wire sdram_init = ~locked_m[1];
 wire sdram_ready;
 
-// a change of RAM size or boot option resets the CPU for a moment
-reg  [3:0] cfg_q;
+// a change of RAM size, boot option or monitor resets the CPU for a moment
+wire [4:0] cfg = {status[8], status[4:1]};
+reg  [4:0] cfg_q;
 reg  [7:0] cfg_hold = 8'hFF;
 reg  [2:0] reset_in;
 always @(posedge clk_mem) begin
 	reset_in <= {reset_in[1:0], RESET | status[0] | buttons[1]};
-	cfg_q <= status[4:1];
-	if (cfg_q != status[4:1]) cfg_hold <= 8'hFF;
+	cfg_q <= cfg;
+	if (cfg_q != cfg) cfg_hold <= 8'hFF;
 	else if (cfg_hold != 0) cfg_hold <= cfg_hold - 1'd1;
 end
+
+// the monitor's AppleSense codes (dingusppc's displayid.cpp): the 16-inch RGB
+// (7, 2D) or the 13-inch (6, 2B)
+wire [2:0] mon_std = status[8] ? 3'd6 : 3'd7;
+wire [5:0] mon_ext = status[8] ? 6'h2B : 6'h2D;
 
 reg cpu_reset_m = 1;
 always @(posedge clk_mem)
@@ -222,11 +238,14 @@ always @(posedge clk_mem)
 reg [2:0] cpu_reset_s = 3'b111;
 reg [7:0] ram_mb_c [2];
 reg [1:0] boot_memtest_c;
+reg [8:0] mon_c [2];
 always @(posedge clk_cpu) begin
 	cpu_reset_s    <= {cpu_reset_s[1:0], cpu_reset_m};
 	ram_mb_c[0]    <= ram_mb;
 	ram_mb_c[1]    <= ram_mb_c[0];
 	boot_memtest_c <= {boot_memtest_c[0], boot_memtest};
+	mon_c[0]       <= {mon_std, mon_ext};
+	mon_c[1]       <= mon_c[0];
 end
 wire cpu_reset = cpu_reset_s[2];
 
@@ -276,6 +295,10 @@ wire  [63:0] trace_reg_val;
 wire   [2:0] trace_dkind;
 wire  [31:2] trace_daddr;
 wire   [3:0] trace_dbe;
+wire         mac_ce, mac_hs, mac_vs, mac_hblank, mac_vblank;
+wire   [7:0] mac_r, mac_g, mac_b;
+
+assign DDRAM_CLK = clk_mem;
 
 PPCMac_system #(.CPU_HZ(CPU_MHZ * 1000000), .TB_HZ(12500000), .SDRAM_MB(128)) system
 (
@@ -292,6 +315,11 @@ PPCMac_system #(.CPU_HZ(CPU_MHZ * 1000000), .TB_HZ(12500000), .SDRAM_MB(128)) sy
 
 	.cpu_req, .cpu_we, .cpu_line, .cpu_addr, .cpu_be, .cpu_wdata, .cpu_ack, .cpu_rdata, .cpu_irq, .cpu_tb_tick,
 	.modem_txd, .modem_rxd, .nv_ld_we, .nv_ld_addr, .nv_ld_data,
+	.mon_std(mon_c[1][8:6]), .mon_ext(mon_c[1][5:0]),
+	.ddr_busy(DDRAM_BUSY), .ddr_burstcnt(DDRAM_BURSTCNT), .ddr_addr(DDRAM_ADDR), .ddr_dout(DDRAM_DOUT),
+	.ddr_dout_ready(DDRAM_DOUT_READY), .ddr_rd(DDRAM_RD), .ddr_din(DDRAM_DIN), .ddr_be(DDRAM_BE), .ddr_we(DDRAM_WE),
+	.vid_ce(mac_ce), .vid_r(mac_r), .vid_g(mac_g), .vid_b(mac_b), .vid_hs(mac_hs), .vid_vs(mac_vs),
+	.vid_hblank(mac_hblank), .vid_vblank(mac_vblank),
 	.dbg_status, .dbg_passes, .dbg_errors, .dbg_first,
 	.trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_reg_we, .trace_reg_idx, .trace_reg_val,
 	.trace_cr, .trace_xer, .trace_lr, .trace_ctr, .trace_fpscr, .trace_msr,
@@ -356,6 +384,11 @@ wire       hblank, hsync, vblank, vsync, ce_pix;
 wire [7:0] dbg_r, dbg_g, dbg_b;
 wire       led_user;
 
+// its 20 MHz: every fifth clock of the memory clock
+reg  [2:0] ce5 = 0;
+always @(posedge clk_mem) ce5 <= (ce5 == 3'd4) ? 3'd0 : ce5 + 1'd1;
+wire ce_dbg = ce5 == 3'd0;
+
 PPCMac_debug #(.BUILD(BUILD), .CPU_HZ(CPU_MHZ * 1000000), .VID_HZ(20000000), .BAUD(115200)) debug
 (
 	.clk_cpu(clk_cpu),
@@ -372,7 +405,8 @@ PPCMac_debug #(.BUILD(BUILD), .CPU_HZ(CPU_MHZ * 1000000), .VID_HZ(20000000), .BA
 	.pll_locked(pll_locked),
 	.ram_mb(ram_mb),
 
-	.clk_vid(clk_vid),
+	.clk_vid(clk_mem),
+	.ce_vid(ce_dbg),
 	.pal(status[5]),
 	.scandouble(forced_scandoubler),
 	.ce_pix(ce_pix),
@@ -381,14 +415,18 @@ PPCMac_debug #(.BUILD(BUILD), .CPU_HZ(CPU_MHZ * 1000000), .VID_HZ(20000000), .BA
 	.uart_txd(dbg_txd)
 );
 
-assign CLK_VIDEO = clk_vid;
-assign CE_PIXEL  = ce_pix;
-assign VGA_DE    = ~(hblank | vblank);
-assign VGA_HS    = hsync;
-assign VGA_VS    = vsync;
-assign VGA_R     = dbg_r;
-assign VGA_G     = dbg_g;
-assign VGA_B     = dbg_b;
+///////////////////////   THE PICTURE   ///////////////////////////////
+
+// the Mac's (Control's scan-out) or the debug readout's, both in the memory clock
+wire show_dbg = status[7];
+assign CLK_VIDEO = clk_mem;
+assign CE_PIXEL  = show_dbg ? ce_pix : mac_ce;
+assign VGA_DE    = show_dbg ? ~(hblank | vblank) : ~(mac_hblank | mac_vblank);
+assign VGA_HS    = show_dbg ? hsync : mac_hs;
+assign VGA_VS    = show_dbg ? vsync : mac_vs;
+assign VGA_R     = show_dbg ? dbg_r : mac_r;
+assign VGA_G     = show_dbg ? dbg_g : mac_g;
+assign VGA_B     = show_dbg ? dbg_b : mac_b;
 
 assign LED_USER  = led_user;
 

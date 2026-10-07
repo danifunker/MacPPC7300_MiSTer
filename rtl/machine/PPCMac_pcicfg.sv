@@ -17,9 +17,11 @@
 //              machinetnt.cpp:89-96): device 11 is the Control video
 //              controller's header (control.cpp:96-104).
 //
-//  The base address registers are stored and read back with their masks;
-//  the machine's decoder does not follow them. The 7600's ROM puts Grand
-//  Central at F3000000 and the machine maps it there.
+//  The base address registers are stored and read back with their masks.
+//  The machine's decoder follows Control's two memory BARs (as dingusppc
+//  maps a region whenever a BAR changes, whatever the command register
+//  says); the others it does not follow: the ROM puts Grand Central at
+//  F3000000 and the machine maps it there.
 //
 //  An access is presented for one cycle (sel); the read data is valid in
 //  the next cycle.
@@ -38,7 +40,12 @@ module PPCMac_pcicfg
 	input  logic [23:2] addr,        // offset in the bridge's 16 MB region
 	input  logic [3:0]  be,
 	input  logic [31:0] wdata,
-	output logic [31:0] rdata
+	output logic [31:0] rdata,
+
+	// Chaos: where Open Firmware put Control's registers (4 KB) and VRAM
+	// (64 MB), for the machine's decoder; 0 until it does (Bandit: 0)
+	output logic [31:12] ctl_regs_base,
+	output logic [31:26] ctl_vram_base
 );
 
 import PPCMac_pkg::*;
@@ -113,6 +120,9 @@ always_comb begin
 		endcase
 	end
 end
+
+assign ctl_regs_base = (BRIDGE == 0) ? cv_bar1[31:12] : 20'h0;
+assign ctl_vram_base = (BRIDGE == 0) ? cv_bar2[31:26] : 6'h0;
 
 // a CONFIG_DATA write, little-endian (only whole aligned words are modelled,
 // which is all the ROM does; dingusppc's fast path, bandit.cpp:224-227)

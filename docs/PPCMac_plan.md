@@ -18,7 +18,7 @@ the day a milestone was closed; open ones carry no date.
 | I | Interrupts through Grand Central, the VIA first | the ROM in lockstep with the VIA's interrupts taken; its device traffic against dingusppc's whole 7300 shows the same interrupt service; every later source wired with its device | the VIA: done 2026-10-07, in simulation and on the board |
 | T | Serial console: the ESCC's modem port on the MiSTer's UART | Open Firmware's banner and `0 >` prompt over the UART on the board, words typed and answered | done 2026-10-07 |
 | E | The empty machine: MESH and Curio with no targets, as Mac OS probes them | Mac OS's device traffic without a disk matching dingusppc's through the SCSI probing | done 2026-10-07, in simulation and on the board |
-| V | Video: Control, RaDACal, the Athens clock chip on Cuda's I2C | Mac OS's screen on the MiSTer's output, in simulation as a frame compared with dingusppc's and on the board as a screenshot | |
+| V | Video: Control, RaDACal, the Athens clock chip on Cuda's I2C | Mac OS's screen on the MiSTer's output, in simulation as a frame compared with dingusppc's and on the board as a screenshot | done 2026-10-07, in simulation and on the board |
 | K | ADB keyboard and mouse on Cuda's line | Open Firmware typed on from the keyboard; the cursor following the mouse in Mac OS | |
 | S | SCSI: DBDMA, MESH, a disk image on the SD card | Mac OS booting from a disk image to the Finder | |
 | A | Sound: AWACS and its DBDMA channels | the startup chime, and Mac OS's sound | |
@@ -408,6 +408,65 @@ What it needs, from dingusppc's `control.cpp` (795 lines) and
 Proof: in simulation, a frame from the bench's VRAM against dingusppc's at
 the same point; on the board, a screenshot of Mac OS's screen without a disk.
 
+**Built, 2026-10-07.** What Mac OS asks for (dingusppc's run, the 7300's
+ROM): Open Firmware puts Control's registers at 94000000 and its VRAM
+window at 90000000 (Chaos's BARs, 27.4 million instructions) and leaves the
+screen alone (its console is the modem port); Mac OS's video driver, from
+RAM, sets RaDACal up and loads a linear colour table (119.6 million), sets
+MISC_ENABLES to wide VRAM (40, then 51), probes the VRAM's size (writes
+"Nano" at the big-endian aperture's 0 and reads 8), programs Athens through
+Cuda (30.215 MHz with the 13-inch monitor: 31.3344 x 27 / 28), disables the
+timing, writes Swatch's values (640 x 480: exactly what Linux's
+`controlfb.c` computes for 864 x 525, sync 64 dots and 3 lines), enables it
+with two RESET_TIMING strobes (130.9 million), and fills the screen with the
+50 % grey at 32 bits a pixel (ROW_WORDS 0A20, GBASE 200); then waits for the
+VBL by polling INT_STATUS. dingusppc's default monitor, "AppleVision1710",
+is only an alias for its 13-inch sense code, which is why its Mac OS picks
+640 x 480.
+
+The pieces: `PPCMac_control.sv` (Control's registers, and `PPCMac_swatch`,
+its timing in the video clock), `PPCMac_radacal.sv` (in Grand Central, IOBus
+device 2; its colour table has a second copy read by the scan-out),
+`PPCMac_athens.sv` (an I2C slave on Cuda's pins: our Cuda is the chip, so
+the driver's packets reach Athens as bits), `PPCMac_video.sv` (the dot clock
+as a clock enable of the 100 MHz memory clock, Swatch, the line fetch into
+two line buffers, the pixels: 8 bits through the colour table, 16 and 32
+direct, the hardware cursor from the 16 bytes before each line; and the
+VRAM's DDR3 port, the scan-out first and the CPU's accesses second). The
+machine's decoder follows Control's two BARs; the VRAM is memory, not a
+device: its own clock crossing (a second `DSPPC604_memcdc`) takes the CPU's
+VRAM accesses to the picture side, after the machine has turned the window
+offset into a VRAM address and the bytes into VRAM's order (the
+little-endian aperture's per-pixel swap). Rule 1 is kept for the
+registers; rule 2 does not apply (the VRAM is not main memory and nothing
+but the CPU writes it). The bench models the DDRAM port (`core_main.cpp`,
+4 MB, a few cycles of latency) and writes a frame of the picture
+(`--frame-at N --frame-out FILE`); `machref` writes dingusppc's
+(`null_host.cpp`: the video controller's converter, called at the first
+refresh after N instructions).
+
+In simulation: the 7300's ROM runs 145 million instructions in lockstep
+through the video driver (655,341 device writes compared, nearly all
+VRAM), and every Control, RaDACal and VRAM access of dingusppc's run, the
+values included, comes in the same order (619,206 of them to 146 million),
+leaving out only the VBL handler's (INT_ENABLE's clear and INT_STATUS's
+polls, which come at frame times, real time on both machines); the driver
+was loaded 2000 bytes lower in RAM here (dingusppc's Mac OS has its ADB
+devices), so only the program counters differ. The frame after 141.8
+million instructions is dingusppc's after 144.9 million pixel for pixel
+(640 x 480, the grey). With the 16-inch monitor (`--monitor 16`; machref
+`--set mon_id=MacRGB16in`) Mac OS picks 832 x 624, and the frames match
+pixel for pixel again (519,168 pixels).
+
+On the board: 26,874 ALMs (64 %), 165 RAM blocks, 46 DSP blocks; the CPU's
+clock closes at 64.47 MHz slow 100 C (slack -0.127 ns), the memory and
+video clock at 112.96 MHz (100 asked); run at 65. With a blank NVRAM Mac OS
+draws its screen: the screenshot (the framework's, through the scaler) is
+832 x 624 with the 16-inch monitor and 640 x 480 with the 13-inch, the
+grey, the rounded corners and the arrow pointer of the hardware cursor at
+the top left. The debug readout (OSD Picture) and Open Firmware's console
+on the modem port still work.
+
 ### K: ADB
 
 What it needs: a keyboard (address 2) and a mouse (address 3) on Cuda's ADB
@@ -533,5 +592,6 @@ driving it.
 | from E on | Decided 2026-10-07: the sessions from milestone E on work independently (`RESUME_scsi.md`): they decide what the documents leave open, record each decision in this table with its reason, and go on through the milestones in order. The CPU rule stands: a CPU change stops the session with a hand-off prompt. |
 | ~~V~~ | ~~Which monitor the sense lines report (640 x 480 first, larger later?).~~ Answered 2026-10-07 (start of E): match the machine's default resolution (the user remembers it as "872 by something": to be found from Control's sense code and dingusppc's default monitor), with a forced 640 x 480 as an option; HDMI through the framework's scaler first, the analog output (a PC CRT) considered in the design (the MiSTer's `vga_scaler` puts the scaler's output on VGA). |
 | ~~S~~ | ~~Which disk image format and Mac OS version to test with first.~~ Answered 2026-10-07: the session picks from the user's images (`\\daninas.local\Software\BlueSCSI Images\PowerPC Images`: zipped 512-byte-sector `.hda` images of Mac OS 7.5.3, 7.6.1, 8.5, 8.6 and 9.1 installed), copied in; a hard disk first, a CD-ROM target later. Later also Linux, which starts Mac OS and then BootX: the Debian 7 image there (`HD00_512 LINUX 8500MB.hda.zip`). |
+| V | Decided by the session, 2026-10-07, from the user's answer: the monitor the sense lines report is an OSD choice, Apple's 16-inch RGB (sense 7, extended 2D: 832 x 624 at 75 Hz, 57.2832 MHz) by default, the 13-inch RGB (sense 6, extended 2B: 640 x 480 at 66.7 Hz, 30.24 MHz) as the forced 640 x 480; the 21-inch (1152 x 870, 100 MHz) later if the DDR3's bandwidth allows. Reason: the user remembers the default as "872 by something, kind of weird"; 832 x 624 is the odd Apple mode that fits, the 870-line modes the other candidates. dingusppc's default "AppleVision1710" is only an alias of its 13-inch code (`displayid.cpp`), which is why its Mac OS picks 640 x 480 (130.9 million instructions, 32 bits a pixel). The VRAM sits at the DDR3's byte 0x30000000 (the core's region, as the Quadra 800 core's), the scan-out in the 100 MHz memory clock, which is also the framework's video clock: every mode's pixel rate (30.24, 57.28, 100 MHz) is a clock enable of it. |
 | E | Decided by the session, 2026-10-07: MESH's selection timeout follows its register in 10 ms units (the ROM computes ms / 10; dingusppc ignores the register and waits 250 ms, the ROM's value); Curio's follows the 53C94's formula with the chip's clock taken to be 25 MHz (MAME's way; dingusppc waits 250 ms); MESH's interrupt line follows its registers at all times, as a pin does (dingusppc recomputes it only at some events); Curio's initiator commands with no connected target are an invalid-command interrupt, as on the chip (dingusppc stops). Reason: real behaviour over an emulator's shortcut where the shortcut is visible, each to be checked by `hwprobe/` on the real 7300. |
 | from E on | Answered 2026-10-07: the user can still run probe disks on the real 7300 (booted from Open Firmware over the modem port, as `cudadump`); where only the real machine can say (MESH's and Curio's selection timeout, the VIA's access time), the session builds such a disk and follows the emulators meanwhile, the guess written in the stubs list. |

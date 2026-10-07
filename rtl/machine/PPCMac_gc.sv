@@ -17,7 +17,7 @@
 //                 NanoKernel runs it so, and reads the levels to follow the
 //                 line both ways); the CPU's interrupt is any event that is
 //                 unmasked. Sources so far: Curio (0C), MESH (0D), the VIA
-//                 (12)
+//                 (12), the Control video's VBL (1A, through Chaos)
 //    08000-0FFFF  DMA channel registers, 256 bytes per channel
 //                 (grandcentral.cpp:250-305; dbdma.cpp:307-380): stored and
 //                 read back; a channel never runs (there is no bus master)
@@ -39,8 +39,9 @@
 //                                        controller, with no target
 //    19000        Ethernet address ROM   08 00 07 44 55 66 00 00
 //    1A000        board register 1       E13F (machinetnt.cpp:98-106)
-//    1B000        RaDACal (the Control   reads 0 (control.cpp:156; no video
-//                 video's RAMDAC)        yet)
+//    1B000        RaDACal (the Control   PPCMac_radacal (control.cpp:156,
+//                 video's RAMDAC)        appleramdac.cpp); its colour table
+//                                        has a read port in the video clock
 //    1C000        no device              reads 0
 //    1D000        NVRAM address, high    (macio.h:94-107)
 //    1E000        no device on a 7600    reads 0 (board register 2 needs Bandit 2)
@@ -88,7 +89,19 @@ module PPCMac_gc
 	// the NVRAM written from outside, a byte a cycle
 	input  logic        nv_ld_we,
 	input  logic [12:0] nv_ld_addr,
-	input  logic [7:0]  nv_ld_data
+	input  logic [7:0]  nv_ld_data,
+
+	// the Control video's VBL interrupt (source 1A)
+	input  logic         ctl_irq,
+
+	// RaDACal to the scan-out: its state, and its colour table in the video clock
+	output logic [7:0]   dac_cr,
+	output logic [7:0]   dbl_buf_cr,
+	output logic [15:0]  cursor_x,
+	output logic [191:0] cursor_clut,
+	input  logic         clk_v,
+	input  logic [7:0]   clut_index,
+	output logic [23:0]  clut_rgb
 );
 
 import PPCMac_pkg::*;
@@ -109,7 +122,7 @@ wire        single = (be == 4'b1000) | (be == 4'b0100) | (be == 4'b0010) | (be =
 logic [31:0] int_mask, int_events, int_lines_q;
 logic        via_irq;                           // the VIA's IRQ: an enabled flag is set
 logic        curio_irq, mesh_irq;
-wire  [31:0] int_lines  = {13'h0, via_irq, 4'h0, mesh_irq, curio_irq, 12'h0};
+wire  [31:0] int_lines  = {5'h0, ctl_irq, 7'h0, via_irq, 4'h0, mesh_irq, curio_irq, 12'h0};
 wire  [31:0] int_levels = int_lines_q | 32'h0000_0800;   // dingusppc ORs in bit 11 (grandcentral.cpp:306)
 wire         int_68k    = int_mask[31];         // MACIO_INT_MODE: an event at either edge
 wire  [31:0] int_chg    = int_lines ^ int_lines_q;
@@ -233,6 +246,17 @@ always_ff @(posedge clk) begin
 	nv_q <= nvram[nv_a];
 end
 
+// ---- RaDACal: IOBus device 2, registers (offset >> 4) & 1F, the first four its own ---------
+logic [7:0] rad_rq;
+logic       rad_rd_q;
+wire        rad_sel = sel & devs & (sub == 4'hB) & (off[8:6] == 3'd0);
+
+PPCMac_radacal radacal (
+	.clk, .reset, .sel(rad_sel), .we, .rn(off[5:4]), .wdata(io_w[7:0]), .rq(rad_rq),
+	.dac_cr, .dbl_buf_cr, .cursor_x, .cursor_clut,
+	.clk_v, .v_index(clut_index), .v_rgb(clut_rgb)
+);
+
 // an IOBus device's 16-bit value as a CPU word (grandcentral.cpp:224-233)
 function automatic logic [31:0] iobus_rdata(input logic [15:0] v);
 	iobus_rdata = {v[7:0], v[15:8], 16'h0};
@@ -315,7 +339,8 @@ always_comb begin
 end
 
 logic [31:0] rdata_q;
-assign rdata = nv_rd_q ? iobus_rdata({8'h00, nv_q}) : rdata_q;
+assign rdata = nv_rd_q  ? iobus_rdata({8'h00, nv_q}) :
+               rad_rd_q ? iobus_rdata({8'h00, rad_rq}) : rdata_q;
 
 // ---- the shift register: the CPU's access to it, then a CB1 edge in the same clock --------
 wire       sr_acc = sel & devs & (sub == 4'h6 || sub == 4'h7) & (via_reg == 4'd10);
@@ -372,7 +397,8 @@ always_ff @(posedge clk) begin
 		end
 	end
 
-	nv_rd_q <= sel & ~we & devs & (sub == 4'hF);
+	nv_rd_q  <= sel & ~we & devs & (sub == 4'hF);
+	rad_rd_q <= rad_sel & ~we;
 	if (sel) rdata_q <= rq;
 
 	if (sel & ints & we) begin
@@ -507,6 +533,7 @@ always_ff @(posedge clk) begin
 		t2_run      <= 1'b0;
 		nv_hi       <= 16'h0;
 		nv_rd_q     <= 1'b0;
+		rad_rd_q    <= 1'b0;
 	end
 end
 

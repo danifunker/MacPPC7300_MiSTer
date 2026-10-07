@@ -5,8 +5,9 @@ platform. Work in progress: the CPU is built and verified, and the machine
 around it (the Power Macintosh 7300/7600) has begun: the 7300's and the
 7600's own ROMs run from reset through Open Firmware into Mac OS, in
 simulation and on the board. The bitstream this tree builds runs the CPU and
-the machine on the DE10-Nano with the SDRAM; its screen shows a debug
-readout (rows of squares), not yet a Mac.
+the machine on the DE10-Nano with the SDRAM; its screen shows Mac OS's (the
+Control video: with no disk yet, the grey desktop and the pointer), or, as
+the OSD chooses, a debug readout of rows of squares.
 
 `PPCMac` is a working name and may change.
 
@@ -36,7 +37,8 @@ readout (rows of squares), not yet a Mac.
 | Interrupts | Grand Central's events, mask and levels as MAME's and dingusppc's; the VIA is the first source (2026-10-07): the 7300's ROM runs 100 million instructions in lockstep with Mac OS's timer interrupts, its device traffic matching dingusppc's through Mac OS's start-up to where Mac OS probes MESH ([docs/PPCMac_plan.md](docs/PPCMac_plan.md), milestone I) |
 | Serial console | the ESCC (a Z85C30's asynchronous mode, `rtl/machine/PPCMac_escc.sv`); its modem port is the MiSTer's UART, Open Firmware's console: with an NVRAM image that sets `auto-boot?` false, Open Firmware's prompt over the UART, in simulation (in lockstep, the banner byte for byte dingusppc's) and on the board (2026-10-07) |
 | SCSI controllers, with empty buses | MESH (`rtl/machine/PPCMac_mesh.sv`) and Curio's 53CF94 (`PPCMac_sc53c94.sv`) as dingusppc models them, with no targets: Mac OS reads MESH's ID, sets both up and selects every target on both buses, each selection ending in a timeout and an interrupt; in simulation the 7300's ROM runs 450 million instructions in lockstep through that probing, its SCSI traffic matching dingusppc's, and on the board Mac OS runs through it as in the simulation (milestone E, 2026-10-07; [docs/PPCMac_plan.md](docs/PPCMac_plan.md)). Disks come with milestone S, through Main_MiSTer's Mac SCSI family support |
-| Machine (video, disks, sound, ...) | not started |
+| Video | the Control video controller (registers, Swatch's timing), RaDACal (colour table, hardware cursor), the Athens clock chip on Cuda's I2C, the 4 MB VRAM in the HPS's DDR3, the scan-out through the framework's scaler; the monitor an OSD choice (Apple's 16-inch, 832 x 624, or 13-inch, 640 x 480). In simulation the ROM runs in lockstep through Mac OS's video driver, every video access as dingusppc's, and the frames match dingusppc's pixel for pixel at both sizes; on the board Mac OS's screen (milestone V, 2026-10-07) |
+| Machine (keyboard and mouse, disks, sound, ...) | not started |
 
 The first full build of the core (2026-10-06: the CPU at 65 MHz, the
 machine, the SDRAM controller at 100 MHz, the debug readout, the MiSTer
@@ -49,7 +51,8 @@ framework), Quartus 17.0, slow 100 C model; this is the number that counts:
 | With Cuda, 2026-10-07 | 25,521 (61%) | 153 | 41 | 61.26 MHz (slack -0.939 ns; every failing path inside the CPU, decode into the branch target buffer); memory 107.8 MHz. Runs on the board at 65 MHz |
 | With Grand Central's interrupt | 25,379 (61%) | 153 | 41 | 62.70 MHz (slack -0.565 ns); memory 107.7 MHz. Runs on the board at 65 MHz |
 | With the ESCC and the NVRAM loader | 26,019 (62%) | 153 | 41 | 62.31 MHz (slack -0.666 ns); memory 104.1 MHz. Runs on the board at 65 MHz |
-| With MESH and Curio (the committed tree) | 24,489 (58%) | 153 | 42 | 63.03 MHz (slack -0.481 ns); memory 109.5 MHz. Runs on the board at 65 MHz |
+| With MESH and Curio | 24,489 (58%) | 153 | 42 | 63.03 MHz (slack -0.481 ns); memory 109.5 MHz. Runs on the board at 65 MHz |
+| With the Control video (the committed tree) | 26,874 (64%) | 165 | 46 | 64.47 MHz (slack -0.127 ns); memory and video 113.0 MHz. Runs on the board at 65 MHz |
 
 On the board (DE10-Nano, 128 MB SDRAM) the memory test passes at every RAM
 size the OSD offers (6 to 96 MB, three or more passes each, no error) at
@@ -323,6 +326,18 @@ reset until its firmware has powered the machine up, 5.4 million cycles
 (the bench runs Cuda's clock fast while it waits; 1.28 s on the board).
 
 ```
+python verilator\run_machine.py --max-instr 145000000 --frame-at 141000000 --frame-out f.ppm [--monitor 16]
+```
+
+The Control video: the bench models the VRAM's DDR3 port and writes the
+picture's next whole frame after N instructions as a PPM; `--monitor 16`
+makes the sense lines report Apple's 16-inch RGB (832 x 624) instead of
+the 13-inch (640 x 480, dingusppc's default). `machref --frame-at N
+--frame-out FILE [--set mon_id=MacRGB16in]` writes dingusppc's frame to
+compare (Mac OS draws its screen at about 131 million instructions in
+dingusppc, 3.5 million earlier here).
+
+```
 python verilator\run_machine.py --nvram syn\nvram_of_prompt.bin --serial-in "1 2 + ." --serial-stop
 ```
 
@@ -349,6 +364,11 @@ python syn\mister.py load
 python syn\mister.py uart 40
 python syn\mister.py type "1 2 + ." "words"
 ```
+
+The OSD's Picture option chooses Mac OS's screen or the debug readout,
+its Monitor option the 16-inch or 13-inch RGB (a change resets the
+machine); `python syn\mister.py cfg --picture mac|debug --monitor 16|13`
+sets them, `shot` takes a screenshot through the framework.
 
 `uart` shows what Open Firmware prints (the prompt about 2 s after the
 core starts), `type` types lines at it and shows the answers. From a shell
@@ -404,7 +424,7 @@ size and maximum clock. `--paths 10` also lists the slowest paths.
 | `rtl/machine/` | the machine: the 7600's address map and device stubs (`PPCMac_*`), Cuda (`PPCMac_cuda`, `PPCMac_hc05`, the ROM `PPCMac_cudarom` generated by `verilator/cudarom.py`) |
 | `rtl/machine/cuda/` | Cuda's firmware, Apple's 341S0060 (Cuda 2.40), as MAME's `cuda` set has it and byte for byte as read out of the 7300's own chip (`cudadump/`) |
 | `rtl/pll.v`, `rtl/pll/` | the core's PLL (the template's, edited to three outputs) |
-| `syn/mister.py` | puts the core, the ROM and an NVRAM image on the MiSTer over SSH, sets options, loads, screenshots, reads the UART and types at it |
+| `syn/mister.py` | puts the core, the ROM and an NVRAM image on the MiSTer over SSH, sets options (RAM, boot, UART, picture, monitor), loads, screenshots, reads the UART and types at it |
 | `syn/nvram_of_prompt.bin` | an NVRAM image: Open Firmware's defaults with `auto-boot?` false (made by `verilator/nvram.py` from the bench's device log) |
 | `verilator/` | test benches (single instructions, programs on the pipeline, the whole machine) and the floating-point software model |
 | `verilator/ref/` | dingusppc's interpreter as a library, for lockstep runs |

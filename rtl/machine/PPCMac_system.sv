@@ -66,6 +66,31 @@ module PPCMac_system
 	input  logic [12:0]  nv_ld_addr,
 	input  logic [7:0]   nv_ld_data,
 
+	// the monitor: its AppleSense codes
+	input  logic [2:0]   mon_std,
+	input  logic [5:0]   mon_ext,
+
+	// the VRAM in DDR3 (the framework's DDRAM port), in the memory's clock
+	input  logic         ddr_busy,
+	output logic [7:0]   ddr_burstcnt,
+	output logic [28:0]  ddr_addr,
+	input  logic [63:0]  ddr_dout,
+	input  logic         ddr_dout_ready,
+	output logic         ddr_rd,
+	output logic [63:0]  ddr_din,
+	output logic [7:0]   ddr_be,
+	output logic         ddr_we,
+
+	// the Control video's picture, in the memory's clock
+	output logic         vid_ce,
+	output logic [7:0]   vid_r,
+	output logic [7:0]   vid_g,
+	output logic [7:0]   vid_b,
+	output logic         vid_hs,
+	output logic         vid_vs,
+	output logic         vid_hblank,
+	output logic         vid_vblank,
+
 	// the machine's debug registers (the memory test's report)
 	output logic [31:0]  dbg_status,
 	output logic [31:0]  dbg_passes,
@@ -121,13 +146,56 @@ DSPPC604 cpu (
 	.trace_dreq, .trace_dwe, .trace_dkind, .trace_daddr, .trace_dbe, .trace_dwdata
 );
 
+// the VRAM's path and the video registers, between the machine and the picture side
+logic         v_req, v_we, v_line, v_ack;
+logic [21:2]  v_addr;
+logic [3:0]   v_be;
+logic [255:0] v_wdata, v_rdata;
+logic         vb_req, vb_we, vb_line, vb_ack;
+logic [31:2]  vb_addr;
+logic [3:0]   vb_be;
+logic [255:0] vb_wdata, vb_rdata;
+logic         timing_on, hs_pos, vs_pos, vbl_start_tog, vbl_end_tog;
+logic [191:0] sw_params, cursor_clut;
+logic [21:0]  fb_base;
+logic [14:0]  row_words;
+logic [7:0]   dac_cr, dbl_buf_cr, athens_d2, athens_n2, athens_p2, clut_index;
+logic [15:0]  cursor_x;
+logic [23:0]  clut_rgb;
+
 PPCMac_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_FAST_BOOT(CUDA_FAST_BOOT)) machine (
 	.clk, .reset, .ram_mb, .boot_memtest,
 	.c_req, .c_we, .c_line, .c_addr, .c_be, .c_wdata, .c_ack, .c_rdata,
 	.m_req, .m_we, .m_line, .m_addr, .m_be, .m_wdata, .m_ack, .m_rdata,
 	.ext_irq, .tb_tick, .cpu_reset(cuda_reset),
 	.modem_txd, .modem_rxd, .nv_ld_we, .nv_ld_addr, .nv_ld_data,
+	.mon_std, .mon_ext,
+	.v_req, .v_we, .v_line, .v_addr, .v_be, .v_wdata, .v_ack, .v_rdata,
+	.timing_on, .sw_params, .fb_base, .row_words, .hs_pos, .vs_pos, .dac_cr, .dbl_buf_cr,
+	.cursor_x, .cursor_clut, .athens_d2, .athens_n2, .athens_p2, .vbl_start_tog, .vbl_end_tog,
+	.clk_v(clk_b), .clut_index, .clut_rgb,
 	.dbg_status, .dbg_passes, .dbg_errors, .dbg_first
+);
+
+DSPPC604_memcdc vcdc (
+	.clk_a(clk), .reset_a(reset),
+	.a_req(v_req), .a_we(v_we), .a_line(v_line), .a_addr({10'h0, v_addr}), .a_be(v_be), .a_wdata(v_wdata),
+	.a_ack(v_ack), .a_rdata(v_rdata),
+	.clk_b, .reset_b,
+	.b_req(vb_req), .b_we(vb_we), .b_line(vb_line), .b_addr(vb_addr), .b_be(vb_be), .b_wdata(vb_wdata),
+	.b_ack(vb_ack), .b_rdata(vb_rdata)
+);
+
+PPCMac_video video (
+	.clk(clk_b), .reset(reset_b),
+	.c_req(vb_req), .c_we(vb_we), .c_line(vb_line), .c_addr(vb_addr[21:2]), .c_be(vb_be), .c_wdata(vb_wdata),
+	.c_ack(vb_ack), .c_rdata(vb_rdata),
+	.ddr_busy, .ddr_burstcnt, .ddr_addr, .ddr_dout, .ddr_dout_ready, .ddr_rd, .ddr_din, .ddr_be, .ddr_we,
+	.timing_on, .sw_params, .fb_base, .row_words, .hs_pos, .vs_pos, .dac_cr, .dbl_buf_cr,
+	.cursor_x, .cursor_clut, .athens_d2, .athens_n2, .athens_p2, .vbl_start_tog, .vbl_end_tog,
+	.clut_index, .clut_rgb,
+	.ce_pix(vid_ce), .r(vid_r), .g(vid_g), .b(vid_b), .hs(vid_hs), .vs(vid_vs),
+	.hblank(vid_hblank), .vblank(vid_vblank)
 );
 
 DSPPC604_memcdc cdc (

@@ -38,8 +38,9 @@
 //  second, at 115200 8N1.
 //
 //  Clocks: the capture runs in the CPU's clock; the picture and the UART in
-//  the video clock (the template's 20 MHz and its 15 kHz timing, doubled
-//  when the scan doubler is forced). The values cross once a frame by a
+//  the video clock, on the clocks ce_vid enables (20 MHz of them, the
+//  template's timing at 15 kHz, doubled when the scan doubler is forced; the
+//  core runs it in the 100 MHz memory clock, the Control video's). The values cross once a frame by a
 //  request/acknowledge pair of toggles, so a row is never half updated.
 //
 //============================================================================
@@ -78,8 +79,10 @@ module PPCMac_debug
 	input  logic        pll_locked,
 	input  logic [7:0]  ram_mb,
 
-	// the video clock
+	// the video clock, and its enable: the picture and the UART count VID_HZ
+	// enabled clocks a second (1 when clk_vid is VID_HZ)
 	input  logic        clk_vid,
+	input  logic        ce_vid,
 	input  logic        pal,
 	input  logic        scandouble,
 	output logic        ce_pix,
@@ -171,9 +174,11 @@ end
 
 // ---- the video timing (the template's: 638 x 262, or 525 lines doubled; PAL 312/625) ------
 logic [9:0] hc, vc;
-always_ff @(posedge clk_vid) begin
-	ce_pix <= scandouble ? 1'b1 : ~ce_pix;
-	if (ce_pix) begin
+logic       pix_t;                          // this enabled clock is a pixel
+assign ce_pix = pix_t & ce_vid;
+always_ff @(posedge clk_vid) if (ce_vid) begin
+	pix_t <= scandouble ? 1'b1 : ~pix_t;
+	if (pix_t) begin
 		if (hc == 10'd637) begin
 			hc <= 10'd0;
 			if (vc >= (pal ? (scandouble ? 10'd623 : 10'd311) : (scandouble ? 10'd523 : 10'd261))) vc <= 10'd0;
@@ -182,7 +187,7 @@ always_ff @(posedge clk_vid) begin
 		else hc <= hc + 10'd1;
 	end
 end
-always_ff @(posedge clk_vid) begin
+always_ff @(posedge clk_vid) if (ce_vid) begin
 	if (hc == 10'd529) hblank <= 1'b1;
 	else if (hc == 10'd0) hblank <= 1'b0;
 	if (hc == 10'd544) begin
@@ -211,7 +216,7 @@ logic [7:0]  ram_q [2];
 logic [1:0]  cpu_flags;
 logic [15:0] hold_q;
 logic        vblank_q;
-always_ff @(posedge clk_vid) begin
+always_ff @(posedge clk_vid) if (ce_vid) begin
 	st_sync[0] <= {rom_loaded, sdram_ready, 1'b0, 1'b0, boot_memtest, pll_locked};
 	st_sync[1] <= st_sync[0];
 	ram_q[0]   <= ram_mb;
@@ -241,7 +246,7 @@ wire [3:0]  ridx  = slot[3:0];
 wire [31:0] rword = row[ridx];              // (a one-dimensional vector before the bit select)
 wire        bit_v = rword[5'd31 - col];
 wire [1:0]  group = slot < 5'd8 ? 2'd0 : slot < 5'd12 ? 2'd1 : 2'd2;
-always_ff @(posedge clk_vid) begin
+always_ff @(posedge clk_vid) if (ce_vid) begin
 	if (in_x & in_y & ~hblank & ~vblank) begin
 		case ({group, col[2]})
 			// the machine's rows: yellow and cyan nibbles
@@ -280,7 +285,7 @@ wire [7:0]  u_char = ch_idx == 8'(LINE_CHARS - 2) ? 8'h0D :
                      ch_idx == 8'(LINE_CHARS - 1) ? 8'h0A :
                      u_pos == 4'd8 ? 8'h20 : hexc(u_word[31 - 4 * u_pos -: 4]);
 
-always_ff @(posedge clk_vid) begin
+always_ff @(posedge clk_vid) if (ce_vid) begin
 	if (sec_cnt == 25'(VID_HZ - 1)) begin
 		sec_cnt <= 25'd0;
 		if (~sending) begin

@@ -35,6 +35,12 @@
 //    F9000000  debug registers        not a 7600 device: 256 bytes where the
 //                                     memory test reports (see below); no
 //                                     7600 ROM touches this address
+//    Control's second BAR             its registers, 4 KB (Open Firmware
+//                                     puts them at 94000000) -> PPCMac_control
+//    Control's third BAR              its VRAM window, 64 MB (90000000): not
+//                                     a device but memory, through its own
+//                                     crossing to the picture side
+//                                     (PPCMac_video, the VRAM in DDR3)
 //
 //  Anything else reads as zeros and ignores writes. A device answers at
 //  once, but for the VIA, which Grand Central paces to its 783,360 Hz clock:
@@ -47,7 +53,8 @@
 //
 //  Cuda (PPCMac_cuda), the board's microcontroller, sits on the VIA's port
 //  B and shift register, and holds the CPU in reset (cpu_reset) until its
-//  firmware has powered the machine up, as on the 7600.
+//  firmware has powered the machine up, as on the 7600. Athens, the video's
+//  clock generator, answers on Cuda's I2C lines (PPCMac_athens).
 //
 //  A line request to a device is eight word accesses to it, the lowest
 //  address first, as a burst on the real bus would be: with data
@@ -117,6 +124,42 @@ module PPCMac_machine
 	input  logic [12:0]  nv_ld_addr,
 	input  logic [7:0]   nv_ld_data,
 
+	// the monitor: its AppleSense codes (PPCMac_control MON_SENSE)
+	input  logic [2:0]   mon_std,
+	input  logic [5:0]   mon_ext,
+
+	// the VRAM, by VRAM byte address, to its clock crossing (the CPU port's
+	// protocol, VRAM's byte order)
+	output logic         v_req,
+	output logic         v_we,
+	output logic         v_line,
+	output logic [21:2]  v_addr,
+	output logic [3:0]   v_be,
+	output logic [255:0] v_wdata,
+	input  logic         v_ack,
+	input  logic [255:0] v_rdata,
+
+	// the video registers, to the picture side (PPCMac_video), standing
+	// still while they are used
+	output logic         timing_on,
+	output logic [191:0] sw_params,
+	output logic [21:0]  fb_base,
+	output logic [14:0]  row_words,
+	output logic         hs_pos,
+	output logic         vs_pos,
+	output logic [7:0]   dac_cr,
+	output logic [7:0]   dbl_buf_cr,
+	output logic [15:0]  cursor_x,
+	output logic [191:0] cursor_clut,
+	output logic [7:0]   athens_d2,
+	output logic [7:0]   athens_n2,
+	output logic [7:0]   athens_p2,
+	input  logic         vbl_start_tog,
+	input  logic         vbl_end_tog,
+	input  logic         clk_v,
+	input  logic [7:0]   clut_index,
+	output logic [23:0]  clut_rgb,
+
 	// the debug registers, for the debug readout
 	output logic [31:0]  dbg_status,
 	output logic [31:0]  dbg_passes,
@@ -140,6 +183,11 @@ wire        is_ban  = a[31:24] == 8'hF2;
 wire        is_gc   = a[31:17] == 15'h7980;                 // F3000000-F301FFFF
 wire        is_hh   = a[31:12] == 20'hF8000 && a[11:4] < 8'h50;
 wire        is_via  = is_gc && a[16:13] == 4'b1011;              // F3016000-F3017FFF
+// Control's registers and VRAM, where Open Firmware put them (Chaos's BARs)
+logic [31:12] ctl_regs_base;
+logic [31:26] ctl_vram_base;
+wire        is_ctl  = (ctl_regs_base != 20'h0) && (a[31:12] == ctl_regs_base);
+wire        is_vram = (ctl_vram_base != 6'h0) && (a[31:26] == ctl_vram_base);
 
 // RAM and ROM go straight through: the crossing captures the request and
 // holds it, and ignores it in the cycle of its own acknowledge, exactly as
@@ -151,11 +199,51 @@ assign m_addr  = is_rom ? {ROM_SDRAM, a[21:2]} : a[31:2];
 assign m_be    = c_be;
 assign m_wdata = c_wdata;
 
+// The VRAM is memory, not a device: it goes to the picture side through a
+// crossing of its own, as RAM goes to the SDRAM. The 64 MB window as
+// control.cpp maps it (read and write, 238-504), the optional bank fitted
+// (4 MB in all): offset bit 23 set is the big-endian aperture; clear, the
+// little-endian one, whose bytes are swapped within each pixel (16 bits:
+// within halfwords; 32: within words; 8: as they are). In VRAM's wide mode
+// (MISC_ENABLES bit 6, which Mac OS's driver sets) the window's low 4 MB are
+// the VRAM; otherwise bits 22-21 pick a bank: 3 the optional, else the
+// standard (writes to 1, which dingusppc also makes to the optional bank,
+// are not mirrored: PPCMac_stubs.md).
+logic [11:0] ctl_enables;
+wire  [25:0] vo     = a[25:0];
+wire  [1:0]  v_swap = vo[23] ? 2'd0 : (dac_cr[3:2] == 2'd0) ? 2'd0 : (dac_cr[3:2] == 2'd1) ? 2'd1 : 2'd2;
+wire  [21:0] v_byte = ctl_enables[6] ? vo[21:0] : {vo[22:21] == 2'd3, vo[20:0]};
+
+function automatic logic [31:0] v_sw(input logic [31:0] w, input logic [1:0] s);
+	case (s)
+		2'd1:    v_sw = {w[23:16], w[31:24], w[7:0], w[15:8]};
+		2'd2:    v_sw = {w[7:0], w[15:8], w[23:16], w[31:24]};
+		default: v_sw = w;
+	endcase
+endfunction
+function automatic logic [3:0] v_swbe(input logic [3:0] e, input logic [1:0] s);
+	case (s)
+		2'd1:    v_swbe = {e[2], e[3], e[0], e[1]};
+		2'd2:    v_swbe = {e[0], e[1], e[2], e[3]};
+		default: v_swbe = e;
+	endcase
+endfunction
+function automatic logic [255:0] v_swl(input logic [255:0] l, input logic [1:0] s);
+	for (int i = 0; i < 8; i++) v_swl[32 * i +: 32] = v_sw(l[32 * i +: 32], s);
+endfunction
+
+assign v_req   = c_req & is_vram;
+assign v_we    = c_we;
+assign v_line  = c_line;
+assign v_addr  = v_byte[21:2];
+assign v_be    = v_swbe(c_be, v_swap);
+assign v_wdata = v_swl(c_wdata, v_swap);
+
 // Everything else is answered here: a word a cycle after it is seen, a line
 // as eight words presented on consecutive cycles, answered after the last.
 logic       dev_ack, dev_busy;
 logic [3:0] dev_cnt;                               // cycles since the request was taken
-logic [5:0] dev_sel_q;                             // which block answers: Chaos, Bandit, GC, Hammerhead, debug, boot
+logic [6:0] dev_sel_q;                             // which block answers: Control, Chaos, Bandit, GC, Hammerhead, debug, boot
 logic       pres_q;                                // a word was presented in the last cycle
 logic [2:0] pres_k_q;                              // ... this one of the line
 logic [31:0] line_buf [8];
@@ -167,7 +255,7 @@ logic [1:0] vw;                                    // 0 idle; 1 to the edge; 2 t
 logic [7:0] vw_cnt;
 wire  via_wait = is_via & ~c_line;
 wire  via_go   = vw == 2'd2 && vw_cnt == 8'd0;
-wire  dev_take = c_req & ~to_mem & ~dev_busy & ~dev_ack & (~via_wait | via_go);
+wire  dev_take = c_req & ~to_mem & ~is_vram & ~dev_busy & ~dev_ack & (~via_wait | via_go);
 // the word presented to the devices in this cycle
 wire        present = dev_take | (dev_busy & c_line & dev_cnt <= 4'd7);
 wire  [2:0] pres_k  = dev_take ? 3'd0 : dev_cnt[2:0];
@@ -237,13 +325,28 @@ logic        gc_irq;
 PPCMac_pcicfg #(.BRIDGE(0)) chaos (
 	.clk, .reset,
 	.sel(present & is_cha), .we(c_we), .addr(dev_a[23:2]), .be(dev_be), .wdata(dev_wd),
-	.rdata(cha_rdata)
+	.rdata(cha_rdata), .ctl_regs_base, .ctl_vram_base
 );
+
+logic [31:12] ban_unused_regs;            // Bandit has no Control behind it
+logic [31:26] ban_unused_vram;
 
 PPCMac_pcicfg #(.BRIDGE(1)) bandit (
 	.clk, .reset,
 	.sel(present & is_ban), .we(c_we), .addr(dev_a[23:2]), .be(dev_be), .wdata(dev_wd),
-	.rdata(ban_rdata)
+	.rdata(ban_rdata), .ctl_regs_base(ban_unused_regs), .ctl_vram_base(ban_unused_vram)
+);
+
+// ---- Control's registers, at its second BAR (4 KB: the 512 bytes repeated) ------------------
+logic [31:0] ctl_rdata;
+logic        ctl_irq;
+
+PPCMac_control control (
+	.clk, .reset,
+	.sel(present & is_ctl), .we(c_we), .addr(dev_a[8:2]), .be(dev_be), .wdata(dev_wd),
+	.rdata(ctl_rdata), .irq(ctl_irq), .mon_std, .mon_ext,
+	.sw_params, .fb_base, .row_words, .enables(ctl_enables), .timing_on, .hs_pos, .vs_pos,
+	.vbl_start_tog, .vbl_end_tog
 );
 
 logic cuda_treq, cuda_cb1, cuda_cb2_oe, cuda_cb2_out;
@@ -255,15 +358,24 @@ PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
 	.sel(present & is_gc), .we(c_we), .addr(dev_a[16:2]), .be(dev_be), .wdata(dev_wd),
 	.rdata(gc_rdata), .irq(gc_irq),
 	.cuda_treq, .cuda_cb1, .cb2(cb2_line), .via_tip, .via_byteack, .via_cb2_oe, .via_cb2_out,
-	.modem_txd, .modem_rxd, .nv_ld_we, .nv_ld_addr, .nv_ld_data
+	.modem_txd, .modem_rxd, .nv_ld_we, .nv_ld_addr, .nv_ld_data,
+	.ctl_irq, .dac_cr, .dbl_buf_cr, .cursor_x, .cursor_clut, .clk_v, .clut_index, .clut_rgb
 );
 
 assign ext_irq = gc_irq;
 
 // ---- Cuda ------------------------------------------------------------------------------------
-// Nothing else is on its ADB line or its I2C lines yet: each reads as Cuda
-// itself drives it.
-logic        adb_low, iic_scl_low, iic_sda_low;
+// Nothing else is on its ADB line yet: it reads as Cuda itself drives it.
+// On its I2C lines: Athens, the video's clock generator (address 28).
+logic        adb_low, iic_scl_low, iic_sda_low, athens_sda_low;
+wire         iic_scl = ~iic_scl_low;
+wire         iic_sda = ~(iic_sda_low | athens_sda_low);
+
+PPCMac_athens athens (
+	.clk, .reset, .scl(iic_scl), .sda(iic_sda), .sda_low(athens_sda_low),
+	.d2(athens_d2), .n2(athens_n2), .p2_mux2(athens_p2)
+);
+
 logic        cu_cen, cu_rd, cu_wr, cu_tr_valid, cu_tr_int, cu_cpi, cu_fast;
 logic [12:0] cu_addr, cu_tr_pc;
 logic [7:0]  cu_wdata, cu_rdata, cu_tr_op, cu_tr_a, cu_tr_x, cu_tr_sp, cu_tr_cc;
@@ -274,7 +386,7 @@ PPCMac_cuda #(.CLK_HZ(CPU_HZ), .FAST_BOOT(CUDA_FAST_BOOT != 0)) cuda (
 	.cb2_oe(cuda_cb2_oe), .cb2_out(cuda_cb2_out), .cb2(cb2_line),
 	.cpu_reset,
 	.adb_low, .adb_line(~adb_low),
-	.iic_scl_low, .iic_sda_low, .iic_scl(~iic_scl_low), .iic_sda(~iic_sda_low),
+	.iic_scl_low, .iic_sda_low, .iic_scl, .iic_sda,
 	.dbg_cen(cu_cen), .dbg_addr(cu_addr), .dbg_rd(cu_rd), .dbg_wr(cu_wr),
 	.dbg_wdata(cu_wdata), .dbg_rdata(cu_rdata),
 	.tr_valid(cu_tr_valid), .tr_int(cu_tr_int), .tr_pc(cu_tr_pc), .tr_op(cu_tr_op),
@@ -359,7 +471,7 @@ always_ff @(posedge clk) begin
 	if (dev_take) begin
 		dev_busy  <= 1'b1;
 		dev_cnt   <= 4'd1;
-		dev_sel_q <= {is_cha, is_ban, is_gc, is_hh, is_dbg, is_boot};
+		dev_sel_q <= {is_ctl, is_cha, is_ban, is_gc, is_hh, is_dbg, is_boot};
 	end
 	else if (dev_busy) dev_cnt <= dev_cnt + 4'd1;
 	dev_ack  <= (dev_take & ~c_line) | (dev_busy & c_line & dev_cnt == 4'd8);
@@ -371,7 +483,7 @@ always_ff @(posedge clk) begin
 		dev_busy  <= 1'b0;
 		dev_ack   <= 1'b0;
 		dev_cnt   <= 4'd0;
-		dev_sel_q <= 6'b0;
+		dev_sel_q <= 7'b0;
 		pres_q    <= 1'b0;
 	end
 end
@@ -379,6 +491,7 @@ end
 logic [31:0] dev_rdata;
 always_comb begin
 	dev_rdata = 32'h0;
+	if (dev_sel_q[6]) dev_rdata = ctl_rdata;
 	if (dev_sel_q[5]) dev_rdata = cha_rdata;
 	if (dev_sel_q[4]) dev_rdata = ban_rdata;
 	if (dev_sel_q[3]) dev_rdata = gc_rdata;
@@ -387,8 +500,9 @@ always_comb begin
 	if (dev_sel_q[0]) dev_rdata = boot_rdata;
 end
 
-assign c_ack   = m_ack | dev_ack;
-assign c_rdata = ~dev_ack ? m_rdata :
+assign c_ack   = m_ack | dev_ack | v_ack;
+assign c_rdata = v_ack    ? v_swl(v_rdata, v_swap) :
+                 ~dev_ack ? m_rdata :
                  c_line   ? {line_buf[0], line_buf[1], line_buf[2], line_buf[3],
                              line_buf[4], line_buf[5], line_buf[6], line_buf[7]} :
                             {224'h0, dev_rdata};

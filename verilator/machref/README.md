@@ -38,7 +38,11 @@ alike), `--ram MB` (made of DIMMs of 4 MB or more), `--cpu 604`,
 machine is built), `--max N` instructions, `--sample N` (log the pc every N
 instructions), `--trace-from N --trace-count M` (log M instructions from the
 Nth; opcodes only with translation off), `--set NAME=VALUE` (any dingusppc
-machine property). `MACHREF_LOG=<n>` sets dingusppc's own log level on
+machine property; `mon_id=MacRGB16in` for Apple's 16-inch monitor, whose
+832 x 624 the core's OSD defaults to), `--frame-at N --frame-out FILE` (the
+video controller's frame at the first refresh after N instructions, as a
+PPM, with the hardware cursor; `null_host.cpp` keeps the converter the
+video controller last handed the display). `MACHREF_LOG=<n>` sets dingusppc's own log level on
 stderr (default warnings).
 
 The machine runs in dingusppc's deterministic mode: the same ROM and options

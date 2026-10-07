@@ -43,6 +43,8 @@
 #include <vector>
 
 extern uint64_t g_icycles;    // cpu/ppc/ppcexec.cpp: instructions executed
+extern uint64_t    g_frame_at;   // null_host.cpp: one frame, as a PPM
+extern std::string g_frame_out;
 
 namespace {
 
@@ -157,6 +159,8 @@ int main(int argc, char **argv) {
         else if (a == "--sample") g_sample = std::strtoull(next().c_str(), nullptr, 0);
         else if (a == "--trace-from") trace_from = std::strtoull(next().c_str(), nullptr, 0);
         else if (a == "--trace-count") trace_count = std::strtoull(next().c_str(), nullptr, 0);
+        else if (a == "--frame-at") g_frame_at = std::strtoull(next().c_str(), nullptr, 0);
+        else if (a == "--frame-out") g_frame_out = next();
         else if (a == "--set") {
             std::string kv = next();
             size_t eq = kv.find('=');

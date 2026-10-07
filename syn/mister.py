@@ -8,6 +8,7 @@ options, load it, take a screenshot, read the core's UART.
                                                  core start (default syn\\nvram_of_prompt.bin)
     python syn\\mister.py rm-nvram                removes boot1.rom (the NVRAM starts blank)
     python syn\\mister.py cfg [--ram MB] [--boot rom|memtest] [--uart modem|debug]
+                              [--picture mac|debug] [--monitor 16|13]
                                                  writes config/PPCMac.CFG
     python syn\\mister.py load                    loads _Unstable/PPCMac.rbf
     python syn\\mister.py menu                    loads the menu core again
@@ -121,7 +122,7 @@ def main():
     if cmd == "rm-nvram":
         return ssh("rm -f /media/fat/games/PPCMac/boot1.rom")
     if cmd == "cfg":
-        ram, boot, uart = 16, "rom", "modem"
+        ram, boot, uart, picture, monitor = 16, "rom", "modem", "mac", 16
         for i in range(1, len(a) - 1):
             if a[i] == "--ram":
                 ram = int(a[i + 1])
@@ -129,10 +130,17 @@ def main():
                 boot = a[i + 1]
             if a[i] == "--uart":
                 uart = a[i + 1]
-        if ram not in RAM_OPTION or boot not in ("rom", "memtest") or uart not in ("modem", "debug"):
-            sys.exit("--ram one of %s, --boot rom or memtest, --uart modem or debug" % sorted(RAM_OPTION))
-        status = (RAM_OPTION[ram] << 1) | ((boot == "memtest") << 4) | ((uart == "debug") << 6)
-        data = "\\x%02x" % status + "\\x00" * 15
+            if a[i] == "--picture":
+                picture = a[i + 1]
+            if a[i] == "--monitor":
+                monitor = int(a[i + 1])
+        if (ram not in RAM_OPTION or boot not in ("rom", "memtest") or uart not in ("modem", "debug")
+                or picture not in ("mac", "debug") or monitor not in (16, 13)):
+            sys.exit("--ram one of %s, --boot rom or memtest, --uart modem or debug, --picture mac or debug, "
+                     "--monitor 16 or 13" % sorted(RAM_OPTION))
+        status = ((RAM_OPTION[ram] << 1) | ((boot == "memtest") << 4) | ((uart == "debug") << 6)
+                  | ((picture == "debug") << 7) | ((monitor == 13) << 8))
+        data = "\\x%02x\\x%02x" % (status & 0xFF, status >> 8) + "\\x00" * 14
         return ssh("printf '%s' > /media/fat/config/PPCMac.CFG && xxd /media/fat/config/PPCMac.CFG" % data)
     if cmd == "load":
         return ssh("echo 'load_core %s' > /dev/MiSTer_cmd" % CORE)
