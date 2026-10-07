@@ -35,7 +35,8 @@ readout (rows of squares), not yet a Mac.
 | Cuda (ADB, power, reset, clock, PRAM) | the real chip: a 68HC05 (`rtl/machine/PPCMac_hc05.sv`, checked instruction by instruction against MAME's 6805 core) running Apple's firmware 341S0060 (Cuda 2.40), behind Grand Central's VIA with a real shift register; it holds the CPU in reset until its firmware powers the machine up. The firmware is the 7300's own: read out of its chip through the VIA (`cudadump/`, 2026-10-07), byte for byte MAME's dump. In simulation the ROM's Cuda traffic goes through and the ROM runs on through the NanoKernel into Mac OS (the CPU bug the lockstep found at 24.4 million instructions is fixed: the plan's M6 section). On the board (2026-10-07) Cuda releases the CPU 1,284 ms after the machine's reset and both ROMs run through Open Firmware into Mac OS. Nothing on its ADB or I2C lines yet |
 | Interrupts | Grand Central's events, mask and levels as MAME's and dingusppc's; the VIA is the first source (2026-10-07): the 7300's ROM runs 100 million instructions in lockstep with Mac OS's timer interrupts, its device traffic matching dingusppc's through Mac OS's start-up to where Mac OS probes MESH ([docs/PPCMac_plan.md](docs/PPCMac_plan.md), milestone I) |
 | Serial console | the ESCC (a Z85C30's asynchronous mode, `rtl/machine/PPCMac_escc.sv`); its modem port is the MiSTer's UART, Open Firmware's console: with an NVRAM image that sets `auto-boot?` false, Open Firmware's prompt over the UART, in simulation (in lockstep, the banner byte for byte dingusppc's) and on the board (2026-10-07) |
-| Machine (video, SCSI, sound, ...) | not started |
+| SCSI controllers, with empty buses | MESH (`rtl/machine/PPCMac_mesh.sv`) and Curio's 53CF94 (`PPCMac_sc53c94.sv`) as dingusppc models them, with no targets: Mac OS reads MESH's ID, sets both up and selects every target on both buses, each selection ending in a timeout and an interrupt; in simulation the 7300's ROM runs 450 million instructions in lockstep through that probing, its SCSI traffic matching dingusppc's (milestone E, 2026-10-07; [docs/PPCMac_plan.md](docs/PPCMac_plan.md)). Disks come with milestone S, through Main_MiSTer's Mac SCSI family support |
+| Machine (video, disks, sound, ...) | not started |
 
 The first full build of the core (2026-10-06: the CPU at 65 MHz, the
 machine, the SDRAM controller at 100 MHz, the debug readout, the MiSTer
@@ -412,6 +413,8 @@ size and maximum clock. `--paths 10` also lists the slowest paths.
 | `docs/PPCMac_stubs.md` | everything the machine stubs, simplifies or leaves out |
 | `syn/` | stand-alone area and timing checks |
 | `ppctest/` | tool that builds the test disk for real Macs and decodes its results |
+| `cudadump/` | a disk that reads Cuda's firmware out of a real 7300 |
+| `hwprobe/` | a disk that measures, on a real 7300, the device behaviour the emulators guess (SCSI selection timeouts, access times) |
 | `ppctest/runs/results_*.csv` | golden results from real hardware |
 | `docs/` | plans and design notes |
 

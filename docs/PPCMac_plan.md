@@ -239,6 +239,56 @@ its device traffic, with the values, matching dingusppc's through 355
 million instructions (dingusppc's count) apart from the differences
 already explained.
 
+**Built, in simulation, 2026-10-07.** `PPCMac_mesh.sv` and
+`PPCMac_sc53c94.sv` (Curio's 53CF94 cell) inside `PPCMac_gc`, on Grand
+Central's sources 0D and 0C, timed by a 25 MHz tick from the CPU's clock
+(`SCSI_HZ` in `PPCMac_machine`). What each does and leaves out is in their
+headers and in `PPCMac_stubs.md`. The selection timeouts follow the chips'
+registers: MESH's in 10 ms units (the ROM computes it as milliseconds / 10,
+`nitt` 43 at FFEB7C1C, and writes 0x19, dingusppc's fixed 250 ms), Curio's
+as 8192 x the clock factor x the register in the chip's clocks (MAME's
+formula; 25 MHz assumed, so the ROM's factor 5 and A7 make 273.6 ms).
+
+The 7300's ROM ran 450 million instructions in lockstep with no difference
+(1.95 cycles per instruction). Mac OS reads MESH's ID (E2, 82.0 million
+instructions), resets the bus and MESH and sets it up; sets Curio up and
+reads the high transfer count as dingusppc's run does (00, configuration 2
+being 80 by then); from 146.7 million arbitrates and selects on MESH IDs 0,
+6, 5, 4, 3, 2, 1, 0, each ending in the selection-timeout exception 250 ms
+later (8.2 million instructions); then on Curio IDs 6 down to 0 (from 212.7
+million, a disconnect interrupt 273.6 ms after each); then, waiting for a
+startup disk, MESH ID 0 again and again. The same targets in the same order
+as dingusppc's run, every register value the same, against a machref log of
+10^9 instructions (which covers the RTL's 450 million: dingusppc's time is
+16 ns an instruction, so its 250 ms is 15.6 million instructions). Two
+differences in the SCSI traffic, both explained:
+
+- After each arbitration and select, dingusppc's MESH keeps its interrupt
+  line up although the select has cleared command done (its line is
+  recomputed only at some events), so Grand Central's level for MESH reads
+  high and Mac OS runs MESH's interrupt service once more, finding nothing
+  (FFEBB27C reads 00). Here the line follows the registers, the level reads
+  low and that service call does not happen. Both machines take the
+  interrupt the stale 68k-mode event makes when Mac OS enables MESH in
+  Grand Central's mask.
+- Mac OS retries ID 0 on a timer while it waits for a disk, so the two
+  machines make different numbers of retries in a stretch of instructions.
+
+Elsewhere the traffic differs where it did before E (the real Cuda's
+packets, VIA timer values, the RAM sizing) and where dingusppc has devices
+we have not built: its Control video and RaDACal from 115 million (the
+video driver's traffic; milestone V). The 7600's ROM runs 300 million
+instructions in lockstep (2.11 cycles per instruction) through the same
+probing: MESH's ID, MESH IDs 0, 6-1, 0 and on, Curio IDs 6-0. The serial
+console still answers in lockstep (`dev / ls` now lists `/53c94@10000`
+and `/mesh@18000` with their `sd` and `st` children, as before E).
+
+A probe disk for the real 7300 measures what the emulators can only guess
+here (`hwprobe/`: MESH's and Curio's selection timeouts, MESH's command-done
+behaviour, Curio's part ID, the time of a device access, the VIA's
+included); built and checked under dingusppc with the 7300's ROM, waiting
+for a run on the machine.
+
 ### T: serial console
 
 Open Firmware's console with a blank NVRAM is `ttya`, the modem port: the
@@ -376,6 +426,38 @@ What it needs:
 - MESH's data phases and DMA commands on top of E's selection; Curio
   stays an empty bus.
 
+How the disks reach the core (decided 2026-10-07 at the user's request: do
+it as the Mac Quadra 800 core does): the standard `hps_io` block interface,
+with Main_MiSTer's Mac SCSI family support (`support/mac/`, upstream since
+PRs 1255-1336). That code recognises a core by name prefix; branch
+`ppcmac-scsi-family` of `..\Main_MiSTer` (commit 5797d42, in the worktree
+`..\Main_MiSTer_ppcmac`; not pushed, not upstream yet) adds `ppcmac`. So
+the core uses the family's slot layout (as MacLC's, `VDNUM` 6): hard disks
+on slots 0 and 1, slot 2 free (the NVRAM, milestone P, as the Quadra keeps
+its PRAM there), the BlueSCSI Toolbox on 3, the CD-ROM on 4 (later), the CD
+changer on 5; `BLKSZ` 2 (512 bytes) with `sd_blk_cnt` for multi-block
+transfers (Main's write buffer takes writes on slots 0 and 1 and writes
+them out in runs; each unbuffered write costs about 4 ms on the card). What
+to take from `..\MacQuadra800_MiSTer` (its README and the survey in this
+session): the mount replay (`MacQuadra800.sv` 534-589: the core-start mount
+lands inside reset, so the size and valid bit are latched and replayed after
+every reset), the two-half sector buffer and the HPS byte order
+(`rtl/ncr53c96.sv` 632-653, 1875-1977: the HPS gives disk byte 0 in bits
+7-0, the Verilator harness big-endian), the target's command set
+(`exec_cdb`: TEST UNIT READY, INQUIRY, MODE SENSE with Apple's page,
+READ CAPACITY, READ and WRITE 6/10, ...) as a target module of its own
+behind MESH, and `rtl/scsi_cache.sv` only if measurements ask for it (the
+Quadra's release build runs with it off). Two differences here: this core's
+`hps_io` runs in the memory clock (100 MHz) and the machine in the CPU's,
+so the sector buffer is a dual-clock RAM with synchronised handshakes; and
+DMA (DBDMA through the snoop port, rule 2) moves whole sectors, so
+multi-block requests come naturally. Main's family code also zeroes two
+words of DDR3 at byte 0x1FF04000 and 0x1FF20000 the first time it polls,
+for any core (its Ethernet mailbox): V's VRAM must stay clear of
+0x1FF00000-0x1FF21000. And Main does not flush its write buffer when a core
+is reloaded (up to 20 ms of writes, 500 ms under continuous writing): wait
+a moment after the last write before loading another core.
+
 Proof: Mac OS booting from a disk image to the Finder, in simulation first
 (the lockstep bench at 400,000 instructions a second reaches a billion in
 about 40 minutes), then on the board.
@@ -433,5 +515,7 @@ driving it.
 | ~~V~~ | ~~VRAM in the HPS's DDR3 or in the SDRAM?~~ Decided 2026-10-07: the DDR3, all 4 MB, block RAM for the line buffer and the colour table only. |
 | X | Added 2026-10-07: the PCI bus and a card in a slot, for later. Which card first? |
 | from E on | Decided 2026-10-07: the sessions from milestone E on work independently (`RESUME_scsi.md`): they decide what the documents leave open, record each decision in this table with its reason, and go on through the milestones in order. The CPU rule stands: a CPU change stops the session with a hand-off prompt. |
-| V | Which monitor the sense lines report (640 x 480 first, larger later?). |
-| S | Which disk image format and Mac OS version to test with first. |
+| ~~V~~ | ~~Which monitor the sense lines report (640 x 480 first, larger later?).~~ Answered 2026-10-07 (start of E): match the machine's default resolution (the user remembers it as "872 by something": to be found from Control's sense code and dingusppc's default monitor), with a forced 640 x 480 as an option; HDMI through the framework's scaler first, the analog output (a PC CRT) considered in the design (the MiSTer's `vga_scaler` puts the scaler's output on VGA). |
+| ~~S~~ | ~~Which disk image format and Mac OS version to test with first.~~ Answered 2026-10-07: the session picks from the user's images (`\\daninas.local\Software\BlueSCSI Images\PowerPC Images`: zipped 512-byte-sector `.hda` images of Mac OS 7.5.3, 7.6.1, 8.5, 8.6 and 9.1 installed), copied in; a hard disk first, a CD-ROM target later. Later also Linux, which starts Mac OS and then BootX: the Debian 7 image there (`HD00_512 LINUX 8500MB.hda.zip`). |
+| E | Decided by the session, 2026-10-07: MESH's selection timeout follows its register in 10 ms units (the ROM computes ms / 10; dingusppc ignores the register and waits 250 ms, the ROM's value); Curio's follows the 53C94's formula with the chip's clock taken to be 25 MHz (MAME's way; dingusppc waits 250 ms); MESH's interrupt line follows its registers at all times, as a pin does (dingusppc recomputes it only at some events); Curio's initiator commands with no connected target are an invalid-command interrupt, as on the chip (dingusppc stops). Reason: real behaviour over an emulator's shortcut where the shortcut is visible, each to be checked by `hwprobe/` on the real 7300. |
+| from E on | Answered 2026-10-07: the user can still run probe disks on the real 7300 (booted from Open Firmware over the modem port, as `cudadump`); where only the real machine can say (MESH's and Curio's selection timeout, the VIA's access time), the session builds such a disk and follows the emulators meanwhile, the guess written in the stubs list. |

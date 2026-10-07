@@ -16,11 +16,13 @@
 //                 edge when the mask's top bit selects 68k mode (Mac OS's
 //                 NanoKernel runs it so, and reads the levels to follow the
 //                 line both ways); the CPU's interrupt is any event that is
-//                 unmasked. Sources so far: the VIA (12)
+//                 unmasked. Sources so far: Curio (0C), MESH (0D), the VIA
+//                 (12)
 //    08000-0FFFF  DMA channel registers, 256 bytes per channel
 //                 (grandcentral.cpp:250-305; dbdma.cpp:307-380): stored and
 //                 read back; a channel never runs (there is no bus master)
-//    10000        Curio SCSI             reads 0
+//    10000        Curio SCSI             PPCMac_sc53c94: the external bus's
+//                                        53CF94, with no target
 //    11000        MACE Ethernet          reads 0
 //    12000-13FFF  ESCC serial            PPCMac_escc: channel A, the modem
 //                                        port, on modem_txd/modem_rxd at
@@ -33,7 +35,8 @@
 //                                        the shift register wired to Cuda
 //                                        (below); PPCMac_machine paces the
 //                                        accesses to the VIA's clock
-//    18000        MESH SCSI              reads 0
+//    18000        MESH SCSI              PPCMac_mesh: the internal bus's
+//                                        controller, with no target
 //    19000        Ethernet address ROM   08 00 07 44 55 66 00 00
 //    1A000        board register 1       E13F (machinetnt.cpp:98-106)
 //    1B000        RaDACal (the Control   reads 0 (control.cpp:156; no video
@@ -52,11 +55,15 @@
 //============================================================================
 
 module PPCMac_gc
+#(
+	parameter int unsigned SCSI_HZ = 25_000_000
+)
 (
 	input  logic        clk,
 	input  logic        reset,
 	input  logic        via_tick,      // one clock at 783,360 Hz
 	input  logic        rtxc_tick,     // one clock at 3,686,400 Hz, the ESCC's RTxC
+	input  logic        scsi_tick,     // one clock at SCSI_HZ: MESH's time, Curio's chip clock
 	input  logic        sel,
 	input  logic        we,
 	input  logic [16:2] addr,          // offset in the 128 KB window
@@ -101,7 +108,8 @@ wire        single = (be == 4'b1000) | (be == 4'b0100) | (be == 4'b0010) | (be =
 // each line as last seen: the levels register, and the edge detector.
 logic [31:0] int_mask, int_events, int_lines_q;
 logic        via_irq;                           // the VIA's IRQ: an enabled flag is set
-wire  [31:0] int_lines  = {13'h0, via_irq, 18'h0};
+logic        curio_irq, mesh_irq;
+wire  [31:0] int_lines  = {13'h0, via_irq, 4'h0, mesh_irq, curio_irq, 12'h0};
 wire  [31:0] int_levels = int_lines_q | 32'h0000_0800;   // dingusppc ORs in bit 11 (grandcentral.cpp:306)
 wire         int_68k    = int_mask[31];         // MACIO_INT_MODE: an event at either edge
 wire  [31:0] int_chg    = int_lines ^ int_lines_q;
@@ -157,6 +165,21 @@ PPCMac_escc escc (
 	.clk, .reset, .rtxc_tick,
 	.sel(sel & devs & (scc_compat | scc_risc)), .we, .rn(scc_rn), .wdata(wb),
 	.rq(scc_rq), .txd_a(modem_txd), .rxd_a(modem_rxd)
+);
+
+// ---- the SCSI controllers: byte registers at (offset >> 4) & F (grandcentral.cpp:188, 211) ----
+logic [7:0] curio_rq, mesh_rq;
+
+PPCMac_sc53c94 #(.TICK_HZ(SCSI_HZ)) curio (
+	.clk, .reset, .tick(scsi_tick),
+	.sel(sel & devs & (sub == 4'h0)), .we, .rn(off[7:4]), .wdata(wb),
+	.rq(curio_rq), .irq(curio_irq)
+);
+
+PPCMac_mesh #(.TICK_HZ(SCSI_HZ)) mesh (
+	.clk, .reset, .tick(scsi_tick),
+	.sel(sel & devs & (sub == 4'h8)), .we, .rn(off[7:4]), .wdata(wb),
+	.rq(mesh_rq), .irq(mesh_irq)
 );
 
 // ---- AWACS (awacs.cpp:189-257) ---------------------------------------------------------
@@ -241,6 +264,8 @@ always_comb begin
 	end
 	else begin
 		case (sub)
+			4'h0:       rq = byte_reg_rdata(be, curio_rq);
+			4'h8:       rq = byte_reg_rdata(be, mesh_rq);
 			4'h2, 4'h3: if (scc_compat | scc_risc) rq = byte_reg_rdata(be, scc_rq);
 			4'h4: begin
 				case (off[7:0])

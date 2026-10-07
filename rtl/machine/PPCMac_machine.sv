@@ -57,8 +57,10 @@
 //
 //  Also made here: tb_tick for the CPU's time base and decrementer, at
 //  TB_HZ on average from any CPU clock (the 604 counts every fourth bus
-//  clock; the 7600's bus is 50 MHz), the VIA's 783,360 Hz clock and the
-//  ESCC's RTxC at 3,686,400 Hz; all by phase accumulation. ext_irq is Grand
+//  clock; the 7600's bus is 50 MHz), the VIA's 783,360 Hz clock, the
+//  ESCC's RTxC at 3,686,400 Hz and the SCSI controllers' 25 MHz (MESH's
+//  delays and selection timeout, Curio's chip clock); all by phase
+//  accumulation. ext_irq is Grand
 //  Central's interrupt output. The ESCC's channel A, the modem port, comes
 //  out as modem_txd and modem_rxd; Grand Central's NVRAM can be written
 //  from outside through nv_ld_* (an image loaded while reset is held).
@@ -71,6 +73,7 @@ module PPCMac_machine
 	parameter int unsigned TB_HZ    = 12_500_000,
 	parameter int unsigned VIA_HZ   = 783_360,
 	parameter int unsigned RTXC_HZ  = 3_686_400,     // the ESCC's RTxC clock
+	parameter int unsigned SCSI_HZ  = 25_000_000,    // MESH's time base and Curio's clock (below CPU_HZ)
 	parameter int unsigned SDRAM_MB = 128,          // the module; the ROM sits in its top 4 MB
 	parameter int unsigned CUDA_FAST_BOOT = 0       // 1: the test bench's (PPCMac_cuda FAST_BOOT)
 )
@@ -172,13 +175,19 @@ wire [31:2] dev_a   = c_line ? {c_addr[31:5], pres_k} : c_addr;
 wire  [3:0] dev_be  = c_line ? 4'hF : c_be;
 wire [31:0] dev_wd  = c_line ? c_wdata[255 - 32 * pres_k -: 32] : c_wdata[31:0];
 
-// ---- the time base, the VIA's clock and the ESCC's -------------------------------------
-logic [31:0] tb_acc, via_acc, rtxc_acc;
-logic        via_tick, rtxc_tick;
+// ---- the time base, the VIA's clock, the ESCC's and the SCSI controllers' ----------------
+logic [31:0] tb_acc, via_acc, rtxc_acc, scsi_acc;
+logic        via_tick, rtxc_tick, scsi_tick;
 always_ff @(posedge clk) begin
 	tb_tick   <= 1'b0;
 	via_tick  <= 1'b0;
 	rtxc_tick <= 1'b0;
+	scsi_tick <= 1'b0;
+	if (scsi_acc + SCSI_HZ >= CPU_HZ) begin
+		scsi_acc  <= scsi_acc + SCSI_HZ - CPU_HZ;
+		scsi_tick <= 1'b1;
+	end
+	else scsi_acc <= scsi_acc + SCSI_HZ;
 	if (rtxc_acc + RTXC_HZ >= CPU_HZ) begin
 		rtxc_acc  <= rtxc_acc + RTXC_HZ - CPU_HZ;
 		rtxc_tick <= 1'b1;
@@ -198,9 +207,11 @@ always_ff @(posedge clk) begin
 		tb_acc    <= 32'h0;
 		via_acc   <= 32'h0;
 		rtxc_acc  <= 32'h0;
+		scsi_acc  <= 32'h0;
 		tb_tick   <= 1'b0;
 		via_tick  <= 1'b0;
 		rtxc_tick <= 1'b0;
+		scsi_tick <= 1'b0;
 	end
 end
 
@@ -239,8 +250,8 @@ logic cuda_treq, cuda_cb1, cuda_cb2_oe, cuda_cb2_out;
 logic via_tip, via_byteack, via_cb2_oe, via_cb2_out;
 wire  cb2_line = (cuda_cb2_oe ? cuda_cb2_out : 1'b1) & (via_cb2_oe ? via_cb2_out : 1'b1);
 
-PPCMac_gc gc (
-	.clk, .reset, .via_tick, .rtxc_tick,
+PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
+	.clk, .reset, .via_tick, .rtxc_tick, .scsi_tick,
 	.sel(present & is_gc), .we(c_we), .addr(dev_a[16:2]), .be(dev_be), .wdata(dev_wd),
 	.rdata(gc_rdata), .irq(gc_irq),
 	.cuda_treq, .cuda_cb1, .cb2(cb2_line), .via_tip, .via_byteack, .via_cb2_oe, .via_cb2_out,
