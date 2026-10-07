@@ -17,7 +17,7 @@ the day a milestone was closed; open ones carry no date.
 | C | Cuda: the real 68HC05 and Apple's firmware behind the VIA | the ROM's Cuda traffic in lockstep, through Open Firmware into Mac OS; on the board, the CPU's reset released 1.28 s after the machine's and the ROM past Open Firmware's wait for Cuda | done 2026-10-07 |
 | I | Interrupts through Grand Central, the VIA first | the ROM in lockstep with the VIA's interrupts taken; its device traffic against dingusppc's whole 7300 shows the same interrupt service; every later source wired with its device | the VIA: done 2026-10-07, in simulation and on the board |
 | T | Serial console: the ESCC's modem port on the MiSTer's UART | Open Firmware's banner and `0 >` prompt over the UART on the board, words typed and answered | done 2026-10-07 |
-| E | The empty machine: MESH and Curio with no targets, as Mac OS probes them | Mac OS's device traffic without a disk matching dingusppc's through the SCSI probing | |
+| E | The empty machine: MESH and Curio with no targets, as Mac OS probes them | Mac OS's device traffic without a disk matching dingusppc's through the SCSI probing | done 2026-10-07, in simulation and on the board |
 | V | Video: Control, RaDACal, the Athens clock chip on Cuda's I2C | Mac OS's screen on the MiSTer's output, in simulation as a frame compared with dingusppc's and on the board as a screenshot | |
 | K | ADB keyboard and mouse on Cuda's line | Open Firmware typed on from the keyboard; the cursor following the mouse in Mac OS | |
 | S | SCSI: DBDMA, MESH, a disk image on the SD card | Mac OS booting from a disk image to the Finder | |
@@ -282,6 +282,22 @@ instructions in lockstep (2.11 cycles per instruction) through the same
 probing: MESH's ID, MESH IDs 0, 6-1, 0 and on, Curio IDs 6-0. The serial
 console still answers in lockstep (`dev / ls` now lists `/53c94@10000`
 and `/mesh@18000` with their `sd` and `st` children, as before E).
+
+**On the board, 2026-10-07.** 24,489 ALMs, 153 RAM blocks, 42 DSP blocks;
+the CPU's clock closes at 63.03 MHz slow 100 C (slack -0.481 ns), run at
+65. With the 7300's ROM, 16 MB and a blank NVRAM, Mac OS runs through the
+probing and on (about 33 million instructions a second, 2.09 cycles per
+instruction; the readout's pc samples in the SCSI Manager, FFEC4Cxx, among
+the NanoKernel's and the 68k emulator's, nothing stuck), the device writes
+growing as the simulation's at the same instruction counts: 26,858 against
+26,852 at 23.7 million, 28,517 against 28,427 at 92.5 million, 36,182
+against 35,678 at 450-460 million, the board a little ahead because its
+instructions take a little more time (Mac OS's timer writes by real time).
+With `syn/nvram_of_prompt.bin` Open Firmware answers on the modem port as
+before, and its device tree gives the two controllers' clocks:
+`/bandit/gc/mesh` `clock-frequency` 02FAF080 (50 MHz, `model`
+AAPL,343S1146, interrupts 0D and DMA 0A), `/bandit/gc/53c94` 017D7840
+(25 MHz, the clock assumed for Curio's selection timeout).
 
 A probe disk for the real 7300 measures what the emulators can only guess
 here (`hwprobe/`: MESH's and Curio's selection timeouts, MESH's command-done
