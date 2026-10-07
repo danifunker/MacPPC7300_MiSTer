@@ -21,11 +21,13 @@ module PPCMac_system
 #(
 	parameter int unsigned CPU_HZ   = 65_000_000,
 	parameter int unsigned TB_HZ    = 12_500_000,
-	parameter int unsigned SDRAM_MB = 128
+	parameter int unsigned SDRAM_MB = 128,
+	parameter int unsigned CUDA_FAST_BOOT = 0       // 1: the test bench's (PPCMac_cuda FAST_BOOT)
 )
 (
 	input  logic         clk,             // the CPU's clock
-	input  logic         reset,           // in the CPU's clock
+	input  logic         reset,           // in the CPU's clock: the machine's reset
+	output logic         cpu_in_reset,    // the CPU is held in reset (by reset or by Cuda)
 	input  logic [31:0]  reset_pc,
 	input  logic [7:0]   ram_mb,          // installed RAM, at most SDRAM_MB - 4
 	input  logic         boot_memtest,    // the memory test in place of the ROM
@@ -92,9 +94,13 @@ logic [3:0]   m_be;
 logic [255:0] m_wdata, m_rdata;
 logic         ext_irq, tb_tick;
 logic         snoop_ack;          // unused until something else masters memory
+logic         cuda_reset;         // Cuda holds the CPU in reset (PPCMac_cuda)
+wire          cpu_reset = reset | cuda_reset;
+
+assign cpu_in_reset = cpu_reset;
 
 DSPPC604 cpu (
-	.clk, .reset, .reset_pc,
+	.clk, .reset(cpu_reset), .reset_pc,
 	.ext_irq, .tb_tick,
 	.mem_req(c_req), .mem_we(c_we), .mem_line(c_line), .mem_addr(c_addr), .mem_be(c_be),
 	.mem_wdata(c_wdata), .mem_ack(c_ack), .mem_rdata(c_rdata),
@@ -105,11 +111,11 @@ DSPPC604 cpu (
 	.trace_dreq, .trace_dwe, .trace_dkind, .trace_daddr, .trace_dbe, .trace_dwdata
 );
 
-PPCMac_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB)) machine (
+PPCMac_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_FAST_BOOT(CUDA_FAST_BOOT)) machine (
 	.clk, .reset, .ram_mb, .boot_memtest,
 	.c_req, .c_we, .c_line, .c_addr, .c_be, .c_wdata, .c_ack, .c_rdata,
 	.m_req, .m_we, .m_line, .m_addr, .m_be, .m_wdata, .m_ack, .m_rdata,
-	.ext_irq, .tb_tick,
+	.ext_irq, .tb_tick, .cpu_reset(cuda_reset),
 	.dbg_status, .dbg_passes, .dbg_errors, .dbg_first
 );
 

@@ -36,10 +36,18 @@
 //                                     memory test reports (see below); no
 //                                     7600 ROM touches this address
 //
-//  Anything else reads as zeros and ignores writes. Nothing ever withholds
-//  an acknowledge: a device that is not there answers at once. RAM space
-//  beyond the installed memory reads 0, as measured on the 7300 (dingusppc
-//  reads all ones there).
+//  Anything else reads as zeros and ignores writes. A device answers at
+//  once, but for the VIA, which Grand Central paces to its 783,360 Hz clock:
+//  an access waits for the clock's next edge and then half a cycle (MAME's
+//  Grand Central, heathrow.cpp via_sync), 0.64-1.91 us. The 7600's ROM
+//  counts on it: its Cuda timeouts are counts of VIA reads, and after each
+//  byte it waits ten VIA reads for Cuda to take the byte's last bit. RAM
+//  space beyond the installed memory reads 0, as measured on the 7300
+//  (dingusppc reads all ones there).
+//
+//  Cuda (PPCMac_cuda), the board's microcontroller, sits on the VIA's port
+//  B and shift register, and holds the CPU in reset (cpu_reset) until its
+//  firmware has powered the machine up, as on the 7600.
 //
 //  A line request to a device is eight word accesses to it, the lowest
 //  address first, as a burst on the real bus would be: with data
@@ -59,7 +67,8 @@ module PPCMac_machine
 	parameter int unsigned CPU_HZ   = 65_000_000,
 	parameter int unsigned TB_HZ    = 12_500_000,
 	parameter int unsigned VIA_HZ   = 783_360,
-	parameter int unsigned SDRAM_MB = 128           // the module; the ROM sits in its top 4 MB
+	parameter int unsigned SDRAM_MB = 128,          // the module; the ROM sits in its top 4 MB
+	parameter int unsigned CUDA_FAST_BOOT = 0       // 1: the test bench's (PPCMac_cuda FAST_BOOT)
 )
 (
 	input  logic         clk,
@@ -89,6 +98,7 @@ module PPCMac_machine
 
 	output logic         ext_irq,
 	output logic         tb_tick,
+	output logic         cpu_reset,                 // Cuda holds the CPU in reset
 
 	// the debug registers, for the debug readout
 	output logic [31:0]  dbg_status,
@@ -112,6 +122,7 @@ wire        is_cha  = a[31:24] == 8'hF0;
 wire        is_ban  = a[31:24] == 8'hF2;
 wire        is_gc   = a[31:17] == 15'h7980;                 // F3000000-F301FFFF
 wire        is_hh   = a[31:12] == 20'hF8000 && a[11:4] < 8'h50;
+wire        is_via  = is_gc && a[16:13] == 4'b1011;              // F3016000-F3017FFF
 
 // RAM and ROM go straight through: the crossing captures the request and
 // holds it, and ignores it in the cycle of its own acknowledge, exactly as
@@ -131,7 +142,15 @@ logic [5:0] dev_sel_q;                             // which block answers: Chaos
 logic       pres_q;                                // a word was presented in the last cycle
 logic [2:0] pres_k_q;                              // ... this one of the line
 logic [31:0] line_buf [8];
-wire  dev_take = c_req & ~to_mem & ~dev_busy & ~dev_ack;
+
+// a word access to the VIA waits for the VIA's clock: its next edge, then half
+// a cycle (a line goes at once, as to any device)
+localparam int unsigned VIA_HALF = CPU_HZ / VIA_HZ / 2;
+logic [1:0] vw;                                    // 0 idle; 1 to the edge; 2 the half cycle
+logic [7:0] vw_cnt;
+wire  via_wait = is_via & ~c_line;
+wire  via_go   = vw == 2'd2 && vw_cnt == 8'd0;
+wire  dev_take = c_req & ~to_mem & ~dev_busy & ~dev_ack & (~via_wait | via_go);
 // the word presented to the devices in this cycle
 wire        present = dev_take | (dev_busy & c_line & dev_cnt <= 4'd7);
 wire  [2:0] pres_k  = dev_take ? 3'd0 : dev_cnt[2:0];
@@ -163,6 +182,21 @@ always_ff @(posedge clk) begin
 	end
 end
 
+always_ff @(posedge clk) begin
+	case (vw)
+		2'd0: if (c_req & ~to_mem & via_wait & ~dev_busy & ~dev_ack) vw <= 2'd1;
+		2'd1: if (via_tick) begin vw <= 2'd2; vw_cnt <= 8'(VIA_HALF - 1); end
+		default: begin
+			if (vw_cnt != 8'd0) vw_cnt <= vw_cnt - 8'd1;
+			else vw <= 2'd0;                        // via_go: the access is presented now
+		end
+	endcase
+	if (reset) begin
+		vw     <= 2'd0;
+		vw_cnt <= 8'd0;
+	end
+end
+
 // ---- the devices ------------------------------------------------------------------------
 logic [31:0] cha_rdata, ban_rdata, gc_rdata;
 logic        gc_irq;
@@ -179,13 +213,40 @@ PPCMac_pcicfg #(.BRIDGE(1)) bandit (
 	.rdata(ban_rdata)
 );
 
+logic cuda_treq, cuda_cb1, cuda_cb2_oe, cuda_cb2_out;
+logic via_tip, via_byteack, via_cb2_oe, via_cb2_out;
+wire  cb2_line = (cuda_cb2_oe ? cuda_cb2_out : 1'b1) & (via_cb2_oe ? via_cb2_out : 1'b1);
+
 PPCMac_gc gc (
 	.clk, .reset, .via_tick,
 	.sel(present & is_gc), .we(c_we), .addr(dev_a[16:2]), .be(dev_be), .wdata(dev_wd),
-	.rdata(gc_rdata), .irq(gc_irq)
+	.rdata(gc_rdata), .irq(gc_irq),
+	.cuda_treq, .cuda_cb1, .cb2(cb2_line), .via_tip, .via_byteack, .via_cb2_oe, .via_cb2_out
 );
 
 assign ext_irq = gc_irq;
+
+// ---- Cuda ------------------------------------------------------------------------------------
+// Nothing else is on its ADB line or its I2C lines yet: each reads as Cuda
+// itself drives it.
+logic        adb_low, iic_scl_low, iic_sda_low;
+logic        cu_cen, cu_rd, cu_wr, cu_tr_valid, cu_tr_int, cu_cpi, cu_fast;
+logic [12:0] cu_addr, cu_tr_pc;
+logic [7:0]  cu_wdata, cu_rdata, cu_tr_op, cu_tr_a, cu_tr_x, cu_tr_sp, cu_tr_cc;
+
+PPCMac_cuda #(.CLK_HZ(CPU_HZ), .FAST_BOOT(CUDA_FAST_BOOT != 0)) cuda (
+	.clk, .reset,
+	.via_tip, .via_byteack, .treq(cuda_treq), .cb1(cuda_cb1),
+	.cb2_oe(cuda_cb2_oe), .cb2_out(cuda_cb2_out), .cb2(cb2_line),
+	.cpu_reset,
+	.adb_low, .adb_line(~adb_low),
+	.iic_scl_low, .iic_sda_low, .iic_scl(~iic_scl_low), .iic_sda(~iic_sda_low),
+	.dbg_cen(cu_cen), .dbg_addr(cu_addr), .dbg_rd(cu_rd), .dbg_wr(cu_wr),
+	.dbg_wdata(cu_wdata), .dbg_rdata(cu_rdata),
+	.tr_valid(cu_tr_valid), .tr_int(cu_tr_int), .tr_pc(cu_tr_pc), .tr_op(cu_tr_op),
+	.tr_a(cu_tr_a), .tr_x(cu_tr_x), .tr_sp(cu_tr_sp), .tr_cc(cu_tr_cc),
+	.dbg_cpi(cu_cpi), .dbg_fast(cu_fast)
+);
 
 // ---- Hammerhead (hammerhead.cpp:41-140) ---------------------------------------------------
 // One-byte registers 16 bytes apart, the byte in bits 31-24 of the word at

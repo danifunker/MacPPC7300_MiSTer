@@ -1118,6 +1118,15 @@ and the board runs at 65 MHz.
 
 After M6 the work is the machine, which gets its own plan.
 
+**Found by the machine, 2026-10-06 (open):** with Cuda built
+(`docs/PPCMac_stubs.md`), the ROM runs on past Open Firmware into the
+NanoKernel, and at 24,440,545 instructions the lockstep stops on
+`lwzux r28, r26, r28` (FFF122B4): r26 = 00FEA000, r28 = 0, the word loaded
+00000021; the core writes r26 = 00FEA021, the address plus the loaded
+value, where the architecture (and dingusppc) give the address, 00FEA000.
+An update-form indexed load with rD = rB; the random lockstep programs
+never had one. The hand-off is `RESUME_cpu.md`.
+
 ## Known behaviour and open items
 
 Everything the CPU does that software could notice and that is not simply

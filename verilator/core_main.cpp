@@ -450,6 +450,8 @@ int main(int argc, char** argv) {
 
 	Mem mm;
 	uint32_t gpr[32] = {0};
+	std::pair<unsigned, uint64_t> beats[8];   // the register writes the core reported for this instruction
+	int beats_n = 0;
 	uint64_t fpr[32] = {0};
 	uint64_t cycles = 0, retired = 0;
 	long checked = 0, failed = 0;
@@ -461,6 +463,9 @@ int main(int argc, char** argv) {
 	double ta = pa, tb = pb;                                              // next edge of each
 	uint64_t last_retire_cycle = 0;
 	bool stuck = false;
+	bool cpu_ran = false, restarted = false;   // Cuda has let the CPU run; has reset it since
+	uint64_t release_cycle = 0;
+	int illegal_spr_notes = 0;
 	int line_notes = 0;
 	uint32_t mt_passes = 0, mt_errors = 0, mt_status = 0, mt_first = 0;
 	int mt_error_lines = 0;
@@ -675,6 +680,23 @@ int main(int argc, char** argv) {
 		tick();
 
 #ifdef PPCMAC_MACHINE
+		// Cuda holds the CPU in reset from the start until its firmware has
+		// powered the machine up; again if it restarts it
+		if (dut->cpu_in_reset) {
+			if (cpu_ran && !restarted) {
+				std::printf("Cuda reset the CPU after %llu instructions, %llu cycles%s\n", (unsigned long long)retired,
+					(unsigned long long)cycles, opt.lockstep ? ": the lockstep ends here" : "");
+				restarted = true;
+				if (opt.lockstep) done = true;
+			}
+			last_retire_cycle = cycles;
+			continue;
+		}
+		if (!cpu_ran) {
+			cpu_ran = true;
+			release_cycle = cycles;
+			std::printf("Cuda released the CPU's reset after %llu cycles\n", (unsigned long long)cycles);
+		}
 		if (cycles - last_retire_cycle > opt.stuck) { stuck = true; break; }
 		// the memory test reports through the machine's debug registers
 		if (opt.memtest) {
@@ -702,6 +724,7 @@ int main(int argc, char** argv) {
 				unsigned idx = dut->trace_reg_idx;
 				if (idx < 32) gpr[idx] = (uint32_t)dut->trace_reg_val;
 				else if (idx >= 64) fpr[idx - 64] = dut->trace_reg_val;
+				if (beats_n < 8) beats[beats_n++] = {idx, (uint64_t)dut->trace_reg_val};
 			}
 			if (dut->trace_last) {
 				uint32_t pc = dut->trace_pc, insn = dut->trace_insn;
@@ -762,6 +785,43 @@ int main(int argc, char** argv) {
 					    ((pc & 0xFFFFF) == 0x900 || (pc & 0xFFFFF) == 0x500)) {
 						ref_interrupt(pc & 0xFFFFF);
 						ref_get_state(&before);
+					}
+					// mtspr or mfspr of an SPR the real 604 does not have: a program
+					// exception (illegal) on the chip and in the core, while dingusppc
+					// accepts the 604e's (MMCR1, PMC3, PMC4: the NanoKernel probes
+					// them). The reference is made to take it as the core did.
+					if (before.pc != pc && (pc & 0xFFFFF) == 0x700 && !(before.msr & 0x20)) {
+						uint32_t w = 0;
+						bool known = false;
+						if (before.pc >= ROM_BASE) {
+							uint32_t o = before.pc - ROM_BASE;
+							w = (uint32_t)rom[o] << 24 | (uint32_t)rom[o + 1] << 16 | (uint32_t)rom[o + 2] << 8 | rom[o + 3];
+							known = true;
+						}
+						else if (before.pc + 4 <= RAM_SIZE) {
+							const uint8_t* rm = ref_ram();
+							w = (uint32_t)rm[before.pc] << 24 | (uint32_t)rm[before.pc + 1] << 16 | (uint32_t)rm[before.pc + 2] << 8 | rm[before.pc + 3];
+							known = true;
+						}
+						uint32_t xo = (w >> 1) & 0x3FF;
+						unsigned spr = ((w >> 16) & 31) | (((w >> 11) & 31) << 5);
+						static const unsigned spr604[] = {1, 8, 9, 18, 19, 22, 25, 26, 27, 268, 269, 272, 273, 274, 275, 282,
+						                                  284, 285, 287, 952, 953, 954, 955, 959, 1008, 1010, 1013, 1023};
+						bool has = spr >= 528 && spr <= 543;
+						for (unsigned s : spr604) has = has || s == spr;
+						if (known && (w >> 26) == 31 && (xo == 467 || xo == 339) && !has) {
+							uint32_t at = before.pc;
+							ref_set_spr(26, at);
+							ref_set_spr(27, (before.msr & 0x87C0FFFFu) | 0x00080000u);
+							ref_state_t t = before;
+							t.msr = (before.msr & 0x00001040u) | ((before.msr >> 16) & 1u);
+							t.pc = pc;
+							ref_set_state(&t);
+							ref_get_state(&before);
+							if (illegal_spr_notes++ < 10)
+								std::printf("note: %s of SPR %u at %08X after %llu instructions: a program exception on a 604\n",
+									xo == 467 ? "mtspr" : "mfspr", spr, at, (unsigned long long)retired);
+						}
 					}
 #endif
 					// The core retires nothing for an instruction that takes an
@@ -862,11 +922,17 @@ int main(int argc, char** argv) {
 						if (s.lr != dut->trace_lr)   std::printf("  lr    reference %08X  core %08X\n", s.lr, dut->trace_lr);
 						if (s.ctr != dut->trace_ctr) std::printf("  ctr   reference %08X  core %08X\n", s.ctr, dut->trace_ctr);
 						if (s.msr != dut->trace_msr) std::printf("  msr   reference %08X  core %08X\n", s.msr, dut->trace_msr);
+						std::printf("  the core reported writing:");
+						for (int k = 0; k < beats_n; k++) std::printf(" r%u=%08llX", beats[k].first, (unsigned long long)beats[k].second);
+						std::printf("\n  before it: rD/rS field r%u=%08X, rA field r%u=%08X, rB field r%u=%08X\n",
+							(insn >> 21) & 31, before.gpr[(insn >> 21) & 31], (insn >> 16) & 31, before.gpr[(insn >> 16) & 31],
+							(insn >> 11) & 31, before.gpr[(insn >> 11) & 31]);
 						diverged = true;
 						break;
 					}
 				}
 #endif
+				beats_n = 0;
 				if (pc == end_pc) done = true;
 			}
 		}
@@ -876,8 +942,9 @@ int main(int argc, char** argv) {
 #ifdef PPCMAC_MACHINE
 	dut->final();
 	if (devq.log) std::fclose(devq.log);
-	std::printf("%llu instructions in %llu cycles (%.2f cycles per instruction)\n",
-		(unsigned long long)retired, (unsigned long long)cycles, retired ? (double)cycles / retired : 0.0);
+	std::printf("%llu instructions in %llu cycles after Cuda released the CPU (%.2f cycles per instruction)\n",
+		(unsigned long long)retired, (unsigned long long)(cycles - release_cycle),
+		retired ? (double)(cycles - release_cycle) / retired : 0.0);
 	std::printf("last retired: pc %08X, msr %08X\n", (uint32_t)dut->trace_pc, (uint32_t)dut->trace_msr);
 	if (opt.lockstep)
 		std::printf("device accesses: %llu reads and %llu writes compared; %llu line reads and %llu line writes "

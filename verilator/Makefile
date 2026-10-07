@@ -5,15 +5,18 @@
 #   make cdc        build $(BUILD)/cdc/cdc_tb   the memory port across two clocks
 #   make machine    build $(BUILD)/machine/machine_tb   the whole machine (PPCMac_system) running a ROM
 #   make sdram      build $(BUILD)/sdram/sdram_tb   the SDRAM controller against a model of the board
+#   make cuda       build $(BUILD)/cuda/cuda_tb   Cuda (the 68HC05 and its firmware) alone
 #   make lint       Verilator lint only
 #   make clean
 #
 # REF_LIB=<path to libdingusref.a> links the dingusppc reference into core_tb
-# for lockstep runs. Normally driven by run.py and run_core.py.
+# for lockstep runs. HC05_LIB=<path to libhc05ref.a> links MAME's 6805 core
+# into cuda_tb. Normally driven by run.py, run_core.py and run_cuda.py.
 
 VERILATOR ?= verilator
 BUILD     ?= build
 REF_LIB   ?=
+HC05_LIB  ?=
 
 HERE := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 RTL  := $(HERE)../rtl/DSPPC604
@@ -65,7 +68,7 @@ machine: $(MACH_DIR)/machine_tb
 
 $(MACH_DIR)/machine_tb: $(RTL_SRCS) $(MACH_SRCS) $(HERE)core_main.cpp $(RTL)/DSPPC604.qip $(MACH)/PPCMac_machine.qip $(HERE)Makefile $(REF_LIB)
 	@mkdir -p $(MACH_DIR)
-	@$(VERILATOR) $(VFLAGS) --top-module PPCMac_system -Mdir $(MACH_DIR) -o machine_tb \
+	@$(VERILATOR) $(VFLAGS) --top-module PPCMac_system -GCUDA_FAST_BOOT=1 -Mdir $(MACH_DIR) -o machine_tb \
 		-CFLAGS "-O2 -std=c++17 -DPPCMAC_MACHINE $(REF_CFLAGS)" $(REF_LDFLAGS) \
 		$(RTL_SRCS) $(MACH_SRCS) $(HERE)core_main.cpp \
 		> $(MACH_DIR)/build.log 2>&1 || (cat $(MACH_DIR)/build.log; false)
@@ -80,6 +83,26 @@ $(BUILD)/sdram/sdram_tb: $(RTL)/DSPPC604_memcdc.sv $(MACH)/PPCMac_sdram.sv $(HER
 		$(RTL)/DSPPC604_memcdc.sv $(MACH)/PPCMac_sdram.sv $(HERE)sdram_tb_top.sv $(HERE)sdram_main.cpp \
 		> $(BUILD)/sdram/build.log 2>&1 || (cat $(BUILD)/sdram/build.log; false)
 	@grep -E '^%Warning' $(BUILD)/sdram/build.log || true
+
+# Cuda alone, its clock at 2 x 4,194,304 Hz (the least PPCMac_cuda takes) to run fast
+CUDA_SRCS := $(MACH)/PPCMac_hc05.sv $(MACH)/PPCMac_cudarom.sv $(MACH)/PPCMac_cuda.sv
+ifneq ($(HC05_LIB),)
+CUDA_DIR    := $(BUILD)/cuda_ref
+CUDA_CFLAGS := -DWITH_HC05REF -I$(HERE)hc05ref
+CUDA_LDFLAGS := -LDFLAGS "$(HC05_LIB)"
+else
+CUDA_DIR    := $(BUILD)/cuda
+endif
+
+cuda: $(CUDA_DIR)/cuda_tb
+
+$(CUDA_DIR)/cuda_tb: $(CUDA_SRCS) $(HERE)cuda_main.cpp $(HERE)Makefile $(HC05_LIB)
+	@mkdir -p $(CUDA_DIR)
+	@$(VERILATOR) $(VFLAGS) --top-module PPCMac_cuda -GCLK_HZ=8388608 -Mdir $(CUDA_DIR) -o cuda_tb \
+		-CFLAGS "-O2 -std=c++17 $(CUDA_CFLAGS)" $(CUDA_LDFLAGS) \
+		$(CUDA_SRCS) $(HERE)cuda_main.cpp \
+		> $(CUDA_DIR)/build.log 2>&1 || (cat $(CUDA_DIR)/build.log; false)
+	@grep -E '^%Warning' $(CUDA_DIR)/build.log || true
 
 cdc: $(BUILD)/cdc/cdc_tb
 
@@ -98,8 +121,9 @@ lint:
 	$(VERILATOR) --lint-only $(WARN) --top-module PPCMac_system $(RTL_SRCS) $(MACH_SRCS)
 	$(VERILATOR) --lint-only $(WARN) --top-module sdram_tb_top $(RTL)/DSPPC604_memcdc.sv $(MACH)/PPCMac_sdram.sv $(HERE)sdram_tb_top.sv
 	$(VERILATOR) --lint-only $(WARN) --top-module PPCMac_debug $(MACH)/PPCMac_debug.sv
+	$(VERILATOR) --lint-only $(WARN) --top-module PPCMac_cuda $(CUDA_SRCS)
 
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all core machine sdram cdc lint clean
+.PHONY: all core machine sdram cdc cuda lint clean

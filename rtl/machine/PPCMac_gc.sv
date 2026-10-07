@@ -23,8 +23,10 @@
 //    14000        AWACS sound            awacs.cpp:189-257
 //    15000        SWIM3 floppy           reads 0
 //    16000-17FFF  VIA                    viacuda.cpp:142-322, the timers
-//                                        counting at 783,360 Hz; no Cuda
-//                                        behind it
+//                                        counting at 783,360 Hz; port B and
+//                                        the shift register wired to Cuda
+//                                        (below); PPCMac_machine paces the
+//                                        accesses to the VIA's clock
 //    18000        MESH SCSI              reads 0
 //    19000        Ethernet address ROM   08 00 07 44 55 66 00 00
 //    1A000        board register 1       E13F (machinetnt.cpp:98-106)
@@ -49,7 +51,16 @@ module PPCMac_gc
 	input  logic [3:0]  be,
 	input  logic [31:0] wdata,
 	output logic [31:0] rdata,
-	output logic        irq            // to the CPU's external interrupt
+	output logic        irq,           // to the CPU's external interrupt
+
+	// the VIA's lines to Cuda (PPCMac_cuda): port B and the shift register
+	input  logic        cuda_treq,     // PB3 in: 0 when Cuda asks for a transaction
+	input  logic        cuda_cb1,      // CB1: Cuda's shift clock
+	input  logic        cb2,           // CB2: the data line, whoever drives it
+	output logic        via_tip,       // PB5 out: 0 while a transaction is in progress
+	output logic        via_byteack,   // PB4 out
+	output logic        via_cb2_oe,    // the VIA drives CB2 (shifting out)
+	output logic        via_cb2_out
 );
 
 import PPCMac_pkg::*;
@@ -104,14 +115,33 @@ wire scc_cmd    = (scc_compat && off[3:1] <= 3'd1) || (scc_risc && (off[7:4] == 
 logic [31:0] snd_ctrl, codec_ctrl, clip_count, frame_count;
 logic        byte_swap;
 
-// ---- VIA (viacuda.cpp) -------------------------------------------------------------------
-logic [7:0]  via_portb, via_porta, via_ddrb, via_ddra, via_sr, via_acr, via_pcr, via_ifr, via_ier;
+// ---- VIA (viacuda.cpp; port B and the shift register as a 6522 and Cuda have them) -------
+// Port B is a 6522's: the output register holds all eight bits and a read
+// gives it where DDRB is 1 and the pins elsewhere; the pins Cuda drives
+// are PB3 (TREQ), the others read 0. PB5 (TIP) and PB4 (BYTEACK) go to
+// Cuda, high where they are inputs. The shift register works in the modes
+// Cuda's protocol uses, both clocked by Cuda on CB1, as MAME's 6522 does
+// them (6522via.cpp shift_in, shift_out, write_cb1): every CB1 edge counts;
+// shifting out (ACR SR bits 111) the VIA puts SR bit 7 on CB2 and rotates on
+// a falling edge, the flag at the eighth; shifting in (011, and 000) it
+// takes CB2 in on a rising edge, the flag at the eighth (not in 000). A
+// read or write of SR clears the flag and starts the count again.
+logic [7:0]  via_orb, via_porta, via_ddrb, via_ddra, via_sr, via_acr, via_pcr, via_ifr, via_ier;
 logic [7:0]  t1ll, t1lh, t2ll;
 logic [15:0] t1, t2;                 // the counters
 logic [17:0] t1_left, t2_left;       // VIA clocks until the flag
 logic        t1_run, t2_run;
+logic [4:0]  sr_cnt;                 // CB1 edges until the flag (MAME's m_shift_counter)
+logic        cb1_q;                  // CB1 as last seen
+logic        cb2_q;                  // what the VIA drives on CB2
 wire  [3:0]  via_reg    = addr[12:9];
 wire  [7:0]  via_ifr_rd = {|(via_ifr[6:0] & via_ier[6:0]), via_ifr[6:0]};
+wire  [7:0]  via_pb_rd  = (via_orb & via_ddrb) | ({4'b0000, cuda_treq, 3'b000} & ~via_ddrb);
+
+assign via_tip     = ~via_ddrb[5] | via_orb[5];
+assign via_byteack = ~via_ddrb[4] | via_orb[4];
+assign via_cb2_oe  = via_acr[4];
+assign via_cb2_out = cb2_q;
 
 // ---- NVRAM -----------------------------------------------------------------------------
 logic [15:0] nv_hi;
@@ -174,7 +204,7 @@ always_comb begin
 			end
 			4'h6, 4'h7: begin
 				case (via_reg)
-					4'd0:        rq = byte_reg_rdata(be, via_portb);
+					4'd0:        rq = byte_reg_rdata(be, via_pb_rd);
 					4'd1, 4'd15: rq = byte_reg_rdata(be, via_porta);
 					4'd2:        rq = byte_reg_rdata(be, via_ddrb);
 					4'd3:        rq = byte_reg_rdata(be, via_ddra);
@@ -210,6 +240,37 @@ end
 
 logic [31:0] rdata_q;
 assign rdata = nv_rd_q ? iobus_rdata({8'h00, nv_q}) : rdata_q;
+
+// ---- the shift register: the CPU's access to it, then a CB1 edge in the same clock --------
+wire       sr_acc = sel & devs & (sub == 4'h6 || sub == 4'h7) & (via_reg == 4'd10);
+wire [4:0] cnt_a  = sr_acc ? (cb1_q ? 5'd15 : 5'd16) : sr_cnt;
+wire [7:0] sr_a   = (sr_acc & we) ? wb : via_sr;
+wire [2:0] sr_m   = via_acr[4:2];
+logic [7:0] sr_n;
+logic [4:0] cnt_n;
+logic       cb2_n, sr_flag;
+always_comb begin
+	sr_n    = sr_a;
+	cnt_n   = cnt_a;
+	cb2_n   = cb2_q;
+	sr_flag = 1'b0;
+	if (cuda_cb1 != cb1_q) begin
+		if (sr_m == 3'b111) begin
+			if (cnt_a[0]) begin
+				cb2_n = sr_a[7];
+				sr_n  = {sr_a[6:0], sr_a[7]};
+				if (cnt_a == 5'd1) sr_flag = 1'b1;
+			end
+		end
+		else if (sr_m == 3'b011 || sr_m == 3'b000) begin
+			if (!cnt_a[0]) begin
+				sr_n = {sr_a[6:0], cb2};
+				if (cnt_a == 5'd0 && sr_m != 3'b000) sr_flag = 1'b1;
+			end
+		end
+		cnt_n = {1'b0, cnt_a[3:0] - 4'd1};
+	end
+end
 
 // ---- writes, and the reads that change something --------------------------------------
 always_ff @(posedge clk) begin
@@ -287,7 +348,7 @@ always_ff @(posedge clk) begin
 			end
 			4'h6, 4'h7: begin
 				case (via_reg)
-					4'd0:        if (we) via_portb <= (via_portb & ~via_ddrb) | (wb & via_ddrb);
+					4'd0:        if (we) via_orb <= wb;
 					4'd1, 4'd15: if (we) via_porta <= wb;
 					4'd2:        if (we) via_ddrb <= wb;
 					4'd3:        if (we) via_ddra <= wb;
@@ -308,7 +369,8 @@ always_ff @(posedge clk) begin
 						t2_run <= 1'b1;
 						via_ifr[5] <= 1'b0;
 					end
-					4'd10: begin if (we) via_sr <= wb; via_ifr[2] <= 1'b0; end
+					4'd10:       via_ifr[2] <= 1'b0;      // the register itself: sr_n
+
 					4'd11: if (we) via_acr <= wb & 8'h5C;
 					4'd12: if (we) via_pcr <= wb;
 					4'd13: if (we) via_ifr[6:0] <= via_ifr[6:0] & ~wb[6:0];
@@ -319,6 +381,13 @@ always_ff @(posedge clk) begin
 			default: ;
 		endcase
 	end
+
+	// the shift register, clocked by Cuda
+	via_sr <= sr_n;
+	sr_cnt <= cnt_n;
+	cb2_q  <= cb2_n;
+	cb1_q  <= cuda_cb1;
+	if (sr_flag) via_ifr[2] <= 1'b1;
 
 	if (reset) begin
 		int_mask   <= 32'h0;
@@ -336,8 +405,11 @@ always_ff @(posedge clk) begin
 		clip_count  <= 32'h0;
 		frame_count <= 32'h0;
 		byte_swap   <= 1'b0;
-		via_portb   <= 8'h0;
+		via_orb     <= 8'h0;
 		via_porta   <= 8'h0;
+		sr_cnt      <= 5'd15;
+		cb1_q       <= 1'b1;
+		cb2_q       <= 1'b1;
 		via_ddrb    <= 8'h0;
 		via_ddra    <= 8'h0;
 		via_sr      <= 8'h0;

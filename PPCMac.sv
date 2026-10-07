@@ -23,10 +23,12 @@
 //    clk_cpu  CPU_MHZ  the CPU and the machine (PPCMac_system)
 //    clk_mem  100 MHz  the SDRAM controller, hps_io and the ROM upload
 //
-//  The CPU is held in reset while RESET, the OSD's reset or the button is
+//  The machine is held in reset while RESET, the OSD's reset or the button is
 //  down, while the SDRAM is not ready, while a ROM is being uploaded, until
 //  a ROM has been uploaded (unless the OSD boots the memory test), and for a
-//  moment after the RAM size or boot option changes. The ROM goes into the
+//  moment after the RAM size or boot option changes. Then Cuda starts, and
+//  holds the CPU in reset until its firmware has powered the machine up
+//  (about 1.3 s; the debug readout counts from there). The ROM goes into the
 //  top 4 MB of the 128 MB SDRAM board, written byte by byte from the OSD's
 //  file upload (index 1, or index 0: a boot.rom in the core's folder is
 //  loaded at start).
@@ -205,6 +207,7 @@ wire  [3:0]  b_be;
 wire [255:0] b_wdata, b_rdata;
 
 wire         cpu_req, cpu_we, cpu_line, cpu_ack, cpu_irq, cpu_tb_tick;
+wire         cpu_held;          // the CPU in reset: cpu_reset, or Cuda holding it
 wire [31:2]  cpu_addr;
 wire  [3:0]  cpu_be;
 wire [255:0] cpu_wdata, cpu_rdata;
@@ -221,6 +224,7 @@ PPCMac_system #(.CPU_HZ(CPU_MHZ * 1000000), .TB_HZ(12500000), .SDRAM_MB(128)) sy
 (
 	.clk(clk_cpu),
 	.reset(cpu_reset),
+	.cpu_in_reset(cpu_held),
 	.reset_pc(32'hFFF00100),
 	.ram_mb(ram_mb_c[1]),
 	.boot_memtest(boot_memtest_c[1]),
@@ -297,7 +301,7 @@ wire       led_user;
 PPCMac_debug #(.BUILD(BUILD), .VID_HZ(20000000), .BAUD(115200)) debug
 (
 	.clk_cpu(clk_cpu),
-	.cpu_reset(cpu_reset),
+	.cpu_reset(cpu_held),
 	.trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_msr,
 	.cpu_req, .cpu_we, .cpu_ack, .cpu_addr,
 	.mt_passes(dbg_passes), .mt_errors(dbg_errors), .mt_first(dbg_first), .mt_status(dbg_status),

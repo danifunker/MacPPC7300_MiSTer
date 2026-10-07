@@ -15,7 +15,7 @@ the device reads as zero and writes are ignored.
 
 | What | The stub | The real thing | Will need it |
 |---|---|---|---|
-| Bus errors, machine check | Never. Every access is acknowledged at once; a device that is not there reads 0. | A real 7600 can raise a machine check (TEA) for some unmapped accesses; dingusppc raises one for PCI I/O space with no device. The CPU has no machine-check exception yet. | Anything that probes for hardware by catching the machine check. Measured: RAM space beyond the installed memory does not need it. |
+| Bus errors, machine check | Never. Every access is acknowledged (at once, or for the VIA when its clock allows: below); a device that is not there reads 0. | A real 7600 can raise a machine check (TEA) for some unmapped accesses; dingusppc raises one for PCI I/O space with no device. The CPU has no machine-check exception yet. | Anything that probes for hardware by catching the machine check. Measured: RAM space beyond the installed memory does not need it. |
 | RAM beyond the installed size | Reads 0, writes ignored. | The same on the 7300 (measured). dingusppc reads all ones. | Nothing known. |
 | Line (cached) accesses to devices | Eight word accesses to the device, the lowest address first, as a burst on the real bus would be (the ROM reads Hammerhead's CPU ID through the data cache before it sets up any BAT: with data translation off the 604 caches everything). Outside any device: zeros. | A real device sees a 4-beat burst of 8 bytes; how each device answers a burst is not documented. Hammerhead's ID register gives the right answer either way. | A device with read side effects (VIA, SCC) read through the cache would see eight reads here; nothing does that so far. |
 | Debug registers at F9000000 | Not a 7600 device: 256 bytes where the memory test reports (status, passes, errors, first error, the word read and expected; installed RAM size, read only). The debug readout shows them. | Nothing at that address on a 7600 (it would read 0). | Remove or move it if any software probes F9000000. |
@@ -25,6 +25,8 @@ the device reads as zero and writes are ignored.
 | Hammerhead bank base registers | Stored and read back. RAM is mapped flat from 0 at the installed size whatever they say. | The real Hammerhead maps each DIMM bank at its base. dingusppc maps flat, as here. | Software that relies on banks not being contiguous (none known). |
 | Other memory masters (DMA) | None. The CPU's snoop port is tied off. | Grand Central's DBDMA engines (sound, SCSI, serial, floppy, Ethernet) and PCI masters read and write memory. | Startup chime, SCSI, floppy, serial DMA. |
 | External interrupt | Grand Central's output, but no source ever raises an event, so it is never requested. | VIA, SCC, SCSI, DMA and PCI interrupts through Grand Central. | Anything interrupt-driven: Mac OS from the start, Open Firmware's console. |
+| VIA access time | Modelled as MAME's Grand Central has it (heathrow.cpp `via_sync`): a word access to F3016000-F3017FFF waits for the next edge of the VIA's 783,360 Hz clock and then half a cycle, 0.64-1.91 us. A line access to the VIA goes at once. | Grand Central's VIA cell, synchronised to its clock; not measured on a 7600 (a timebase-timed loop of `lbz` from vIFR on the real machine would do it). | Already needed: the ROM's Cuda timeouts are counts of VIA reads, and after each byte it waits ten VIA reads (FFF04BCC) for Cuda to sample the byte's last bit 3.8 us after the VIA's flag. Answered at once, the ROM corrupts that bit. Mac OS calibrates its delays (TimeVIADB) on VIA accesses too. |
+| The CPU's reset | Cuda (PC3) holds it from the machine's reset until its firmware has powered the machine up: every start is the firmware's cold start, as after a battery is put in: about 1.0 s on the 16 kHz crystal clock, the PLL on, then 250 ms of power-on sequence (1.28 s in all on the board). A restart (PC3 low again) resets the CPU only. | Cuda runs from the battery all the time; the power key starts the machine in about 250 ms. A restart resets the whole board. | A faster start if wanted (Cuda's state could be saved). A restart that relies on Grand Central and the bridges being reset too. |
 | Second CPU, L2 cache, Bandit 2 | Absent (Hammerhead reports one CPU and no L2; the board ID has no second PCI bus). | As configured on a 7600. | - |
 
 ## Chaos, the video bus (F0000000, `PPCMac_pcicfg.sv`, BRIDGE = 0)
@@ -49,8 +51,8 @@ the device reads as zero and writes are ignored.
 |---|---|---|---|
 | Interrupt registers | Events, mask, clear and levels implemented as dingusppc has them; no source is connected, so events stay 0. | Every device below raises events. | Interrupt-driven code. |
 | DMA channel registers (DBDMA) | Channels 0-3, 8 and A store their registers and read them back; RUN and PAUSE follow writes; ACTIVE is never set and no command is ever fetched. Channels 4-7 (serial) and 9 (sound in) read 0, as in dingusppc. | Each channel runs a program of descriptors from memory (dbdma.cpp). | The startup chime (sound out, channel 8): its command list and samples are in the ROM (the `beep` resource at FFE00010 on; `rom7600/README.md`), so the DMA engine must be able to read the ROM as well as RAM. Then SCSI, floppy. |
-| VIA | Registers implemented; T1 and T2 count at 783,360 Hz and set their flags as dingusppc's do. The shift register stores what is written; nothing ever shifts. | A 6522 with Cuda on port B and the shift register. | - |
-| **Cuda** (power, reset, RTC, PRAM, ADB keyboard and mouse) | **Absent.** Port B's TREQ never changes, the shift register never completes a byte, so every Cuda exchange times out. The ROM's Cuda loops all have counter timeouts (FFF047CC onward). | A 68HC05 microcontroller with its own protocol (viacuda.cpp, 1,000+ lines). | **Where the ROM stops today**: after 18.27 million instructions Open Firmware polls the VIA for Cuda's answer with no timeout (FF80AAC8) and never gets further. Also PRAM settings, the real-time clock, the keyboard and mouse, soft power and restart. dingusppc's ROM run exchanges one packet with it in the first 70,000 instructions (an I2C write: command 22, address 88, data 61 55; which device sits at I2C address 88 is not known); here that exchange times out. |
+| VIA | Registers implemented; T1 and T2 count at 783,360 Hz and set their flags as dingusppc's do. Port B is a 6522's (the output register holds all eight bits; PB3 reads Cuda's TREQ, the other input pins 0); the shift register is clocked by Cuda on CB1 in the two modes Cuda's protocol uses (shift out under CB1, 111; shift in under CB1, 011), as MAME's 6522 does them: the flag at the eighth falling edge out, the eighth rising edge in. The VIA's interrupt (IFR and IER) goes nowhere. Port A, CA1/CA2, CB1/CB2 interrupts and the other shift modes are not modelled. | A 6522 cell with Cuda on port B and the shift register, its interrupt Grand Central's source 12. | The interrupt: Mac OS's Cuda driver and its VIA timer interrupts. |
+| Cuda | The chip itself: see its own section below. | - | - |
 | ESCC (serial) | A command-register read returns RR0 = 44 (transmit buffer empty) when the register pointer is 0, else 0; the pointer is tracked as on the chip. Data reads 0; nothing is transmitted or received. | Two Z85C30 channels (escc.cpp). | Open Firmware's console on the modem port, the UART debug path if we ever route it here. |
 | AWACS (sound) | Control, codec control, clip count, byte swap and frame count registers stored as in dingusppc; codec status reads 00314000 (available, Crystal, Screamer). No sound. | A codec fed by DMA channel 8. | The startup chime. |
 | NVRAM | 8 KB, implemented, through the address-high latch at 1D000 and the data window at 1F000. Zeros at power-up, as dingusppc without a file; not kept across power-off. | Battery-backed: keeps Open Firmware's settings. | Keeping settings between runs (a save to the SD card, later). |
@@ -61,6 +63,22 @@ the device reads as zero and writes are ignored.
 | MACE Ethernet | Reads 0. | mace.cpp. | Networking. |
 | SWIM3 floppy | Reads 0. | swim3.cpp. | Floppy. |
 | IOBus devices 2, 3, 5 | Read 0. | Absent on a 7600 too (RaDACal, sixty6, board register 2 belong to other models). | - |
+
+## Cuda (`PPCMac_cuda.sv`, `PPCMac_hc05.sv`)
+
+The microcontroller itself: a 68HC05E1 (`PPCMac_hc05`, every instruction
+and its cycle count checked against MAME's 6805 core) running Apple's
+firmware 341S0060, Cuda 2.40, from MAME's dump (`rtl/machine/cuda/`), on
+its 2,097,152 Hz bus. What is left out around it:
+
+| What | The stub | The real thing | Will need it |
+|---|---|---|---|
+| Which Cuda | 341S0060 (2.40). | The 7600's own part is not known: MAME's notes put 341S0060 in the PCI x500 machines, the Pippin and the 6200, and 341S0788 (2.37) in the 7200. The chip's label on the user's board settles it. | - |
+| ADB | Nothing on the line: Cuda's own drive is all there is. An ADB talk gets no answer (Cuda replies 00 06 cmd). | A keyboard and a mouse. | Input. The Mac LC core's `adb_device.sv` (keyboard and mouse on the ADB wire, from the MiSTer's PS/2) is the candidate. |
+| I2C | Nothing on Cuda's I2C lines (pulled up). The ROM's first packet, a write of 61 55 to address 88, gets Cuda's I2C error (02 05 01 22). | Something at 88 on a 7600, not known what. dingusppc has nothing there either and answers the same error. | Whatever that device is. |
+| PRAM and the clock | The firmware's cold start: PRAM (MCU RAM 100-1FF) zeroed, the clock at 630BD178 (1956) and counting. Nothing kept across a reset, nothing set from the MiSTer's clock. | Kept by the battery. | The date and time in Mac OS (MAME loads both when Cuda first releases the reset: cuda.cpp pc_w). On a 7600, Mac OS's XPRAM is in Grand Central's NVRAM (1300-13FF), so Cuda's PRAM matters less. |
+| Power | Straps for soft power with the power key and the power button up (PA5, PA1, PA2 = 1; MAME reads PA5 as 0, which with RTI makes the firmware power down 125 ms after powering up). Nothing switches a power supply: a power-off (not tried yet) would put Cuda in its power-down loop and leave the CPU running. The IRQ pin is high (unused), NMI (PC2), fast reset (PA3) and the DFAC latch (PA4) go nowhere. | The power supply, the keyboard's power key, the front button, the NMI switch. | Shut Down and Restart from Mac OS (restart through PC3 works now). |
+| The timer, the clock source | TOF at the bus clock / 1024, RTI at 2^(14 + RT) bus cycles, the one-second interrupt from the crystal; the bus from the crystal (16,384 Hz) until the firmware selects the PLL, then the PLL's rate (2,097,152 Hz). The PLL switches at once. | The same, the PLL taking a few ms to lock. MAME has no RTI and no slow clock. | - |
 
 ## Things the ROM measures that a slower machine changes
 
@@ -75,7 +93,7 @@ the device reads as zero and writes are ignored.
 
 ## Not on the bus at all yet
 
-- ADB keyboard and mouse (behind Cuda).
+- ADB keyboard and mouse (Cuda is built; its ADB line has nothing on it).
 - Video output of the machine (the MiSTer screen shows the debug readout).
 - Sound output.
 - Disk images (SCSI through MESH, floppy through SWIM3).
@@ -93,3 +111,18 @@ lockstep mismatch:
 - `mftb`, `mfspr` of the time base and `mfdec` give the core's value.
 - The decrementer and external interrupts are taken in the reference where
   the core took them.
+- `mtspr` and `mfspr` of an SPR the real 604 does not have (the README's
+  list): the core takes the program exception (illegal) as the chip does;
+  dingusppc accepts the 604e's MMCR1, PMC3 and PMC4, which the NanoKernel
+  probes (FFF131B0 on), so the reference is made to take the exception
+  with the core's SRR0, SRR1 and MSR.
+- Cuda's clock runs 15 times fast while it holds the CPU in reset
+  (`CUDA_FAST_BOOT`, the machine bench's build only), so the cold start
+  takes 5.4 million cycles, not 83 million. Cuda's instructions are the
+  same; only its clock (and so its real-time clock) is ahead.
+
+And Cuda's own bench (`verilator/cuda_main.cpp`, `run_cuda.py`): MAME's
+6805 core is handed the values the RTL read from the registers (0000-001F)
+and takes interrupts where the RTL took them; the VIA and the host there
+are models (MAME's 6522 shift register, Linux's via-cuda.c protocol paced
+as the 7600's ROM paces it), not the 7600's RTL or ROM.
