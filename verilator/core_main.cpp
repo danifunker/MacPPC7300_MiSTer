@@ -512,6 +512,7 @@ void dev_write(void* ctx, uint32_t addr, unsigned size, uint32_t value) {
 } // namespace
 
 int main(int argc, char** argv) {
+	std::setvbuf(stdout, nullptr, _IOLBF, 0);   // a line at a time, also into a pipe
 	Options opt;
 	for (int i = 1; i < argc; i++) {
 		std::string a = argv[i];

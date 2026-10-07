@@ -329,8 +329,29 @@ reset until its firmware has powered the machine up, 5.4 million cycles
 python verilator\run_machine.py --max-instr 145000000 --frame-at 141000000 --frame-out f.ppm [--monitor 16]
 ```
 
+```
+python verilator\run_gui.py [--monitor 16|13] [--rom FILE | --rom7600] [--nvram FILE] [--ram MB] [--pause]
+```
+
+The machine in a window, with the framework the other cores' Verilator
+benches use (Dear ImGui, SDL2, OpenGL; `verilator/sim/`, the template's
+files as they are), to watch it run (`gui_main.cpp`, `make gui`; from
+Windows it runs in WSL and the window comes up through WSLg). The Control
+window has RUN, reset and stepping, the frame counter and the machine's
+frames a second (its share of real time times its refresh rate, measured
+once it scans out), the speed in simulated MHz and instructions a second;
+the Machine window the pc, MSR and counts; the Video window the Control
+video's picture with a zoom; the Debug log what happens and what the
+machine sends on the modem port, with a line to type at it (Open
+Firmware's console with `--nvram syn\nvram_of_prompt.bin`). No lockstep:
+`run_machine.py` is the bench that checks. It runs at about 0.6 MHz, 0.9%
+of real time, 260,000 instructions and 0.67 of the machine's frames a
+second; Mac OS turns the video on at about 128 million instructions, eight
+minutes in.
+
 The Control video: the bench models the VRAM's DDR3 port and writes the
-picture's next whole frame after N instructions as a PPM; `--monitor 16`
+picture's next whole frame after N instructions as a PPM (PNG if the name
+ends in .png; `--frame-every N` again every N instructions); `--monitor 16`
 makes the sense lines report Apple's 16-inch RGB (832 x 624) instead of
 the 13-inch (640 x 480, dingusppc's default). `machref --frame-at N
 --frame-out FILE [--set mon_id=MacRGB16in]` writes dingusppc's frame to
@@ -426,7 +447,7 @@ size and maximum clock. `--paths 10` also lists the slowest paths.
 | `rtl/pll.v`, `rtl/pll/` | the core's PLL (the template's, edited to three outputs) |
 | `syn/mister.py` | puts the core, the ROM and an NVRAM image on the MiSTer over SSH, sets options (RAM, boot, UART, picture, monitor), loads, screenshots, reads the UART and types at it |
 | `syn/nvram_of_prompt.bin` | an NVRAM image: Open Firmware's defaults with `auto-boot?` false (made by `verilator/nvram.py` from the bench's device log) |
-| `verilator/` | test benches (single instructions, programs on the pipeline, the whole machine) and the floating-point software model |
+| `verilator/` | test benches (single instructions, programs on the pipeline, the whole machine), the floating-point software model, `run_gui.py` (the machine in a window) |
 | `verilator/ref/` | dingusppc's interpreter as a library, for lockstep runs |
 | `verilator/machref/` | dingusppc's whole 7600, headless, logging every device access |
 | `verilator/hc05ref/` | MAME's 6805 core as a library, for Cuda's lockstep runs |

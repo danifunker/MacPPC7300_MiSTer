@@ -4,6 +4,7 @@
 #   make core       build $(BUILD)/core/core_tb   programs on the pipeline
 #   make cdc        build $(BUILD)/cdc/cdc_tb   the memory port across two clocks
 #   make machine    build $(BUILD)/machine/machine_tb   the whole machine (PPCMac_system) running a ROM
+#   make gui        build $(BUILD)/gui/ppcmac_gui   the whole machine in a window (ImGui, SDL2, OpenGL)
 #   make sdram      build $(BUILD)/sdram/sdram_tb   the SDRAM controller against a model of the board
 #   make cuda       build $(BUILD)/cuda/cuda_tb   Cuda (the 68HC05 and its firmware) alone
 #   make lint       Verilator lint only
@@ -74,6 +75,24 @@ $(MACH_DIR)/machine_tb: $(RTL_SRCS) $(MACH_SRCS) $(HERE)core_main.cpp $(RTL)/DSP
 		> $(MACH_DIR)/build.log 2>&1 || (cat $(MACH_DIR)/build.log; false)
 	@grep -E '^%Warning' $(MACH_DIR)/build.log || true
 
+# the machine in a window, with the framework the other cores' benches use
+# (sim/: sim_video, sim_console and Dear ImGui with its SDL2 and OpenGL 2
+# back ends, the template's files as they are); the machine built as
+# machine_tb builds it
+GUI_SRCS := $(HERE)gui_main.cpp $(HERE)sim/sim_video.cpp $(HERE)sim/sim_console.cpp \
+	$(addprefix $(HERE)sim/imgui/,imgui.cpp imgui_draw.cpp imgui_widgets.cpp imgui_tables.cpp imgui_impl_sdl.cpp imgui_impl_opengl2.cpp)
+
+gui: $(BUILD)/gui/ppcmac_gui
+
+$(BUILD)/gui/ppcmac_gui: $(RTL_SRCS) $(MACH_SRCS) $(GUI_SRCS) $(RTL)/DSPPC604.qip $(MACH)/PPCMac_machine.qip $(HERE)Makefile
+	@mkdir -p $(BUILD)/gui
+	@$(VERILATOR) $(VFLAGS) --top-module PPCMac_system -GCUDA_FAST_BOOT=1 -Mdir $(BUILD)/gui -o ppcmac_gui \
+		-CFLAGS "-O2 -std=c++17 -I$(HERE)sim -I$(HERE)sim/imgui $(shell sdl2-config --cflags)" \
+		-LDFLAGS "$(shell sdl2-config --libs) -lGL" \
+		$(RTL_SRCS) $(MACH_SRCS) $(GUI_SRCS) \
+		> $(BUILD)/gui/build.log 2>&1 || (cat $(BUILD)/gui/build.log; false)
+	@grep -E '^%Warning' $(BUILD)/gui/build.log || true
+
 sdram: $(BUILD)/sdram/sdram_tb
 
 $(BUILD)/sdram/sdram_tb: $(RTL)/DSPPC604_memcdc.sv $(MACH)/PPCMac_sdram.sv $(HERE)sdram_tb_top.sv $(HERE)sdram_main.cpp $(HERE)Makefile
@@ -126,4 +145,4 @@ lint:
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all core machine sdram cdc cuda lint clean
+.PHONY: all core machine gui sdram cdc cuda lint clean
