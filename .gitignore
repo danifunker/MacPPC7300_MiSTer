@@ -54,6 +54,7 @@ ppctest/runs/*
 cudadump/TO_CARD/
 cudadump/FROM_CARD/
 cudadump/runs/
+verilator/live/
 hwprobe/TO_CARD/
 hwprobe/FROM_CARD/
 hwprobe/runs/

@@ -456,7 +456,8 @@ devices), so only the program counters differ. The frame after 141.8
 million instructions is dingusppc's after 144.9 million pixel for pixel
 (640 x 480, the grey). With the 16-inch monitor (`--monitor 16`; machref
 `--set mon_id=MacRGB16in`) Mac OS picks 832 x 624, and the frames match
-pixel for pixel again (519,168 pixels).
+pixel for pixel again (519,168 pixels). The 7600's ROM runs 145 million
+instructions in lockstep through its video driver too, its frame the same.
 
 On the board: 26,874 ALMs (64 %), 165 RAM blocks, 46 DSP blocks; the CPU's
 clock closes at 64.47 MHz slow 100 C (slack -0.127 ns), the memory and

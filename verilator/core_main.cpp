@@ -46,6 +46,7 @@ typedef VDSPPC604 Top;
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
 #include <deque>
 #include <fstream>
 #include <map>
@@ -113,8 +114,83 @@ struct Options {
 	bool serial_stop = false;      // stop at the prompt after the last line (or the first prompt)
 	unsigned monitor = 13;         // 13: Apple's 13-inch RGB (dingusppc's default); 16: the 16-inch
 	uint64_t frame_at = 0;         // after this many instructions, write the next whole frame
-	std::string frame_out;         // ... to this file (PPM)
+	uint64_t frame_every = 0;      // ... and again every this many (0: once)
+	std::string frame_out;         // ... to this file (PNG if it ends in .png, else PPM)
 };
+
+// A frame as a PNG, stored (uncompressed) deflate blocks: no zlib needed.
+static uint32_t png_crc(const uint8_t* p, size_t n, uint32_t c = 0xFFFFFFFFu) {
+	static uint32_t t[256];
+	static bool init = false;
+	if (!init) {
+		for (uint32_t i = 0; i < 256; i++) {
+			uint32_t v = i;
+			for (int k = 0; k < 8; k++) v = (v & 1) ? 0xEDB88320u ^ (v >> 1) : v >> 1;
+			t[i] = v;
+		}
+		init = true;
+	}
+	for (size_t i = 0; i < n; i++) c = t[(c ^ p[i]) & 0xFF] ^ (c >> 8);
+	return c;
+}
+
+static bool write_image(const std::string& path, size_t w, const std::vector<std::vector<uint32_t>>& rows) {
+	size_t h = rows.size();
+	std::string tmp = path + ".tmp";
+	FILE* f = std::fopen(tmp.c_str(), "wb");
+	if (!f) return false;
+	bool png = path.size() > 4 && path.compare(path.size() - 4, 4, ".png") == 0;
+	auto px = [&](size_t y, size_t x) -> uint32_t { return x < rows[y].size() ? rows[y][x] : 0; };
+	if (!png) {
+		std::fprintf(f, "P6\n%zu %zu\n255\n", w, h);
+		for (size_t y = 0; y < h; y++)
+			for (size_t x = 0; x < w; x++) {
+				uint32_t p = px(y, x);
+				std::fputc(p >> 16, f); std::fputc((p >> 8) & 0xFF, f); std::fputc(p & 0xFF, f);
+			}
+	} else {
+		std::vector<uint8_t> raw;
+		raw.reserve(h * (1 + 3 * w));
+		for (size_t y = 0; y < h; y++) {
+			raw.push_back(0);
+			for (size_t x = 0; x < w; x++) {
+				uint32_t p = px(y, x);
+				raw.push_back(p >> 16); raw.push_back((p >> 8) & 0xFF); raw.push_back(p & 0xFF);
+			}
+		}
+		std::vector<uint8_t> z = {0x78, 0x01};
+		uint32_t a = 1, b = 0;
+		for (uint8_t v : raw) { a = (a + v) % 65521; b = (b + a) % 65521; }
+		for (size_t i = 0; i < raw.size() || i == 0; i += 65535) {
+			size_t n = std::min<size_t>(65535, raw.size() - i);
+			z.push_back(i + n >= raw.size() ? 1 : 0);
+			z.push_back(n & 0xFF); z.push_back(n >> 8); z.push_back(~n & 0xFF); z.push_back((~n >> 8) & 0xFF);
+			z.insert(z.end(), raw.begin() + i, raw.begin() + i + n);
+			if (raw.empty()) break;
+		}
+		uint32_t ad = (b << 16) | a;
+		for (int k = 3; k >= 0; k--) z.push_back(ad >> (8 * k));
+		auto chunk = [&](const char* kind, const std::vector<uint8_t>& body) {
+			uint8_t len[4] = {uint8_t(body.size() >> 24), uint8_t(body.size() >> 16), uint8_t(body.size() >> 8), uint8_t(body.size())};
+			std::fwrite(len, 1, 4, f);
+			std::fwrite(kind, 1, 4, f);
+			if (!body.empty()) std::fwrite(body.data(), 1, body.size(), f);
+			uint32_t c = png_crc(reinterpret_cast<const uint8_t*>(kind), 4);
+			c = png_crc(body.data(), body.size(), c) ^ 0xFFFFFFFFu;
+			uint8_t cb[4] = {uint8_t(c >> 24), uint8_t(c >> 16), uint8_t(c >> 8), uint8_t(c)};
+			std::fwrite(cb, 1, 4, f);
+		};
+		static const uint8_t sig[8] = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+		std::fwrite(sig, 1, 8, f);
+		std::vector<uint8_t> ihdr = {uint8_t(w >> 24), uint8_t(w >> 16), uint8_t(w >> 8), uint8_t(w),
+		                             uint8_t(h >> 24), uint8_t(h >> 16), uint8_t(h >> 8), uint8_t(h), 8, 2, 0, 0, 0};
+		chunk("IHDR", ihdr);
+		chunk("IDAT", z);
+		chunk("IEND", {});
+	}
+	std::fclose(f);
+	return std::rename(tmp.c_str(), path.c_str()) == 0;
+}
 
 // The VRAM's DDR3 (the framework's DDRAM port, Avalon) and the picture: a
 // 4 MB memory at the core's DDR3 base, reads answered after a few cycles,
@@ -134,6 +210,7 @@ struct Ddr {
 
 struct Frame {
 	enum { WAIT, ARMED, TAKING, DONE } st = WAIT;
+	uint64_t next = 0;             // the instruction count to take the next frame after
 	std::vector<std::vector<uint32_t>> rows;
 	bool in_line = false;
 	bool vb_q = true;
@@ -185,7 +262,10 @@ void usage() {
 		"  --monitor 13|16  the monitor's sense code: Apple's 13-inch (640 x 480, the default,\n"
 		"                   dingusppc's) or 16-inch RGB (832 x 624)\n"
 		"  --frame-at N --frame-out FILE   after N instructions, write the next whole\n"
-		"                   frame of the Control video's picture (PPM)\n"
+		"                   frame of the Control video's picture (PNG if FILE ends in .png,\n"
+		"                   else PPM)\n"
+		"  --frame-every N  and again every N instructions, over the same file (a\n"
+		"                   picture to watch while the bench runs)\n"
 #else
 		"usage: core_tb --prog FILE [options]\n"
 		"  --irq-every N    raise the external interrupt every N cycles; a store to\n"
@@ -473,6 +553,7 @@ int main(int argc, char** argv) {
 		else if (a == "--serial-stop") opt.serial_stop = true;
 		else if (a == "--monitor") opt.monitor = (unsigned)std::atoi(next().c_str());
 		else if (a == "--frame-at") opt.frame_at = std::strtoull(next().c_str(), nullptr, 0);
+		else if (a == "--frame-every") opt.frame_every = std::strtoull(next().c_str(), nullptr, 0);
 		else if (a == "--frame-out") opt.frame_out = next();
 		else { usage(); return a == "--help" ? 0 : 2; }
 	}
@@ -601,6 +682,7 @@ int main(int argc, char** argv) {
 #ifdef PPCMAC_MACHINE
 	Ddr ddr;
 	Frame fr;
+	fr.next = opt.frame_at;
 #endif
 	uint32_t gpr[32] = {0};
 	std::pair<unsigned, uint64_t> beats[8];   // the register writes the core reported for this instruction
@@ -679,7 +761,7 @@ int main(int argc, char** argv) {
 	// the picture: after --frame-at instructions, the next whole frame
 	auto frame_edge = [&]() {
 		if (opt.frame_out.empty() || fr.st == Frame::DONE) return;
-		if (fr.st == Frame::WAIT && retired >= opt.frame_at) fr.st = Frame::ARMED;
+		if (fr.st == Frame::WAIT && retired >= fr.next) fr.st = Frame::ARMED;
 		if (!dut->vid_ce) return;
 		bool vb = dut->vid_vblank, hb = dut->vid_hblank;
 		if (fr.st == Frame::ARMED && fr.vb_q && !vb) { fr.st = Frame::TAKING; fr.rows.clear(); fr.in_line = false; }
@@ -691,19 +773,12 @@ int main(int argc, char** argv) {
 			else fr.in_line = false;
 			if (!fr.vb_q && vb) {
 				size_t w = fr.rows.empty() ? 0 : fr.rows[0].size();
-				FILE* f = std::fopen(opt.frame_out.c_str(), "wb");
-				if (f) {
-					std::fprintf(f, "P6\n%zu %zu\n255\n", w, fr.rows.size());
-					for (auto& row : fr.rows)
-						for (size_t x = 0; x < w; x++) {
-							uint32_t p = x < row.size() ? row[x] : 0;
-							std::fputc(p >> 16, f); std::fputc((p >> 8) & 0xFF, f); std::fputc(p & 0xFF, f);
-						}
-					std::fclose(f);
-				}
+				write_image(opt.frame_out, w, fr.rows);
 				std::printf("frame: %zu x %zu after %llu instructions, written to %s\n", w, fr.rows.size(),
 					(unsigned long long)retired, opt.frame_out.c_str());
-				fr.st = Frame::DONE;
+				std::fflush(stdout);
+				if (opt.frame_every) { fr.st = Frame::WAIT; fr.next = retired + opt.frame_every; }
+				else fr.st = Frame::DONE;
 			}
 		}
 		fr.vb_q = vb;
