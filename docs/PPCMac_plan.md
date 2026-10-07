@@ -432,5 +432,6 @@ driving it.
 | ~~now~~ | ~~The order of the milestones after I.~~ Decided 2026-10-07: the order above, the serial console first, as soon as possible, for running validation tests from Open Firmware over the modem port. |
 | ~~V~~ | ~~VRAM in the HPS's DDR3 or in the SDRAM?~~ Decided 2026-10-07: the DDR3, all 4 MB, block RAM for the line buffer and the colour table only. |
 | X | Added 2026-10-07: the PCI bus and a card in a slot, for later. Which card first? |
+| from E on | Decided 2026-10-07: the sessions from milestone E on work independently (`RESUME_scsi.md`): they decide what the documents leave open, record each decision in this table with its reason, and go on through the milestones in order. The CPU rule stands: a CPU change stops the session with a hand-off prompt. |
 | V | Which monitor the sense lines report (640 x 480 first, larger later?). |
 | S | Which disk image format and Mac OS version to test with first. |

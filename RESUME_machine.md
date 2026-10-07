@@ -1,5 +1,7 @@
 # Resume prompt: the machine around DSPPC604, from milestone E
 
+**Superseded by `RESUME_scsi.md`** (2026-10-07: milestone E onward, the session working independently). Kept for its history.
+
 (Written 2026-10-07 at the end of the machine session that put Cuda on the board, made the 7300's ROM the reference, wrote the machine's plan, wired the VIA's interrupt through Grand Central and put Open Firmware's console on the modem port.)
 
 Paste everything below the line into a new session started in `C:\Temp\mistercore\PPC_Mac`.
