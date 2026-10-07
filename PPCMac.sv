@@ -135,6 +135,8 @@ wire  [1:0] buttons;
 wire [127:0] status;
 wire        ioctl_download;
 wire [15:0] ioctl_index;
+wire [10:0] ps2_key;
+wire [24:0] ps2_mouse;
 wire        ioctl_wr;
 wire [26:0] ioctl_addr;
 wire  [7:0] ioctl_dout;
@@ -151,6 +153,8 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 	.buttons(buttons),
 	.status(status),
 	.status_menumask(16'd0),
+	.ps2_key(ps2_key),
+	.ps2_mouse(ps2_mouse),
 
 	.ioctl_download(ioctl_download),
 	.ioctl_index(ioctl_index),
@@ -316,6 +320,7 @@ PPCMac_system #(.CPU_HZ(CPU_MHZ * 1000000), .TB_HZ(12500000), .SDRAM_MB(128)) sy
 	.cpu_req, .cpu_we, .cpu_line, .cpu_addr, .cpu_be, .cpu_wdata, .cpu_ack, .cpu_rdata, .cpu_irq, .cpu_tb_tick,
 	.modem_txd, .modem_rxd, .nv_ld_we, .nv_ld_addr, .nv_ld_data,
 	.mon_std(mon_c[1][8:6]), .mon_ext(mon_c[1][5:0]),
+	.ps2_key, .ps2_mouse,                 // in the memory clock: PPCMac_adb synchronises them
 	.ddr_busy(DDRAM_BUSY), .ddr_burstcnt(DDRAM_BURSTCNT), .ddr_addr(DDRAM_ADDR), .ddr_dout(DDRAM_DOUT),
 	.ddr_dout_ready(DDRAM_DOUT_READY), .ddr_rd(DDRAM_RD), .ddr_din(DDRAM_DIN), .ddr_be(DDRAM_BE), .ddr_we(DDRAM_WE),
 	.vid_ce(mac_ce), .vid_r(mac_r), .vid_g(mac_g), .vid_b(mac_b), .vid_hs(mac_hs), .vid_vs(mac_vs),

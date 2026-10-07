@@ -33,12 +33,13 @@ the OSD chooses, a debug readout of rows of squares.
 | SDRAM controller | `rtl/machine/PPCMac_sdram.sv`, adapted from Sorgelig's; passes its bench against a model of the 128 MB board that checks every command and timing |
 | First bitstream | `PPCMac.sv`: CPU at 65 MHz, SDRAM at 100 MHz, ROM upload, OSD options, debug readout on screen and UART; on the board the memory test passes at every RAM size (6-96 MB) |
 | The 7600's ROM on the board | runs exactly as in simulation: the same 26,771 device writes, the last after the same 18.27 million instructions, then the same wait for Cuda (before Cuda was built) |
-| Cuda (ADB, power, reset, clock, PRAM) | the real chip: a 68HC05 (`rtl/machine/PPCMac_hc05.sv`, checked instruction by instruction against MAME's 6805 core) running Apple's firmware 341S0060 (Cuda 2.40), behind Grand Central's VIA with a real shift register; it holds the CPU in reset until its firmware powers the machine up. The firmware is the 7300's own: read out of its chip through the VIA (`cudadump/`, 2026-10-07), byte for byte MAME's dump. In simulation the ROM's Cuda traffic goes through and the ROM runs on through the NanoKernel into Mac OS (the CPU bug the lockstep found at 24.4 million instructions is fixed: the plan's M6 section). On the board (2026-10-07) Cuda releases the CPU 1,284 ms after the machine's reset and both ROMs run through Open Firmware into Mac OS. Nothing on its ADB or I2C lines yet |
+| Cuda (ADB, power, reset, clock, PRAM) | the real chip: a 68HC05 (`rtl/machine/PPCMac_hc05.sv`, checked instruction by instruction against MAME's 6805 core) running Apple's firmware 341S0060 (Cuda 2.40), behind Grand Central's VIA with a real shift register; it holds the CPU in reset until its firmware powers the machine up. The firmware is the 7300's own: read out of its chip through the VIA (`cudadump/`, 2026-10-07), byte for byte MAME's dump. In simulation the ROM's Cuda traffic goes through and the ROM runs on through the NanoKernel into Mac OS (the CPU bug the lockstep found at 24.4 million instructions is fixed: the plan's M6 section). On the board (2026-10-07) Cuda releases the CPU 1,284 ms after the machine's reset and both ROMs run through Open Firmware into Mac OS. On its ADB line the keyboard and the mouse, on its I2C lines Athens |
 | Interrupts | Grand Central's events, mask and levels as MAME's and dingusppc's; the VIA is the first source (2026-10-07): the 7300's ROM runs 100 million instructions in lockstep with Mac OS's timer interrupts, its device traffic matching dingusppc's through Mac OS's start-up to where Mac OS probes MESH ([docs/PPCMac_plan.md](docs/PPCMac_plan.md), milestone I) |
 | Serial console | the ESCC (a Z85C30's asynchronous mode, `rtl/machine/PPCMac_escc.sv`); its modem port is the MiSTer's UART, Open Firmware's console: with an NVRAM image that sets `auto-boot?` false, Open Firmware's prompt over the UART, in simulation (in lockstep, the banner byte for byte dingusppc's) and on the board (2026-10-07) |
 | SCSI controllers, with empty buses | MESH (`rtl/machine/PPCMac_mesh.sv`) and Curio's 53CF94 (`PPCMac_sc53c94.sv`) as dingusppc models them, with no targets: Mac OS reads MESH's ID, sets both up and selects every target on both buses, each selection ending in a timeout and an interrupt; in simulation the 7300's ROM runs 450 million instructions in lockstep through that probing, its SCSI traffic matching dingusppc's, and on the board Mac OS runs through it as in the simulation (milestone E, 2026-10-07; [docs/PPCMac_plan.md](docs/PPCMac_plan.md)). Disks come with milestone S, through Main_MiSTer's Mac SCSI family support |
 | Video | the Control video controller (registers, Swatch's timing), RaDACal (colour table, hardware cursor), the Athens clock chip on Cuda's I2C, the 4 MB VRAM in the HPS's DDR3, the scan-out through the framework's scaler; the monitor an OSD choice (Apple's 16-inch, 832 x 624, or 13-inch, 640 x 480). In simulation the ROM runs in lockstep through Mac OS's video driver, every video access as dingusppc's, and the frames match dingusppc's pixel for pixel at both sizes; on the board Mac OS's screen (milestone V, 2026-10-07) |
-| Machine (keyboard and mouse, disks, sound, ...) | not started |
+| Keyboard and mouse | an ADB keyboard and mouse on Cuda's line (`rtl/machine/PPCMac_adb.sv`), from the MiSTer's keyboard and mouse: Cuda's own firmware talks to them in `run_cuda.py` (registers 0, 2 and 3, a key, a mouse move, an address and handler change, SendReset); on the board the pointer follows the mouse over Mac OS's screen and Open Firmware takes typed lines from the keyboard (milestone K, 2026-10-07) |
+| Machine (disks, sound, ...) | not started |
 
 The first full build of the core (2026-10-06: the CPU at 65 MHz, the
 machine, the SDRAM controller at 100 MHz, the debug readout, the MiSTer
@@ -52,7 +53,8 @@ framework), Quartus 17.0, slow 100 C model; this is the number that counts:
 | With Grand Central's interrupt | 25,379 (61%) | 153 | 41 | 62.70 MHz (slack -0.565 ns); memory 107.7 MHz. Runs on the board at 65 MHz |
 | With the ESCC and the NVRAM loader | 26,019 (62%) | 153 | 41 | 62.31 MHz (slack -0.666 ns); memory 104.1 MHz. Runs on the board at 65 MHz |
 | With MESH and Curio | 24,489 (58%) | 153 | 42 | 63.03 MHz (slack -0.481 ns); memory 109.5 MHz. Runs on the board at 65 MHz |
-| With the Control video (the committed tree) | 26,874 (64%) | 165 | 46 | 64.47 MHz (slack -0.127 ns); memory and video 113.0 MHz. Runs on the board at 65 MHz |
+| With the Control video | 26,874 (64%) | 165 | 46 | 64.47 MHz (slack -0.127 ns); memory and video 113.0 MHz. Runs on the board at 65 MHz |
+| With the ADB keyboard and mouse (the committed tree) | 26,869 (64%) | 166 | 46 | 64.81 MHz (slack -0.046 ns); memory and video 109.9 MHz. Runs on the board at 65 MHz |
 
 On the board (DE10-Nano, 128 MB SDRAM) the memory test passes at every RAM
 size the OSD offers (6 to 96 MB, three or more passes each, no error) at
@@ -390,6 +392,13 @@ The OSD's Picture option chooses Mac OS's screen or the debug readout,
 its Monitor option the 16-inch or 13-inch RGB (a change resets the
 machine); `python syn\mister.py cfg --picture mac|debug --monitor 16|13`
 sets them, `shot` takes a screenshot through the framework.
+
+The board is controlled through the MiSTer Remote (mrext, port 8182), as
+the other cores' tooling does (`tools\misterdeploy`): `load` and `menu`
+(`/api/launch`), `shot` (`/api/screenshots`), and the Remote's keyboard
+and mouse, which reach the core's ADB keyboard and mouse as a USB keyboard
+and mouse would (`keys TEXT`, `mouse DX DY`, `click`, or any `ws_send.py`
+steps with `ws`). SSH copies files to the card and reads the UART.
 
 `uart` shows what Open Firmware prints (the prompt about 2 s after the
 core starts), `type` types lines at it and shows the answers. From a shell

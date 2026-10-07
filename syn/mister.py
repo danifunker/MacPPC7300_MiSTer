@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
-"""Drive the MiSTer over SSH: put the core and the ROM on it, set the core's
-options, load it, take a screenshot, read the core's UART.
+"""Drive the MiSTer: put the core and the ROM on it, set the core's options,
+load it, take a screenshot, use its keyboard and mouse, read the core's UART.
+
+The board is controlled through the MiSTer Remote (mrext, port 8182), as the
+other cores' tooling does (tools/misterdeploy): loading a core, screenshots,
+keys and the mouse. SSH does what the Remote has no call for: copying files
+to the card and the core's UART.
 
     python syn\\mister.py put-core [RBF]          output_files\\PPCMac.rbf -> _Unstable/PPCMac.rbf
     python syn\\mister.py put-rom FILE            -> games/PPCMac/boot.rom (loaded at core start)
@@ -10,9 +15,15 @@ options, load it, take a screenshot, read the core's UART.
     python syn\\mister.py cfg [--ram MB] [--boot rom|memtest] [--uart modem|debug]
                               [--picture mac|debug] [--monitor 16|13]
                                                  writes config/PPCMac.CFG
-    python syn\\mister.py load                    loads _Unstable/PPCMac.rbf
-    python syn\\mister.py menu                    loads the menu core again
+    python syn\\mister.py load                    loads _Unstable/PPCMac.rbf (Remote: /api/launch)
+    python syn\\mister.py menu                    loads the menu core again (/api/launch/menu)
     python syn\\mister.py shot [OUT.png]          a screenshot of the core's output, fetched
+                                                 (/api/screenshots)
+    python syn\\mister.py keys TEXT               typed on the Remote's keyboard (\\n Return),
+                                                 to the core's ADB keyboard
+    python syn\\mister.py mouse DX DY [STEPS]     the Remote's mouse moved, right and down
+    python syn\\mister.py click [left|right]      its button
+    python syn\\mister.py ws STEP ...             any tools\\misterdeploy\\ws_send.py steps
     python syn\\mister.py uart [SECONDS] [--baud N] [--raw]
                                                  what the core sends on its UART (/dev/ttyS1);
                                                  38400 (the modem port) unless --baud
@@ -28,15 +39,18 @@ For a terminal of your own on the modem port, from a shell on the MiSTer:
 stty -F /dev/ttyS1 38400 raw -echo, then cat /dev/ttyS1 and write to it.
 
 The board: MISTER_HOST (or the first line of syn\\mister_host, which git
-ignores) and MISTER_KEY (default ~/.ssh/mister_only). Only key-based SSH is
-used; nothing asks for a password (BatchMode).
+ignores), MISTER_HTTP_PORT (the Remote's, default 8182) and MISTER_KEY
+(default ~/.ssh/mister_only). Only key-based SSH is used; nothing asks for a
+password (BatchMode). The websocket needs Python's websockets package.
 """
 
 import base64
+import json
 import os
 import subprocess
 import sys
 import time
+import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -73,6 +87,31 @@ def ssh(cmd, capture=False, timeout=None):
 
 def scp(src, dst):
     return subprocess.call(["scp"] + ssh_args() + [src, dst])
+
+
+# ---- the MiSTer Remote (mrext) on port 8182: how the board is controlled ----
+
+def remote():
+    return "http://%s:%s" % (host(), os.environ.get("MISTER_HTTP_PORT", "8182"))
+
+
+def api(method, path, body=None, timeout=20):
+    """A Remote API call: the response body (bytes)."""
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(remote() + path, data=data, method=method,
+                                 headers={"Content-Type": "application/json"} if data else {})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read()
+
+
+def ws(steps):
+    """Steps for the Remote's websocket (tools/misterdeploy/ws_send.py):
+    kbd:, kbdRaw:, kbdRawDown:, kbdRawUp:, text:, mouseMove:, mouseBtn:, sleep:."""
+    sys.path.insert(0, os.path.join(ROOT, "tools", "misterdeploy"))
+    import asyncio
+    import ws_send
+    asyncio.run(ws_send.run(host(), int(os.environ.get("MISTER_HTTP_PORT", "8182")), steps))
+    return 0
 
 
 def ssh_clean(cmd, timeout):
@@ -143,17 +182,43 @@ def main():
         data = "\\x%02x\\x%02x" % (status & 0xFF, status >> 8) + "\\x00" * 14
         return ssh("printf '%s' > /media/fat/config/PPCMac.CFG && xxd /media/fat/config/PPCMac.CFG" % data)
     if cmd == "load":
-        return ssh("echo 'load_core %s' > /dev/MiSTer_cmd" % CORE)
+        api("POST", "/api/launch", {"path": CORE[len("/media/fat/"):]})
+        return 0
     if cmd == "menu":
-        return ssh("echo 'load_core /media/fat/menu.rbf' > /dev/MiSTer_cmd")
+        api("POST", "/api/launch/menu")
+        return 0
     if cmd == "shot":
         out = a[1] if len(a) > 1 else "PPCMac_screen.png"
-        ssh("echo screenshot > /dev/MiSTer_cmd")
-        time.sleep(3)
-        name = ssh("ls -t /media/fat/screenshots/PPCMac/*.png 2>/dev/null | head -1", capture=True).strip()
-        if not name.endswith(".png"):
-            sys.exit("no screenshot found (%s)" % name)
-        return scp("root@%s:%s" % (host(), name), out)
+        def ours():
+            return sorted((s for s in json.loads(api("GET", "/api/screenshots")) if s.get("core") == "PPCMac"),
+                          key=lambda s: s["modified"])
+        before = {s["path"] for s in ours()}
+        api("POST", "/api/screenshots")
+        for _ in range(20):
+            time.sleep(0.5)
+            new = [s for s in ours() if s["path"] not in before]
+            if new:
+                break
+        else:
+            sys.exit("no new screenshot appeared")
+        time.sleep(0.5)                       # the file is complete
+        with open(out, "wb") as f:
+            f.write(api("GET", "/api/screenshots/" + urllib.request.quote(new[-1]["path"]), timeout=60))
+        print(out)
+        return 0
+    if cmd == "ws":
+        return ws(a[1:])
+    if cmd == "keys":
+        return ws(["text:" + " ".join(a[1:])])
+    if cmd == "mouse":
+        dx, dy = int(a[1]), int(a[2])
+        n = int(a[3]) if len(a) > 3 else max(1, (max(abs(dx), abs(dy)) + 19) // 20)
+        steps = []
+        for i in range(n):
+            steps += ["mouseMove:%d,%d" % (dx * (i + 1) // n - dx * i // n, dy * (i + 1) // n - dy * i // n)]
+        return ws(steps)
+    if cmd == "click":
+        return ws(["mouseBtn:" + (a[1] if len(a) > 1 else "left")])
     if cmd == "uart":
         raw = "--raw" in a
         baud = int(a[a.index("--baud") + 1]) if "--baud" in a else 38400

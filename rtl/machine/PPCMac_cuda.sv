@@ -43,7 +43,7 @@
 //  The pins, as the 7600 board connects them (MAME, cuda.cpp:18-52):
 //
 //    PA7 out  ADB, 1 pulls the line low     PB7 I2C clock (open drain)
-//    PA6 in   ADB, 1 when the line is low   PB6 I2C data (open drain)
+//    PA6 in   ADB, the line's level (1 high) PB6 I2C data (open drain)
 //    PA5 in   1: soft power                 PB5 the VIA's CB2, data, both ways
 //    PA4 out  DFAC latch                    PB4 out the VIA's CB1, the shift clock
 //    PA3 out  fast reset                    PB3 in  TIP, from the VIA's PB5
@@ -62,6 +62,14 @@
 //  firmware's battery-insert path: about a second on the slow clock, the
 //  PLL on, the power-on sequence, and the CPU's reset released about 250 ms
 //  later.
+//
+//  PA6 is the ADB line as it is (corrected 2026-10-07; it was taken
+//  inverted). The firmware's ADB receive (1CF3-1D88) shows it: just after
+//  its stop bit a low line is a service request (flag bit 0) and a high one
+//  is none; then it waits up to 283 us for the start bit's fall, 58 us for
+//  its low to end, 79 us for its high, and decides each bit by whether its
+//  high outlasts its low. MAME agrees, its devices' ASSERT being the line
+//  high (macadb.cpp leaves the line ASSERTed when idle).
 //
 //  The CPU's reset (cpu_reset): held from this module's reset until the
 //  firmware first drives PC3 low and then lets it go high; again whenever it
@@ -95,6 +103,7 @@ module PPCMac_cuda
 	output logic        cpu_reset,       // the CPU's reset
 	output logic        adb_low,         // pull the ADB line low
 	input  logic        adb_line,        // the ADB line's level
+	output logic        tick,            // the 4,194,304 Hz time base (for the ADB devices' timing)
 	output logic        iic_scl_low,     // pull the I2C clock low
 	output logic        iic_sda_low,     // pull the I2C data low
 	input  logic        iic_scl,         // the I2C lines' levels
@@ -129,6 +138,7 @@ logic        cen;
 wire        fast  = pll[6];
 wire  [7:0] bmask = fast ? (8'h07 >> pll[1:0]) : 8'hFF;   // ticks per bus cycle, less 1
 wire        sec   = xtick & (&xdiv);
+assign tick = xtick;
 
 always_ff @(posedge clk) begin
 	xtick <= 1'b0;
@@ -165,7 +175,7 @@ PPCMac_hc05 cpu (
 logic [7:0] pa, pb, pc_, ddra, ddrb, ddrc;
 
 // what each pin is: the latch where Cuda drives it, else the board
-wire [7:0] pa_pins = {1'b0, ~adb_line, 1'b1, 1'b0, 1'b0, 1'b1, 1'b1, 1'b1};
+wire [7:0] pa_pins = {1'b0, adb_line, 1'b1, 1'b0, 1'b0, 1'b1, 1'b1, 1'b1};
 wire [7:0] pb_pins = {iic_scl, iic_sda, cb2, 1'b0, via_tip, via_byteack, 1'b0, 1'b1};
 wire [7:0] pc_pins = 8'h0F;
 wire [7:0] pa_rd   = (pa_pins & ~ddra) | (pa & ddra);

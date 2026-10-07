@@ -128,6 +128,10 @@ module PPCMac_machine
 	input  logic [2:0]   mon_std,
 	input  logic [5:0]   mon_ext,
 
+	// the keyboard and the mouse, as hps_io gives them (PPCMac_adb)
+	input  logic [10:0]  ps2_key,
+	input  logic [24:0]  ps2_mouse,
+
 	// the VRAM, by VRAM byte address, to its clock crossing (the CPU port's
 	// protocol, VRAM's byte order)
 	output logic         v_req,
@@ -365,11 +369,16 @@ PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
 assign ext_irq = gc_irq;
 
 // ---- Cuda ------------------------------------------------------------------------------------
-// Nothing else is on its ADB line yet: it reads as Cuda itself drives it.
-// On its I2C lines: Athens, the video's clock generator (address 28).
-logic        adb_low, iic_scl_low, iic_sda_low, athens_sda_low;
+// On its ADB line: the keyboard and the mouse (PPCMac_adb), from the PS/2
+// inputs. On its I2C lines: Athens, the video's clock generator (address 28).
+logic        adb_low, adb_dev_low, cuda_tick, iic_scl_low, iic_sda_low, athens_sda_low;
 wire         iic_scl = ~iic_scl_low;
 wire         iic_sda = ~(iic_sda_low | athens_sda_low);
+
+PPCMac_adb adb (
+	.clk, .reset, .tick(cuda_tick), .host_low(adb_low), .dev_low(adb_dev_low),
+	.ps2_key, .ps2_mouse
+);
 
 PPCMac_athens athens (
 	.clk, .reset, .scl(iic_scl), .sda(iic_sda), .sda_low(athens_sda_low),
@@ -385,7 +394,7 @@ PPCMac_cuda #(.CLK_HZ(CPU_HZ), .FAST_BOOT(CUDA_FAST_BOOT != 0)) cuda (
 	.via_tip, .via_byteack, .treq(cuda_treq), .cb1(cuda_cb1),
 	.cb2_oe(cuda_cb2_oe), .cb2_out(cuda_cb2_out), .cb2(cb2_line),
 	.cpu_reset,
-	.adb_low, .adb_line(~adb_low),
+	.adb_low, .adb_line(~(adb_low | adb_dev_low)), .tick(cuda_tick),
 	.iic_scl_low, .iic_sda_low, .iic_scl, .iic_sda,
 	.dbg_cen(cu_cen), .dbg_addr(cu_addr), .dbg_rd(cu_rd), .dbg_wr(cu_wr),
 	.dbg_wdata(cu_wdata), .dbg_rdata(cu_rdata),

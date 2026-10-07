@@ -19,7 +19,7 @@ the day a milestone was closed; open ones carry no date.
 | T | Serial console: the ESCC's modem port on the MiSTer's UART | Open Firmware's banner and `0 >` prompt over the UART on the board, words typed and answered | done 2026-10-07 |
 | E | The empty machine: MESH and Curio with no targets, as Mac OS probes them | Mac OS's device traffic without a disk matching dingusppc's through the SCSI probing | done 2026-10-07, in simulation and on the board |
 | V | Video: Control, RaDACal, the Athens clock chip on Cuda's I2C | Mac OS's screen on the MiSTer's output, in simulation as a frame compared with dingusppc's and on the board as a screenshot | done 2026-10-07, in simulation and on the board |
-| K | ADB keyboard and mouse on Cuda's line | Open Firmware typed on from the keyboard; the cursor following the mouse in Mac OS | |
+| K | ADB keyboard and mouse on Cuda's line | Open Firmware typed on from the keyboard; the cursor following the mouse in Mac OS | done 2026-10-07, on the board |
 | S | SCSI: DBDMA, MESH, a disk image on the SD card | Mac OS booting from a disk image to the Finder | |
 | A | Sound: AWACS and its DBDMA channels | the startup chime, and Mac OS's sound | |
 | P | Persistence and the clock: the NVRAM and Cuda's PRAM on the SD card, the clock from the MiSTer's RTC | settings kept across a power-off; Mac OS showing the date | |
@@ -483,6 +483,31 @@ none until K (a difference to expect in the Cuda traffic); the wire level is
 checked against Cuda's own firmware: `run_cuda.py`'s ADB talk gets an
 answer from address 2 and 3, still in lockstep with MAME's 6805.
 
+Done (2026-10-07). `PPCMac_adb.sv` puts both devices on the line, their
+time in Cuda's 4,194,304 Hz ticks, the PS/2 inputs from `hps_io`; the
+decisions are in the table below. `run_cuda.py` now has Cuda's firmware
+talk to them (`cuda_tb_top.sv`): register 3 of each (62 02, 63 01), an
+empty address (flags 02), a key (A down: 00 FF) and a mouse move (right 5,
+up 3: FD 85), a move to address 9 and a handler change by Listen 3, the
+keyboard's register 2 (FF FF), SendReset; twenty packets, every reply
+checked, in lockstep with MAME's 6805. Two faults turned up on the way.
+Cuda's PA6 had been taken inverted (it is the line's level: the firmware's
+receive at 1CF3-1D88 shows it), so every ADB command came back with a
+service request and no device could answer. And the devices' reset-pulse
+detector read the high before each attention as a long low after more than
+2 ms of idle, resetting them (the keyboard passed only because its test
+came sooner).
+
+On the board (26,869 ALMs, 64 %; the CPU's clock closes at 64.81 MHz slow
+100 C): through the MiSTer Remote's virtual mouse, the pointer moves from
+the top left corner right and down, then back up and left, over Mac OS's
+grey screen and its flashing question-mark disk; with an NVRAM image whose
+`input-device` is `kbd` (`syn\nvram_of_kbd.bin`), Open Firmware takes
+`1 2 + .` and `words` from the Remote's virtual keyboard and answers on the
+modem port (`3 ok`, its dictionary). Not tried on the board: Talk 2,
+handler changes, service requests between the two devices with Mac OS
+polling (all in the Cuda bench).
+
 ### S: SCSI and the first disk
 
 What it needs:
@@ -596,3 +621,5 @@ driving it.
 | V | Decided by the session, 2026-10-07, from the user's answer: the monitor the sense lines report is an OSD choice, Apple's 16-inch RGB (sense 7, extended 2D: 832 x 624 at 75 Hz, 57.2832 MHz) by default, the 13-inch RGB (sense 6, extended 2B: 640 x 480 at 66.7 Hz, 30.24 MHz) as the forced 640 x 480; the 21-inch (1152 x 870, 100 MHz) later if the DDR3's bandwidth allows. Reason: the user remembers the default as "872 by something, kind of weird"; 832 x 624 is the odd Apple mode that fits, the 870-line modes the other candidates. dingusppc's default "AppleVision1710" is only an alias of its 13-inch code (`displayid.cpp`), which is why its Mac OS picks 640 x 480 (130.9 million instructions, 32 bits a pixel). The VRAM sits at the DDR3's byte 0x30000000 (the core's region, as the Quadra 800 core's), the scan-out in the 100 MHz memory clock, which is also the framework's video clock: every mode's pixel rate (30.24, 57.28, 100 MHz) is a clock enable of it. |
 | E | Decided by the session, 2026-10-07: MESH's selection timeout follows its register in 10 ms units (the ROM computes ms / 10; dingusppc ignores the register and waits 250 ms, the ROM's value); Curio's follows the 53C94's formula with the chip's clock taken to be 25 MHz (MAME's way; dingusppc waits 250 ms); MESH's interrupt line follows its registers at all times, as a pin does (dingusppc recomputes it only at some events); Curio's initiator commands with no connected target are an invalid-command interrupt, as on the chip (dingusppc stops). Reason: real behaviour over an emulator's shortcut where the shortcut is visible, each to be checked by `hwprobe/` on the real 7300. |
 | from E on | Answered 2026-10-07: the user can still run probe disks on the real 7300 (booted from Open Firmware over the modem port, as `cudadump`); where only the real machine can say (MESH's and Curio's selection timeout, the VIA's access time), the session builds such a disk and follows the emulators meanwhile, the guess written in the stubs list. |
+| from K on | Asked by the user, 2026-10-07: Verilator as little as possible (the whole machine simulates at 0.6 MHz, 0.9% of real time); features are proven on the board, with unit benches where they take seconds (`run_cuda.py`) and whole-machine runs only to explain something the board shows. The board is driven through the MiSTer Remote (mrext, port 8182), as the user's other cores are (`tools\misterdeploy`): `syn\mister.py load`, `shot`, `keys`, `mouse`, `click`; SSH only copies files and reads the UART. |
+| K | Decided by the session, 2026-10-07: the ADB devices (`PPCMac_adb.sv`) at the wire level, the Mac LC core's structure and PS/2 table with dingusppc's registers: keyboard handler 2 (1 and 2 settable, 3 refused, so the right-hand modifiers give the left-hand codes), mouse handler 1 (1 and 2; not the extended protocol 4, which dingusppc's mouse takes: the Apple Mouse II has none), SRQ enabled from reset, a true service request (the stop bit held low to 300 us); Alt is Command, the Windows keys Option, Caps Lock locks. The line's timing is ADB's own, counted in Cuda's 4,194,304 Hz ticks so it keeps step when the bench runs Cuda fast; the answer 160 us after the stop bit. Reason: Cuda's own firmware is the judge, and its receive (1CF3-1D88) waits 283 us for the start bit and 79 us at most for any low. On the way, Cuda's PA6 turned out to be the line's level, not its inverse (corrected in `PPCMac_cuda.sv`; MAME agrees once its devices' ASSERT is read as high); with it inverted, every ADB command reported a service request and no device could answer. |

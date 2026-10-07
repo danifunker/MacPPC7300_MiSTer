@@ -70,6 +70,11 @@ module PPCMac_system
 	input  logic [2:0]   mon_std,
 	input  logic [5:0]   mon_ext,
 
+	// the keyboard and the mouse, as hps_io gives them (the ADB devices
+	// synchronise them)
+	input  logic [10:0]  ps2_key,
+	input  logic [24:0]  ps2_mouse,
+
 	// the VRAM in DDR3 (the framework's DDRAM port), in the memory's clock
 	input  logic         ddr_busy,
 	output logic [7:0]   ddr_burstcnt,
@@ -169,7 +174,7 @@ PPCMac_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_FAST
 	.m_req, .m_we, .m_line, .m_addr, .m_be, .m_wdata, .m_ack, .m_rdata,
 	.ext_irq, .tb_tick, .cpu_reset(cuda_reset),
 	.modem_txd, .modem_rxd, .nv_ld_we, .nv_ld_addr, .nv_ld_data,
-	.mon_std, .mon_ext,
+	.mon_std, .mon_ext, .ps2_key, .ps2_mouse,
 	.v_req, .v_we, .v_line, .v_addr, .v_be, .v_wdata, .v_ack, .v_rdata,
 	.timing_on, .sw_params, .fb_base, .row_words, .hs_pos, .vs_pos, .dac_cr, .dbl_buf_cr,
 	.cursor_x, .cursor_clut, .athens_d2, .athens_n2, .athens_p2, .vbl_start_tog, .vbl_end_tog,

@@ -1,4 +1,5 @@
-// Test bench for PPCMac_cuda: Cuda (the 68HC05 and its firmware) alone.
+// Test bench for PPCMac_cuda: Cuda (the 68HC05 and its firmware) with the
+// ADB devices (PPCMac_adb) on its ADB line (cuda_tb_top.sv).
 //
 //   cuda_tb [--lockstep --rom 341s0060.bin] [--seconds S] [--trace-from N --trace-count M] [--show N]
 //
@@ -9,23 +10,25 @@
 // then packets out and replies in). The host makes one VIA access per cycle
 // of the VIA's 783,360 Hz clock, as Grand Central paces them, and after a
 // flag waits ten accesses before acting, as the 7600's ROM does: Cuda reads
-// the last bit of a byte 3.8 us after the VIA sets the flag. Nothing on the
-// ADB or I2C lines.
+// the last bit of a byte 3.8 us after the VIA sets the flag. The ADB devices
+// take the bench's PS/2 events; nothing is on the I2C lines.
 //
 // It checks:
 //   - the cold start: how long until Cuda releases the CPU's reset;
 //   - a script of packets and their replies: READ_MCU_MEM of the ROM's
 //     first bytes (its copyright), GET_REAL_TIME (the firmware's default
 //     clock plus the seconds run), WRITE_PRAM and READ_PRAM back, the ROM's
-//     first packet (I2C to address 88, nothing there), an ADB talk to an
-//     absent keyboard;
+//     first packet (I2C to address 88, nothing there); the ADB devices:
+//     register 3 of the keyboard and the mouse, an empty address, a key
+//     pressed and a mouse move reported, a device moved to another address
+//     and its handler changed, the keyboard's register 2, SendReset;
 //   - with --lockstep, every instruction against MAME's 6805 core
 //     (verilator/hc05ref): registers, the writes it made, and its length in
 //     bus cycles. Reads of the registers (0000-001F) are handed to the
 //     reference as the RTL read them; interrupts are taken in the reference
 //     where the RTL took them.
 
-#include "VPPCMac_cuda.h"
+#include "Vcuda_tb_top.h"
 #include "verilated.h"
 
 #ifdef WITH_HC05REF
@@ -49,6 +52,7 @@ struct Options {
 	std::string rom;              // the firmware, for the reference (the RTL has it built in)
 	bool lockstep = false;
 	bool log_via = false;         // print every VIA access the host makes
+	bool log_adb = false;         // print the ADB line's edges, who drives it, in us
 	double seconds = 4.0;
 	uint64_t trace_from = 0, trace_count = 0;
 	long show = 10;
@@ -278,6 +282,7 @@ int main(int argc, char** argv) {
 		else if (a == "--trace-count") opt.trace_count = std::strtoull(next().c_str(), nullptr, 0);
 		else if (a == "--show") opt.show = std::atol(next().c_str());
 		else if (a == "--log-via") opt.log_via = true;
+		else if (a == "--log-adb") opt.log_adb = true;
 		else {
 			std::fprintf(stderr, "usage: cuda_tb [--lockstep --rom 341s0060.bin] [--seconds S] [--trace-from N --trace-count M] [--show N]\n");
 			return 2;
@@ -288,7 +293,7 @@ int main(int argc, char** argv) {
 #endif
 
 	Verilated::commandArgs(argc, argv);
-	VPPCMac_cuda* dut = new VPPCMac_cuda;
+	Vcuda_tb_top* dut = new Vcuda_tb_top;
 
 #ifdef WITH_HC05REF
 	if (opt.lockstep) {
@@ -313,6 +318,8 @@ int main(int argc, char** argv) {
 	bool released = false, failed = false;
 	long shown = 0;
 	std::vector<std::pair<uint16_t, uint8_t>> rtl_writes;
+	// the PS/2 keyboard and mouse as hps_io gives them (a toggle an event)
+	uint32_t ps2_key = 0, ps2_mouse = 0;
 
 	auto drive = [&]() {
 		dut->via_tip = via.tip();
@@ -320,7 +327,8 @@ int main(int argc, char** argv) {
 		bool cuda_drives = dut->cb2_oe;
 		bool line = (cuda_drives ? (bool)dut->cb2_out : true) && (via.shift_out() ? via.cb2_out : true);
 		dut->cb2 = line;
-		dut->adb_line = !dut->adb_low;
+		dut->ps2_key = ps2_key;
+		dut->ps2_mouse = ps2_mouse;
 		dut->iic_scl = !dut->iic_scl_low;
 		dut->iic_sda = !dut->iic_sda_low;
 	};
@@ -331,15 +339,33 @@ int main(int argc, char** argv) {
 	for (int i = 0; i < 8; i++) { dut->clk = 1; dut->eval(); dut->clk = 0; dut->eval(); }
 	dut->reset = 0;
 
-	// the script: packet, what the reply must start with (empty: just print it)
-	struct Step { const char* what; std::vector<uint8_t> pkt; std::vector<uint8_t> want; size_t max; };
+	// the script: packet, what the reply must start with (empty: just print it),
+	// and a PS/2 event made just before the packet goes (1: A pressed;
+	// 2: the mouse moved right 5 and up 3)
+	struct Step { const char* what; std::vector<uint8_t> pkt; std::vector<uint8_t> want; size_t max; int inject = 0; };
 	std::vector<Step> script = {
 		{"READ_MCU_MEM 0F00 (the ROM's copyright)", {0x01, 0x02, 0x0F, 0x00}, {0x01, 0x00, 0x02, 0x28, 0x63, 0x29, 0x20, 0x31, 0x39, 0x38, 0x39}, 12},
 		{"GET_REAL_TIME", {0x01, 0x03}, {0x01, 0x00, 0x03}, 7},
 		{"WRITE_PRAM 0010 = AA 55", {0x01, 0x0C, 0x00, 0x10, 0xAA, 0x55}, {0x01, 0x00, 0x0C}, 8},
 		{"READ_PRAM 0010", {0x01, 0x07, 0x00, 0x10}, {0x01, 0x00, 0x07, 0xAA, 0x55}, 5},
 		{"the ROM's first packet: I2C write to 88, 61 55", {0x01, 0x22, 0x88, 0x61, 0x55}, {}, 8},
-		{"ADB talk register 0 of address 2 (no keyboard)", {0x00, 0x2C}, {}, 8},
+		// the ADB devices (PPCMac_adb) answering Cuda's firmware: flags 00 an
+		// answer, 02 none (a timeout)
+		{"ADB talk 3 of address 2: the keyboard", {0x00, 0x2F}, {0x00, 0x00, 0x2F, 0x62, 0x02}, 8},
+		{"ADB talk 3 of address 3: the mouse", {0x00, 0x3F}, {0x00, 0x00, 0x3F, 0x63, 0x01}, 8},
+		{"ADB talk 3 of address 4: nothing there", {0x00, 0x4F}, {0x00, 0x02, 0x4F}, 8},
+		{"ADB talk 0 of address 2: no key yet", {0x00, 0x2C}, {0x00, 0x02, 0x2C}, 8},
+		{"ADB talk 0 of address 2 after A is pressed", {0x00, 0x2C}, {0x00, 0x00, 0x2C, 0x00, 0xFF}, 8, 1},
+		{"ADB talk 0 of address 3 after a move right 5, up 3", {0x00, 0x3C}, {0x00, 0x00, 0x3C, 0xFD, 0x85}, 8, 2},
+		{"ADB talk 0 of address 3: nothing new", {0x00, 0x3C}, {0x00, 0x02, 0x3C}, 8},
+		{"ADB listen 3 of address 3: move to address 9 (FE)", {0x00, 0x3B, 0x09, 0xFE}, {0x00, 0x00, 0x3B}, 8},
+		{"ADB talk 3 of address 9: the mouse, moved", {0x00, 0x9F}, {0x00, 0x00, 0x9F, 0x69, 0x01}, 8},
+		{"ADB talk 3 of address 3: nothing there now", {0x00, 0x3F}, {0x00, 0x02, 0x3F}, 8},
+		{"ADB listen 3 of address 9: handler 2", {0x00, 0x9B, 0x09, 0x02}, {0x00, 0x00, 0x9B}, 8},
+		{"ADB talk 3 of address 9: handler 2", {0x00, 0x9F}, {0x00, 0x00, 0x9F, 0x69, 0x02}, 8},
+		{"ADB talk 2 of address 2: modifiers and LEDs", {0x00, 0x2E}, {0x00, 0x00, 0x2E, 0xFF, 0xFF}, 8},
+		{"ADB reset (SendReset)", {0x00, 0x00}, {0x00, 0x00, 0x00}, 8},
+		{"ADB talk 3 of address 3: the mouse, back home", {0x00, 0x3F}, {0x00, 0x00, 0x3F, 0x63, 0x01}, 8},
 	};
 	size_t script_i = 0;
 	bool script_sent = false;
@@ -369,6 +395,20 @@ int main(int argc, char** argv) {
 		dut->eval();
 		clocks++;
 
+		// ---- the ADB line's edges ----
+		if (opt.log_adb) {
+			static int adb_q = 0;
+			static uint64_t adb_t = 0;
+			int adb_now = (dut->adb_low ? 1 : 0) | (dut->adb_dev_low ? 2 : 0);
+			if (adb_now != adb_q) {
+				std::printf("adb %10.1f us  +%7.1f  %-10s  instruction %llu\n", clocks * 1e6 / CLK_HZ, (clocks - adb_t) * 1e6 / CLK_HZ,
+					adb_now == 0 ? "released" : adb_now == 1 ? "Cuda low" : adb_now == 2 ? "device low" : "both low",
+					(unsigned long long)retired);
+				adb_q = adb_now;
+				adb_t = clocks;
+			}
+		}
+
 		// ---- after it: the VIA sees Cuda's lines, the host runs ----
 		bool cb2_line = (dut->cb2_oe ? (bool)dut->cb2_out : true) && (via.shift_out() ? via.cb2_out : true);
 		via.cb1_edge(dut->cb1, cb2_line);
@@ -384,6 +424,10 @@ int main(int argc, char** argv) {
 				std::printf("host: synchronised with Cuda at %.3f s\n", clocks / CLK_HZ);
 			if (host.st == Host::IDLE && !host.busy && host.sync_done_at && script_i < script.size()) {
 				if (!script_sent) {
+					if (script[script_i].inject == 1)
+						ps2_key = ((ps2_key ^ 0x400) & 0x400) | 0x200 | 0x1C;
+					else if (script[script_i].inject == 2)
+						ps2_mouse = ((ps2_mouse ^ 0x1000000) & 0x1000000) | 3u << 16 | 5u << 8 | 0x08;
 					host.send(script[script_i].pkt);
 					host.max_reply = script[script_i].max;
 					script_sent = true;

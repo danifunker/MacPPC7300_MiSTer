@@ -14,5 +14,6 @@ set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) P
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) PPCMac_hc05.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) PPCMac_cudarom.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) PPCMac_cuda.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) PPCMac_adb.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) PPCMac_machine.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) PPCMac_system.sv]

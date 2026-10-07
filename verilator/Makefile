@@ -103,8 +103,9 @@ $(BUILD)/sdram/sdram_tb: $(RTL)/DSPPC604_memcdc.sv $(MACH)/PPCMac_sdram.sv $(HER
 		> $(BUILD)/sdram/build.log 2>&1 || (cat $(BUILD)/sdram/build.log; false)
 	@grep -E '^%Warning' $(BUILD)/sdram/build.log || true
 
-# Cuda alone, its clock at 2 x 4,194,304 Hz (the least PPCMac_cuda takes) to run fast
-CUDA_SRCS := $(MACH)/PPCMac_hc05.sv $(MACH)/PPCMac_cudarom.sv $(MACH)/PPCMac_cuda.sv
+# Cuda with the ADB devices on its line (cuda_tb_top), its clock at
+# 2 x 4,194,304 Hz (the least PPCMac_cuda takes) to run fast
+CUDA_SRCS := $(MACH)/PPCMac_hc05.sv $(MACH)/PPCMac_cudarom.sv $(MACH)/PPCMac_cuda.sv $(MACH)/PPCMac_adb.sv $(HERE)cuda_tb_top.sv
 ifneq ($(HC05_LIB),)
 CUDA_DIR    := $(BUILD)/cuda_ref
 CUDA_CFLAGS := -DWITH_HC05REF -I$(HERE)hc05ref
@@ -117,7 +118,7 @@ cuda: $(CUDA_DIR)/cuda_tb
 
 $(CUDA_DIR)/cuda_tb: $(CUDA_SRCS) $(HERE)cuda_main.cpp $(HERE)Makefile $(HC05_LIB)
 	@mkdir -p $(CUDA_DIR)
-	@$(VERILATOR) $(VFLAGS) --top-module PPCMac_cuda -GCLK_HZ=8388608 -Mdir $(CUDA_DIR) -o cuda_tb \
+	@$(VERILATOR) $(VFLAGS) --top-module cuda_tb_top -GCLK_HZ=8388608 -Mdir $(CUDA_DIR) -o cuda_tb \
 		-CFLAGS "-O2 -std=c++17 $(CUDA_CFLAGS)" $(CUDA_LDFLAGS) \
 		$(CUDA_SRCS) $(HERE)cuda_main.cpp \
 		> $(CUDA_DIR)/build.log 2>&1 || (cat $(CUDA_DIR)/build.log; false)
@@ -140,7 +141,7 @@ lint:
 	$(VERILATOR) --lint-only $(WARN) --top-module PPCMac_system $(RTL_SRCS) $(MACH_SRCS)
 	$(VERILATOR) --lint-only $(WARN) --top-module sdram_tb_top $(RTL)/DSPPC604_memcdc.sv $(MACH)/PPCMac_sdram.sv $(HERE)sdram_tb_top.sv
 	$(VERILATOR) --lint-only $(WARN) --top-module PPCMac_debug $(MACH)/PPCMac_debug.sv
-	$(VERILATOR) --lint-only $(WARN) --top-module PPCMac_cuda $(CUDA_SRCS)
+	$(VERILATOR) --lint-only $(WARN) --top-module cuda_tb_top $(CUDA_SRCS)
 
 clean:
 	rm -rf $(BUILD)
