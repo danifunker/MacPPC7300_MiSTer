@@ -19,8 +19,11 @@
 //                 unmasked. Sources so far: Curio (0C), MESH (0D), the VIA
 //                 (12), the Control video's VBL (1A, through Chaos)
 //    08000-0FFFF  DMA channel registers, 256 bytes per channel
-//                 (grandcentral.cpp:250-305; dbdma.cpp:307-380): stored and
-//                 read back; a channel never runs (there is no bus master)
+//                 (grandcentral.cpp:250-305; dbdma.cpp:307-380): channel A,
+//                 MESH's, is a DBDMA engine (PPCMac_dbdma) on the DMA port
+//                 (dm_*), its interrupt source 0A a level that the clear
+//                 register drops (dingusppc's ack_dma_int, clear_dma_int);
+//                 the others are stored and read back and never run
 //    10000        Curio SCSI             PPCMac_sc53c94: the external bus's
 //                                        53CF94, with no target
 //    11000        MACE Ethernet          reads 0
@@ -36,7 +39,8 @@
 //                                        (below); PPCMac_machine paces the
 //                                        accesses to the VIA's clock
 //    18000        MESH SCSI              PPCMac_mesh: the internal bus's
-//                                        controller, with no target
+//                                        controller; the bus's lines are
+//                                        ports (the disks are outside)
 //    19000        Ethernet address ROM   08 00 07 44 55 66 00 00
 //    1A000        board register 1       E13F (machinetnt.cpp:98-106)
 //    1B000        RaDACal (the Control   PPCMac_radacal (control.cpp:156,
@@ -94,6 +98,23 @@ module PPCMac_gc
 	// the Control video's VBL interrupt (source 1A)
 	input  logic         ctl_irq,
 
+	// the internal SCSI bus: what MESH drives, and the lines (1 = asserted)
+	output logic         mesh_rst, mesh_bsy, mesh_sel, mesh_atn, mesh_ack, mesh_req, mesh_msg, mesh_cd, mesh_io,
+	output logic [7:0]   mesh_db,
+	input  logic         scsi_rst, scsi_bsy, scsi_sel, scsi_atn, scsi_ack, scsi_req, scsi_msg, scsi_cd, scsi_io,
+	input  logic [7:0]   scsi_db,
+
+	// the DMA channels' way to memory (the CPU port's protocol; PPCMac_machine
+	// takes it through the CPU's snoop port)
+	output logic         dm_req,
+	output logic         dm_we,
+	output logic         dm_line,
+	output logic [31:2]  dm_addr,
+	output logic [3:0]   dm_be,
+	output logic [255:0] dm_wdata,
+	input  logic         dm_ack,
+	input  logic [255:0] dm_rdata,
+
 	// RaDACal to the scan-out: its state, and its colour table in the video clock
 	output logic [7:0]   dac_cr,
 	output logic [7:0]   dbl_buf_cr,
@@ -122,14 +143,16 @@ wire        single = (be == 4'b1000) | (be == 4'b0100) | (be == 4'b0010) | (be =
 logic [31:0] int_mask, int_events, int_lines_q;
 logic        via_irq;                           // the VIA's IRQ: an enabled flag is set
 logic        curio_irq, mesh_irq;
-wire  [31:0] int_lines  = {5'h0, ctl_irq, 7'h0, via_irq, 4'h0, mesh_irq, curio_irq, 12'h0};
+logic        dma_a_lvl;                         // MESH's DMA channel's interrupt, until cleared
+wire  [31:0] int_lines  = {5'h0, ctl_irq, 7'h0, via_irq, 4'h0, mesh_irq, curio_irq, 1'b0, dma_a_lvl, 10'h0};
 wire  [31:0] int_levels = int_lines_q | 32'h0000_0800;   // dingusppc ORs in bit 11 (grandcentral.cpp:306)
 wire         int_68k    = int_mask[31];         // MACIO_INT_MODE: an event at either edge
 wire  [31:0] int_chg    = int_lines ^ int_lines_q;
 assign irq = |(int_events & int_mask & 32'h7FFF_FFFF);
 
 // ---- DMA channels: 0-3 Curio, floppy, Ethernet out and in; 8 sound out; A MESH ----
-// (4-7, the serial channels, and 9, sound in, read 0 and ignore writes)
+// (4-7, the serial channels, and 9, sound in, read 0 and ignore writes).
+// Channel A is PPCMac_dbdma (below); the others' registers are kept here.
 localparam int NCH = 6;
 logic [15:0] ch_stat [NCH];
 logic [31:0] ch_cmd  [NCH];
@@ -189,10 +212,36 @@ PPCMac_sc53c94 #(.TICK_HZ(SCSI_HZ)) curio (
 	.rq(curio_rq), .irq(curio_irq)
 );
 
+logic       mi_valid, mi_take, mi_flush, mo_ready, mo_put, dma_drained, dma_a_irq;
+logic [7:0] mi_data, mo_data;
+logic [31:0] dma_a_rle;
+wire        dma_a_sel = sel & dma & (addr[14:8] == 7'd10) & (addr[7:5] == 3'd0);   // its first 32 bytes
+
 PPCMac_mesh #(.TICK_HZ(SCSI_HZ)) mesh (
 	.clk, .reset, .tick(scsi_tick),
 	.sel(sel & devs & (sub == 4'h8)), .we, .rn(off[7:4]), .wdata(wb),
-	.rq(mesh_rq), .irq(mesh_irq)
+	.rq(mesh_rq), .irq(mesh_irq),
+	.o_rst(mesh_rst), .o_bsy(mesh_bsy), .o_sel(mesh_sel), .o_atn(mesh_atn), .o_ack(mesh_ack),
+	.o_req(mesh_req), .o_msg(mesh_msg), .o_cd(mesh_cd), .o_io(mesh_io), .o_db(mesh_db),
+	.b_rst(scsi_rst), .b_bsy(scsi_bsy), .b_sel(scsi_sel), .b_atn(scsi_atn), .b_ack(scsi_ack),
+	.b_req(scsi_req), .b_msg(scsi_msg), .b_cd(scsi_cd), .b_io(scsi_io), .b_db(scsi_db),
+	.di_valid(mi_valid), .di_data(mi_data), .di_take(mi_take), .di_flush(mi_flush),
+	.do_ready(mo_ready), .do_data(mo_data), .do_put(mo_put), .dma_drained
+);
+
+// MESH's DMA channel (A); its registers' values are little-endian, as the
+// others' are kept (wle, bswap32 on the way out)
+PPCMac_dbdma dma_a (
+	.clk, .reset,
+	.sel(dma_a_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_a_rle),
+	.dm_req, .dm_we, .dm_line, .dm_addr, .dm_be, .dm_wdata, .dm_ack, .dm_rdata,
+	.di_valid(mi_valid), .di_data(mi_data), .di_take(mi_take), .di_flush(mi_flush),
+	.do_ready(mo_ready), .do_data(mo_data), .do_put(mo_put),
+	/* verilator lint_off PINCONNECTEMPTY */
+	.xfer_in(), .xfer_out(),
+	/* verilator lint_on PINCONNECTEMPTY */
+	.drained(dma_drained),
+	.irq(dma_a_irq)
 );
 
 // ---- AWACS (awacs.cpp:189-257) ---------------------------------------------------------
@@ -275,7 +324,8 @@ always_comb begin
 		endcase
 	end
 	else if (dma) begin
-		if (ch_ok) begin
+		if (addr[14:8] == 7'd10) rq = (off[7:5] == 3'd0) ? bswap32(dma_a_rle) : 32'h0;
+		else if (ch_ok) begin
 			case (off[7:2])
 				6'd1:    rq = bswap32({16'h0, ch_stat[ch]});
 				6'd3:    rq = bswap32(ch_cmd[ch]);
@@ -401,6 +451,10 @@ always_ff @(posedge clk) begin
 	rad_rd_q <= rad_sel & ~we;
 	if (sel) rdata_q <= rq;
 
+	// MESH's DMA channel's interrupt: a level until the clear register drops
+	// it (clear_dma_int; its falling edge is a new event in 68k mode)
+	if (dma_a_irq) dma_a_lvl <= 1'b1;
+
 	if (sel & ints & we) begin
 		case (off[7:0])
 			8'h24: int_mask <= bswap32(merge_be(bswap32(int_mask), wdata, be));
@@ -408,6 +462,7 @@ always_ff @(posedge clk) begin
 				// with MACIO_INT_MODE in the mask, MACIO_INT_CLR clears everything
 				if (int_mask[31] & wle[31]) int_events <= 32'h0;
 				else int_events <= int_events & ~(wle & 32'h7FFF_FFFF);
+				if (wle[10]) dma_a_lvl <= 1'b0;
 			end
 			default: ;
 		endcase
@@ -421,7 +476,7 @@ always_ff @(posedge clk) begin
 		if (int_chg[i]) int_events[i] <= int_68k | int_lines[i];
 	int_lines_q <= int_lines;
 
-	if (sel & dma & we & ch_ok) begin
+	if (sel & dma & we & ch_ok & (ch != 3'd5)) begin
 		case (off[7:2])
 			6'd0: begin
 				// ChannelControl: the top half masks the bottom half
@@ -498,6 +553,7 @@ always_ff @(posedge clk) begin
 		int_mask    <= 32'h0;
 		int_events  <= 32'h0;
 		int_lines_q <= 32'h0;
+		dma_a_lvl   <= 1'b0;
 		for (int i = 0; i < NCH; i++) begin
 			ch_stat[i] <= 16'h0;
 			ch_cmd[i]  <= 32'h0;

@@ -36,12 +36,14 @@
 #include <verilated.h>
 #ifdef PPCMAC_MACHINE
 #include "VPPCMac_system.h"
+#include "VPPCMac_system___024root.h"
 typedef VPPCMac_system Top;
 #else
 #include "VDSPPC604.h"
 typedef VDSPPC604 Top;
 #endif
 
+#include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -116,6 +118,13 @@ struct Options {
 	uint64_t frame_at = 0;         // after this many instructions, write the next whole frame
 	uint64_t frame_every = 0;      // ... and again every this many (0: once)
 	std::string frame_out;         // ... to this file (PNG if it ends in .png, else PPM)
+	struct MouseMove { uint64_t at; int dx, dy; };
+	std::vector<MouseMove> mouse;  // PS/2 mouse packets, each after so many instructions
+	bool vram_check = false;       // every CPU read of the VRAM window checked against what it wrote
+	std::string vram_log;          // every CPU access to the VRAM window
+	std::string disk[2];           // disk images for SCSI IDs 0 and 1 (hps_io slots 0 and 1)
+	unsigned disk_latency = 2000;  // memory clocks from a block request to hps_io's acknowledge
+	bool disk_log = false;         // print every block moved
 };
 
 // A frame as a PNG, stored (uncompressed) deflate blocks: no zlib needed.
@@ -208,6 +217,49 @@ struct Ddr {
 	uint64_t dout = 0;
 };
 
+// A disk image behind hps_io's block interface, as the MiSTer's Main serves
+// one: 512-byte blocks read from the file; blocks written are kept here, so
+// the file is never changed.
+struct Disk {
+	FILE* f = nullptr;
+	uint64_t size = 0;             // bytes
+	std::map<uint32_t, std::vector<uint8_t>> written;
+	void read(uint32_t lba, uint8_t* out) {
+		auto it = written.find(lba);
+		if (it != written.end()) { std::memcpy(out, it->second.data(), 512); return; }
+		std::memset(out, 0, 512);
+		if (f && (uint64_t)lba * 512 < size) {
+			std::fseek(f, (long)((uint64_t)lba * 512), SEEK_SET);
+			size_t got = std::fread(out, 1, 512, f);
+			(void)got;
+		}
+	}
+	void write(uint32_t lba, const uint8_t* in) { written[lba] = std::vector<uint8_t>(in, in + 512); }
+};
+
+// hps_io's side of the block interface (sys/hps_io.sv), in the memory's
+// clock: the mounts at the start, then each request (sd_rd or sd_wr) taken
+// after a latency (the ARM reading the file), sd_ack up, the 512 bytes
+// written into the core's buffer (sd_buff_wr) or read from it (sd_buff_din,
+// a clock or two after the address), sd_ack down.
+struct SdHost {
+	Disk disk[2];
+	int st = 0;                    // 0 idle, 1 waiting, 2 moving, 3 the acknowledge falls
+	int slot = 0;
+	bool we = false;
+	uint32_t lba = 0;
+	unsigned wait = 0;
+	int k = 0, sub = 0;
+	uint8_t buf[512];
+	uint64_t clocks = 0;
+	// what the core sees
+	unsigned mounted = 0, ack = 0;
+	uint64_t img_size = 0;
+	unsigned buff_addr = 0, buff_dout = 0;
+	bool buff_wr = false;
+	uint64_t reads = 0, writes = 0;
+};
+
 struct Frame {
 	enum { WAIT, ARMED, TAKING, DONE } st = WAIT;
 	uint64_t next = 0;             // the instruction count to take the next frame after
@@ -266,6 +318,18 @@ void usage() {
 		"                   else PPM)\n"
 		"  --frame-every N  and again every N instructions, over the same file (a\n"
 		"                   picture to watch while the bench runs)\n"
+		"  --mouse N:DX:DY  after N instructions, the PS/2 mouse moves DX right and DY down\n"
+		"                   (repeat for more; N in order)\n"
+		"  --vram-check     keep a copy of every CPU write to the VRAM window (90000000,\n"
+		"                   Open Firmware's place for Control's VRAM), by VRAM byte (the\n"
+		"                   window's low 22 bits: both apertures, wide mode, 8 bits a\n"
+		"                   pixel), and check every CPU read of a byte written before\n"
+		"  --vram-log FILE  write every CPU access to the VRAM window\n"
+		"  --disk0 FILE --disk1 FILE   disk images for SCSI IDs 0 and 1 on MESH (hps_io\n"
+		"                   slots 0 and 1; blocks written are kept in memory, the file\n"
+		"                   is not changed)\n"
+		"  --disk-latency N memory clocks from a block request to its answer (default 2000)\n"
+		"  --disk-log       print every block moved\n"
 #else
 		"usage: core_tb --prog FILE [options]\n"
 		"  --irq-every N    raise the external interrupt every N cycles; a store to\n"
@@ -498,6 +562,15 @@ void dev_write(void* ctx, uint32_t addr, unsigned size, uint32_t value) {
 	}
 	DevAccess a = d.q.front();
 	d.q.pop_front();
+	// a write-through store (Mac OS maps the frame buffer so): the core's
+	// cache keeps the line it holds up to date, and so does the copy here
+	auto cl = d.cached.find(line_addr);
+	if (cl != d.cached.end()) {
+		uint32_t& w = cl->second[(addr >> 2) & 7];
+		unsigned shift = 32 - 8 * ((addr & 3) + size);
+		uint32_t mask = (size == 4 ? 0xFFFFFFFFu : ((1u << (8 * size)) - 1)) << shift;
+		w = (w & ~mask) | ((value << shift) & mask);
+	}
 	uint32_t got = lane_value(a.wdata, addr, size);
 	if (!a.we || a.line || a.addr != (addr & ~3u) || a.be != lane_be(addr, size) || got != value) {
 		if (d.error.empty()) {
@@ -556,6 +629,20 @@ int main(int argc, char** argv) {
 		else if (a == "--frame-at") opt.frame_at = std::strtoull(next().c_str(), nullptr, 0);
 		else if (a == "--frame-every") opt.frame_every = std::strtoull(next().c_str(), nullptr, 0);
 		else if (a == "--frame-out") opt.frame_out = next();
+		else if (a == "--mouse") {
+			Options::MouseMove m{};
+			if (std::sscanf(next().c_str(), "%llu:%d:%d", reinterpret_cast<unsigned long long*>(&m.at), &m.dx, &m.dy) != 3) {
+				usage();
+				return 2;
+			}
+			opt.mouse.push_back(m);
+		}
+		else if (a == "--vram-check") opt.vram_check = true;
+		else if (a == "--vram-log") opt.vram_log = next();
+		else if (a == "--disk0") opt.disk[0] = next();
+		else if (a == "--disk1") opt.disk[1] = next();
+		else if (a == "--disk-latency") opt.disk_latency = (unsigned)std::atoi(next().c_str());
+		else if (a == "--disk-log") opt.disk_log = true;
 		else { usage(); return a == "--help" ? 0 : 2; }
 	}
 #ifdef PPCMAC_MACHINE
@@ -684,6 +771,15 @@ int main(int argc, char** argv) {
 	Ddr ddr;
 	Frame fr;
 	fr.next = opt.frame_at;
+	SdHost sd;
+	for (int i = 0; i < 2; i++) {
+		if (opt.disk[i].empty()) continue;
+		sd.disk[i].f = std::fopen(opt.disk[i].c_str(), "rb");
+		if (!sd.disk[i].f) { std::fprintf(stderr, "cannot open %s\n", opt.disk[i].c_str()); return 2; }
+		std::fseek(sd.disk[i].f, 0, SEEK_END);
+		sd.disk[i].size = (uint64_t)std::ftell(sd.disk[i].f);
+		std::printf("disk %d: %s, %llu blocks\n", i, opt.disk[i].c_str(), (unsigned long long)(sd.disk[i].size / 512));
+	}
 #endif
 	uint32_t gpr[32] = {0};
 	std::pair<unsigned, uint64_t> beats[8];   // the register writes the core reported for this instruction
@@ -706,8 +802,25 @@ int main(int argc, char** argv) {
 	int line_notes = 0;
 	uint32_t mt_passes = 0, mt_errors = 0, mt_status = 0, mt_first = 0;
 	int mt_error_lines = 0;
+	// the PS/2 mouse (hps_io's ps2_mouse: [24] toggles once a packet, [23:16]
+	// Y up, [15:8] X right, [5] and [4] their signs, [3] always 1)
+	uint32_t ps2_mouse = 0;
+	size_t mouse_next = 0;
+	// the VRAM window as the CPU wrote it: every byte's value and whether it
+	// has been written
+	const uint32_t VWIN = 0x90000000u, VWIN_SIZE = 64u << 20, VRAM_MASK = (4u << 20) - 1;
+	std::vector<uint8_t> vshadow, vknown;
+	if (opt.vram_check) { vshadow.assign(VRAM_MASK + 1, 0); vknown.assign(VRAM_MASK + 1, 0); }
+	uint64_t v_lr = 0, v_lw = 0, v_wr = 0, v_ww = 0, v_bad = 0;
+	FILE* vlog = nullptr;
+	if (!opt.vram_log.empty()) {
+		vlog = std::fopen(opt.vram_log.c_str(), "w");
+		if (!vlog) { std::fprintf(stderr, "cannot write %s\n", opt.vram_log.c_str()); return 2; }
+	}
 
 	auto drive = [&]() {
+		dut->ps2_mouse = ps2_mouse;
+		dut->ps2_key = 0;
 		dut->ram_mb = opt.ram_mb;
 		dut->boot_memtest = opt.memtest;
 		dut->reset_pc = reset_pc;
@@ -722,11 +835,105 @@ int main(int argc, char** argv) {
 		dut->ddr_busy = ddr.busy;
 		dut->ddr_dout_ready = ddr.ready;
 		dut->ddr_dout = ddr.dout;
+		dut->img_mounted = sd.mounted;
+		dut->img_size = sd.img_size;
+		dut->img_readonly = 0;
+		dut->sd_ack = sd.ack;
+		dut->sd_buff_addr = sd.buff_addr;
+		dut->sd_buff_dout = sd.buff_dout;
+		dut->sd_buff_wr = sd.buff_wr;
+	};
+
+	// hps_io's block interface, on a rising edge of the memory's clock
+	auto sd_edge = [&]() {
+		sd.clocks++;
+		sd.mounted = 0;
+		sd.buff_wr = false;
+		// the mounts, early (the machine still in reset, as at a core's start)
+		for (int i = 0; i < 2; i++)
+			if (sd.disk[i].f && sd.clocks == 16u + 16u * i) { sd.mounted = 1u << i; sd.img_size = sd.disk[i].size; }
+		switch (sd.st) {
+			case 0: {
+				unsigned rd = dut->sd_rd, wr = dut->sd_wr;
+				if ((rd | wr) & 3) {
+					sd.slot = ((rd | wr) & 1) ? 0 : 1;
+					sd.we = (wr >> sd.slot) & 1;
+					sd.lba = dut->sd_lba;
+					sd.wait = opt.disk_latency;
+					sd.st = 1;
+				}
+				break;
+			}
+			case 1:
+				if (sd.wait > 0) { sd.wait--; break; }
+				sd.ack = 1u << sd.slot;
+				sd.k = 0; sd.sub = 0;
+				if (!sd.we) sd.disk[sd.slot].read(sd.lba, sd.buf);
+				sd.buff_addr = 0;
+				sd.st = 2;
+				break;
+			case 2:
+				if (!sd.we) {
+					// a byte a write strobe, the address moving on after it
+					if (sd.sub == 0) { sd.buff_addr = sd.k; sd.buff_dout = sd.buf[sd.k]; sd.buff_wr = true; sd.sub = 1; }
+					else { sd.sub = 0; if (++sd.k == 512) sd.st = 3; }
+				} else {
+					// the address, then the buffer's answer two clocks later
+					if (sd.sub == 0) { sd.buff_addr = sd.k; sd.sub = 1; }
+					else if (sd.sub == 1) sd.sub = 2;
+					else { sd.buf[sd.k] = (uint8_t)dut->sd_buff_din; sd.sub = 0; if (++sd.k == 512) sd.st = 3; }
+				}
+				break;
+			default:
+				if (sd.we) { sd.disk[sd.slot].write(sd.lba, sd.buf); sd.writes++; } else sd.reads++;
+				if (opt.disk_log)
+					std::printf("disk %d: %s block %u after %llu instructions\n", sd.slot, sd.we ? "wrote" : "read", sd.lba,
+						(unsigned long long)retired);
+				sd.ack = 0;
+				sd.st = 0;
+				break;
+		}
+	};
+
+	// the DDR3's recent traffic (for --vram-check's report), and how many
+	// CPU reads the picture side answered differently from the DDR3
+	std::deque<std::string> ddr_hist;
+	uint64_t ddr_bad = 0;
+	auto ddr_note = [&](const char* fmt, ...) {
+		char b[160];
+		va_list ap;
+		va_start(ap, fmt);
+		std::vsnprintf(b, sizeof b, fmt, ap);
+		va_end(ap);
+		ddr_hist.push_back(b);
+		if (ddr_hist.size() > 48) ddr_hist.pop_front();
 	};
 
 	// the VRAM's DDR3, on a rising edge of the memory's clock: what the port
 	// shows in the coming cycle, from what the core drives in it
 	auto ddr_edge = [&]() {
+		// a CPU read answered by the picture side in this cycle: its data
+		// against the DDR3's
+		if (opt.vram_check && dut->vram_ack && !dut->vram_we) {
+			uint32_t byte = (uint32_t)dut->vram_addr << 2;
+			int nw = dut->vram_line ? 8 : 1;
+			for (int j = 0; j < nw; j++) {
+				uint32_t a = dut->vram_line ? (byte & ~31u) + 4 * j : byte;
+				uint64_t q = ddr.m[(a >> 3) % Ddr::WORDS];
+				unsigned sh = (a & 4) ? 32 : 0;
+				uint32_t want = (uint32_t)((q >> sh) & 0xFF) << 24 | (uint32_t)((q >> (sh + 8)) & 0xFF) << 16 |
+				                (uint32_t)((q >> (sh + 16)) & 0xFF) << 8 | (uint32_t)((q >> (sh + 24)) & 0xFF);
+				uint32_t got = dut->vram_line ? dut->vram_rdata[7 - j] : dut->vram_rdata[0];
+				if (got != want && ddr_bad++ < 10) {
+					std::printf("ddr-check: after %llu instructions, the picture side answered a %s read of VRAM %06X "
+						"with %08X at %06X; the DDR3 holds %08X. Its recent traffic:\n", (unsigned long long)retired,
+						dut->vram_line ? "line" : "word", byte, got, a, want);
+					for (auto& h : ddr_hist) std::printf("    %s\n", h.c_str());
+				}
+			}
+		}
+		if (dut->vram_ack) ddr_note("%llu: answer %s %s %06X", (unsigned long long)sd.clocks, dut->vram_we ? "W" : "R",
+			dut->vram_line ? "line" : "word", (uint32_t)dut->vram_addr << 2);
 		ddr.ready = false;
 		if (!ddr.rq.empty()) {
 			Ddr::Rd& r = ddr.rq.front();
@@ -734,6 +941,9 @@ int main(int argc, char** argv) {
 			else {
 				ddr.dout  = ddr.m[(r.addr - Ddr::BASE) % Ddr::WORDS];
 				ddr.ready = true;
+				if (opt.vram_check)
+					ddr_note("%llu: beat of %06X: %016llX", (unsigned long long)sd.clocks, (r.addr - Ddr::BASE) * 8,
+						(unsigned long long)ddr.dout);
 				r.addr++;
 				if (--r.left == 0) ddr.rq.pop_front();
 			}
@@ -746,8 +956,15 @@ int main(int argc, char** argv) {
 			static int notes = 0;
 			if (notes++ < 5) std::printf("note: DDR3 access at word %08X, outside the VRAM\n", addr);
 		}
-		if (!ddr.busy && rd) ddr.rq.push_back({addr, cnt ? cnt : 1, 4});
+		if (!ddr.busy && rd) {
+			ddr.rq.push_back({addr, cnt ? cnt : 1, 4});
+			if (opt.vram_check)
+				ddr_note("%llu: read %06X x%u", (unsigned long long)sd.clocks, (addr - Ddr::BASE) * 8, cnt ? cnt : 1);
+		}
 		if (!ddr.busy && we) {
+			if (opt.vram_check)
+				ddr_note("%llu: write %06X be %02X %016llX", (unsigned long long)sd.clocks,
+					((ddr.wr_left ? ddr.wr_addr : addr) - Ddr::BASE) * 8, (unsigned)dut->ddr_be, (unsigned long long)dut->ddr_din);
 			if (ddr.wr_left == 0) { ddr.wr_addr = addr; ddr.wr_left = cnt ? cnt : 1; }
 			uint64_t& w = ddr.m[(ddr.wr_addr - Ddr::BASE) % Ddr::WORDS];
 			uint64_t din = dut->ddr_din;
@@ -774,9 +991,13 @@ int main(int argc, char** argv) {
 			else fr.in_line = false;
 			if (!fr.vb_q && vb) {
 				size_t w = fr.rows.empty() ? 0 : fr.rows[0].size();
-				write_image(opt.frame_out, w, fr.rows);
+				// (a %llu in the name: the instruction count, a file per frame)
+				std::string name = opt.frame_out;
+				size_t pct = name.find("%llu");
+				if (pct != std::string::npos) name.replace(pct, 4, std::to_string((unsigned long long)retired));
+				write_image(name, w, fr.rows);
 				std::printf("frame: %zu x %zu after %llu instructions, written to %s\n", w, fr.rows.size(),
-					(unsigned long long)retired, opt.frame_out.c_str());
+					(unsigned long long)retired, name.c_str());
 				std::fflush(stdout);
 				if (opt.frame_every) { fr.st = Frame::WAIT; fr.next = retired + opt.frame_every; }
 				else fr.st = Frame::DONE;
@@ -829,10 +1050,29 @@ int main(int argc, char** argv) {
 			} else {
 				dut->clk_b = !dut->clk_b;
 				dut->eval();
-				if (dut->clk_b) { mem_edge(); ddr_edge(); frame_edge(); }
+				if (dut->clk_b) { mem_edge(); ddr_edge(); frame_edge(); sd_edge(); }
 			}
 		}
 		cycles++;
+#ifdef WITH_REF
+		// a DMA write to RAM goes into the reference's RAM too (it has no DMA)
+		if (opt.lockstep && dut->dma_wr) {
+			uint8_t* rr = ref_ram();
+			uint32_t addr = (uint32_t)dut->dma_wr_addr << 2;
+			if (dut->dma_wr_line) {
+				uint32_t base = addr & ~31u;
+				for (int k = 0; k < 8; k++) {
+					uint32_t w = dut->dma_wr_data[7 - k];
+					for (int i = 0; i < 4; i++)
+						if (base + 4 * k + i < RAM_SIZE) rr[base + 4 * k + i] = (uint8_t)(w >> (24 - 8 * i));
+				}
+			} else {
+				uint32_t w = dut->dma_wr_data[0], be = dut->dma_wr_be;
+				for (int i = 0; i < 4; i++)
+					if ((be & (8u >> i)) && addr + i < RAM_SIZE) rr[addr + i] = (uint8_t)(w >> (24 - 8 * i));
+			}
+		}
+#endif
 		// a device access answered by the machine: everything but RAM and ROM reads
 		if (dut->cpu_ack && dut->cpu_req) {
 			uint32_t addr = (uint32_t)dut->cpu_addr << 2;
@@ -849,6 +1089,36 @@ int main(int argc, char** argv) {
 				else if (devq.log) {
 					if (a.we) std::fprintf(devq.log, "A %llu %08X W 4 %08X %08X be %X\n", (unsigned long long)retired, 0u, addr, a.wdata, a.be);
 					else std::fprintf(devq.log, "A %llu %08X R 4 %08X %08X be %X\n", (unsigned long long)retired, 0u, addr, a.rdata, a.be);
+				}
+				if (a.addr - VWIN < VWIN_SIZE) {
+					if (vlog) {
+						std::fprintf(vlog, "%llu %08X %c %08X", (unsigned long long)retired, (uint32_t)dut->trace_pc,
+							a.we ? 'W' : 'R', a.addr);
+						if (a.line)
+							for (int k = 0; k < 8; k++) std::fprintf(vlog, " %08X", a.we ? a.lw[k] : a.lr[k]);
+						else std::fprintf(vlog, " %08X be %X", a.we ? a.wdata : a.rdata, a.be);
+						std::fprintf(vlog, "\n");
+					}
+				}
+				if (opt.vram_check && a.addr - VWIN < VWIN_SIZE) {
+					// each byte of the access: its VRAM byte (both apertures alike,
+					// as at 8 bits a pixel in wide mode), the value read or
+					// written, whether the access covers it
+					int nw = a.line ? 8 : 1;
+					(a.line ? (a.we ? v_lw : v_lr) : (a.we ? v_ww : v_wr))++;
+					for (int k = 0; k < nw; k++) {
+						uint32_t wv = a.line ? (a.we ? a.lw[k] : a.lr[k]) : (a.we ? a.wdata : a.rdata);
+						for (int i = 0; i < 4; i++) {
+							if (!a.line && !(a.be & (8u >> i))) continue;
+							uint32_t ca = a.addr + 4 * k + i;
+							uint32_t off = ca & VRAM_MASK;
+							uint8_t v = (uint8_t)(wv >> (24 - 8 * i));
+							if (a.we) { vshadow[off] = v; vknown[off] = 1; }
+							else if (vknown[off] && vshadow[off] != v && v_bad++ < 40)
+								std::printf("vram-check: after %llu instructions (pc %08X), a %s read of %08X gave %02X, %02X was written\n",
+									(unsigned long long)retired, (uint32_t)dut->trace_pc, a.line ? "line" : "word", ca, v, vshadow[off]);
+						}
+					}
 				}
 			}
 		}
@@ -1063,9 +1333,23 @@ int main(int argc, char** argv) {
 				if (opt.progress && retired % opt.progress == 0) {
 					std::printf("progress: %llu instructions, %llu cycles, pc %08X, msr %08X\n",
 						(unsigned long long)retired, (unsigned long long)cycles, pc, dut->trace_msr);
+					if (!opt.disk[0].empty())
+						std::printf("disks: valid %u (memory clock's side %u, toggle %u), blocks %u, target state %u\n",
+							(unsigned)dut->rootp->PPCMac_system__DOT__machine__DOT__disks__DOT__m_valid,
+							(unsigned)dut->rootp->PPCMac_system__DOT__machine__DOT__disks__DOT__h_valid,
+							(unsigned)dut->rootp->PPCMac_system__DOT__machine__DOT__disks__DOT__h_mtog,
+							(unsigned)dut->rootp->PPCMac_system__DOT__machine__DOT__disks__DOT__m_blocks[0],
+							(unsigned)dut->rootp->PPCMac_system__DOT__machine__DOT__disks__DOT__ts);
 					std::fflush(stdout);
 				}
 				if (opt.max_instr && retired >= opt.max_instr) done = true;
+				while (mouse_next < opt.mouse.size() && retired >= opt.mouse[mouse_next].at) {
+					const Options::MouseMove& m = opt.mouse[mouse_next++];
+					int x = std::max(-255, std::min(255, m.dx)), y = std::max(-255, std::min(255, -m.dy));
+					ps2_mouse = ((ps2_mouse ^ (1u << 24)) & (1u << 24)) | ((uint32_t)(y & 0xFF) << 16) | ((uint32_t)(x & 0xFF) << 8) |
+					            (y < 0 ? 0x20u : 0u) | (x < 0 ? 0x10u : 0u) | 0x08u;
+					std::printf("mouse: moved %d right, %d down after %llu instructions\n", m.dx, m.dy, (unsigned long long)retired);
+				}
 #else
 				if (opt.trace)
 					std::printf("%10llu  %08X: %08X  cr=%08X xer=%08X lr=%08X ctr=%08X\n",
@@ -1345,6 +1629,13 @@ int main(int argc, char** argv) {
 			"outside RAM and ROM, %llu reads answered from a cached device line\n",
 			(unsigned long long)devq.reads, (unsigned long long)devq.writes, (unsigned long long)devq.lines,
 			(unsigned long long)devq.line_writes, (unsigned long long)devq.hits);
+	if (vlog) std::fclose(vlog);
+	if (sd.reads || sd.writes)
+		std::printf("disks: %llu blocks read, %llu written\n", (unsigned long long)sd.reads, (unsigned long long)sd.writes);
+	if (opt.vram_check)
+		std::printf("vram-check: %llu line reads, %llu line writes, %llu word reads, %llu word writes of the VRAM window; "
+			"%llu bytes read back differently from what was written\n", (unsigned long long)v_lr, (unsigned long long)v_lw,
+			(unsigned long long)v_wr, (unsigned long long)v_ww, (unsigned long long)v_bad);
 	if (stuck) std::printf("STUCK: nothing retired for %llu cycles\n", (unsigned long long)opt.stuck);
 	if (opt.lockstep) std::printf("lockstep with the reference: %s\n", diverged ? "DIVERGED" : "identical");
 	bool ok = !diverged && !stuck && (done || cycles >= opt.max_cycles);

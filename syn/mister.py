@@ -12,6 +12,11 @@ to the card and the core's UART.
     python syn\\mister.py put-nvram [FILE]        -> games/PPCMac/boot1.rom, the NVRAM image loaded at
                                                  core start (default syn\\nvram_of_prompt.bin)
     python syn\\mister.py rm-nvram                removes boot1.rom (the NVRAM starts blank)
+    python syn\\mister.py put-disk FILE [NAME]    a disk image -> games/PPCMac/NAME
+    python syn\\mister.py mount 0|1 PATH          the image (PATH from /media/fat) mounted as SCSI
+                                                 disk 0 or 1 at the core's next start
+                                                 (config/PPCMac.s0 or .s1, as the OSD writes it)
+    python syn\\mister.py umount 0|1              ... no longer
     python syn\\mister.py cfg [--ram MB] [--boot rom|memtest] [--uart modem|debug]
                               [--picture mac|debug] [--monitor 16|13]
                                                  writes config/PPCMac.CFG
@@ -160,6 +165,21 @@ def main():
         return scp(img, "root@%s:/media/fat/games/PPCMac/boot1.rom" % host())
     if cmd == "rm-nvram":
         return ssh("rm -f /media/fat/games/PPCMac/boot1.rom")
+    if cmd == "put-disk":
+        ssh("mkdir -p /media/fat/games/PPCMac")
+        name = a[2] if len(a) > 2 else os.path.basename(a[1])
+        return scp(a[1], "root@%s:/media/fat/games/PPCMac/%s" % (host(), name))
+    if cmd == "mount":
+        # what the Main writes when an SC slot's image is picked in the OSD
+        # (menu.cpp, store_name): the path from /media/fat, read back and
+        # mounted at the core's next start (user_io.cpp)
+        slot, path = int(a[1]), a[2]
+        if slot not in (0, 1) or "'" in path:
+            sys.exit("mount 0|1 PATH (from /media/fat, e.g. games/PPCMac/os761.hda)")
+        return ssh("test -f '/media/fat/%s' && printf '%%s\\0' '%s' > /media/fat/config/PPCMac.s%d && "
+                   "xxd /media/fat/config/PPCMac.s%d" % (path, path, slot, slot))
+    if cmd == "umount":
+        return ssh("rm -f /media/fat/config/PPCMac.s%d" % int(a[1]))
     if cmd == "cfg":
         ram, boot, uart, picture, monitor = 16, "rom", "modem", "mac", 16
         for i in range(1, len(a) - 1):

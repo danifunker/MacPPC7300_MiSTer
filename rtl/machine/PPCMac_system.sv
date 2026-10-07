@@ -75,6 +75,35 @@ module PPCMac_system
 	input  logic [10:0]  ps2_key,
 	input  logic [24:0]  ps2_mouse,
 
+	// the disk images: hps_io's block devices, slots 0 and 1, in the memory's clock
+	input  logic [1:0]   img_mounted,
+	input  logic [63:0]  img_size,
+	input  logic         img_readonly,
+	output logic [31:0]  sd_lba,
+	output logic [1:0]   sd_rd,
+	output logic [1:0]   sd_wr,
+	input  logic [1:0]   sd_ack,
+	input  logic [13:0]  sd_buff_addr,
+	input  logic [7:0]   sd_buff_dout,
+	output logic [7:0]   sd_buff_din,
+	input  logic         sd_buff_wr,
+	output logic         disk_busy,
+
+	// the VRAM's accesses as the picture side answers them, in the memory's
+	// clock (for the test bench)
+	output logic         vram_ack,
+	output logic         vram_we,
+	output logic         vram_line,
+	output logic [21:2]  vram_addr,
+	output logic [255:0] vram_rdata,
+
+	// a DMA write to RAM as it goes into memory (for the test bench)
+	output logic         dma_wr,
+	output logic         dma_wr_line,
+	output logic [31:2]  dma_wr_addr,
+	output logic [3:0]   dma_wr_be,
+	output logic [255:0] dma_wr_data,
+
 	// the VRAM in DDR3 (the framework's DDRAM port), in the memory's clock
 	input  logic         ddr_busy,
 	output logic [7:0]   ddr_burstcnt,
@@ -133,7 +162,8 @@ logic [31:2]  m_addr;
 logic [3:0]   m_be;
 logic [255:0] m_wdata, m_rdata;
 logic         ext_irq, tb_tick;
-logic         snoop_ack;          // unused until something else masters memory
+logic         snoop_req, snoop_we, snoop_ack;   // the DMA channels' lines, through the caches
+logic [31:5]  snoop_addr;
 logic         cuda_reset;         // Cuda holds the CPU in reset (PPCMac_cuda)
 wire          cpu_reset = reset | cuda_reset;
 
@@ -144,8 +174,7 @@ DSPPC604 cpu (
 	.ext_irq, .tb_tick,
 	.mem_req(c_req), .mem_we(c_we), .mem_line(c_line), .mem_addr(c_addr), .mem_be(c_be),
 	.mem_wdata(c_wdata), .mem_ack(c_ack), .mem_rdata(c_rdata),
-	// nothing else masters memory yet
-	.snoop_req(1'b0), .snoop_we(1'b0), .snoop_addr(27'h0), .snoop_ack,
+	.snoop_req, .snoop_we, .snoop_addr, .snoop_ack,
 	.trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_reg_we, .trace_reg_idx, .trace_reg_val,
 	.trace_cr, .trace_xer, .trace_lr, .trace_ctr, .trace_fpscr, .trace_msr,
 	.trace_dreq, .trace_dwe, .trace_dkind, .trace_daddr, .trace_dbe, .trace_dwdata
@@ -173,6 +202,10 @@ PPCMac_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_FAST
 	.c_req, .c_we, .c_line, .c_addr, .c_be, .c_wdata, .c_ack, .c_rdata,
 	.m_req, .m_we, .m_line, .m_addr, .m_be, .m_wdata, .m_ack, .m_rdata,
 	.ext_irq, .tb_tick, .cpu_reset(cuda_reset),
+	.snoop_req, .snoop_we, .snoop_addr, .snoop_ack,
+	.img_mounted, .img_size, .img_readonly, .sd_lba, .sd_rd, .sd_wr, .sd_ack,
+	.sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr, .disk_busy,
+	.dma_wr, .dma_wr_line, .dma_wr_addr, .dma_wr_be, .dma_wr_data,
 	.modem_txd, .modem_rxd, .nv_ld_we, .nv_ld_addr, .nv_ld_data,
 	.mon_std, .mon_ext, .ps2_key, .ps2_mouse,
 	.v_req, .v_we, .v_line, .v_addr, .v_be, .v_wdata, .v_ack, .v_rdata,
@@ -210,6 +243,12 @@ DSPPC604_memcdc cdc (
 	.clk_b, .reset_b,
 	.b_req, .b_we, .b_line, .b_addr, .b_be, .b_wdata, .b_ack, .b_rdata
 );
+
+assign vram_ack    = vb_ack;
+assign vram_we     = vb_we;
+assign vram_line   = vb_line;
+assign vram_addr   = vb_addr[21:2];
+assign vram_rdata  = vb_rdata;
 
 assign cpu_req     = c_req;
 assign cpu_we      = c_we;

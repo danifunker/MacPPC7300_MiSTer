@@ -15,7 +15,9 @@
 //      last, in bursts of up to 128 words, into one of two line buffers;
 //    - the CPU, through its clock crossing (PPCMac_machine has already
 //      turned the access into a VRAM byte address and the bytes into VRAM's
-//      order): a word (one beat, with byte enables) or a 32-byte line (four).
+//      order): a word (one beat, with byte enables) or a 32-byte line (four,
+//      from the line's first byte whatever word the address names: the
+//      CPU's cache asks for a line with the address of the word it misses).
 //
 //  A VRAM byte at address a sits in DDR3 word a >> 3, byte lane a & 7.
 //
@@ -260,7 +262,9 @@ always_ff @(posedge clk) begin
 				ds           <= D_FREAD;
 			end
 			else if (c_req && !c_ack) begin
-				ddr_addr     <= DDR_BASE + {10'd0, c_addr[21:3]};
+				// a line from its first word: the CPU's cache asks for a line
+				// with the address of the word it wants (bits 4-2 not 0)
+				ddr_addr     <= DDR_BASE + {10'd0, c_addr[21:5], c_line ? 2'b00 : c_addr[4:3]};
 				ddr_burstcnt <= {5'd0, c_n};
 				c_beat       <= 3'd0;
 				if (c_we) begin

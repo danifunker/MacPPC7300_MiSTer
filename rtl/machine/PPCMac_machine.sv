@@ -56,6 +56,13 @@
 //  firmware has powered the machine up, as on the 7600. Athens, the video's
 //  clock generator, answers on Cuda's I2C lines (PPCMac_athens).
 //
+//  Grand Central's DMA channels reach memory through one DMA port here
+//  (rule 2): each access's line through the CPU's snoop port, then the
+//  memory port, which the CPU and the DMA share (below). The internal SCSI
+//  bus joins MESH (in Grand Central) and the disks (PPCMac_scsidisk, IDs 0
+//  and 1, the MiSTer's disk images through hps_io's block devices, whose
+//  side runs in clk_v).
+//
 //  A line request to a device is eight word accesses to it, the lowest
 //  address first, as a burst on the real bus would be: with data
 //  translation off the 604 treats every address as cacheable, and the ROM
@@ -113,6 +120,34 @@ module PPCMac_machine
 	output logic         ext_irq,
 	output logic         tb_tick,
 	output logic         cpu_reset,                 // Cuda holds the CPU in reset
+
+	// the CPU's snoop port: a DMA access's line, presented before it goes to memory
+	output logic         snoop_req,
+	output logic         snoop_we,
+	output logic [31:5]  snoop_addr,
+	input  logic         snoop_ack,
+
+	// the disk images: hps_io's block devices, slots 0 and 1, in clk_v
+	input  logic [1:0]   img_mounted,
+	input  logic [63:0]  img_size,
+	input  logic         img_readonly,
+	output logic [31:0]  sd_lba,
+	output logic [1:0]   sd_rd,
+	output logic [1:0]   sd_wr,
+	input  logic [1:0]   sd_ack,
+	input  logic [13:0]  sd_buff_addr,
+	input  logic [7:0]   sd_buff_dout,
+	output logic [7:0]   sd_buff_din,
+	input  logic         sd_buff_wr,
+	output logic         disk_busy,
+
+	// a DMA write to RAM, for the test bench (its reference has no DMA): one
+	// clock, as it goes into memory
+	output logic         dma_wr,
+	output logic         dma_wr_line,
+	output logic [31:2]  dma_wr_addr,
+	output logic [3:0]   dma_wr_be,
+	output logic [255:0] dma_wr_data,
 
 	// the modem port (the ESCC's channel A), 1 when idle
 	output logic         modem_txd,
@@ -193,15 +228,104 @@ logic [31:26] ctl_vram_base;
 wire        is_ctl  = (ctl_regs_base != 20'h0) && (a[31:12] == ctl_regs_base);
 wire        is_vram = (ctl_vram_base != 6'h0) && (a[31:26] == ctl_vram_base);
 
-// RAM and ROM go straight through: the crossing captures the request and
-// holds it, and ignores it in the cycle of its own acknowledge, exactly as
-// the CPU's port behaves
-assign m_req   = c_req & to_mem;
-assign m_we    = c_we;
-assign m_line  = c_line;
-assign m_addr  = is_rom ? {ROM_SDRAM, a[21:2]} : a[31:2];
-assign m_be    = c_be;
-assign m_wdata = c_wdata;
+// ---- RAM and ROM: the CPU's accesses and the DMA channels', one port ------------------------
+// The crossing captures a request and holds it, and ignores it in the cycle
+// of its own acknowledge, exactly as the CPU's port behaves. Two masters
+// share it (rule 2): the CPU's accesses go straight through when the port
+// is free; a DMA access (Grand Central's DMA port, dm_*) first presents its
+// line to the CPU's snoop port (the caches write it back if it is dirty,
+// and drop it if the DMA writes), then takes the port as soon as it is
+// free, before any new CPU access. The CPU's accesses go on during the
+// snoop (the write-back is one of them, and a cache may have to finish a
+// fill before it can answer), so a cache could fetch the line again after
+// its part of the snoop and before the DMA writes it: a DMA write is
+// therefore followed by a second snoop of the line, which drops any such
+// copy. (A store into that copy in those few clocks would be written back
+// over the DMA's bytes: PPCMac_stubs.md.) A DMA access outside RAM and the
+// ROM reads 0 and writes nothing, at once.
+logic         gdm_req, gdm_we, gdm_line, gdm_ack;
+logic [31:2]  gdm_addr;
+logic [3:0]   gdm_be;
+logic [255:0] gdm_wdata, gdm_rdata;
+wire  [31:0]  da      = {gdm_addr, 2'b00};
+wire          d_ram   = da[31:20] < {4'h0, ram_mb};
+wire          d_rom   = da[31:22] == 10'h3FF;
+wire          d_mem   = d_ram | (d_rom & ~gdm_we);
+
+typedef enum logic [2:0] {DQ_IDLE, DQ_SNOOP, DQ_MEM, DQ_SNOOP2, DQ_DONE} dq_t;
+dq_t          dq;
+logic         own_cpu, own_dma;                    // whose request the crossing holds
+logic         snoop_gap;                           // a clock between the two snoops (the request drops)
+wire          port_free = ~own_cpu & ~own_dma;
+wire          grant_dma = port_free & (dq == DQ_MEM);
+wire          grant_cpu = port_free & ~grant_dma & (dq != DQ_MEM) & c_req & to_mem;
+wire          pres_dma  = own_dma | grant_dma;
+wire          snoop_skip = reset | cpu_reset;     // a CPU held in reset has nothing to give back
+
+assign snoop_req  = (dq == DQ_SNOOP || (dq == DQ_SNOOP2 && !snoop_gap)) && !snoop_skip;
+assign snoop_we   = gdm_we;
+assign snoop_addr = gdm_addr[31:5];
+
+assign m_req   = pres_dma | ((own_cpu | grant_cpu) & c_req & to_mem);
+assign m_we    = pres_dma ? gdm_we   : c_we;
+assign m_line  = pres_dma ? gdm_line : c_line;
+assign m_addr  = pres_dma ? (d_rom ? {ROM_SDRAM, da[21:2]} : da[31:2]) : (is_rom ? {ROM_SDRAM, a[21:2]} : a[31:2]);
+assign m_be    = pres_dma ? gdm_be   : c_be;
+assign m_wdata = pres_dma ? gdm_wdata : c_wdata;
+wire   cpu_m_ack = m_ack & own_cpu;
+
+assign dma_wr      = m_ack & own_dma & gdm_we & d_ram;
+assign dma_wr_line = gdm_line;
+assign dma_wr_addr = gdm_addr;
+assign dma_wr_be   = gdm_be;
+assign dma_wr_data = gdm_wdata;
+
+always_ff @(posedge clk) begin
+	gdm_ack <= 1'b0;
+	if (m_ack) begin
+		own_cpu <= 1'b0;
+		own_dma <= 1'b0;
+	end
+	else begin
+		if (grant_cpu) own_cpu <= 1'b1;
+		if (grant_dma) own_dma <= 1'b1;
+	end
+	snoop_gap <= 1'b0;
+	case (dq)
+		DQ_IDLE: if (gdm_req && !gdm_ack) begin
+			if (!d_mem) begin                          // nothing there: 0, at once
+				gdm_rdata <= 256'h0;
+				gdm_ack   <= 1'b1;
+				dq        <= DQ_DONE;
+			end
+			else dq <= DQ_SNOOP;
+		end
+		DQ_SNOOP: if (snoop_ack || snoop_skip) dq <= DQ_MEM;
+		DQ_MEM: if (m_ack && own_dma) begin
+			gdm_rdata <= m_rdata;
+			if (gdm_we) begin                          // a write: the line snooped again
+				snoop_gap <= 1'b1;
+				dq        <= DQ_SNOOP2;
+			end
+			else begin
+				gdm_ack <= 1'b1;
+				dq      <= DQ_DONE;
+			end
+		end
+		DQ_SNOOP2: if (!snoop_gap && (snoop_ack || snoop_skip)) begin
+			gdm_ack <= 1'b1;
+			dq      <= DQ_DONE;
+		end
+		default: dq <= DQ_IDLE;                        // the acknowledge's cycle
+	endcase
+	if (reset) begin
+		dq        <= DQ_IDLE;
+		own_cpu   <= 1'b0;
+		own_dma   <= 1'b0;
+		snoop_gap <= 1'b0;
+		gdm_ack   <= 1'b0;
+	end
+end
 
 // The VRAM is memory, not a device: it goes to the picture side through a
 // crossing of its own, as RAM goes to the SDRAM. The 64 MB window as
@@ -357,16 +481,47 @@ logic cuda_treq, cuda_cb1, cuda_cb2_oe, cuda_cb2_out;
 logic via_tip, via_byteack, via_cb2_oe, via_cb2_out;
 wire  cb2_line = (cuda_cb2_oe ? cuda_cb2_out : 1'b1) & (via_cb2_oe ? via_cb2_out : 1'b1);
 
+// the internal SCSI bus: MESH's lines and the disks', wired together
+logic       mesh_rst, mesh_bsy, mesh_sel, mesh_atn, mesh_ack, mesh_req, mesh_msg, mesh_cd, mesh_io;
+logic [7:0] mesh_db;
+logic       t_bsy, t_req, t_msg, t_cd, t_io;
+logic [7:0] t_db;
+wire        scsi_rst = mesh_rst;
+wire        scsi_bsy = mesh_bsy | t_bsy;
+wire        scsi_sel = mesh_sel;
+wire        scsi_atn = mesh_atn;
+wire        scsi_ack = mesh_ack;
+wire        scsi_req = mesh_req | t_req;
+wire        scsi_msg = mesh_msg | t_msg;
+wire        scsi_cd  = mesh_cd  | t_cd;
+wire        scsi_io  = mesh_io  | t_io;
+wire [7:0]  scsi_db  = mesh_db  | t_db;
+
 PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
 	.clk, .reset, .via_tick, .rtxc_tick, .scsi_tick,
 	.sel(present & is_gc), .we(c_we), .addr(dev_a[16:2]), .be(dev_be), .wdata(dev_wd),
 	.rdata(gc_rdata), .irq(gc_irq),
 	.cuda_treq, .cuda_cb1, .cb2(cb2_line), .via_tip, .via_byteack, .via_cb2_oe, .via_cb2_out,
 	.modem_txd, .modem_rxd, .nv_ld_we, .nv_ld_addr, .nv_ld_data,
-	.ctl_irq, .dac_cr, .dbl_buf_cr, .cursor_x, .cursor_clut, .clk_v, .clut_index, .clut_rgb
+	.ctl_irq,
+	.mesh_rst, .mesh_bsy, .mesh_sel, .mesh_atn, .mesh_ack, .mesh_req, .mesh_msg, .mesh_cd, .mesh_io, .mesh_db,
+	.scsi_rst, .scsi_bsy, .scsi_sel, .scsi_atn, .scsi_ack, .scsi_req, .scsi_msg, .scsi_cd, .scsi_io, .scsi_db,
+	.dm_req(gdm_req), .dm_we(gdm_we), .dm_line(gdm_line), .dm_addr(gdm_addr), .dm_be(gdm_be),
+	.dm_wdata(gdm_wdata), .dm_ack(gdm_ack), .dm_rdata(gdm_rdata),
+	.dac_cr, .dbl_buf_cr, .cursor_x, .cursor_clut, .clk_v, .clut_index, .clut_rgb
 );
 
 assign ext_irq = gc_irq;
+
+// ---- the internal bus's disks: IDs 0 and 1, the SD card's images (hps_io slots 0 and 1) ----------
+PPCMac_scsidisk #(.CLK_HZ(CPU_HZ)) disks (
+	.clk, .reset,
+	.t_bsy, .t_req, .t_msg, .t_cd, .t_io, .t_db,
+	.b_rst(scsi_rst), .b_bsy(scsi_bsy), .b_sel(scsi_sel), .b_atn(scsi_atn), .b_ack(scsi_ack), .b_db(scsi_db),
+	.clk_h(clk_v), .img_mounted, .img_size, .img_readonly,
+	.sd_lba, .sd_rd, .sd_wr, .sd_ack, .sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr,
+	.busy(disk_busy)
+);
 
 // ---- Cuda ------------------------------------------------------------------------------------
 // On its ADB line: the keyboard and the mouse (PPCMac_adb), from the PS/2
@@ -509,7 +664,7 @@ always_comb begin
 	if (dev_sel_q[0]) dev_rdata = boot_rdata;
 end
 
-assign c_ack   = m_ack | dev_ack | v_ack;
+assign c_ack   = cpu_m_ack | dev_ack | v_ack;
 assign c_rdata = v_ack    ? v_swl(v_rdata, v_swap) :
                  ~dev_ack ? m_rdata :
                  c_line   ? {line_buf[0], line_buf[1], line_buf[2], line_buf[3],

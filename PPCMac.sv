@@ -77,7 +77,10 @@ assign AUDIO_L = 0;
 assign AUDIO_R = 0;
 assign AUDIO_MIX = 0;
 
-assign LED_DISK = 0;
+wire   disk_busy;                     // a block moving to or from an image (the memory clock's side syncs it)
+reg    [1:0] disk_led_s;
+always @(posedge clk_mem) disk_led_s <= {disk_led_s[0], disk_busy};
+assign LED_DISK = {1'b0, disk_led_s[1]};
 assign LED_POWER = 0;
 assign BUTTONS = 0;
 
@@ -93,6 +96,12 @@ localparam CONF_STR = {
 	"PPCMac;UART115200;",
 	"-;",
 	"F1,ROM,Load ROM;",
+	// the disks: SC, so the Main remembers the image and mounts it at the
+	// next start (as the other Mac cores); slots 2-5 are the Mac SCSI
+	// family's (NVRAM, BlueSCSI Toolbox, CD-ROM, CD changer), not used yet
+	"SC0,HDAVHD,Mount SCSI disk 0;",
+	"SC1,HDAVHD,Mount SCSI disk 1;",
+	"-;",
 	"O[3:1],RAM,16 MB,24 MB,48 MB,64 MB,96 MB,6 MB;",
 	"O[4],Boot,ROM,Memory test;",
 	"O[6],UART,Modem port,Debug readout;",
@@ -142,7 +151,30 @@ wire [26:0] ioctl_addr;
 wire  [7:0] ioctl_dout;
 wire        ioctl_wait;
 
-hps_io #(.CONF_STR(CONF_STR)) hps_io
+// the block devices, as the Mac SCSI family's layout has them (VDNUM 6):
+// SCSI disks 0 and 1 on slots 0 and 1; 2-5 tied off for now
+localparam VDNUM = 6;
+wire [31:0] sd_lba[VDNUM];
+wire  [5:0] sd_blk_cnt[VDNUM];
+wire [VDNUM-1:0] sd_rd, sd_wr, sd_ack, img_mounted;
+wire [13:0] sd_buff_addr;
+wire  [7:0] sd_buff_dout;
+wire  [7:0] sd_buff_din[VDNUM];
+wire        sd_buff_wr, img_readonly;
+wire [63:0] img_size;
+wire [31:0] disk_lba;
+wire  [7:0] disk_buff_din;
+wire  [1:0] disk_rd, disk_wr;
+assign sd_lba[0] = disk_lba;   assign sd_lba[1] = disk_lba;
+assign sd_lba[2] = 0; assign sd_lba[3] = 0; assign sd_lba[4] = 0; assign sd_lba[5] = 0;
+assign sd_blk_cnt[0] = 0; assign sd_blk_cnt[1] = 0; assign sd_blk_cnt[2] = 0;
+assign sd_blk_cnt[3] = 0; assign sd_blk_cnt[4] = 0; assign sd_blk_cnt[5] = 0;
+assign sd_rd = {4'b0000, disk_rd};
+assign sd_wr = {4'b0000, disk_wr};
+assign sd_buff_din[0] = disk_buff_din;   assign sd_buff_din[1] = disk_buff_din;
+assign sd_buff_din[2] = 0; assign sd_buff_din[3] = 0; assign sd_buff_din[4] = 0; assign sd_buff_din[5] = 0;
+
+hps_io #(.CONF_STR(CONF_STR), .VDNUM(VDNUM), .BLKSZ(2)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
@@ -155,6 +187,19 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 	.status_menumask(16'd0),
 	.ps2_key(ps2_key),
 	.ps2_mouse(ps2_mouse),
+
+	.img_mounted(img_mounted),
+	.img_readonly(img_readonly),
+	.img_size(img_size),
+	.sd_lba(sd_lba),
+	.sd_blk_cnt(sd_blk_cnt),
+	.sd_rd(sd_rd),
+	.sd_wr(sd_wr),
+	.sd_ack(sd_ack),
+	.sd_buff_addr(sd_buff_addr),
+	.sd_buff_dout(sd_buff_dout),
+	.sd_buff_din(sd_buff_din),
+	.sd_buff_wr(sd_buff_wr),
 
 	.ioctl_download(ioctl_download),
 	.ioctl_index(ioctl_index),
@@ -321,6 +366,9 @@ PPCMac_system #(.CPU_HZ(CPU_MHZ * 1000000), .TB_HZ(12500000), .SDRAM_MB(128)) sy
 	.modem_txd, .modem_rxd, .nv_ld_we, .nv_ld_addr, .nv_ld_data,
 	.mon_std(mon_c[1][8:6]), .mon_ext(mon_c[1][5:0]),
 	.ps2_key, .ps2_mouse,                 // in the memory clock: PPCMac_adb synchronises them
+	.img_mounted(img_mounted[1:0]), .img_size, .img_readonly,   // the disks' side runs in the memory clock
+	.sd_lba(disk_lba), .sd_rd(disk_rd), .sd_wr(disk_wr), .sd_ack(sd_ack[1:0]),
+	.sd_buff_addr, .sd_buff_dout, .sd_buff_din(disk_buff_din), .sd_buff_wr, .disk_busy,
 	.ddr_busy(DDRAM_BUSY), .ddr_burstcnt(DDRAM_BURSTCNT), .ddr_addr(DDRAM_ADDR), .ddr_dout(DDRAM_DOUT),
 	.ddr_dout_ready(DDRAM_DOUT_READY), .ddr_rd(DDRAM_RD), .ddr_din(DDRAM_DIN), .ddr_be(DDRAM_BE), .ddr_we(DDRAM_WE),
 	.vid_ce(mac_ce), .vid_r(mac_r), .vid_g(mac_g), .vid_b(mac_b), .vid_hs(mac_hs), .vid_vs(mac_vs),

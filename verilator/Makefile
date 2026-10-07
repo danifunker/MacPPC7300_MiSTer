@@ -124,6 +124,20 @@ $(CUDA_DIR)/cuda_tb: $(CUDA_SRCS) $(HERE)cuda_main.cpp $(HERE)Makefile $(HC05_LI
 		> $(CUDA_DIR)/build.log 2>&1 || (cat $(CUDA_DIR)/build.log; false)
 	@grep -E '^%Warning' $(CUDA_DIR)/build.log || true
 
+# MESH, its DBDMA channel and the disks (scsi_tb_top), driven as the ROM and
+# Mac OS drive them
+SCSI_SRCS := $(MACH)/PPCMac_pkg.sv $(filter-out %PPCMac_pkg.sv %PPCMac_machine.sv %PPCMac_system.sv,$(MACH_SRCS)) $(HERE)scsi_tb_top.sv
+
+scsi: $(BUILD)/scsi/scsi_tb
+
+$(BUILD)/scsi/scsi_tb: $(SCSI_SRCS) $(HERE)scsi_main.cpp $(MACH)/PPCMac_machine.qip $(HERE)Makefile
+	@mkdir -p $(BUILD)/scsi
+	@$(VERILATOR) $(VFLAGS) --top-module scsi_tb_top -Mdir $(BUILD)/scsi -o scsi_tb \
+		-CFLAGS "-O2 -std=c++17" \
+		$(SCSI_SRCS) $(HERE)scsi_main.cpp \
+		> $(BUILD)/scsi/build.log 2>&1 || (cat $(BUILD)/scsi/build.log; false)
+	@grep -E '^%Warning' $(BUILD)/scsi/build.log || true
+
 cdc: $(BUILD)/cdc/cdc_tb
 
 $(BUILD)/cdc/cdc_tb: $(RTL)/DSPPC604_memcdc.sv $(HERE)cdc_main.cpp $(HERE)Makefile
@@ -142,8 +156,9 @@ lint:
 	$(VERILATOR) --lint-only $(WARN) --top-module sdram_tb_top $(RTL)/DSPPC604_memcdc.sv $(MACH)/PPCMac_sdram.sv $(HERE)sdram_tb_top.sv
 	$(VERILATOR) --lint-only $(WARN) --top-module PPCMac_debug $(MACH)/PPCMac_debug.sv
 	$(VERILATOR) --lint-only $(WARN) --top-module cuda_tb_top $(CUDA_SRCS)
+	$(VERILATOR) --lint-only $(WARN) --top-module scsi_tb_top $(SCSI_SRCS)
 
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all core machine gui sdram cdc cuda lint clean
+.PHONY: all core machine gui sdram cdc cuda scsi lint clean

@@ -468,6 +468,24 @@ grey, the rounded corners and the arrow pointer of the hardware cursor at
 the top left. The debug readout (OSD Picture) and Open Firmware's console
 on the modem port still work.
 
+**The pointer's trails, found and fixed 2026-10-07 (the S session).** The
+user saw the pointer leave trails over Mac OS's screen on the board. Mac OS
+maps the frame buffer cacheable and write-through (its VRAM traffic is word
+writes and line reads), and it draws the pointer itself (no hardware cursor
+in this mode: the 32-bit "grey" is alternating black and white pixels),
+saving what is under it and putting it back. The machine bench's new
+`--vram-check` (a copy of every VRAM byte the CPU writes, every CPU read
+checked against it, and every read the picture side answers checked against
+the DDR3) found the cause in minutes: the CPU's data cache asks for a line
+with the address of the word that missed, and `PPCMac_video` started the
+line's DDR3 burst at that word, not at the line's first, so a line whose
+first touch was in its middle came back shifted, and the saved background
+with it. The SDRAM controller had always started a line at its first word;
+the frame comparisons of V passed because the driver only wrote. With the
+burst at the line's start the same run (the mouse moving from 200 million
+instructions, 13,394 VRAM line reads to 260 million) reads back every byte
+as written, in lockstep throughout.
+
 ### K: ADB
 
 What it needs: a keyboard (address 2) and a mouse (address 3) on Cuda's ADB
@@ -563,6 +581,38 @@ Proof: Mac OS booting from a disk image to the Finder, in simulation first
 (the lockstep bench at 400,000 instructions a second reaches a billion in
 about 40 minutes), then on the board.
 
+**What Mac OS asks of the disk (dingusppc's 7300 with the 7.6.1 image on
+MESH, 2026-10-07).** `machref --set hdd_img2=...` boots it to the happy Mac.
+The ROM's boot code (FFEB....) selects without ATN and reads with READ(6) by
+programmed I/O, 16 bytes at a time through the FIFO (polling the FIFO count
+and the interrupt register): blocks 0, 1, 1, 2, 3, then the 19 blocks of
+the disk's Apple_Driver43 at block 64, one READ(6). The driver it loads
+selects with ATN, sends IDENTIFY (a one-byte MESSAGE OUT), and reads with
+READ(10): the first bytes and the last by programmed I/O, the middle by DMA
+(sequence 86 with MESH's count, then DBDMA channel A started with a
+descriptor longer than the count; after MESH's command done it flushes the
+channel and clears RUN). After every command phase the driver issues bus
+free (09), which ends in a phase mismatch as soon as the target asks for
+its data. After MESSAGE IN (count 1), ACK stays up until the bus free. No
+INQUIRY, TEST UNIT READY, MODE SENSE or READ CAPACITY in the boot. At 464
+million instructions Mac OS writes the volume's master directory block
+(WRITE(10) of block 98 by DMA, sequence 85): dingusppc's MESH has no DMA
+out, and its Mac OS waits there for ever; the frame at 590 million is the
+happy Mac. So for writes the model is the real MESH, as Linux's `mesh.c`
+drives it, not dingusppc.
+
+**Built, 2026-10-07.** `PPCMac_dbdma.sv` (a DBDMA channel; channel A, MESH's,
+in `PPCMac_gc`), MESH's information phases, FIFO and DMA in
+`PPCMac_mesh.sv`, the disks in `PPCMac_scsidisk.sv` (IDs 0 and 1, hps_io's
+slots 0 and 1), the DMA port in `PPCMac_machine` (through the CPU's snoop
+port, sharing the memory port with the CPU); the core's top gives hps_io six
+block devices (the Mac SCSI family's layout) and `SC0`/`SC1` entries in the
+OSD. What each does and leaves out: their headers and `PPCMac_stubs.md`. The
+machine bench serves disk images as hps_io would (`--disk0 FILE`, blocks
+written kept in memory) and copies DMA writes into the reference's RAM. On
+the board the stock Main mounts an image remembered in `config/PPCMac.s0`
+(`python syn\mister.py mount 0 games/PPCMac/os761.hda`).
+
 ### A: sound
 
 What it needs: AWACS (`awacs.cpp`; the 7300/7600 codec, whose status the
@@ -622,4 +672,5 @@ driving it.
 | E | Decided by the session, 2026-10-07: MESH's selection timeout follows its register in 10 ms units (the ROM computes ms / 10; dingusppc ignores the register and waits 250 ms, the ROM's value); Curio's follows the 53C94's formula with the chip's clock taken to be 25 MHz (MAME's way; dingusppc waits 250 ms); MESH's interrupt line follows its registers at all times, as a pin does (dingusppc recomputes it only at some events); Curio's initiator commands with no connected target are an invalid-command interrupt, as on the chip (dingusppc stops). Reason: real behaviour over an emulator's shortcut where the shortcut is visible, each to be checked by `hwprobe/` on the real 7300. |
 | from E on | Answered 2026-10-07: the user can still run probe disks on the real 7300 (booted from Open Firmware over the modem port, as `cudadump`); where only the real machine can say (MESH's and Curio's selection timeout, the VIA's access time), the session builds such a disk and follows the emulators meanwhile, the guess written in the stubs list. |
 | from K on | Asked by the user, 2026-10-07: Verilator as little as possible (the whole machine simulates at 0.6 MHz, 0.9% of real time); features are proven on the board, with unit benches where they take seconds (`run_cuda.py`) and whole-machine runs only to explain something the board shows. The board is driven through the MiSTer Remote (mrext, port 8182), as the user's other cores are (`tools\misterdeploy`): `syn\mister.py load`, `shot`, `keys`, `mouse`, `click`; SSH only copies files and reads the UART. |
+| S | Decided by the session, 2026-10-07: DMA reaches memory through one DMA port in `PPCMac_machine`: each access's line through the CPU's snoop port, then the memory port, which the DMA takes before any new CPU access; a write's line is snooped again after it, to drop a copy fetched in between (holding the CPU's reads during the snoop deadlocked the board: a cache can need a fill to finish before it answers a snoop). DBDMA gathers data in into lines (a whole line written as a line, else the words with bytes, with byte enables). MESH's bus is modelled at the signal level with the targets as their own module (`PPCMac_scsidisk`), so programmed I/O, DMA and the bus-status registers see the same lines; the information phases as Linux's `mesh.c` uses them where dingusppc has no model (DMA out), a DMA data in's command done only once the FIFO and the channel have emptied (Mac OS's driver does not wait for the FIFO; Linux waits up to 50 us). The disks answer INQUIRY as "QUANTUM " (dingusppc's vendor) "MiSTer PPCMac HD", no synchronous transfers, an extended message answered with MESSAGE REJECT; a new phase's first REQ 10 us after the phase lines change, as a disk is slow to change phase (the ROM's SIM waits after the status byte for REQ to drop, FFEB8D98, and hung on the board while the disk asked at once); one block per hps_io request (`sd_blk_cnt` 0), two buffered each way; hps_io `WIDE` 0 (the ROM upload is byte-wide), `VDNUM` 6 (the Mac SCSI family's slots), `SC0`/`SC1` so the Main remembers the images; the images kept in registers the machine's reset does not touch, so no mount replay is needed. Reason: rule 2 (one way into memory, coherent); the real chip over an emulator's shortcut where the shortcut is visible (dingusppc's Mac OS cannot write its disk); the stock Main's block interface works on the board as it is. |
 | K | Decided by the session, 2026-10-07: the ADB devices (`PPCMac_adb.sv`) at the wire level, the Mac LC core's structure and PS/2 table with dingusppc's registers: keyboard handler 2 (1 and 2 settable, 3 refused, so the right-hand modifiers give the left-hand codes), mouse handler 1 (1 and 2; not the extended protocol 4, which dingusppc's mouse takes: the Apple Mouse II has none), SRQ enabled from reset, a true service request (the stop bit held low to 300 us); Alt is Command, the Windows keys Option, Caps Lock locks. The line's timing is ADB's own, counted in Cuda's 4,194,304 Hz ticks so it keeps step when the bench runs Cuda fast; the answer 160 us after the stop bit. Reason: Cuda's own firmware is the judge, and its receive (1CF3-1D88) waits 283 us for the start bit and 79 us at most for any low. On the way, Cuda's PA6 turned out to be the line's level, not its inverse (corrected in `PPCMac_cuda.sv`; MAME agrees once its devices' ASSERT is read as high); with it inverted, every ADB command reported a service request and no device could answer. |
