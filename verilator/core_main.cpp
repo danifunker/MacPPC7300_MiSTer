@@ -106,6 +106,11 @@ struct Options {
 	bool memtest = false;          // boot the memory test in place of the ROM
 	uint32_t memtest_passes = 1;   // ... and stop when it has completed this many
 	int64_t mem_fault = -1;        // SDRAM offset whose reads come back with bit 0 flipped
+	std::string nvram;             // an 8 KB image for Grand Central's NVRAM, loaded during reset
+	unsigned serial_baud = 38400;  // the modem port's rate, for the bench's terminal
+	std::vector<std::string> serial_in;   // lines typed at the modem port, one at each prompt
+	std::string serial_log;        // what the machine sent on the modem port
+	bool serial_stop = false;      // stop at the prompt after the last line (or the first prompt)
 };
 
 // The memory port: a request (one line or one word) is acknowledged after
@@ -145,6 +150,12 @@ void usage() {
 		"  --boot memtest   run the memory-test boot program instead of the ROM (no --rom)\n"
 		"  --memtest-passes N   stop after N passes of it (default 1); PASS if no errors\n"
 		"  --mem-fault ADDR flip bit 0 of every read of this SDRAM byte offset\n"
+		"  --nvram FILE     load this 8 KB image into Grand Central's NVRAM during reset\n"
+		"  --serial-baud N  the modem port's rate for the bench's terminal (default 38400)\n"
+		"  --serial-in TEXT type TEXT and a return at the modem port at the next prompt\n"
+		"                   (\"> \"); repeat for more lines\n"
+		"  --serial-log FILE  write what the machine sends on the modem port\n"
+		"  --serial-stop    end the run at the prompt after the last line typed\n"
 #else
 		"usage: core_tb --prog FILE [options]\n"
 		"  --irq-every N    raise the external interrupt every N cycles; a store to\n"
@@ -189,6 +200,91 @@ struct DevQueue {
 			if (it != cached.end()) for (int k = 0; k < 8; k++) it->second[k] = a.lw[k];
 			line_writes++;
 			q.pop_front();
+		}
+	}
+};
+
+// A terminal on the modem port: decodes what the machine sends (8 data
+// bits, no parity, at the given bit time in CPU clocks) and types lines,
+// each one when the machine's output ends with a prompt ("> ") and has
+// been quiet for two characters' time.
+struct Terminal {
+	double bit = 0;                // CPU clocks per bit
+	// receiving what the machine sends
+	bool rx_busy = false;
+	double rx_t = 0;               // clocks into the current character
+	int rx_bitn = 0;
+	unsigned rx_sh = 0;
+	std::string line, recent;      // the line so far (escape sequences left out); the output's last characters
+	bool in_esc = false;           // inside an escape sequence (Open Firmware's line editor sends ANSI ones)
+	uint64_t chars = 0, quiet = 0; // characters received; clocks since the last one
+	FILE* log = nullptr;
+	// typing
+	std::vector<std::string> script;
+	size_t next_line = 0;
+	std::deque<uint8_t> out;       // characters still to type
+	bool tx_busy = false;
+	double tx_t = 0;
+	unsigned tx_frame = 0;         // start, 8 data bits, 2 stop bits, LSB first
+	bool txd = true;               // the line the machine receives
+	bool prompted = false;         // a prompt has been seen since the last line was typed
+	bool finished = false;         // the script is done and its last prompt seen
+
+	void flush_line() {
+		std::printf("serial: %s\n", line.c_str());
+		line.clear();
+	}
+
+	// one CPU clock: rxd is what the machine sends
+	void clock(bool rxd) {
+		quiet++;
+		if (!rx_busy) {
+			if (!rxd) { rx_busy = true; rx_t = 0; rx_bitn = 0; rx_sh = 0; }
+		} else {
+			rx_t += 1;
+			// sample bit k (1-8) in its middle: (k + 0.5) bit times after the start bit began
+			if (rx_bitn < 8 && rx_t >= (rx_bitn + 1.5) * bit) {
+				rx_sh |= (unsigned)rxd << rx_bitn;
+				rx_bitn++;
+			}
+			else if (rx_bitn == 8 && rx_t >= 9.5 * bit) {   // the middle of the stop bit
+				rx_busy = false;
+				char c = (char)(rx_sh & 0x7F);
+				chars++;
+				quiet = 0;
+				if (log) std::fputc(c, log);
+				if (in_esc) in_esc = !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '@');
+				else if (c == 0x1B) in_esc = true;
+				else if (c == '\n') flush_line();
+				else if (c >= 0x20 && c < 0x7F) line += c;
+				recent += c;
+				if (recent.size() > 16) recent.erase(0, recent.size() - 16);
+				if (recent.size() >= 2 && recent.compare(recent.size() - 2, 2, "> ") == 0) prompted = true;
+			}
+		}
+		// typing: the next line once a prompt is followed by quiet
+		if (!tx_busy && out.empty() && prompted && quiet > 20 * bit) {
+			prompted = false;
+			if (next_line < script.size()) {
+				if (!line.empty()) flush_line();
+				std::printf("serial: (typing \"%s\")\n", script[next_line].c_str());
+				for (char c : script[next_line]) out.push_back((uint8_t)c);
+				out.push_back('\r');
+				next_line++;
+			}
+			else finished = true;
+		}
+		if (!tx_busy && !out.empty()) {
+			tx_frame = 0x600u | ((unsigned)out.front() << 1);   // 0, the byte, 1 1
+			out.pop_front();
+			tx_busy = true;
+			tx_t = 0;
+		}
+		if (tx_busy) {
+			int k = (int)(tx_t / bit);
+			if (k >= 12) { tx_busy = false; txd = true; }        // two stop bits and a little gap
+			else txd = k < 11 ? (tx_frame >> k) & 1 : true;
+			tx_t += 1;
 		}
 	}
 };
@@ -340,6 +436,11 @@ int main(int argc, char** argv) {
 		}
 		else if (a == "--memtest-passes") opt.memtest_passes = (uint32_t)std::strtoul(next().c_str(), nullptr, 0);
 		else if (a == "--mem-fault") opt.mem_fault = (int64_t)std::strtoll(next().c_str(), nullptr, 0);
+		else if (a == "--nvram") opt.nvram = next();
+		else if (a == "--serial-baud") opt.serial_baud = (unsigned)std::atoi(next().c_str());
+		else if (a == "--serial-in") opt.serial_in.push_back(next());
+		else if (a == "--serial-log") opt.serial_log = next();
+		else if (a == "--serial-stop") opt.serial_stop = true;
 		else { usage(); return a == "--help" ? 0 : 2; }
 	}
 #ifdef PPCMAC_MACHINE
@@ -382,6 +483,21 @@ int main(int argc, char** argv) {
 		std::memcpy(mem.data() + ROM_SDRAM, rom.data(), ROM_SIZE);
 	}
 	reset_pc = 0xFFF00100;
+	std::vector<uint8_t> nvimg;
+	if (!opt.nvram.empty()) {
+		std::ifstream fh(opt.nvram, std::ios::binary);
+		nvimg.resize(8192);
+		if (fh) fh.read(reinterpret_cast<char*>(nvimg.data()), 8192);
+		if (!fh || fh.gcount() != 8192) { std::fprintf(stderr, "%s is not an 8 KB NVRAM image\n", opt.nvram.c_str()); return 2; }
+	}
+	Terminal term;
+	term.bit = opt.cpu_mhz * 1e6 / opt.serial_baud;
+	term.script = opt.serial_in;
+	if (!opt.serial_log.empty()) {
+		term.log = std::fopen(opt.serial_log.c_str(), "wb");
+		if (!term.log) { std::fprintf(stderr, "cannot write %s\n", opt.serial_log.c_str()); return 2; }
+	}
+	int nv_ld = -1;                    // the NVRAM byte being loaded, while reset is held
 	DevQueue devq;
 	if (!opt.dev_log.empty()) {
 		devq.log = std::fopen(opt.dev_log.c_str(), "w");
@@ -475,6 +591,10 @@ int main(int argc, char** argv) {
 		dut->ram_mb = opt.ram_mb;
 		dut->boot_memtest = opt.memtest;
 		dut->reset_pc = reset_pc;
+		dut->modem_rxd = term.txd;
+		dut->nv_ld_we = nv_ld >= 0;
+		dut->nv_ld_addr = nv_ld >= 0 ? nv_ld : 0;
+		dut->nv_ld_data = nv_ld >= 0 ? nvimg[nv_ld] : 0;
 		dut->b_ack = mm.ack;
 		for (int i = 0; i < 8; i++) dut->b_rdata[i] = mm.rdata[i];
 	};
@@ -551,6 +671,13 @@ int main(int argc, char** argv) {
 	dut->clk = 0; dut->clk_b = 0;
 	dut->reset = 1; dut->reset_b = 1;
 	for (int i = 0; i < 4; i++) tick();
+	// the NVRAM image, a byte a clock, with reset still held (as the MiSTer's
+	// boot1.rom is loaded)
+	if (!nvimg.empty()) {
+		for (nv_ld = 0; nv_ld < 8192; nv_ld++) tick();
+		nv_ld = -1;
+		tick();
+	}
 	dut->reset = 0; dut->reset_b = 0;
 	mm = Mem();
 	cycles = 0;
@@ -681,6 +808,11 @@ int main(int argc, char** argv) {
 		tick();
 
 #ifdef PPCMAC_MACHINE
+		term.clock(dut->modem_txd);
+		if (opt.serial_stop && term.finished) {
+			std::printf("serial: the last line typed has been answered with a prompt\n");
+			done = true;
+		}
 		// Cuda holds the CPU in reset from the start until its firmware has
 		// powered the machine up; again if it restarts it
 		if (dut->cpu_in_reset) {
@@ -1013,6 +1145,11 @@ int main(int argc, char** argv) {
 #ifdef PPCMAC_MACHINE
 	dut->final();
 	if (devq.log) std::fclose(devq.log);
+	if (!term.line.empty()) term.flush_line();
+	if (term.log) std::fclose(term.log);
+	if (term.chars || !term.script.empty())
+		std::printf("serial: %llu characters received, %zu of %zu lines typed\n", (unsigned long long)term.chars,
+			term.next_line, term.script.size());
 	std::printf("%llu instructions in %llu cycles after Cuda released the CPU (%.2f cycles per instruction)\n",
 		(unsigned long long)retired, (unsigned long long)(cycles - release_cycle),
 		retired ? (double)(cycles - release_cycle) / retired : 0.0);
@@ -1025,6 +1162,10 @@ int main(int argc, char** argv) {
 	if (stuck) std::printf("STUCK: nothing retired for %llu cycles\n", (unsigned long long)opt.stuck);
 	if (opt.lockstep) std::printf("lockstep with the reference: %s\n", diverged ? "DIVERGED" : "identical");
 	bool ok = !diverged && !stuck && (done || cycles >= opt.max_cycles);
+	if (opt.serial_stop && !term.finished) {
+		std::printf("serial: the run ended before the last line typed was answered with a prompt\n");
+		ok = false;
+	}
 	if (opt.memtest) {
 		std::printf("memory test: %u passes over %u MB, %u errors", mt_passes, opt.ram_mb, mt_errors);
 		if (mt_errors) std::printf(", the first at %08X", (uint32_t)dut->dbg_first);

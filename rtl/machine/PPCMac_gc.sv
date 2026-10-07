@@ -22,9 +22,10 @@
 //                 read back; a channel never runs (there is no bus master)
 //    10000        Curio SCSI             reads 0
 //    11000        MACE Ethernet          reads 0
-//    12000-13FFF  ESCC serial            a command read gives RR0 = 44
-//                                        (transmit buffer empty), other
-//                                        registers 0 (escc.cpp:77-200)
+//    12000-13FFF  ESCC serial            PPCMac_escc: channel A, the modem
+//                                        port, on modem_txd/modem_rxd at
+//                                        the rate software sets; channel B
+//                                        without a line
 //    14000        AWACS sound            awacs.cpp:189-257
 //    15000        SWIM3 floppy           reads 0
 //    16000-17FFF  VIA                    viacuda.cpp:142-322, the timers
@@ -40,7 +41,10 @@
 //    1C000        no device              reads 0
 //    1D000        NVRAM address, high    (macio.h:94-107)
 //    1E000        no device on a 7600    reads 0 (board register 2 needs Bandit 2)
-//    1F000        NVRAM data, 8 KB       (macio.h:109-125; nvram.cpp:41-60)
+//    1F000        NVRAM data, 8 KB       (macio.h:109-125; nvram.cpp:41-60);
+//                                        nv_ld_* writes it from outside (an
+//                                        image loaded while the machine is
+//                                        held in reset); reset leaves it be
 //
 //  An access is presented for one cycle (sel); the read data is valid in
 //  the next cycle.
@@ -52,6 +56,7 @@ module PPCMac_gc
 	input  logic        clk,
 	input  logic        reset,
 	input  logic        via_tick,      // one clock at 783,360 Hz
+	input  logic        rtxc_tick,     // one clock at 3,686,400 Hz, the ESCC's RTxC
 	input  logic        sel,
 	input  logic        we,
 	input  logic [16:2] addr,          // offset in the 128 KB window
@@ -67,7 +72,16 @@ module PPCMac_gc
 	output logic        via_tip,       // PB5 out: 0 while a transaction is in progress
 	output logic        via_byteack,   // PB4 out
 	output logic        via_cb2_oe,    // the VIA drives CB2 (shifting out)
-	output logic        via_cb2_out
+	output logic        via_cb2_out,
+
+	// the modem port (the ESCC's channel A): 1 when idle
+	output logic        modem_txd,
+	input  logic        modem_rxd,
+
+	// the NVRAM written from outside, a byte a cycle
+	input  logic        nv_ld_we,
+	input  logic [12:0] nv_ld_addr,
+	input  logic [7:0]  nv_ld_data
 );
 
 import PPCMac_pkg::*;
@@ -117,14 +131,33 @@ always_comb begin
 end
 wire [31:0] wle = bswap32(wdata);               // dingusppc swaps a written word (dbdma.cpp:348)
 
-// ---- ESCC: one register pointer, shared, as in escc.cpp -----------------------------
-logic [3:0] scc_ptr;
-// compatible addressing (offset < 0C) maps (offset >> 1) to MacRISC registers
-// 0 B command, 1 A command, 2 B data, 3 A data (escc.cpp:38-42); MacRISC
-// addressing numbers them by (offset >> 4) (grandcentral.cpp:196-206)
-wire scc_compat = sub == 4'h2 && off[7:0] < 8'h0C;
-wire scc_risc   = sub == 4'h3 || (sub == 4'h2 && off[7:0] >= 8'h60);
-wire scc_cmd    = (scc_compat && off[3:1] <= 3'd1) || (scc_risc && (off[7:4] == 4'd0 || off[7:4] == 4'd2));
+// ---- ESCC (PPCMac_escc) ----------------------------------------------------------------
+// MacRISC addressing numbers the registers by (offset >> 4): 0 B command,
+// 1 B data, 2 A command, 3 A data, 4 and 5 the enhancement registers; the
+// compatible addressing (offset < 0C) has them by (offset >> 1) in the
+// order B command, A command, B data, A data, B and A enhancement
+// (escc.cpp:38-42, grandcentral.cpp:191-201)
+wire       scc_compat = sub == 4'h2 && off[7:0] < 8'h0C;
+wire       scc_risc   = sub == 4'h3 || (sub == 4'h2 && off[7:0] >= 8'h60);
+logic [3:0] scc_rn;
+always_comb begin
+	case (off[3:1])
+		3'd0:    scc_rn = 4'd0;
+		3'd1:    scc_rn = 4'd2;
+		3'd2:    scc_rn = 4'd1;
+		3'd3:    scc_rn = 4'd3;
+		3'd4:    scc_rn = 4'd4;
+		default: scc_rn = 4'd5;
+	endcase
+	if (!scc_compat) scc_rn = off[7:4];
+end
+logic [7:0] scc_rq;
+
+PPCMac_escc escc (
+	.clk, .reset, .rtxc_tick,
+	.sel(sel & devs & (scc_compat | scc_risc)), .we, .rn(scc_rn), .wdata(wb),
+	.rq(scc_rq), .txd_a(modem_txd), .rxd_a(modem_rxd)
+);
 
 // ---- AWACS (awacs.cpp:189-257) ---------------------------------------------------------
 logic [31:0] snd_ctrl, codec_ctrl, clip_count, frame_count;
@@ -169,10 +202,12 @@ wire  [12:0] nv_addr = 13'((nv_hi << 5) + 16'(off[8:4]));
 // halfword byte-swapped (grandcentral.cpp:358-365)
 wire  [15:0] io_w  = single ? {8'h00, wb} : (be[3] ? {wdata[23:16], wdata[31:24]} : {wdata[7:0], wdata[15:8]});
 wire         nv_wr = sel & we & devs & (sub == 4'hF);
+// one port: the load's address while it writes (only with the machine in reset)
+wire  [12:0] nv_a  = nv_ld_we ? nv_ld_addr : nv_addr;
 
 always_ff @(posedge clk) begin
-	if (nv_wr) nvram[nv_addr] <= io_w[7:0];
-	nv_q <= nvram[nv_addr];
+	if (nv_wr | nv_ld_we) nvram[nv_a] <= nv_ld_we ? nv_ld_data : io_w[7:0];
+	nv_q <= nvram[nv_a];
 end
 
 // an IOBus device's 16-bit value as a CPU word (grandcentral.cpp:224-233)
@@ -206,7 +241,7 @@ always_comb begin
 	end
 	else begin
 		case (sub)
-			4'h2, 4'h3: if (scc_cmd) rq = byte_reg_rdata(be, scc_ptr == 4'd0 ? 8'h44 : 8'h00);
+			4'h2, 4'h3: if (scc_compat | scc_risc) rq = byte_reg_rdata(be, scc_rq);
 			4'h4: begin
 				case (off[7:0])
 					8'h00:   rq = snd_ctrl;
@@ -355,11 +390,6 @@ always_ff @(posedge clk) begin
 
 	if (sel & devs) begin
 		case (sub)
-			4'h2, 4'h3: if (scc_cmd) begin
-				if (~we) scc_ptr <= 4'd0;
-				else if (scc_ptr == 4'd0) scc_ptr <= {wb[5:3] == 3'd1, wb[2:0]};   // "point high" adds 8
-				else scc_ptr <= 4'd0;
-			end
 			4'h4: begin
 				case (off[7:0])
 					8'h00: if (we) snd_ctrl <= wle;
@@ -424,7 +454,6 @@ always_ff @(posedge clk) begin
 			ch_bsel[i] <= 32'h0;
 			ch_wsel[i] <= 32'h0;
 		end
-		scc_ptr     <= 4'd0;
 		snd_ctrl    <= 32'h0;
 		codec_ctrl  <= 32'h0;
 		clip_count  <= 32'h0;

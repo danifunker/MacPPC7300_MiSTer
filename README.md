@@ -34,6 +34,7 @@ readout (rows of squares), not yet a Mac.
 | The 7600's ROM on the board | runs exactly as in simulation: the same 26,771 device writes, the last after the same 18.27 million instructions, then the same wait for Cuda (before Cuda was built) |
 | Cuda (ADB, power, reset, clock, PRAM) | the real chip: a 68HC05 (`rtl/machine/PPCMac_hc05.sv`, checked instruction by instruction against MAME's 6805 core) running Apple's firmware 341S0060 (Cuda 2.40), behind Grand Central's VIA with a real shift register; it holds the CPU in reset until its firmware powers the machine up. The firmware is the 7300's own: read out of its chip through the VIA (`cudadump/`, 2026-10-07), byte for byte MAME's dump. In simulation the ROM's Cuda traffic goes through and the ROM runs on through the NanoKernel into Mac OS (the CPU bug the lockstep found at 24.4 million instructions is fixed: the plan's M6 section). On the board (2026-10-07) Cuda releases the CPU 1,284 ms after the machine's reset and both ROMs run through Open Firmware into Mac OS. Nothing on its ADB or I2C lines yet |
 | Interrupts | Grand Central's events, mask and levels as MAME's and dingusppc's; the VIA is the first source (2026-10-07): the 7300's ROM runs 100 million instructions in lockstep with Mac OS's timer interrupts, its device traffic matching dingusppc's through Mac OS's start-up to where Mac OS probes MESH ([docs/PPCMac_plan.md](docs/PPCMac_plan.md), milestone I) |
+| Serial console | the ESCC (a Z85C30's asynchronous mode, `rtl/machine/PPCMac_escc.sv`); its modem port is the MiSTer's UART, Open Firmware's console: with an NVRAM image that sets `auto-boot?` false, Open Firmware's prompt over the UART, in simulation (in lockstep, the banner byte for byte dingusppc's) and on the board (2026-10-07) |
 | Machine (video, SCSI, sound, ...) | not started |
 
 The first full build of the core (2026-10-06: the CPU at 65 MHz, the
@@ -45,7 +46,8 @@ framework), Quartus 17.0, slow 100 C model; this is the number that counts:
 | `PPCMac` with the memory test, 2026-10-06 | 24,757 of 41,910 (59%); the CPU 13,883, the machine 2,673, the SDRAM controller 367, the readout 455 | 144 of 553 (26%) | 40 of 112 (36%) | 64.59 MHz (65 MHz asked: slack -0.099 ns); memory 107.3 MHz (100 asked) |
 | The same with fourteen readout rows | 25,051 (60%) | 144 | 40 | 64.64 MHz (slack -0.086 ns); memory 110.7 MHz |
 | With Cuda, 2026-10-07 | 25,521 (61%) | 153 | 41 | 61.26 MHz (slack -0.939 ns; every failing path inside the CPU, decode into the branch target buffer); memory 107.8 MHz. Runs on the board at 65 MHz |
-| With Grand Central's interrupt (the committed tree) | 25,379 (61%) | 153 | 41 | 62.70 MHz (slack -0.565 ns); memory 107.7 MHz. Runs on the board at 65 MHz |
+| With Grand Central's interrupt | 25,379 (61%) | 153 | 41 | 62.70 MHz (slack -0.565 ns); memory 107.7 MHz. Runs on the board at 65 MHz |
+| With the ESCC and the NVRAM loader (the committed tree) | 26,019 (62%) | 153 | 41 | 62.31 MHz (slack -0.666 ns); memory 104.1 MHz. Runs on the board at 65 MHz |
 
 On the board (DE10-Nano, 128 MB SDRAM) the memory test passes at every RAM
 size the OSD offers (6 to 96 MB, three or more passes each, no error) at
@@ -319,6 +321,38 @@ reset until its firmware has powered the machine up, 5.4 million cycles
 (the bench runs Cuda's clock fast while it waits; 1.28 s on the board).
 
 ```
+python verilator\run_machine.py --nvram syn\nvram_of_prompt.bin --serial-in "1 2 + ." --serial-stop
+```
+
+Open Firmware on the modem port. `--nvram` loads an 8 KB image into Grand
+Central's NVRAM during reset; `syn\nvram_of_prompt.bin` is the one Open
+Firmware writes into a blank NVRAM, with `auto-boot?` set false, so it
+stops at its prompt on its console, `ttya`, the modem port. The bench has a
+terminal on that port (38,400 baud unless `--serial-baud`): it prints what
+the machine sends (`serial:` lines; `--serial-log FILE` keeps the raw
+bytes) and types each `--serial-in` line at the next prompt;
+`--serial-stop` ends the run at the prompt after the last. The prompt comes
+after about 24 million instructions, a minute.
+`python verilator\nvram.py` rebuilds an NVRAM image from a device log,
+shows Open Firmware's variables and changes them (`set IMG OUT
+auto-boot?=true`), and writes one for dingusppc (`dingus`).
+
+On the board the same image goes in as `boot1.rom`, which the MiSTer loads
+at the core's start, and the MiSTer's UART is the modem port (the OSD's
+UART option; the debug readout's hex lines are the other choice):
+
+```
+python syn\mister.py put-nvram
+python syn\mister.py load
+python syn\mister.py uart 40
+python syn\mister.py type "1 2 + ." "words"
+```
+
+`uart` shows what Open Firmware prints (the prompt about 2 s after the
+core starts), `type` types lines at it and shows the answers. From a shell
+on the MiSTer, `/dev/ttyS1` at 38,400 baud is the port itself.
+
+```
 python verilator\run_cuda.py
 ```
 
@@ -368,7 +402,8 @@ size and maximum clock. `--paths 10` also lists the slowest paths.
 | `rtl/machine/` | the machine: the 7600's address map and device stubs (`PPCMac_*`), Cuda (`PPCMac_cuda`, `PPCMac_hc05`, the ROM `PPCMac_cudarom` generated by `verilator/cudarom.py`) |
 | `rtl/machine/cuda/` | Cuda's firmware, Apple's 341S0060 (Cuda 2.40), as MAME's `cuda` set has it and byte for byte as read out of the 7300's own chip (`cudadump/`) |
 | `rtl/pll.v`, `rtl/pll/` | the core's PLL (the template's, edited to three outputs) |
-| `syn/mister.py` | puts the core and ROM on the MiSTer over SSH, sets options, loads, screenshots, reads the UART |
+| `syn/mister.py` | puts the core, the ROM and an NVRAM image on the MiSTer over SSH, sets options, loads, screenshots, reads the UART and types at it |
+| `syn/nvram_of_prompt.bin` | an NVRAM image: Open Firmware's defaults with `auto-boot?` false (made by `verilator/nvram.py` from the bench's device log) |
 | `verilator/` | test benches (single instructions, programs on the pipeline, the whole machine) and the floating-point software model |
 | `verilator/ref/` | dingusppc's interpreter as a library, for lockstep runs |
 | `verilator/machref/` | dingusppc's whole 7600, headless, logging every device access |

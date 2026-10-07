@@ -16,17 +16,20 @@ the day a milestone was closed; open ones carry no date.
 |---|---|---|---|
 | C | Cuda: the real 68HC05 and Apple's firmware behind the VIA | the ROM's Cuda traffic in lockstep, through Open Firmware into Mac OS; on the board, the CPU's reset released 1.28 s after the machine's and the ROM past Open Firmware's wait for Cuda | done 2026-10-07 |
 | I | Interrupts through Grand Central, the VIA first | the ROM in lockstep with the VIA's interrupts taken; its device traffic against dingusppc's whole 7300 shows the same interrupt service; every later source wired with its device | the VIA: done 2026-10-07, in simulation and on the board |
+| T | Serial console: the ESCC's modem port on the MiSTer's UART | Open Firmware's banner and `0 >` prompt over the UART on the board, words typed and answered | done 2026-10-07 |
 | E | The empty machine: MESH and Curio with no targets, as Mac OS probes them | Mac OS's device traffic without a disk matching dingusppc's through the SCSI probing | |
-| T | Serial console: the ESCC's modem port on the MiSTer's UART | Open Firmware's banner and `0 >` prompt over the UART on the board, words typed and answered | |
 | V | Video: Control, RaDACal, the Athens clock chip on Cuda's I2C | Mac OS's screen on the MiSTer's output, in simulation as a frame compared with dingusppc's and on the board as a screenshot | |
 | K | ADB keyboard and mouse on Cuda's line | Open Firmware typed on from the keyboard; the cursor following the mouse in Mac OS | |
 | S | SCSI: DBDMA, MESH, a disk image on the SD card | Mac OS booting from a disk image to the Finder | |
 | A | Sound: AWACS and its DBDMA channels | the startup chime, and Mac OS's sound | |
 | P | Persistence and the clock: the NVRAM and Cuda's PRAM on the SD card, the clock from the MiSTer's RTC | settings kept across a power-off; Mac OS showing the date | |
+| X | The PCI bus: Bandit's slots decoded by their BARs, a PCI card (a video card first) | a PCI card found by Open Firmware and driven by Mac OS | later |
 
 The order is the ROM's: what it asks for first comes first, then what makes
-the machine usable. Where it differs from the order first proposed, the
-decisions table at the end says so.
+the machine usable; the serial console comes first of all, because Open
+Firmware over the modem port is how validation tests will be run (decided
+2026-10-07; T does not depend on E: Open Firmware never touches MESH's ID,
+Mac OS does).
 
 ## What the ROM asks for, in order
 
@@ -256,6 +259,54 @@ makes Open Firmware's own debugging words (dump, peek and poke of devices,
 `see`) available on the board before there is a screen or a keyboard. The
 real 7300 is used the same way (a serial terminal at 38400 baud).
 
+**Built, in simulation, 2026-10-07.** Open Firmware's driver (the ROM's
+FCode image 6) resets channel A, sets the baud-rate generator's time
+constant to 1 from RTxC (3.6864 MHz) in x16 mode, 8 data bits, 2 stop
+bits, and transmits through the kernel's `scc-write` (waits for RR0's
+transmit-buffer bit, gives up if a character has arrived) and receives
+through `scc-read` (takes characters while RR0's receive bit is set):
+38,400 baud. `PPCMac_escc.sv` is the Z85C30's asynchronous mode for both
+channels, channel A on the modem port's pins, at the rate the registers
+set (RTxC by phase accumulation from the CPU's clock). With a blank
+NVRAM Open Firmware writes its defaults (it clears all 8 KB at 10.4
+million instructions, then writes its partition at 1800: `auto-boot?`
+true, `input-device` and `output-device` `ttya`); `verilator/nvram.py`
+rebuilt that image from the device log and set `auto-boot?` false
+(`syn/nvram_of_prompt.bin`). The machine loads an image through a port
+into Grand Central's NVRAM while reset is held; the board takes it from
+`boot1.rom`. The bench's terminal decodes the port and types lines at
+prompts. With the image both ROMs stop at Open Firmware's prompt after 24.8
+million instructions, in lockstep, the banner byte for byte what dingusppc
+prints with the same image and its ESCC on stdio:
+
+```
+Open Firmware, 1.0.5
+To continue booting the MacOS type:
+BYE<return>
+To continue booting from the default boot device type:
+BOOT<return>
+ ok
+0 > 1 2 + . 3  ok
+```
+
+and `dev / ls` (the device tree) and `printenv` answer. Without an image
+the device traffic is byte for byte what it was before the ESCC (both ROMs,
+100 million instructions).
+
+**On the board, 2026-10-07.** 26,019 ALMs, 153 RAM blocks, 41 DSP blocks;
+the CPU's clock closes at 62.31 MHz slow 100 C (slack -0.666 ns), run at
+65. With `syn\nvram_of_prompt.bin` as `boot1.rom` the banner and `0 >` come
+over the MiSTer's UART about two seconds after the core starts, and lines
+typed with `python syn\mister.py type` are answered: `1 2 + .` (3), `dev /
+ls` (the whole device tree), `printenv auto-boot?` (false, default true),
+`hex 7 d# 6 * .` (2A), `see bye`. Two lessons from getting there: a line
+sent at full speed loses characters, because Open Firmware echoes each one
+with a few bytes of escape sequences and the Z85C30's receive FIFO holds
+three (so `type` sends a character every 15 ms, as typing does); and a
+reader of `/dev/ttyS1` left running on the MiSTer takes part of the output
+(so `uart` and `type` stop any before starting theirs). The OSD's other
+UART choice, the debug readout's hex lines at 115,200, still works.
+
 ### V: video
 
 What it needs, from dingusppc's `control.cpp` (795 lines) and
@@ -275,14 +326,18 @@ What it needs, from dingusppc's `control.cpp` (795 lines) and
   registers it with Cuda's I2C host): the pixel clock is set by the video
   driver through Cuda. Our Cuda is the chip, bit-banging I2C on its pins, so
   Athens is an I2C slave on those pins in RTL.
-- Scan-out: the VRAM does not fit in block RAM. It goes either in the HPS's
-  DDR3 (unused by the core so far; the scaler already uses it for its
-  buffer) or in the SDRAM beside the RAM and the ROM (120-124 MB is free),
-  read a line ahead into a line buffer and sent through the colour table at
-  Control's timing to the framework's video output; the framework's scaler
-  makes HDMI of it. The framework's direct framebuffer mode (`MISTER_FB`)
-  was considered: it saves the scan-out but wants little-endian pixels in
-  DDR3 and gives no analog output of the Mac's own timing.
+- The VRAM, all 4 MB (Control's standard 2 MB bank and the optional
+  second), in the HPS's DDR3 through the framework's `DDRAM` port (decided
+  2026-10-07): the CPU's accesses to Control's VRAM BAR go there, and the
+  scan-out reads it a line ahead into a line buffer in block RAM, through
+  RaDACal's colour table (block RAM too) at Control's timing to the
+  framework's video output; the framework's scaler makes HDMI of it. Block
+  RAM cannot hold the VRAM itself: the FPGA has 553 blocks of 10 Kbit,
+  about 690 KB in all (the core uses 153 blocks), where one 640 x 480 frame
+  is 300 KB at 8 bits a pixel and 1.2 MB at 32. The framework's direct
+  framebuffer mode (`MISTER_FB`) was considered: it saves the scan-out but
+  wants little-endian pixels and gives no analog output at the Mac's own
+  timing.
 
 Proof: in simulation, a frame from the bench's VRAM against dingusppc's at
 the same point; on the board, a screenshot of Mac OS's screen without a disk.
@@ -349,19 +404,33 @@ RTC (`hps_io`'s `RTC` output) at Cuda's cold start.
 Proof: an Open Firmware setting and a Mac OS control panel setting kept across
 a power-off of the core; Mac OS showing the MiSTer's date and time.
 
+### X: the PCI bus (later)
+
+What it needs: Bandit 1's three slots (devices 0D-0F, interrupts 17-19)
+with configuration space for the card, and the decoder following the BARs
+Open Firmware assigns (today it ignores them, `PPCMac_stubs.md`; V needs
+the same for Control's BARs on Chaos), a card's expansion ROM (its FCode
+driver, which Open Firmware runs), and any bus master on the card going
+through rule 2's DMA port. The first card: a video card, which dingusppc
+models (`atimach64gx.cpp`: ATI Mach64 GX; `atirage.cpp`: Rage GT, GW, Pro),
+with the card's own ROM dump supplied.
+
+Proof: Open Firmware listing the card in its device tree and Mac OS
+driving it.
+
 ## Not planned
 
 - Ethernet (MACE): reads 0; nothing waits for it.
 - SWIM3 floppy: reads 0, no drive; Mac OS probes it at 226 million
   instructions and carries on.
-- The ESCC's channel B (the printer port), PCI cards, the second CPU, the L2
-  cache.
+- The ESCC's channel B (the printer port), the second CPU, the L2 cache.
 
 ## Decisions needed
 
 | When | Question |
 |---|---|
-| now | The order above puts the empty SCSI buses (E), the serial console (T) and the video (V) before ADB (K) and persistence (P), where the first proposal had ADB and persistence right after the interrupts and the video after them. The reasons: Mac OS asks for MESH right after the interrupt (it is where the RTL's path now leaves dingusppc's); Open Firmware's console is on the modem port; Mac OS reaches the video at 120 million instructions; nothing waits for ADB or saved settings. Keep this order? |
-| V | VRAM in the HPS's DDR3 (no load on the SDRAM the CPU's caches use) or in the SDRAM (one memory path, rule 2 simpler)? |
+| ~~now~~ | ~~The order of the milestones after I.~~ Decided 2026-10-07: the order above, the serial console first, as soon as possible, for running validation tests from Open Firmware over the modem port. |
+| ~~V~~ | ~~VRAM in the HPS's DDR3 or in the SDRAM?~~ Decided 2026-10-07: the DDR3, all 4 MB, block RAM for the line buffer and the colour table only. |
+| X | Added 2026-10-07: the PCI bus and a card in a slot, for later. Which card first? |
 | V | Which monitor the sense lines report (640 x 480 first, larger later?). |
 | S | Which disk image format and Mac OS version to test with first. |

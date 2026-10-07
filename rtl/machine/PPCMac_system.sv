@@ -56,6 +56,16 @@ module PPCMac_system
 	output logic         cpu_irq,
 	output logic         cpu_tb_tick,
 
+	// the modem port (the ESCC's channel A), 1 when idle; asynchronous in
+	output logic         modem_txd,
+	input  logic         modem_rxd,
+
+	// Grand Central's NVRAM written from outside, a byte a cycle in the
+	// CPU's clock, while reset is held
+	input  logic         nv_ld_we,
+	input  logic [12:0]  nv_ld_addr,
+	input  logic [7:0]   nv_ld_data,
+
 	// the machine's debug registers (the memory test's report)
 	output logic [31:0]  dbg_status,
 	output logic [31:0]  dbg_passes,
@@ -116,6 +126,7 @@ PPCMac_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_FAST
 	.c_req, .c_we, .c_line, .c_addr, .c_be, .c_wdata, .c_ack, .c_rdata,
 	.m_req, .m_we, .m_line, .m_addr, .m_be, .m_wdata, .m_ack, .m_rdata,
 	.ext_irq, .tb_tick, .cpu_reset(cuda_reset),
+	.modem_txd, .modem_rxd, .nv_ld_we, .nv_ld_addr, .nv_ld_data,
 	.dbg_status, .dbg_passes, .dbg_errors, .dbg_first
 );
 

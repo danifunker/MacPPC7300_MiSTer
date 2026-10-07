@@ -16,6 +16,8 @@ keep passing. Examples:
     python verilator\\run_machine.py --trace-from 5000 --trace-count 50
     python verilator\\run_machine.py --boot memtest --memtest-passes 2      (1 MB unless --ram)
     python verilator\\run_machine.py --boot memtest --mem-fault 0x1234     (must find the fault)
+    python verilator\\run_machine.py --nvram syn\\nvram_of_prompt.bin --serial-in "1 2 + ." --serial-stop
+        (Open Firmware's prompt on the modem port, a line typed at it)
 
 The device log (--dev-log) has the format of verilator/machref's log, so the
 two can be compared with verilator/machref/devdiff.py.
@@ -45,7 +47,7 @@ def main():
         # file arguments are Windows paths here; hand WSL its own spelling
         conv = []
         for i, a in enumerate(args):
-            if i > 0 and args[i - 1] in ("--rom", "--dev-log") and (":" in a or os.path.exists(a)):
+            if i > 0 and args[i - 1] in ("--rom", "--dev-log", "--nvram", "--serial-log") and (":" in a or os.path.exists(a)):
                 a = to_wsl(a)
             conv.append(a)
         return subprocess.call(["wsl", "--cd", HERE, "--", "python3", "run_machine.py"] + conv)

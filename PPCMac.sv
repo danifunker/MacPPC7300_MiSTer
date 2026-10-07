@@ -31,7 +31,14 @@
 //  (about 1.3 s; the debug readout counts from there). The ROM goes into the
 //  top 4 MB of the 128 MB SDRAM board, written byte by byte from the OSD's
 //  file upload (index 1, or index 0: a boot.rom in the core's folder is
-//  loaded at start).
+//  loaded at start). A boot1.rom there (index 40, loaded before boot.rom)
+//  is an 8 KB image for Grand Central's NVRAM, which reset leaves alone
+//  (verilator/nvram.py makes one; syn/nvram_of_prompt.bin stops Open
+//  Firmware at its prompt).
+//
+//  The MiSTer's UART is the machine's modem port (the ESCC's channel A,
+//  Open Firmware's console with a blank NVRAM: 38,400 baud), or, as the OSD
+//  chooses, the debug readout's hex lines at 115,200.
 //
 //============================================================================
 
@@ -46,7 +53,7 @@ localparam int CPU_MHZ = 65;            // 60 and 70 also work with the PLL (VCO
 
 assign ADC_BUS  = 'Z;
 assign USER_OUT = '1;
-assign {UART_RTS, UART_DTR} = 0;
+assign {UART_RTS, UART_DTR} = 0;      // (the modem port's handshake lines are not modelled)
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;
 
@@ -81,6 +88,7 @@ localparam CONF_STR = {
 	"F1,ROM,Load ROM;",
 	"O[3:1],RAM,16 MB,24 MB,48 MB,64 MB,96 MB,6 MB;",
 	"O[4],Boot,ROM,Memory test;",
+	"O[6],UART,Modem port,Debug readout;",
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"O[5],TV Mode,NTSC,PAL;",
@@ -167,6 +175,29 @@ always @(posedge clk_mem) begin
 	if (~ioctl_download & dl_q & rom_dl) begin rom_dl <= 0; rom_loaded <= 1; end
 end
 
+// the NVRAM image (boot1.rom, index 40): each byte handed to the CPU's clock
+// by a toggle, hps_io waiting until it is taken; the machine is in reset
+// meanwhile (the image comes before the ROM)
+wire nv_index = ioctl_index[7:0] == 8'h40;
+wire nv_dl    = ioctl_download & nv_index;
+reg  [12:0] nv_m_addr;
+reg  [7:0]  nv_m_data;
+reg         nv_req = 0, nv_busy = 0;
+reg  [2:0]  nv_ack_s;
+wire        nv_ack;                   // the CPU's side, toggled when a byte is written
+always @(posedge clk_mem) begin
+	nv_ack_s <= {nv_ack_s[1:0], nv_ack};
+	if (nv_dl & ioctl_wr & ~nv_busy & ioctl_addr[26:13] == 14'd0) begin
+		nv_m_addr <= ioctl_addr[12:0];
+		nv_m_data <= ioctl_dout;
+		nv_req    <= ~nv_req;
+		nv_busy   <= 1;
+	end
+	else if (nv_busy & (nv_ack_s[2] == nv_req)) nv_busy <= 0;
+end
+wire sd_up_busy;
+assign ioctl_wait = sd_up_busy | nv_busy;
+
 reg  [1:0] locked_m = 0;
 always @(posedge clk_mem) locked_m <= {locked_m[0], pll_locked};
 wire sdram_init = ~locked_m[1];
@@ -185,7 +216,7 @@ end
 
 reg cpu_reset_m = 1;
 always @(posedge clk_mem)
-	cpu_reset_m <= reset_in[2] | ~sdram_ready | rom_dl | (~boot_memtest & ~rom_loaded) | (cfg_hold != 0);
+	cpu_reset_m <= reset_in[2] | ~sdram_ready | rom_dl | nv_dl | (~boot_memtest & ~rom_loaded) | (cfg_hold != 0);
 
 // into the CPU's clock (the options are quasi-static: they change only with the reset held)
 reg [2:0] cpu_reset_s = 3'b111;
@@ -198,6 +229,32 @@ always @(posedge clk_cpu) begin
 	boot_memtest_c <= {boot_memtest_c[0], boot_memtest};
 end
 wire cpu_reset = cpu_reset_s[2];
+
+// the NVRAM image's bytes, in the CPU's clock (address and data are stable
+// from the toggle until the acknowledge returns)
+reg  [2:0]  nv_req_s;
+reg         nv_ack_c = 0, nv_ld_we = 0;
+reg  [12:0] nv_ld_addr;
+reg  [7:0]  nv_ld_data;
+always @(posedge clk_cpu) begin
+	nv_req_s <= {nv_req_s[1:0], nv_req};
+	nv_ld_we <= 0;
+	if (nv_req_s[2] != nv_ack_c) begin
+		nv_ld_addr <= nv_m_addr;
+		nv_ld_data <= nv_m_data;
+		nv_ld_we   <= 1;
+		nv_ack_c   <= nv_req_s[2];
+	end
+end
+assign nv_ack = nv_ack_c;
+
+// the UART: the modem port, or the debug readout (status[6])
+wire uart_debug = status[6];
+wire modem_txd, dbg_txd;
+reg  [1:0] uart_debug_c;
+always @(posedge clk_cpu) uart_debug_c <= {uart_debug_c[0], uart_debug};
+wire modem_rxd = uart_debug_c[1] | UART_RXD;
+assign UART_TXD = uart_debug ? dbg_txd : modem_txd;
 
 ///////////////////////   THE MACHINE   ///////////////////////////////
 
@@ -234,6 +291,7 @@ PPCMac_system #(.CPU_HZ(CPU_MHZ * 1000000), .TB_HZ(12500000), .SDRAM_MB(128)) sy
 	.b_req, .b_we, .b_line, .b_addr, .b_be, .b_wdata, .b_ack, .b_rdata,
 
 	.cpu_req, .cpu_we, .cpu_line, .cpu_addr, .cpu_be, .cpu_wdata, .cpu_ack, .cpu_rdata, .cpu_irq, .cpu_tb_tick,
+	.modem_txd, .modem_rxd, .nv_ld_we, .nv_ld_addr, .nv_ld_data,
 	.dbg_status, .dbg_passes, .dbg_errors, .dbg_first,
 	.trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_reg_we, .trace_reg_idx, .trace_reg_val,
 	.trace_cr, .trace_xer, .trace_lr, .trace_ctr, .trace_fpscr, .trace_msr,
@@ -258,7 +316,7 @@ PPCMac_sdram #(.CLK_MHZ(100)) sdram
 	.up_wr(rom_wr),
 	.up_addr(27'h7C00000 + ioctl_addr),      // the top 4 MB of the 128 MB board
 	.up_data(ioctl_dout),
-	.up_busy(ioctl_wait),
+	.up_busy(sd_up_busy),
 
 	.SDRAM_A, .SDRAM_BA, .SDRAM_nCS, .SDRAM_nRAS, .SDRAM_nCAS, .SDRAM_nWE,
 	.SDRAM_DQML, .SDRAM_DQMH, .SDRAM_CKE,
@@ -320,7 +378,7 @@ PPCMac_debug #(.BUILD(BUILD), .CPU_HZ(CPU_MHZ * 1000000), .VID_HZ(20000000), .BA
 	.ce_pix(ce_pix),
 	.hblank(hblank), .hsync(hsync), .vblank(vblank), .vsync(vsync),
 	.r(dbg_r), .g(dbg_g), .b(dbg_b),
-	.uart_txd(UART_TXD)
+	.uart_txd(dbg_txd)
 );
 
 assign CLK_VIDEO = clk_vid;
