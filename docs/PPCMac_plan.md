@@ -15,7 +15,7 @@ the day a milestone was closed; open ones carry no date.
 | # | Milestone | Proof it is done | State |
 |---|---|---|---|
 | C | Cuda: the real 68HC05 and Apple's firmware behind the VIA | the ROM's Cuda traffic in lockstep, through Open Firmware into Mac OS; on the board, the CPU's reset released 1.28 s after the machine's and the ROM past Open Firmware's wait for Cuda | done 2026-10-07 |
-| I | Interrupts through Grand Central, the VIA first | the ROM in lockstep with the VIA's interrupts taken; its device traffic against dingusppc's whole 7300 shows the same interrupt service; every later source wired with its device | the VIA: done in simulation 2026-10-07 |
+| I | Interrupts through Grand Central, the VIA first | the ROM in lockstep with the VIA's interrupts taken; its device traffic against dingusppc's whole 7300 shows the same interrupt service; every later source wired with its device | the VIA: done 2026-10-07, in simulation and on the board |
 | E | The empty machine: MESH and Curio with no targets, as Mac OS probes them | Mac OS's device traffic without a disk matching dingusppc's through the SCSI probing | |
 | T | Serial console: the ESCC's modem port on the MiSTer's UART | Open Firmware's banner and `0 >` prompt over the UART on the board, words typed and answered | |
 | V | Video: Control, RaDACal, the Athens clock chip on Cuda's I2C | Mac OS's screen on the MiSTer's output, in simulation as a frame compared with dingusppc's and on the board as a screenshot | |
@@ -137,6 +137,8 @@ the readout's device-write counts at four moments:
 | 27,935 | 101,946,913 | 102,096,232 | -149,319 |
 | 28,043 (the last) | 135,478,744 | 135,630,409 (VIA port B, from 68066F70) | -151,665 |
 
+The 7600's ROM likewise: 28,043 writes in its simulation too, the board
+150,500 instructions ahead at the 27,885th and 151,348 at the last.
 The same writes, the last one included, with a constant offset: the two
 part once, before 28.7 million instructions, and then run alike. Before Cuda
 the two agreed to three instructions, nothing then depending on time; now
@@ -199,6 +201,20 @@ cannot (`PPCMac_stubs.md`); and the real Cuda sends packets dingusppc's
 model does not. Then Mac OS reads MESH's ID register (82 million
 instructions here, 86 million in dingusppc): dingusppc answers E2, the stub
 0, and from there the SCSI Manager takes another path. That is milestone E.
+
+**On the board, 2026-10-07.** The build with the interrupt: 25,379 ALMs,
+153 RAM blocks, 41 DSP blocks, the CPU's clock closing at 62.70 MHz slow
+100 C (slack -0.565 ns, total -0.883 ns), run at 65 MHz. With either ROM
+Cuda releases the CPU after 1,284 ms and Mac OS now runs on its timer: the
+device writes keep growing (7300's ROM: 38,489 after 666 million
+instructions, about 4,000 every 64 million), and the readout's pc samples
+alternate between the NanoKernel's interrupt code (FFF12xxx, FFF14xxx,
+MSR 1040), the 68k emulator and native code in the ROM (FFD2xxxx). Against
+the simulation: the 27,814th write comes 150,260 instructions earlier on
+the board, the offset of the build without the interrupt; by 73 million
+instructions the board is 1.08 million ahead (the timer's interrupts come
+in real time, and the board's memory is not the bench's), the counts at the
+same instruction differing by 18 writes in 28,000.
 
 ### E: the empty machine
 
