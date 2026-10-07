@@ -116,6 +116,25 @@ lockstep mismatch:
   dingusppc accepts the 604e's MMCR1, PMC3 and PMC4, which the NanoKernel
   probes (FFF131B0 on), so the reference is made to take the exception
   with the core's SRR0, SRR1 and MSR.
+- MSR[PM] (bit 29, which the 604 keeps: measured) through `rfi` and
+  exception entry: a 604 copies SRR1's low 16 bits into MSR on `rfi` and
+  MSR's into SRR1 on an exception, PM among them; dingusppc leaves PM out
+  of both (`ppc_rfi` replaces 0x87C0FF73, `ppc_exception_handler` keeps
+  0x0000FF73). The NanoKernel returns to Mac OS with PM set (FFF12C50,
+  33.2 million instructions) and Mac OS traps with it set, so the
+  reference's MSR takes PM from SRR1 after every `rfi`, and its SRR1 takes
+  PM from the MSR at every exception and injected interrupt. Not
+  machine-mode only: the 604's rule holds in the CPU suite too.
+- A DSI at `dcbst`, `dcbf`, `icbi` or `dcbi`: the core translates them as
+  loads (`dcbi` as a store), as the architecture and the 604 do; dingusppc
+  does not translate them at all. The NanoKernel fills the hardware page
+  table on demand, so when Open Firmware's flush word, called from Mac OS,
+  runs `dcbst` over code it has just compiled (FF808D14, 33.2 million
+  instructions, DAR FF840940, DSISR 40000000), the real machine takes the
+  same DSI and the NanoKernel installs the PTE and retries. The reference
+  is made to take it (SRR0, SRR1, DAR from its own state; DSISR "no
+  translation", or the protection bit when dingusppc's MMU does translate
+  the address, which the handler's read of DSISR then checks).
 - Cuda's clock runs 15 times fast while it holds the CPU in reset
   (`CUDA_FAST_BOOT`, the machine bench's build only), so the cold start
   takes 5.4 million cycles, not 83 million. Cuda's instructions are the

@@ -26,12 +26,12 @@ debug readout (rows of squares), not yet a Mac.
 | Clock crossing to the SDRAM controller | done, checked at several clock ratios; the controller itself comes with the machine |
 | Timing and area pass | in progress: 55 to 64-65 MHz so far with eleven cuts that cost no cycles, plus the FPU operand register on (2 % of floating-point cycles) to take its forwarding path off the list; the slowest families now sit at the 66 MHz line and move across it with the fitter's placement; what remains and what it would cost is in [the plan](docs/DSPPC604_plan.md) |
 | Machine: the 7600's address map and device stubs | `rtl/machine/`: Hammerhead, Bandit and Chaos configuration space, Grand Central (interrupt and DMA registers, VIA with timers, NVRAM, board register, SCC and sound registers) as register stubs that answer as dingusppc's devices do; [docs/PPCMac_stubs.md](docs/PPCMac_stubs.md) lists every stub and what it leaves out |
-| The 7600's ROM in simulation | runs from the reset vector in lockstep with dingusppc for 150 million instructions with no difference; reaches Open Firmware, which after 18.3 million instructions waits for Cuda (the ADB/power microcontroller, not built) and polls for it forever |
+| The 7600's ROM in simulation | runs from the reset vector in lockstep with dingusppc, Cuda answering, for 60 million instructions with no difference (2026-10-07): through Open Firmware (which waits for Cuda at 18.3 million and gets its answer), the NanoKernel's start-up and into Mac OS's 68k emulator, running in user mode from 28 million on. Before Cuda existed, 150 million instructions to Open Firmware's endless poll for it |
 | Memory-test boot program | selectable in place of the ROM; passes in the bench over 1 and 6 MB and finds an injected fault |
 | SDRAM controller | `rtl/machine/PPCMac_sdram.sv`, adapted from Sorgelig's; passes its bench against a model of the 128 MB board that checks every command and timing |
 | First bitstream | `PPCMac.sv`: CPU at 65 MHz, SDRAM at 100 MHz, ROM upload, OSD options, debug readout on screen and UART; on the board the memory test passes at every RAM size (6-96 MB) |
 | The 7600's ROM on the board | runs exactly as in simulation: the same 26,771 device writes, the last after the same 18.27 million instructions, then the same wait for Cuda (before Cuda was built) |
-| Cuda (ADB, power, reset, clock, PRAM) | the real chip: a 68HC05 (`rtl/machine/PPCMac_hc05.sv`, checked instruction by instruction against MAME's 6805 core) running Apple's firmware 341S0060 (Cuda 2.40), behind Grand Central's VIA with a real shift register; it holds the CPU in reset until its firmware powers the machine up. In simulation the ROM's Cuda traffic goes through and the ROM runs on into the NanoKernel, where at 24.4 million instructions the lockstep found a CPU bug (`RESUME_cpu.md`). Not yet on the board; nothing on its ADB or I2C lines yet |
+| Cuda (ADB, power, reset, clock, PRAM) | the real chip: a 68HC05 (`rtl/machine/PPCMac_hc05.sv`, checked instruction by instruction against MAME's 6805 core) running Apple's firmware 341S0060 (Cuda 2.40), behind Grand Central's VIA with a real shift register; it holds the CPU in reset until its firmware powers the machine up. The firmware is the 7300's own: read out of its chip through the VIA (`cudadump/`, 2026-10-07), byte for byte MAME's dump. In simulation the ROM's Cuda traffic goes through and the ROM runs on through the NanoKernel into Mac OS (the CPU bug the lockstep found at 24.4 million instructions is fixed: the plan's M6 section). Not yet on the board; nothing on its ADB or I2C lines yet |
 | Machine (video, SCSI, sound, ...) | not started |
 
 The first full build of the core (2026-10-06: the CPU at 65 MHz, the
@@ -52,7 +52,8 @@ Each block synthesised on its own for the DE10-Nano's FPGA with Quartus
 
 | Block | ALMs | DSP blocks | Worst-case Fmax |
 |---|---|---|---|
-| The whole CPU (pipeline, FPU, exceptions, SPRs, MMU, two 16 KB caches), after the timing pass's eleven cuts and the FPU operand register (2026-10-06) | 15,678 (37%), 77 RAM blocks | 7 | 63.7-64.8 MHz (two fits) |
+| The whole CPU (pipeline, FPU, exceptions, SPRs, MMU, two 16 KB caches), after the update-form fix of 2026-10-07 (the sequencer's third operation for an indexed load with rD = rB) | 15,711 (37%), 77 RAM blocks | 7 | 64.96 MHz (the same slowest paths) |
+| The same after the timing pass's eleven cuts and the FPU operand register (2026-10-06) | 15,678 (37%), 77 RAM blocks | 7 | 63.7-64.8 MHz (two fits) |
 | The same when the caches were first added | 14,234 (34%), 77 RAM blocks | 7 | 55.2 MHz |
 | The same before the caches | 12,049 (29%) | 7 | 61-65 MHz (three runs) |
 | The same before the MMU | 10,781 (26%) | 7 | 69.5 MHz |
@@ -258,13 +259,14 @@ Tests the pipeline, and the memory path behind it, seven ways:
    7300 run, whose loads and stores get a buffer each.
 3. Random floating-point programs (arithmetic, loads, stores, FPSCR
    instructions) with the state `fpmodel.py` expects after every instruction.
-4. Each exception once, with what its handler must find; address
-   translation with every cause of DSI and ISI and the page table's R and C
-   bits; `lwarx`/`stwcx.`, `dcbz` and the cache instructions; the caches
-   (evictions, write-back, every cache instruction and HID0 bit seen
-   through a cache-inhibited alias, self-modifying code, DMA through the
-   snoop port); and a loop with known results under thousands of external
-   and decrementer interrupts.
+4. Each exception once, with what its handler must find; the update forms,
+   the indexed loads with rD = rB first (cache off, miss, hit, with and
+   without wait states); address translation with every cause of DSI and
+   ISI and the page table's R and C bits; `lwarx`/`stwcx.`, `dcbz` and the
+   cache instructions; the caches (evictions, write-back, every cache
+   instruction and HID0 bit seen through a cache-inhibited alias,
+   self-modifying code, DMA through the snoop port); and a loop with known
+   results under thousands of external and decrementer interrupts.
 5. Random programs in lockstep with dingusppc's interpreter
    (`verilator/ref` builds it as a library from `..\dingusppc`), including
    supervisor instructions, mode switches and exceptions: the registers and
@@ -351,7 +353,7 @@ size and maximum clock. `--paths 10` also lists the slowest paths.
 | `sys/` | MiSTer framework (do not edit) |
 | `rtl/DSPPC604/` | the CPU |
 | `rtl/machine/` | the machine: the 7600's address map and device stubs (`PPCMac_*`), Cuda (`PPCMac_cuda`, `PPCMac_hc05`, the ROM `PPCMac_cudarom` generated by `verilator/cudarom.py`) |
-| `rtl/machine/cuda/` | Cuda's firmware, Apple's 341S0060 (Cuda 2.40), as MAME's `cuda` set has it |
+| `rtl/machine/cuda/` | Cuda's firmware, Apple's 341S0060 (Cuda 2.40), as MAME's `cuda` set has it and byte for byte as read out of the 7300's own chip (`cudadump/`) |
 | `rtl/pll.v`, `rtl/pll/` | the core's PLL (the template's, edited to three outputs) |
 | `syn/mister.py` | puts the core and ROM on the MiSTer over SSH, sets options, loads, screenshots, reads the UART |
 | `verilator/` | test benches (single instructions, programs on the pipeline, the whole machine) and the floating-point software model |

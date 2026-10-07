@@ -223,7 +223,20 @@ Against the PowerPC 604 User's Manual (sections in parentheses):
     601's bits 16-23 (`:1149`). [run] [604: `mtxer` keeps exactly 0xE000FF7F too;
     `mtmsr` keeps 0x0005FF77 (bit 29, PM, included); SRR0 keeps bits 0-29, SDR1
     0xFFFF01FF, EAR 0x8000003F, PIR four bits, the BATs 0xFFFE1FFF/0xFFFE007B;
-    the random lockstep programs clear SRR0's two low bits before writing it]
+    the random lockstep programs clear SRR0's two low bits before writing it].
+    `rfi`, on the other hand, replaces MSR bits 0x87C0FF73 only (`ppc_rfi`,
+    `:1584`), and an exception puts MSR bits 0x0000FF73 only into SRR1
+    (`ppcexceptions.cpp:85`), so PM is lost both ways [604: SRR1 takes
+    0x87C0FFFF and `rfi` copies the low 16 back, PM included; the test
+    benches put PM back after every `rfi` and exception, since the NanoKernel
+    returns to Mac OS with it set and Mac OS traps with it set]
+13. **`dcbst`, `dcbf`, `icbi` and `dcbi` are placeholders** (`ppcopcodes.cpp:1665-1686`):
+    no translation, so never a DSI. [run] [604: translated as loads, `dcbi` as
+    a store, with a DSI where a load would take one; the NanoKernel fills the
+    page table on demand and Open Firmware's flush word, called from Mac OS,
+    takes such a DSI at 33.2 million instructions of the 7600's ROM. The
+    machine bench makes the reference take the core's DSI there; the random
+    programs with translation on still leave these instructions out]
 
 With address translation on:
 

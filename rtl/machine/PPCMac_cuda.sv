@@ -3,7 +3,9 @@
 //  PPCMac - the machine around the CPU
 //  Cuda: the 7600's ADB, power, reset, real-time clock and PRAM
 //  microcontroller, as the chip itself: a 68HC05E1 (PPCMac_hc05) running
-//  Apple's firmware 341S0060, Cuda 2.40 (PPCMac_cudarom)
+//  Apple's firmware 341S0060, Cuda 2.40 (PPCMac_cudarom): the 7300's own,
+//  read out of its chip through the VIA on 2026-10-07 (cudadump/) and
+//  byte for byte MAME's dump
 //
 //  The 68HC05E1, as MAME's m68hc05e1.cpp maps it and as the firmware uses it:
 //

@@ -424,6 +424,11 @@ DSPPC604_decode decode
 // lswx and stswx, from the opcode bits: the sequencer's wait for XER must
 // not come through the decoder (see wait_xer there)
 wire id_strx = (id_insn[31:26] == 6'd31) & ((id_insn[10:1] == 10'd533) | (id_insn[10:1] == 10'd661));
+// lbzux, lhzux, lhaux, lwzux (extended opcodes 119, 311, 375, 55: bits 9
+// and 7 clear, 5-0 = 110111) with rD = rB, likewise: the sequencer then
+// reads the scratch register, which must not wait for the decoder either
+wire id_ldux_rb = (id_insn[31:26] == 6'd31) & ~id_insn[10] & ~id_insn[8] & (id_insn[6:1] == 6'b110111) &
+                  (id_insn[25:21] == id_insn[15:11]);
 
 DSPPC604_seq seq
 (
@@ -434,6 +439,7 @@ DSPPC604_seq seq
 	.dec       (id_dec),
 	.nb        (id_insn[15:11]),
 	.strx      (id_strx),
+	.ldux_rb   (id_ldux_rb),
 	.xer_count (xer[6:0]),
 	.take      (id_take),
 	.uop       (id_uop),

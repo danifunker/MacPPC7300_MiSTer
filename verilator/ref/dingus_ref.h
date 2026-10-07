@@ -55,6 +55,12 @@ const char *ref_last_error(void);
 uint32_t ref_get_sr(unsigned n);
 void     ref_set_sr(unsigned n, uint32_t v);
 
+/* Translate a data address as dingusppc's debugger does: through the BATs
+   and the page table in the current MSR mode, with no exception, no access
+   and no referenced or changed bit set. Returns 0 and the physical address,
+   or -1 when there is no translation. */
+int      ref_translate_dbg(uint32_t ea, uint32_t *pa);
+
 /* ---- A machine around the CPU (for running a real ROM in lockstep) ----------
    All of these must be called again after every ref_init(). */
 

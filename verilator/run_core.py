@@ -11,9 +11,10 @@
 3. Random floating-point programs (arithmetic, loads, stores, FPSCR
    instructions) with the state fpmodel.py expects after every instruction.
 4. Each exception once, with what its handler must find in SRR0, SRR1, DAR
-   and DSISR; address translation with every cause of DSI and ISI; and a
-   computation that thousands of external and decrementer interrupts must
-   leave undisturbed.
+   and DSISR; address translation with every cause of DSI and ISI; the
+   update forms, the indexed loads with rD = rB first; and a computation
+   that thousands of external and decrementer interrupts must leave
+   undisturbed.
 5. Random programs in lockstep with dingusppc's interpreter, including
    supervisor instructions, mode switches and exceptions: after every
    instruction the registers and MSR must match, and at the end the memory.
@@ -139,10 +140,12 @@ def main():
         r = run([tb, "--prog", prog, "--stall", str(stall), "--seed", str(seed)])
         report("  seed %d, wait states %d%%" % (seed, stall), r)
 
-    # 4. exceptions and interrupts, with known outcomes
-    print("exceptions and interrupts:")
+    # 4. exceptions, interrupts and the update forms, with known outcomes
+    print("exceptions, interrupts, the update forms:")
     for name, gen, tb_args in (
         ("each exception once", ["exctest"], ["--stall", "10"]),
+        ("update forms, rD = rB", ["updtest"], []),
+        ("update forms, with wait states", ["updtest"], ["--stall", "40", "--seed", "9"]),
         ("floating-point enabled exceptions", ["fpexctest"], []),
         ("address translation, DSI, ISI", ["mmutest"], ["--stall", "20", "--seed", "5"]),
         ("lwarx/stwcx., dcbz, cache ops", ["resvtest"], ["--stall", "25"]),

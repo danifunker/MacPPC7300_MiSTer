@@ -1,5 +1,7 @@
 # Resume prompt: a CPU bug the machine found (update-form load with rD = rB)
 
+**Done 2026-10-07.** The bug is fixed: an indexed update load whose rD is its rB now takes its address through the sequencer's scratch register (three operations); `progs.py updtest` reproduces it (27 of 47 checks failed before the fix) and the random generator makes the form. The plan's M6 section records the cause, the test, the fix and its cost (33 ALMs, no cycle on any other instruction, 64.96 MHz alone). Every suite is green, and the machine runs 60 million instructions of the 7600's ROM in lockstep, into Mac OS, with two more bench accommodations for dingusppc (MSR[PM]; a DSI at `dcbst`) recorded in `docs\PPCMac_stubs.md`. The machine session continues from `RESUME_machine.md`. The prompt below is kept as the record of the hand-off.
+
 Paste everything below the line into a new session started in `C:\Temp\mistercore\PPC_Mac`.
 
 ---

@@ -456,6 +456,7 @@ int main(int argc, char** argv) {
 	uint64_t cycles = 0, retired = 0;
 	long checked = 0, failed = 0;
 	bool done = false, diverged = false;
+	int cacheop_dsi_notes = 0;      // DSIs at cache instructions handed to the reference (both benches)
 
 #ifdef PPCMAC_MACHINE
 	// ---- two clocks: the CPU's (and the machine's), and the memory's ----
@@ -732,10 +733,15 @@ int main(int argc, char** argv) {
 #ifdef PPCMAC_MACHINE
 				last_retire_cycle = cycles;
 				bool show = opt.trace || (opt.trace_count && retired > opt.trace_from && retired <= opt.trace_from + opt.trace_count);
-				if (show)
-					std::printf("%10llu %10llu  %08X: %08X  msr=%08X cr=%08X lr=%08X ctr=%08X\n",
+				if (show) {
+					std::printf("%10llu %10llu  %08X: %08X  msr=%08X cr=%08X lr=%08X ctr=%08X",
 						(unsigned long long)retired, (unsigned long long)cycles, pc, insn, dut->trace_msr,
 						dut->trace_cr, dut->trace_lr, dut->trace_ctr);
+					for (int k = 0; k < beats_n; k++)           // the registers it wrote (32: the sequencer's scratch)
+						std::printf("  %s%u=%0*llX", beats[k].first >= 64 ? "f" : "r", beats[k].first & 63,
+							beats[k].first >= 64 ? 16 : 8, (unsigned long long)beats[k].second);
+					std::printf("\n");
+				}
 				if (opt.progress && retired % opt.progress == 0) {
 					std::printf("progress: %llu instructions, %llu cycles, pc %08X, msr %08X\n",
 						(unsigned long long)retired, (unsigned long long)cycles, pc, dut->trace_msr);
@@ -784,6 +790,7 @@ int main(int argc, char** argv) {
 					if (before.pc != pc && ((pc & 0xFFF00000u) == 0 || (pc & 0xFFF00000u) == 0xFFF00000u) &&
 					    ((pc & 0xFFFFF) == 0x900 || (pc & 0xFFFFF) == 0x500)) {
 						ref_interrupt(pc & 0xFFFFF);
+						if (before.msr & 4u) ref_set_spr(27, ref_get_spr(27) | 4u);     // PM into SRR1, as below
 						ref_get_state(&before);
 					}
 					// mtspr or mfspr of an SPR the real 604 does not have: a program
@@ -824,6 +831,53 @@ int main(int argc, char** argv) {
 						}
 					}
 #endif
+					// A DSI at dcbst, dcbf, icbi or dcbi: the core translates them
+					// (as loads; dcbi as a store) as the 604 does, dingusppc does
+					// not translate them at all. The NanoKernel fills the hardware
+					// page table on demand, so Mac OS takes such a DSI on the real
+					// machine too. The reference is made to take it: DAR the
+					// effective address, DSISR "no translation", or the protection
+					// bit if dingusppc's MMU does translate the address (the handler
+					// reads DSISR, and the comparison checks it there).
+					if (before.pc != pc && (pc & 0xFFFFF) == 0x300 && (before.msr & 0x30) == 0x30) {
+						uint32_t ipa = 0, w = 0;
+						bool known = false;
+						if (ref_translate_dbg(before.pc, &ipa) == 0) {
+							if (ipa + 4 <= RAM_SIZE) {
+								const uint8_t* rm = ref_ram();
+								w = (uint32_t)rm[ipa] << 24 | (uint32_t)rm[ipa + 1] << 16 | (uint32_t)rm[ipa + 2] << 8 | rm[ipa + 3];
+								known = true;
+							}
+#ifdef PPCMAC_MACHINE
+							else if (ipa >= ROM_BASE) {
+								uint32_t o = ipa - ROM_BASE;
+								w = (uint32_t)rom[o] << 24 | (uint32_t)rom[o + 1] << 16 | (uint32_t)rom[o + 2] << 8 | rom[o + 3];
+								known = true;
+							}
+#endif
+						}
+						uint32_t xo = (w >> 1) & 0x3FF;
+						if (known && (w >> 26) == 31 && (xo == 54 || xo == 86 || xo == 982 || xo == 470)) {
+							unsigned ra = (w >> 16) & 31, rb = (w >> 11) & 31;
+							uint32_t ea = (ra ? before.gpr[ra] : 0) + before.gpr[rb];
+							uint32_t dpa = 0;
+							bool mapped = ref_translate_dbg(ea, &dpa) == 0;
+							uint32_t dsisr = (mapped ? 0x08000000u : 0x40000000u) | (xo == 470 ? 0x02000000u : 0);
+							ref_set_spr(26, before.pc);
+							ref_set_spr(27, before.msr & 0x87C0FFFFu);
+							ref_set_spr(19, ea);
+							ref_set_spr(18, dsisr);
+							ref_state_t t = before;
+							t.msr = (before.msr & 0x00001040u) | ((before.msr >> 16) & 1u);
+							t.pc = pc;
+							ref_set_state(&t);
+							ref_get_state(&before);
+							if (cacheop_dsi_notes++ < 10)
+								std::printf("note: DSI at %s of %08X (%08X) after %llu instructions, %s: the reference takes it too\n",
+									xo == 54 ? "dcbst" : xo == 86 ? "dcbf" : xo == 982 ? "icbi" : "dcbi", ea, w,
+									(unsigned long long)retired, mapped ? "a protection violation" : "no translation");
+						}
+					}
 					// The core retires nothing for an instruction that takes an
 					// exception; the reference has to take it now to catch up.
 					for (int tries = 0; tries < 3 && before.pc != pc; tries++) {
@@ -836,6 +890,10 @@ int main(int argc, char** argv) {
 						// two places where dingusppc sets SRR1 bits it should not
 						if (vec == 0xC00) ref_set_spr(27, ref_get_spr(27) & ~0x00020000u);
 						if (vec == 0x800) ref_set_spr(27, ref_get_spr(27) & ~0x00100000u);
+						// ... and one it drops: SRR1 takes MSR bits 0x87C0FFFF on a 604,
+						// PM (bit 29) among them; dingusppc keeps 0x0000FF73
+						// (ppc_exception_handler). Mac OS runs with PM set.
+						if (before.msr & 4u) ref_set_spr(27, ref_get_spr(27) | 4u);
 						// dingusppc clears CR0 before stwcx.'s store, so a DSI there
 						// leaves CR0 changed; a 604 leaves it alone (the programs keep
 						// the code where its address is its physical address)
@@ -857,6 +915,11 @@ int main(int argc, char** argv) {
 					if (before.pc != pc) {
 						std::printf("DIVERGED after %llu instructions: core retired %08X, reference is at %08X\n",
 							(unsigned long long)retired, pc, before.pc);
+						std::printf("  the reference's state there (the core's too, up to this instruction): msr %08X cr %08X lr %08X ctr %08X\n",
+							before.msr, before.cr, before.lr, before.ctr);
+						for (int r = 0; r < 32; r += 8)
+							std::printf("  r%-2d %08X %08X %08X %08X %08X %08X %08X %08X\n", r, before.gpr[r], before.gpr[r + 1],
+								before.gpr[r + 2], before.gpr[r + 3], before.gpr[r + 4], before.gpr[r + 5], before.gpr[r + 6], before.gpr[r + 7]);
 						diverged = true;
 						break;
 					}
@@ -888,6 +951,14 @@ int main(int argc, char** argv) {
 							}
 							ref_set_state(&s);
 						}
+					}
+					// rfi: a 604 copies SRR1's low 16 bits into MSR, PM (bit 29)
+					// among them (measured: README, MSR keeps 0005FF77 and rfi the
+					// low 16); dingusppc's ppc_rfi leaves PM alone (its mask is
+					// 0x87C0FF73). The NanoKernel returns to Mac OS with PM set.
+					if (insn == 0x4C000064u && rc == 0) {
+						s.msr = (s.msr & ~4u) | (ref_get_spr(27) & 4u);
+						ref_set_state(&s);
 					}
 #ifdef PPCMAC_MACHINE
 					// time is the core's: mftb and mfspr of the time base or the

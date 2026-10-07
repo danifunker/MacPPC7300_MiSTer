@@ -11,6 +11,7 @@
     python progs.py mmutest OUT                  address translation: BATs, page tables, DSI, ISI, tlbie
     python progs.py resvtest OUT                 lwarx/stwcx., dcbz and the cache instructions
     python progs.py cachetest OUT                the caches: write-back, the cache instructions, HID0, DMA
+    python progs.py updtest OUT                  the update forms, the indexed loads with rD = rB first
     python progs.py irqtest OUT [LOOPS]          a computation that interrupts must not disturb
                                                  (run with --irq-every and --tb-run)
     python progs.py memtest OUT.sv               the machine's memory-test boot ROM, as RTL
@@ -911,6 +912,193 @@ def cachetest(out):
     print("%d instructions, %d checks, %d memory words -> %s" % (len(p.words), len(p.checks), len(p.expect), out))
 
 
+def updtest(out):
+    """The update forms. First the indexed loads whose rD is their rB
+    (lwzux r4,r3,r4, and lbzux, lhzux, lhaux the same: a valid form, only
+    rA = 0 and rA = rD are not, and one the 7600's NanoKernel uses), which
+    the sequencer got wrong until 2026-10-07: rA took the address plus the
+    loaded value, the update being formed from rB after the load had written
+    it. Each with the data cache off, then on a line the cache does not hold
+    and again on one it does, aligned and not, with rB small and with rB
+    large and rA wrapped to meet it, every one followed by an add and a load
+    that use both results. Then the same loads with rD and rB distinct, the
+    indexed stores with rS = rB, lfdux and stfdux, and the D-form loads and
+    stores with update, stwu r3,-16(r3) among them. Run with and without
+    wait states; the buffer is checked whole at the end."""
+    p = Program()
+    st = {"r": [0, 0, 0, 0], "f": [0, 0, 0, 0]}
+    rnd = random.Random(11)
+    M32 = 0xFFFFFFFF
+
+    BUF = DATA_A + 0x400                     # 64 lines of random words
+    for a in range(BUF, BUF + 0x800, 4):
+        p.data[a] = rnd.getrandbits(32)
+    mem = dict(p.data)                       # what memory holds as the program runs
+
+    def word(a):
+        return mem.get(a & ~3, 0)
+
+    def byte(a):
+        return (word(a) >> (8 * (3 - (a & 3)))) & 0xFF
+
+    def fetch(a, n, sext=False):
+        """The n bytes at a, big-endian, as the register takes them."""
+        v = 0
+        for i in range(n):
+            v = (v << 8) | byte(a + i)
+        if sext and v & (1 << (8 * n - 1)):
+            v |= (M32 << (8 * n)) & M32
+        return v
+
+    def store(a, n, v):
+        for i in range(n):
+            w = a + i
+            sh = 8 * (3 - (w & 3))
+            mem[w & ~3] = (word(w) & ~(0xFF << sh) & M32) | (((v >> (8 * (n - 1 - i))) & 0xFF) << sh)
+
+    def check(tag):
+        p.words.append(NOP)
+        p.checks.append((len(p.words) - 1, check_text(list(st["r"]), 0, 0, 0, 0, list(st["f"]), tag)))
+
+    def after(ea):
+        """add r5,r3,r4 and lbz r6,0(r3): the updated rA and the loaded rD used at once."""
+        p.words.append(X(5, 3, 4, 266))
+        p.words.append(D(34, 6, 3, 0))
+        st["r"][2] = (st["r"][0] + st["r"][1]) & M32
+        st["r"][3] = byte(ea)
+
+    def setup(ea, rb_val):
+        p.words += li32(3, (ea - rb_val) & M32) + li32(4, rb_val)
+
+    def ld_same(xo, n, sext, name, ea, rb_val, tag):
+        """lXux r4,r3,r4: r3 <- ea, r4 <- the datum."""
+        setup(ea, rb_val)
+        p.words.append(X(4, 3, 4, xo))
+        st["r"][0], st["r"][1] = ea, fetch(ea, n, sext)
+        after(ea)
+        check("%s_%s_%d" % (name, tag, len(p.checks)))
+
+    def ld_diff(xo, n, sext, name, ea, rb_val, tag):
+        """lXux r5,r3,r4: r3 <- ea, r5 <- the datum, r4 as it was."""
+        setup(ea, rb_val)
+        p.words.append(X(5, 3, 4, xo))
+        st["r"][0], st["r"][1], st["r"][2] = ea, rb_val, fetch(ea, n, sext)
+        p.words.append(D(34, 6, 3, 0))
+        st["r"][3] = byte(ea)
+        check("%s_%s_%d" % (name, tag, len(p.checks)))
+
+    def st_same(xo, n, name, ea, rb_val, tag):
+        """stXux r4,r3,r4: the low bytes of r4 to ea, r3 <- ea."""
+        setup(ea, rb_val)
+        p.words.append(X(4, 3, 4, xo))
+        store(ea, n, rb_val)
+        st["r"][0], st["r"][1] = ea, rb_val
+        after(ea)
+        check("%s_%s_%d" % (name, tag, len(p.checks)))
+
+    # (xo, bytes, sign-extended, name, offset into the line: aligned for the size)
+    LOADS = ((119, 1, False, "lbzux", 0x3), (311, 2, False, "lhzux", 0x6),
+             (375, 2, True, "lhaux", 0xA), (55, 4, False, "lwzux", 0xC))
+    STORES = ((247, 1, "stbux", 0x3), (439, 2, "sthux", 0x6), (183, 4, "stwux", 0xC))
+
+    lines = [0]
+
+    def fresh():
+        """A line nothing has touched yet."""
+        lines[0] += 1
+        return BUF + 0x20 * lines[0]
+
+    def same_forms(regime):
+        for xo, n, sext, name, off in LOADS:
+            for k in range(2):
+                # k = 1: one byte further (a halfword across a word, a word
+                # misaligned), rB a large value and rA wrapped to meet it
+                line = fresh()
+                ea = line + off + k
+                rb_val = (off + k) if k == 0 else (rnd.getrandbits(32) | 0x80000001)
+                ld_same(xo, n, sext, name, ea, rb_val, regime)
+                if regime == "miss":
+                    ld_same(xo, n, sext, name, ea, rb_val, "hit")
+        line = fresh()
+        fresh()                                                               # the word crosses into the next line
+        ld_same(55, 4, False, "lwzux", line + 0x1D, 0x1D, regime + "_x")
+        if regime == "miss":
+            ld_same(55, 4, False, "lwzux", line + 0x1D, 0x1D, "hit_x")
+
+    p.words += caches_on(7, HID0_ICE) + set_msr(MSR_FP, 7)
+    p.words += li32(9, BUF)
+    for i in range(4):                                                        # f3-f6 known
+        a = BUF + 0x7C0 + 8 * i
+        p.words.append(lfd(3 + i, 9, 0x7C0 + 8 * i))
+        st["f"][i] = (word(a) << 32) | word(a + 4)
+
+    # ---- rD = rB: the data cache off, then a miss and a hit on each ----
+    same_forms("dce_off")
+    p.words += caches_on(7, HID0_ICE | HID0_DCE)
+    same_forms("miss")
+
+    # ---- rD and rB distinct; the stores with rS = rB ----
+    for xo, n, sext, name, off in LOADS:
+        line = fresh()
+        ld_diff(xo, n, sext, name, line + off, rnd.getrandbits(32), "diff")
+    for xo, n, name, off in STORES:
+        line = fresh()
+        st_same(xo, n, name, line + off, 0x7 + off, "small")
+        st_same(xo, n, name, line + off + 1, rnd.getrandbits(32) | 0x80000001, "large")
+
+    # ---- the floating-point indexed update forms ----
+    line = fresh()
+    setup(line + 8, 8)
+    p.words.append(X(4, 3, 4, 631))                                           # lfdux f4,r3,r4
+    st["r"][0], st["r"][1] = line + 8, 8
+    st["f"][1] = (word(line + 8) << 32) | word(line + 12)
+    after(line + 8)
+    check("lfdux")
+    line = fresh()
+    setup(line + 16, 16)
+    p.words.append(X(5, 3, 4, 759))                                           # stfdux f5,r3,r4
+    st["r"][0], st["r"][1] = line + 16, 16
+    store(line + 16, 4, st["f"][2] >> 32)
+    store(line + 20, 4, st["f"][2] & M32)
+    after(line + 16)
+    check("stfdux")
+
+    # ---- the D-form update loads and stores ----
+    for op, n, sext, name in ((35, 1, False, "lbzu"), (41, 2, False, "lhzu"), (43, 2, True, "lhau"), (33, 4, False, "lwzu")):
+        line = fresh()
+        d = rnd.randrange(-0x10, 0x10) * n
+        p.words += li32(3, line + 0x10)
+        p.words.append(D(op, 4, 3, d))                                        # lXu r4,d(r3)
+        st["r"][0], st["r"][1] = line + 0x10 + d, fetch(line + 0x10 + d, n, sext)
+        after(line + 0x10 + d)
+        check(name)
+    for op, n, name in ((39, 1, "stbu"), (45, 2, "sthu"), (37, 4, "stwu")):
+        line = fresh()
+        d = rnd.randrange(-0x10, 0x10) * n
+        v = rnd.getrandbits(32)
+        p.words += li32(3, line + 0x10) + li32(4, v)
+        p.words.append(D(op, 4, 3, d))                                        # stXu r4,d(r3)
+        store(line + 0x10 + d, n, v)
+        st["r"][0], st["r"][1] = line + 0x10 + d, v
+        after(line + 0x10 + d)
+        check(name)
+    line = fresh()
+    p.words += li32(3, line + 0x18)
+    p.words.append(D(37, 3, 3, -16 & 0xFFFF))                                 # stwu r3,-16(r3): the ABI's prologue
+    store(line + 0x8, 4, line + 0x18)
+    st["r"][0] = line + 0x8
+    p.words.append(D(32, 4, 3, 0))                                            # lwz r4,0(r3)
+    st["r"][1] = line + 0x18
+    after(line + 0x8)
+    check("stwu_sp")
+
+    for a in range(BUF, BUF + 0x800, 4):
+        p.expect[a] = mem[a]
+    p.words.append(B_SELF)
+    p.write(out)
+    print("%d instructions, %d checks, %d memory words -> %s" % (len(p.words), len(p.checks), len(p.expect), out))
+
+
 def irqtest(out, loops):
     """A loop whose results are known, running with interrupts enabled. The
     external and decrementer handlers each count in memory (00FFFFE0 and
@@ -1364,10 +1552,15 @@ def gen_random(out, count, seed, translate=False):
         if k == 5:
             xo = rnd.choice((151, 215, 407, 662, 918))           # stwx stbx sthx stwbrx sthbrx
             return [X(rs(), base(), 0, xo) if bit() else X(rs(), 0, base(), xo)]
-        if k == 6:
-            return [X(rd(), base(), 0, rnd.choice((55, 119, 311, 375)))]              # update, indexed
-        if k == 7:
-            return [X(rs(), base(), 0, rnd.choice((183, 247, 439)))]
+        if k in (6, 7):
+            # update, indexed; half the time with rD (or rS) the same register
+            # as rB (lwzux r5,r1,r5: valid, and once wrong in the sequencer),
+            # which then holds a small index first, as r0 does
+            xo = rnd.choice((55, 119, 311, 375)) if k == 6 else rnd.choice((183, 247, 439))
+            if bit():
+                return [X(rd() if k == 6 else rs(), base(), 0, xo)]
+            t = rd()
+            return [D(14, t, 0, rnd.randrange(0, 40)), X(t, base(), t, xo)]
         if k == 8:
             # lmw stmw: the 604 takes an alignment exception unless the address is
             # word-aligned, so go through a copy of the base with the low bits cleared
@@ -1599,6 +1792,8 @@ if __name__ == "__main__":
         resvtest(a[1])
     elif len(a) >= 2 and a[0] == "cachetest":
         cachetest(a[1])
+    elif len(a) >= 2 and a[0] == "updtest":
+        updtest(a[1])
     elif len(a) >= 2 and a[0] == "irqtest":
         irqtest(a[1], int(a[2]) if len(a) > 2 else 3000)
     elif len(a) >= 3 and a[0] == "fprandom":

@@ -1118,14 +1118,66 @@ and the board runs at 65 MHz.
 
 After M6 the work is the machine, which gets its own plan.
 
-**Found by the machine, 2026-10-06 (open):** with Cuda built
+**Found by the machine, 2026-10-06; fixed 2026-10-07:** with Cuda built
 (`docs/PPCMac_stubs.md`), the ROM runs on past Open Firmware into the
-NanoKernel, and at 24,440,545 instructions the lockstep stops on
-`lwzux r28, r26, r28` (FFF122B4): r26 = 00FEA000, r28 = 0, the word loaded
-00000021; the core writes r26 = 00FEA021, the address plus the loaded
-value, where the architecture (and dingusppc) give the address, 00FEA000.
-An update-form indexed load with rD = rB; the random lockstep programs
-never had one. The hand-off is `RESUME_cpu.md`.
+NanoKernel, and at 24,440,545 instructions the lockstep stopped on
+`lwzux r28, r26, r28` (FFF122B4, the NanoKernel's page-table code): r26 =
+00FEA000, r28 = 0, the word loaded 00000021; the core wrote r26 = 00FEA021,
+the address plus the loaded value, where the architecture (and dingusppc)
+give the address, 00FEA000.
+
+- *The cause.* An update form is two operations in the sequencer (rule 3):
+  the access, then rA <- rA + rB computed again from the registers. When
+  rD is rB (a valid form: only rA = 0 and rA = rD are not), the second
+  operation's rB is the load's own result, which the one hazard mechanism
+  (rule 2) duly forwards; so rA took the address plus the loaded value, on
+  every timing (cache off, a miss, a hit, wait states: all the same).
+  Exactly four instructions can do it: `lbzux`, `lhzux`, `lhaux`, `lwzux`.
+  The D-form update loads have no rB, the FP update loads write an FPR, and
+  the update stores write no register.
+- *Why nothing found it before.* The real-604 vectors have no indexed update
+  loads at all (LBZU, LWZU and the rest are the D forms), and the random
+  programs built every indexed update form with rB = r0, the index register,
+  which is never a destination.
+- *The test.* `progs.py updtest` (in `run_core.py`, with and without wait
+  states): the four loads with rD = rB, with the data cache off, missing and
+  hitting, aligned and not, rB small and rB large with rA wrapped to meet
+  it, each followed by an `add` and a load that use both results; then the
+  same loads with rD and rB distinct, the indexed stores with rS = rB,
+  `lfdux`/`stfdux`, the D-form update loads and stores and `stwu r3,-16(r3)`.
+  47 checks and the buffer compared at the end; 27 failed before the fix,
+  all of them the rD = rB loads. The random generator now makes half of its
+  indexed update forms with rD (or rS) = rB, the register holding a small
+  index first (175 such instructions in a 20,000-instruction program).
+- *The fix.* Rule 3's answer, not rule 2's: when an indexed update load's
+  rD is its rB (decided from the opcode bits in ID, like `lswx`, so that
+  the register-read index does not wait for the decoder), the sequencer
+  makes three operations: scratch <- rA + rB; rD <- [scratch]; rA <-
+  scratch. The load stays the operation that can fault, so a DSI leaves rA
+  unchanged and the restart is as before; interrupts are still taken on the
+  first operation only. No hazard or commit logic changed
+  (`DSPPC604_seq.sv`; `id_ldux_rb` in `DSPPC604.sv`).
+- *The cost.* One cycle more for that form only (three operations, not two);
+  the golden programs' cycle counts are unchanged (1.85/3.53, 1.87/3.81).
+  Synthesised alone: 15,711 ALMs against 15,678 (33 more: the compare and
+  the sequencer's arm), the same 77 RAM and 7 DSP blocks, 64.96 MHz slow
+  100 C against 63.7-64.8 in the two previous fits, the slowest paths the
+  same families as before.
+- *After it.* The whole suite green (535,481 random instructions compared,
+  the rD = rB forms among them), the vector bench and Cuda's bench too; the
+  machine run passes 24,440,545 and goes on in lockstep to 60 million
+  instructions (the limit asked), through the NanoKernel's start-up into
+  Mac OS's 68k emulator (pc 6806xxxx in user mode from 28 million on), at
+  2.20 cycles per instruction. On the way, two more places where dingusppc
+  is not a 604, both now bench accommodations (`docs/PPCMac_stubs.md`):
+  MSR[PM] is dropped by dingusppc's `rfi` and exception entry where the
+  604 copies it (the NanoKernel runs Mac OS with PM set: 33,160,742), and
+  `dcbst`, `dcbf`, `icbi` and `dcbi` are never translated by dingusppc, so
+  the DSI the core takes at Open Firmware's flush word (FF808D14, DAR
+  FF840940, no translation: 33,174,510), which the NanoKernel answers by
+  installing the PTE, had to be given to the reference. No device stopped
+  the run; the device traffic after Open Firmware is small (22 accesses
+  between 33 and 60 million instructions).
 
 ## Known behaviour and open items
 
@@ -1184,7 +1236,10 @@ run on a real 604 can settle.
   whose scaled exponent is still out of range delivers the 604's exponent
   field (measured, M2); the architecture calls it undefined.
 - The sequencer's scratch register (32) is not architectural and never
-  visible. Update forms take one extra cycle, being two operations.
+  visible. Update forms take one extra cycle, being two operations; an
+  indexed load with update whose rD is its rB takes two, being three (the
+  address through the scratch register, since the load overwrites rB; see
+  the bug found by the machine under M6).
 - The branch target buffer has 128 entries and no return-address stack; a
   wrong or stale entry costs three cycles and is corrected in EX. A
   mispredicted branch costs three cycles.
@@ -1264,7 +1319,12 @@ run on a real 604 can settle.
   inexact, clears VE on compares), `tw` (operands swapped), undefined divide
   results (quotient 0), unaligned `lmw` (no exception), reserved MSR bits and
   the low bits of SRR0 (kept; the random programs clear SRR0's before
-  writing it), undefined SPRs (plain storage), invalid instruction forms
+  writing it), MSR[PM] through `rfi` and exception entry (dropped, where
+  the 604 copies it between MSR and SRR1 both ways; the bench puts it
+  back, `docs/PPCMac_stubs.md`), undefined SPRs (plain storage), `dcbst`,
+  `dcbf`, `icbi` and `dcbi` (never translated, so never a DSI: the bench
+  makes the reference take the one the core takes), invalid instruction
+  forms
   (trap as illegal), enabled FP exceptions and interrupts (never taken), one
   SRR1 bit each on `sc` and FP unavailable (the test bench clears them). The
   random programs avoid these or correct for them; `verilator/ref/README.md`
@@ -1273,7 +1333,9 @@ run on a real 604 can settle.
 - The random FP programs no longer need to skip anything: nothing the model
   computes is undefined since the 7300 run.
 - The random integer programs keep r0, r1 and r2 as index and data bases
-  (the bases drift, by r0, with every update form), keep `lmw`/`stmw`
+  (the bases drift with every update form, by r0, or by a small value put
+  in rB when rB is also the rD or rS, which half of them are since
+  2026-10-07), keep `lmw`/`stmw`
   word-aligned and the string operations inside a page through masked copies
   of the base (dingusppc takes neither alignment exception), and set XER for
   `lswx`/`stswx` from controlled values.

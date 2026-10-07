@@ -508,6 +508,22 @@ int ref_add_mmio(uint32_t base, uint32_t size, ref_mmio_read_fn rd, ref_mmio_wri
     return 0;
 }
 
+int ref_translate_dbg(uint32_t ea, uint32_t *pa) {
+    if (!g_ready)
+        return -1;
+    uint32_t p = 0;
+    bool ok = false;
+    try {
+        ok = mmu_translate_dbg(ea, p);
+    } catch (...) {
+        ok = false;
+    }
+    if (!ok)
+        return -1;
+    *pa = p;
+    return 0;
+}
+
 int ref_interrupt(unsigned vector) {
     if (!g_ready)
         return 0;

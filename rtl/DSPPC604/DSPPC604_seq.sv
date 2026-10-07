@@ -6,7 +6,11 @@
 //  Expands the instructions that are several operations in one into simple
 //  operations, so that no later stage has to know about them:
 //
-//    update forms    the access, then rA <- rA + displacement or rB
+//    update forms    the access, then rA <- rA + displacement or rB; an
+//                    indexed load whose rD is its rB (lwzux r4,r3,r4, a
+//                    valid form) cannot form the update from rB after the
+//                    load, so it goes scratch <- rA + rB, rD <- [scratch],
+//                    rA <- scratch
 //    lmw, stmw       one word access per register
 //    lswi, stswi     one access of up to four bytes per register
 //    lswx, stswx     scratch <- (rA|0) + rB, then as lswi/stswi from scratch
@@ -26,6 +30,7 @@ module DSPPC604_seq
 	input  DSPPC604_pkg::dec_t dec,   // its decode
 	input  logic [4:0]  nb,           // its NB field, for lswi and stswi
 	input  logic        strx,         // it is lswx or stswx, from the opcode bits directly
+	input  logic        ldux_rb,      // it is an indexed load with update whose rD is its rB, likewise
 	input  logic [6:0]  xer_count,    // XER byte count, for lswx and stswx
 	input  logic        take,         // the operation shown is accepted this cycle
 
@@ -63,7 +68,29 @@ always_comb begin
 
 	case (dec.seq)
 	SEQ_UPDATE: begin
-		if (step == 6'd0) begin
+		if (ldux_rb) begin
+			// rD = rB: the load overwrites rB, so the address is kept in the
+			// scratch register: scratch <- rA + rB; rD <- [scratch]; rA <- scratch
+			if (step == 6'd0) begin
+				uop.mem_rd = 1'b0;
+				uop.rd     = REG_TEMP;
+				last       = 1'b0;
+			end
+			else begin
+				uop.ra_rd  = 1'b1;                // the scratch register (see the read indexes below)
+				uop.rb_rd  = 1'b0;
+				uop.b_imm  = 1'b1;
+				uop.imm    = 32'd0;
+				if (step == 6'd1) begin
+					last = 1'b0;
+				end
+				else begin
+					uop.mem_rd = 1'b0;
+					uop.rd     = dec.ra;
+				end
+			end
+		end
+		else if (step == 6'd0) begin
 			last = 1'b0;
 		end
 		else begin
@@ -134,13 +161,13 @@ always_comb begin
 	endcase
 
 	// The read indexes, assigned last and unconditionally: the decoder's
-	// fields, or after the first operation the scratch register for lswx and
-	// stswx and the next register of a multiple or string store, decided
-	// from the step and the opcode bits alone, so that the register file's
-	// read mux waits neither for the decoder's seq field nor for the arms
-	// above (which zero the whole operation in the two nop cases; nothing
-	// reads an index there, the read enables being zero).
-	uop.ra = (strx & (step != 6'd0)) ? REG_TEMP : dec.ra;
+	// fields, or after the first operation the scratch register for lswx,
+	// stswx and the rD = rB loads, and the next register of a multiple or
+	// string store, decided from the step and the opcode bits alone, so that
+	// the register file's read mux waits neither for the decoder's seq field
+	// nor for the arms above (which zero the whole operation in the two nop
+	// cases; nothing reads an index there, the read enables being zero).
+	uop.ra = ((strx | ldux_rb) & (step != 6'd0)) ? REG_TEMP : dec.ra;
 	uop.rb = dec.rb;
 	uop.rc = (step != 6'd0) ? {1'b0, str_r} : dec.rc;
 end
