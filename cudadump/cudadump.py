@@ -287,8 +287,12 @@ def identify(mem, read, mame_zip=None):
     if all(read[0x0B00:0x0F00]):
         if len(set(low)) == 1:
             lines.append("0B00-0EFF reads as %02X throughout: not ROM (a 68HC05E1's bus with nothing there)" % low[0])
+        elif all(low[i] == i & 0xFF for i in range(len(low))):
+            lines.append("0B00-0EFF reads back the low byte of its address: nothing there, a 68HC05E1's open bus "
+                         "(the 7300's chip does this)")
         else:
-            lines.append("0B00-0EFF has %d distinct byte values: code there means a 68HC05E5 (Cuda 3.x)" % len(set(low)))
+            lines.append("0B00-0EFF has %d distinct byte values: code there would mean a 68HC05E5 (Cuda 3.x)"
+                         % len(set(low)))
     # CRCs against MAME's dumps
     matched = None
     for name, what, start, size, crc in MAME_ROMS:

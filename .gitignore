@@ -51,6 +51,9 @@ ppctest/FROM_CARD/
 ppctest/_sim/
 ppctest/*.bin
 ppctest/runs/*
+cudadump/TO_CARD/
+cudadump/FROM_CARD/
+cudadump/runs/
 *.hda
 *.rom
 RESUME_hardware.md

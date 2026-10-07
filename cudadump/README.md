@@ -148,6 +148,25 @@ READ_MCU_MEM or two-byte READ_PRAM and returns error packets (`E`), which
 exercises that path. OpenBIOS's IDE driver has no `write`, so nothing lands
 in the image there: the console line is the result.
 
-**Not tested:** the chip itself, which is the point of the exercise. Version
-1 has not run on a real machine yet; its start-up and disk code are
-ppctest's, which ran on the 7600 and the 7300.
+## The result: the 7300, 2026-10-07
+
+With the 604 card (PVR 00040303) and `boot scsi-int/sd@5:0`, the 7300
+printed exactly the three lines above (all 26 jobs, `hdr=ok`, `write=ok`,
+two seconds by Cuda's own clock). The decode of
+`FROM_CARD\HD50_512_cudadump_v1_exec.hda`:
+
+- ROM 0F00-1FFF: CRC32 0F5E7B4A = MAME's **341s0060, Cuda 2.40**, byte for
+  byte the firmware built into the core (`rtl\machine\cuda\341s0060.bin`).
+  Copyright `(c) 1989-94 Apple Computer, Inc. All rights reserved.` at 0F00,
+  version words 0010 0002 0028 at 0F36.
+- 0B00-0EFF reads back the low byte of its own address: nothing there, the
+  68HC05E1's open bus (so not a 68HC05E5).
+- RAM: the clock at 00AB is what GET_REAL_TIME returns (7C26C24C,
+  1970-01-01 19:28, counting); PRAM 0100-01FF all zero, READ_PRAM agrees.
+- No unsolicited packets, no timeouts, no collisions.
+
+The memory image files are in `runs\` (git-ignored). Recorded in
+`docs\PPCMac_stubs.md`'s Cuda table.
+
+The same disk did not run with the 604e card; what the console showed there
+is not recorded yet.
