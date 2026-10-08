@@ -176,7 +176,11 @@ module PPCMac_gc
 	output logic         dfin,
 	output logic         dfin_ch,
 	output logic [1:0]   dfin_type,
-	output logic [127:0] dfin_info
+	output logic [127:0] dfin_info,
+	// ... and MESH's and channel A's interrupt on its way to the CPU, at each change (itr_st:
+	// irq, 68k mode, MESH's mask, event, line, channel A's mask, event, level)
+	output logic         itr_ev,
+	output logic [7:0]   itr_st
 );
 
 import PPCMac_pkg::*;
@@ -203,6 +207,12 @@ wire  [31:0] int_levels = int_lines_q | 32'h0000_0800;   // dingusppc ORs in bit
 wire         int_68k    = int_mask[31];         // MACIO_INT_MODE: an event at either edge
 wire  [31:0] int_chg    = int_lines ^ int_lines_q;
 assign irq = |(int_events & int_mask & 32'h7FFF_FFFF);
+wire  [7:0]  itr_now    = {irq, int_mask[31], int_mask[13], int_events[13], mesh_irq,
+                           int_mask[10], int_events[10], dma_lvl[10]};
+always_ff @(posedge clk) begin
+	itr_ev <= itr_now[6:0] != itr_st[6:0];
+	itr_st <= itr_now;
+end
 
 // ---- DMA channels: 0-3 Curio, floppy, Ethernet out and in; 8, 9 sound out and in; A MESH ----
 // (4-7, the serial channels, read 0 and ignore writes, as in dingusppc).
@@ -322,9 +332,10 @@ PPCMac_dbdma dma_a (
 	.dm_req(a_req), .dm_we(a_we), .dm_line(a_line), .dm_addr(a_addr), .dm_be(a_be), .dm_wdata(a_wdata),
 	.dm_ack(a_ack), .dm_rdata,
 	.di_valid(mi_valid), .di_data(mi_data), .di_take(mi_take), .di_flush(mi_flush), .di_last(1'b0), .dev_st(8'h00),
-	.do_ready(mo_ready), .do_data(mo_data), .do_put(mo_put),
+	.do_ready(mo_ready), .do_data(mo_data), .do_put(mo_put), .dq_ack(1'b0), .dq_rd(8'h00),
 	/* verilator lint_off PINCONNECTEMPTY */
 	.do_last(), .xfer_in(), .xfer_out(), .active(), .fin(), .fin_dec(), .fin_info(),
+	.dq_req(), .dq_we(), .dq_off(), .dq_wd(),
 	/* verilator lint_on PINCONNECTEMPTY */
 	.drained(dma_drained),
 	.irq(dma_a_irq)
@@ -351,9 +362,10 @@ PPCMac_dbdma dma_8 (
 	.dm_req(s8_req), .dm_we(s8_we), .dm_line(s8_line), .dm_addr(s8_addr), .dm_be(s8_be), .dm_wdata(s8_wdata),
 	.dm_ack(s8_ack), .dm_rdata,
 	.di_valid(1'b0), .di_data(8'h00), .di_flush(1'b0), .di_last(1'b0), .dev_st(8'h00),
-	.do_ready(s8_ready), .do_data(s8_data), .do_put(s8_put),
+	.do_ready(s8_ready), .do_data(s8_data), .do_put(s8_put), .dq_ack(1'b0), .dq_rd(8'h00),
 	/* verilator lint_off PINCONNECTEMPTY */
 	.do_last(), .di_take(), .xfer_in(), .xfer_out(), .drained(), .fin(), .fin_dec(), .fin_info(),
+	.dq_req(), .dq_we(), .dq_off(), .dq_wd(),
 	/* verilator lint_on PINCONNECTEMPTY */
 	.active(s8_active),
 	.irq(s8_irq)
@@ -365,9 +377,10 @@ PPCMac_dbdma dma_9 (
 	.dm_req(s9_req), .dm_we(s9_we), .dm_line(s9_line), .dm_addr(s9_addr), .dm_be(s9_be), .dm_wdata(s9_wdata),
 	.dm_ack(s9_ack), .dm_rdata,
 	.di_valid(s9_valid), .di_data(s9_data), .di_take(s9_take), .di_flush(1'b0), .di_last(1'b0), .dev_st(8'h00),
-	.do_ready(1'b0),
+	.do_ready(1'b0), .dq_ack(1'b0), .dq_rd(8'h00),
 	/* verilator lint_off PINCONNECTEMPTY */
 	.do_data(), .do_put(), .do_last(), .xfer_in(), .xfer_out(), .drained(), .fin(), .fin_dec(), .fin_info(),
+	.dq_req(), .dq_we(), .dq_off(), .dq_wd(),
 	/* verilator lint_on PINCONNECTEMPTY */
 	.active(s9_active),
 	.irq(s9_irq)
@@ -386,9 +399,22 @@ logic        e3_valid, e3_last, e3_take, e3_xin;
 wire         dma_2_sel = sel & dma & (addr[14:8] == 7'd2) & (addr[7:5] == 3'd0);
 wire         dma_3_sel = sel & dma & (addr[14:8] == 7'd3) & (addr[7:5] == 3'd0);
 
+// the channels' quads to device registers (key 6: Mac OS's driver loads XMTFS, XMTRC and IR
+// after each frame) in a clock the CPU leaves Grand Central alone, channel 2 first; MACE's
+// alone are reached, any other reads 0
+logic        e2_dq_req, e2_dq_we, e3_dq_req, e3_dq_we;
+logic [16:0] e2_dq_off, e3_dq_off;
+logic [7:0]  e2_dq_wd, e3_dq_wd;
+wire         dq_go  = ~sel & (e2_dq_req | e3_dq_req);
+wire [16:0]  dq_off = e2_dq_req ? e2_dq_off : e3_dq_off;
+wire         dq_m   = dq_go & (dq_off[16:12] == 5'h11);
+
 PPCMac_mace mace (
 	.clk, .reset, .us_tick,
-	.sel(sel & devs & (sub == 4'h1)), .we, .rn(off[8:4]), .wdata(wb),
+	.sel((sel & devs & (sub == 4'h1)) | dq_m),
+	.we(sel ? we : (e2_dq_req ? e2_dq_we : e3_dq_we)),
+	.rn(sel ? off[8:4] : dq_off[8:4]),
+	.wdata(sel ? wb : (e2_dq_req ? e2_dq_wd : e3_dq_wd)),
 	.rq(mace_rq),
 	.do_ready(e2_ready), .do_data(e2_data), .do_put(e2_put), .do_last(e2_last),
 	.di_valid(e3_valid), .di_data(e3_data), .di_last(e3_last), .di_take(e3_take), .rx_dma(e3_xin),
@@ -398,11 +424,13 @@ PPCMac_mace mace (
 	.irq(mace_irq), .xmtsv(mace_xmtsv)
 );
 
-PPCMac_dbdma dma_2 (
+PPCMac_dbdma #(.DEV_QUAD(1'b1)) dma_2 (
 	.clk, .reset,
 	.sel(dma_2_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_2_rle),
 	.dm_req(e2_req), .dm_we(e2_we), .dm_line(e2_line), .dm_addr(e2_addr), .dm_be(e2_be), .dm_wdata(e2_wdata),
 	.dm_ack(e2_ack), .dm_rdata,
+	.dq_req(e2_dq_req), .dq_we(e2_dq_we), .dq_off(e2_dq_off), .dq_wd(e2_dq_wd),
+	.dq_ack(dq_go & e2_dq_req), .dq_rd(dq_m ? mace_rq : 8'h00),
 	.di_valid(1'b0), .di_data(8'h00), .di_flush(1'b0), .di_last(1'b0),
 	.dev_st({2'b00, mace_xmtsv, 5'b00000}),            // s5: MACE's transmit status valid
 	.do_ready(e2_ready), .do_put(e2_put), .do_last(e2_last), .do_data(e2_data),
@@ -412,11 +440,13 @@ PPCMac_dbdma dma_2 (
 	.irq(e2_irq), .fin(e2_fin), .fin_dec(e2_fin_dec), .fin_info(e2_fin_info)
 );
 
-PPCMac_dbdma #(.S6_EOF(1'b1)) dma_3 (
+PPCMac_dbdma #(.S6_EOF(1'b1), .DEV_QUAD(1'b1)) dma_3 (
 	.clk, .reset,
 	.sel(dma_3_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_3_rle),
 	.dm_req(e3_req), .dm_we(e3_we), .dm_line(e3_line), .dm_addr(e3_addr), .dm_be(e3_be), .dm_wdata(e3_wdata),
 	.dm_ack(e3_ack), .dm_rdata,
+	.dq_req(e3_dq_req), .dq_we(e3_dq_we), .dq_off(e3_dq_off), .dq_wd(e3_dq_wd),
+	.dq_ack(dq_go & ~e2_dq_req), .dq_rd(dq_m ? mace_rq : 8'h00),
 	.di_valid(e3_valid), .di_data(e3_data), .di_flush(1'b0), .di_last(e3_last), .di_take(e3_take), .dev_st(8'h00),
 	.xfer_in(e3_xin),
 	.do_ready(1'b0),

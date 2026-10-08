@@ -20,6 +20,8 @@ end = time.time() + secs
 last, lost = n0, 0
 while time.time() < end:
     n = struct.unpack('<Q', m[0:8])[0] & 0xFFFFFFFF
+    if n < last:                        # the core was loaded again: its count starts over
+        last = 0
     if n - last > RECS:
         lost += n - last - RECS
         last = n - RECS

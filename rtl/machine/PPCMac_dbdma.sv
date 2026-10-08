@@ -73,9 +73,13 @@
 //  drained says no input byte is held here; active is ChannelStatus's
 //  ACTIVE (a device that streams, as AWACS, runs while it is set).
 //
-//  Left out (docs/PPCMac_stubs.md): STORE_QUAD and LOAD_QUAD to device
-//  registers (only memory is reached) and the keys other than 0
-//  (KEY_STREAM0). The device's status bits come in on dev_st (MACE's
+//  LOAD_QUAD's value is written into the command's cmdDep (dbdma.cpp's
+//  xfer_quad). With DEV_QUAD a quad in the system space (key 6) to Grand
+//  Central's window goes out on the dq_* port, a byte (Grand Central's
+//  registers are bytes), the value loaded {24'h0, byte} as dingusppc's.
+//
+//  Left out (docs/PPCMac_stubs.md): the keys other than 0 (KEY_STREAM0) for
+//  the data commands. The device's status bits come in on dev_st (MACE's
 //  transmit status valid as s5 on channel 2). An INPUT_LAST ends before its
 //  count when the device marks a byte as a frame's last (di_last: MACE's
 //  receive, 2026-10-08), resCount telling what was left; with S6_EOF an
@@ -88,7 +92,9 @@ module PPCMac_dbdma
 	// the device's end of frame ends an INPUT_MORE too, and s6 reads 1 while the command it
 	// ended finishes (Grand Central's Ethernet receive channel: Mac OS gives it INPUT_MOREs;
 	// NetBSD's if_mc tests s6 in xferStatus)
-	parameter bit S6_EOF = 1'b0
+	parameter bit S6_EOF = 1'b0,
+	// a quad with key 6 to F3000000-F301FFFF goes to the dq_* port
+	parameter bit DEV_QUAD = 1'b0
 )
 (
 	input  logic         clk,
@@ -110,6 +116,14 @@ module PPCMac_dbdma
 	output logic [255:0] dm_wdata,
 	input  logic         dm_ack,
 	input  logic [255:0] dm_rdata,
+
+	// a quad to a device register (DEV_QUAD): held until dq_ack, dq_rd in that clock
+	output logic         dq_req,
+	output logic         dq_we,
+	output logic [16:0]  dq_off,          // the offset in Grand Central's window
+	output logic [7:0]   dq_wd,
+	input  logic         dq_ack,
+	input  logic [7:0]   dq_rd,
 
 	// the device
 	input  logic         di_valid,        // a byte for memory
@@ -214,6 +228,11 @@ wire [3:0] q_be   = (q_size == 3'd4) ? 4'b1111 :
 // cmdDep as stored little-endian at address, in its lanes
 wire [31:0] q_wd  = (q_size == 3'd4) ? {cmd_arg[7:0], cmd_arg[15:8], cmd_arg[23:16], cmd_arg[31:24]} :
                     (q_size == 3'd2) ? {2{cmd_arg[7:0], cmd_arg[15:8]}} : {4{cmd_arg[7:0]}};
+// to a device register (dingusppc writes BYTESWAP_SIZED(cmdDep), the register takes its low byte)
+wire        q_dev = DEV_QUAD && key == 3'd6 && addr[31:17] == 15'h7980;
+logic       q_wb;                       // LOAD_QUAD's value still to write into cmdDep
+assign dq_off = addr[16:0];
+assign dq_wd  = (q_size == 3'd4) ? cmd_arg[31:24] : (q_size == 3'd2) ? cmd_arg[15:8] : cmd_arg[7:0];
 
 // the first word of the line held that still has bytes to write
 logic [2:0] wfirst;
@@ -437,7 +456,14 @@ always_ff @(posedge clk) begin
 
 		// ---- STORE_QUAD, LOAD_QUAD -------------------------------------------------------------
 		S_QUAD: begin
-			if (!dm_req) begin
+			if (q_dev) begin
+				if (dq_req) begin
+					if (dq_ack) begin dq_req <= 1'b0; s <= S_WAIT; end
+				end
+				else if (stop_req) s <= S_IDLE;
+				else if (go) begin dq_req <= 1'b1; dq_we <= 1'b1; end
+			end
+			else if (!dm_req) begin
 				if (stop_req) s <= S_IDLE;
 				else if (go) begin
 					dm_req   <= 1'b1;
@@ -451,7 +477,19 @@ always_ff @(posedge clk) begin
 			else if (dm_ack) s <= S_WAIT;
 		end
 		S_QREAD: begin
-			if (!dm_req) begin
+			if (q_dev) begin
+				if (dq_req) begin
+					if (dq_ack) begin
+						dq_req  <= 1'b0;
+						cmd_arg <= {24'h0, dq_rd};
+						q_wb    <= 1'b1;
+						s <= S_WAIT;
+					end
+				end
+				else if (stop_req) s <= S_IDLE;
+				else if (go) begin dq_req <= 1'b1; dq_we <= 1'b0; end
+			end
+			else if (!dm_req) begin
 				if (stop_req) s <= S_IDLE;
 				else if (go) begin
 					dm_req  <= 1'b1;
@@ -468,6 +506,7 @@ always_ff @(posedge clk) begin
 					3'd2:    cmd_arg <= addr[1] ? {16'h0, w[7:0], w[15:8]} : {16'h0, w[23:16], w[31:24]};
 					default: cmd_arg <= {24'h0, w[31 - 8 * addr[1:0] -: 8]};
 				endcase
+				q_wb <= 1'b1;
 				s <= S_WAIT;
 			end
 		end
@@ -483,6 +522,14 @@ always_ff @(posedge clk) begin
 		S_WB: begin                         // resCount and xferStatus into the command
 			if (!dm_req) begin
 				if (stop_req && !flushing) s <= S_IDLE;
+				else if (q_wb) begin            // LOAD_QUAD's value into cmdDep first
+					dm_req   <= 1'b1;
+					dm_we    <= 1'b1;
+					dm_line  <= 1'b0;
+					dm_addr  <= cmd_ptr[31:2] + 30'd2;
+					dm_be    <= 4'b1111;
+					dm_wdata <= {224'h0, cmd_arg[7:0], cmd_arg[15:8], cmd_arg[23:16], cmd_arg[31:24]};
+				end
 				else begin
 					dm_req   <= 1'b1;
 					dm_we    <= 1'b1;
@@ -495,7 +542,8 @@ always_ff @(posedge clk) begin
 				end
 			end
 			else if (dm_ack) begin
-				if (flushing) begin
+				if (q_wb) q_wb <= 1'b0;
+				else if (flushing) begin
 					flushing <= 1'b0;
 					s <= stop_req ? S_IDLE : S_IN;
 				end
@@ -509,7 +557,8 @@ always_ff @(posedge clk) begin
 			fin      <= 1'b1;
 			fin_dec  <= 2'd0;
 			fin_info <= {cmd_ptr, cmd, 1'b0, key, cmd_bits, req_count, res_count, st_d,
-			             int_sel[23:16], int_sel[7:0], 15'd0, cond(cmd_bits[5:4], int_sel, st_d)};
+			             (cmd == 4'd4 || cmd == 4'd5) ? cmd_arg :     // a quad: its value
+			             {int_sel[23:16], int_sel[7:0], 15'd0, cond(cmd_bits[5:4], int_sel, st_d)}};
 			s <= stop_req ? S_IDLE : S_FETCH;
 		end
 		default: s <= S_IDLE;
@@ -525,6 +574,7 @@ always_ff @(posedge clk) begin
 		irq_pend  <= 1'b0;
 		flush_req <= 1'b0;
 		flushing  <= 1'b0;
+		q_wb      <= 1'b0;
 		lv        <= 32'h0;
 	end
 
@@ -536,6 +586,8 @@ always_ff @(posedge clk) begin
 		wait_sel  <= 32'h0;
 		s         <= S_IDLE;
 		dm_req    <= 1'b0;
+		dq_req    <= 1'b0;
+		q_wb      <= 1'b0;
 		stop_req  <= 1'b0;
 		irq_pend  <= 1'b0;
 		flush_req <= 1'b0;

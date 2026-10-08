@@ -105,7 +105,7 @@ PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
 	.dm_req, .dm_we, .dm_line, .dm_addr, .dm_be, .dm_wdata, .dm_ack, .dm_rdata,
 	.snd_left(), .snd_right(),
 	.dac_cr(), .dbl_buf_cr(), .cursor_x(), .cursor_clut(), .clk_v(clk_h), .clut_index(8'h0), .clut_rgb(),
-	.dfin(), .dfin_ch(), .dfin_type(), .dfin_info()
+	.dfin(), .dfin_ch(), .dfin_type(), .dfin_info(), .itr_ev(), .itr_st()
 );
 
 PPCMac_scsidisk #(.CLK_HZ(CPU_HZ)) disks (

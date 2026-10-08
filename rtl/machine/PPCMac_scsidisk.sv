@@ -7,10 +7,13 @@
 //  CD-ROM, 5 the CD changer (2 is the NVRAM's, PPCMac_nvsave)
 //
 //  A SCSI-2 target at the bus's signal level, behind MESH (PPCMac_mesh):
-//  selection, then MESSAGE OUT while ATN is up (an extended message is
-//  answered with MESSAGE REJECT), COMMAND (6, 10, 12 or 16 bytes by the
+//  selection, then MESSAGE OUT while ATN is up (SDTR is answered with an
+//  SDTR of offset 0, asynchronous; WDTR with 8 bits; another extended
+//  message with MESSAGE REJECT), COMMAND (6, 10, 12 or 16 bytes by the
 //  opcode's group; C0-DF, Apple's and the Toolbox's, 10), the data, STATUS,
-//  MESSAGE IN (COMMAND COMPLETE), bus free. Every byte is a REQ/ACK
+//  MESSAGE IN (COMMAND COMPLETE), bus free. ATN up when a message in's byte
+//  ends is MESSAGE OUT (after which ABORT, BUS DEVICE RESET, ABORT TAG and
+//  CLEAR QUEUE free the bus, anything else carries on). Every byte is a REQ/ACK
 //  handshake: the target sets the phase (MSG C/D I/O) a clock before REQ; in
 //  the in-phases it puts the byte on the data lines, in the out-phases it
 //  takes it when ACK comes; then it lets REQ go and waits for ACK to go. RST
@@ -277,7 +280,7 @@ typedef enum logic [5:0] {
 	T_MSGOUT_DONE, T_CMD_DONE, T_EXEC, T_RD_START, T_RD_WAIT, T_RD_BYTE, T_RD_NEXT,
 	T_WR_BYTE, T_WR_BLOCK, T_WR_FLUSH, T_DATA_IN, T_DATA_OUT, T_DOUT_BYTE, T_MSEL,
 	T_FWD_CP, T_FWD_W, T_TBO, T_TBO_B, T_TBO_W, T_TB_CP, T_TB_W, T_TB_DEC,
-	T_PEEKW, T_PEEK, T_PROBE, T_PROBE_D, T_STATUS, T_MSGIN, T_FREE
+	T_PEEKW, T_PEEK, T_PROBE, T_PROBE_D, T_STATUS, T_MSGIN, T_MSGX, T_MSGX_N, T_FREE
 } t_t;
 t_t ts, t_after, pk_ret, fwd_ret;       // the state; where a byte's handshake, a peek, a forward return to
 
@@ -287,7 +290,12 @@ logic [7:0]  ob;                        // the byte going out (in-phases)
 logic [7:0]  ib;                        // the byte that came in (out-phases)
 logic [7:0]  cdb [16];
 logic [4:0]  cdb_n, cdb_len;            // bytes of the command so far, and its length
-logic        ext_msg, reject;           // an extended message came: answer MESSAGE REJECT
+logic        ext_msg;                   // an extended message came
+logic [7:0]  mo [5];                    // a message out's bytes (after IDENTIFY)
+logic [7:0]  mi [5];                    // a message in's bytes, mi_len of them
+logic [2:0]  mi_n, mi_len;
+logic        mo_late;                   // the message out came after a message in
+logic        cmd_seen;                  // the command came: after the messages, bus free
 logic [3:0]  sense_key [3];
 logic [7:0]  sense_asc [3];
 logic [7:0]  status;
@@ -609,9 +617,10 @@ always_ff @(posedge clk) begin
 			end
 		end
 		T_SELECTED: if (!b_sel) begin       // BSY is up (t_bsy); the initiator let SEL go
-			ext_msg <= 1'b0;
-			reject  <= 1'b0;
-			cdb_n   <= 5'd0;
+			ext_msg  <= 1'b0;
+			mo_late  <= 1'b0;
+			cmd_seen <= 1'b0;
+			cdb_n    <= 5'd0;
 			if (b_atn) begin ph <= 3'b110; t_after <= T_MSGOUT_DONE; end
 			else       begin ph <= 3'b010; t_after <= T_CMD_DONE; end
 			ts <= T_PHASE;
@@ -632,23 +641,53 @@ always_ff @(posedge clk) begin
 		T_ACK:   ts <= T_UNACK;
 		T_UNACK: if (!b_ack) ts <= t_after;
 
-		// ---- MESSAGE OUT: bytes while ATN is up -----------------------------------------
+		// ---- MESSAGE OUT: bytes while ATN is up. SDTR is answered with offset 0 (asynchronous),
+		// WDTR with 8 bits (Mac OS 8.5's driver asks for both), another extended message with
+		// MESSAGE REJECT; after a message in, ABORT and its kind end the connection
 		T_MSGOUT_DONE: begin
+			logic [7:0] m0;
+			m0 = (cdb_n == 5'd0) ? ib : mo[0];
 			if (cdb_n == 5'd0 && ib == 8'h01) ext_msg <= 1'b1;   // an extended message's first byte
+			if (!(cdb_n == 5'd0 && ib[7])) begin
+				case (cdb_n)
+					5'd0:    mo[0] <= ib;
+					5'd1:    mo[1] <= ib;
+					5'd2:    mo[2] <= ib;
+					5'd3:    mo[3] <= ib;
+					5'd4:    mo[4] <= ib;
+					default: ;
+				endcase
+			end
 			cdb_n <= (cdb_n == 5'd0 && ib[7]) ? 5'd0 : cdb_n + 5'd1;   // IDENTIFY ends a message
 			if (b_atn) ts <= T_PHASE;                            // more
 			else if (ext_msg || (cdb_n == 5'd0 && ib == 8'h01)) begin
-				ob <= 8'h07;                                     // MESSAGE REJECT
-				ph <= 3'b111;
-				reject  <= 1'b1;
-				t_after <= T_MSGIN;
-				ts <= T_PHASE;
-			end
-			else begin
+				if (mo[1] == 8'h03 && mo[2] == 8'h01) begin
+					mi[0] <= 8'h01; mi[1] <= 8'h03; mi[2] <= 8'h01; mi[3] <= mo[3]; mi[4] <= 8'h00;
+					mi_len <= 3'd5;
+				end
+				else if (mo[1] == 8'h02 && mo[2] == 8'h03) begin
+					mi[0] <= 8'h01; mi[1] <= 8'h02; mi[2] <= 8'h03; mi[3] <= 8'h00;
+					mi_len <= 3'd4;
+				end
+				else begin
+					mi[0]  <= 8'h07;                             // MESSAGE REJECT
+					mi_len <= 3'd1;
+				end
+				mi_n    <= 3'd0;
+				ext_msg <= 1'b0;
 				cdb_n   <= 5'd0;
-				ph      <= 3'b010;
-				t_after <= T_CMD_DONE;
-				ts <= T_PHASE;
+				ts <= T_MSGX;
+			end
+			else if (mo_late && (m0 == 8'h06 || m0 == 8'h0C || m0 == 8'h0D || m0 == 8'h0E))
+				ts <= T_FREE;
+			else begin
+				cdb_n <= 5'd0;
+				if (cmd_seen) ts <= T_FREE;
+				else begin
+					ph      <= 3'b010;
+					t_after <= T_CMD_DONE;
+					ts <= T_PHASE;
+				end
 			end
 		end
 
@@ -970,23 +1009,40 @@ always_ff @(posedge clk) begin
 		T_STATUS: begin
 			ob <= status;
 			ph <= 3'b011;
-			reject  <= 1'b0;
 			t_after <= T_MSGIN;
 			ts <= T_PHASE;
 		end
 		T_MSGIN: begin
-			if (reject) begin               // the MESSAGE REJECT went: on to COMMAND
-				reject  <= 1'b0;
+			mi[0]    <= 8'h00;              // COMMAND COMPLETE
+			mi_len   <= 3'd1;
+			mi_n     <= 3'd0;
+			cmd_seen <= 1'b1;
+			ts <= T_MSGX;
+		end
+		T_MSGX: begin                       // the message in's bytes
+			ob <= mi[mi_n];
+			ph <= 3'b111;
+			t_after <= T_MSGX_N;
+			ts <= T_PHASE;
+		end
+		T_MSGX_N: begin                     // ACK down: with ATN up the initiator has a message
+			if (b_atn) begin
+				mo_late <= 1'b1;
 				ext_msg <= 1'b0;
+				cdb_n   <= 5'd0;
+				ph      <= 3'b110;
+				t_after <= T_MSGOUT_DONE;
+				ts <= T_PHASE;
+			end
+			else if (mi_n + 3'd1 != mi_len) begin
+				mi_n <= mi_n + 3'd1;
+				ts <= T_MSGX;
+			end
+			else if (cmd_seen) ts <= T_FREE;
+			else begin
 				cdb_n   <= 5'd0;
 				ph      <= 3'b010;
 				t_after <= T_CMD_DONE;
-				ts <= T_PHASE;
-			end
-			else begin
-				ob <= 8'h00;                // COMMAND COMPLETE
-				ph <= 3'b111;
-				t_after <= T_FREE;
 				ts <= T_PHASE;
 			end
 		end
@@ -1016,8 +1072,11 @@ always_ff @(posedge clk) begin
 		ob      <= 8'h00;
 		cur     <= 2'd0;
 		half    <= 1'b0;
-		reject  <= 1'b0;
 		ext_msg <= 1'b0;
+		mo_late <= 1'b0;
+		cmd_seen <= 1'b0;
+		mi_n    <= 3'd0;
+		mi_len  <= 3'd1;
 		wb_we   <= 1'b0;
 		dout_keep  <= 1'b0;
 		tb_dbg     <= 1'b0;

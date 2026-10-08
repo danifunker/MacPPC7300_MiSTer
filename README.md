@@ -37,7 +37,7 @@ the OSD chooses, a debug readout of rows of squares.
 | Interrupts | Grand Central's events, mask and levels as MAME's and dingusppc's; the VIA is the first source (2026-10-07): the 7300's ROM runs 100 million instructions in lockstep with Mac OS's timer interrupts, its device traffic matching dingusppc's through Mac OS's start-up to where Mac OS probes MESH ([docs/PPCMac_plan.md](docs/PPCMac_plan.md), milestone I) |
 | Serial console | the ESCC (a Z85C30's asynchronous mode, `rtl/machine/PPCMac_escc.sv`); its modem port is the MiSTer's UART, Open Firmware's console: with an NVRAM image that sets `auto-boot?` false, Open Firmware's prompt over the UART, in simulation (in lockstep, the banner byte for byte dingusppc's) and on the board (2026-10-07) |
 | SCSI controllers, with empty buses | MESH (`rtl/machine/PPCMac_mesh.sv`) and Curio's 53CF94 (`PPCMac_sc53c94.sv`) as dingusppc models them, with no targets: Mac OS reads MESH's ID, sets both up and selects every target on both buses, each selection ending in a timeout and an interrupt; in simulation the 7300's ROM runs 450 million instructions in lockstep through that probing, its SCSI traffic matching dingusppc's, and on the board Mac OS runs through it as in the simulation (milestone E, 2026-10-07; [docs/PPCMac_plan.md](docs/PPCMac_plan.md)) |
-| Disks (milestone S, in progress) | MESH's information phases, FIFO and DMA; DBDMA (`PPCMac_dbdma.sv`, MESH's channel A) through the CPU's snoop port; SCSI disks on IDs 0 and 1 (`PPCMac_scsidisk.sv`) from the SD card's images through hps_io's block devices (the OSD's `SC0`/`SC1`, the Mac SCSI family's slot layout). `python verilator\run_scsi.py` drives them the way the ROM and Mac OS's driver do (programmed I/O and DMA reads, DMA writes, the card's blocks checked): passes. On the board Mac OS 7.6.1 boots from its image to the Finder with all its extensions, Open Transport included (2026-10-08: milestone S done), and shuts down from the keyboard's power key (the PC keyboard's Menu key). On the way: the bus error at the welcome screen was the floppy controller's stub, the first "Starting Up..." stop the monitor sense lines (the Control driver's DDC probe read its own driven lines back high), the second Open Transport's AppleTalk waiting for LocalTalk's line (the ESCC's synchronous mode's sync/hunt) |
+| Disks (milestone S, in progress) | MESH's information phases, FIFO and DMA; DBDMA (`PPCMac_dbdma.sv`, MESH's channel A) through the CPU's snoop port; SCSI disks on IDs 0 and 1 (`PPCMac_scsidisk.sv`) from the SD card's images through hps_io's block devices (the OSD's `SC0`/`SC1`, the Mac SCSI family's slot layout). `python verilator\run_scsi.py` drives them the way the ROM and Mac OS's driver do (programmed I/O and DMA reads, DMA writes, the card's blocks checked): passes. On the board Mac OS 7.6.1 boots from its image to the Finder with all its extensions, Open Transport included (2026-10-08: milestone S done), and shuts down from the keyboard's power key (the PC keyboard's Menu key). On the way: the bus error at the welcome screen was the floppy controller's stub, the first "Starting Up..." stop the monitor sense lines (the Control driver's DDC probe read its own driven lines back high), the second Open Transport's AppleTalk waiting for LocalTalk's line (the ESCC's synchronous mode's sync/hunt). Mac OS 8.5, 8.6 and 9.1 start from their images to the Finder too (2026-10-08, build 20): their grey screen was their disk driver's SDTR (Apple's 8.1.2 and 8.1.3), which the disks now answer with offset 0, and MESH's bus free, which now lets ACK go under ATN (the 8.6 image then starts BeOS R4.5's loader from its Startup Items; it has no BeOS partition) |
 | NVRAM and clock | Grand Central's NVRAM kept on the SD card (an 8 KB .nvr on block slot 2, `PPCMac_nvsave.sv`); Cuda's clock from the MiSTer's RTC |
 | Sound | AWACS (`rtl/machine/PPCMac_awacs.sv`) and its DMA channels 8 and 9: the startup chime plays from the ROM by DMA, bit-exact in simulation (`--wav`), to the MiSTer's audio outputs |
 | Serial, Ethernet, NMI, clock | the ESCC's interrupts (both channels); MACE (`PPCMac_mace.sv`) with its cable unplugged (frames sent by DMA end in loss of carrier); Cuda's NMI on Grand Central's source 14 (Command-Menu: MacsBug, or the ROM's debugger); Cuda's clock set from the MiSTer's RTC |
@@ -78,6 +78,8 @@ framework), Quartus 17.0, slow 100 C model; this is the number that counts:
 | With the keyboard's clock crossing fixed, s6 on the Ethernet receive channel (build 15) | 35,360 (84%) | 192 | 48 | 58.6 MHz (slack -1.669 ns). On the board: 186 characters typed through the Remote, none lost (about one in fifty before) |
 | With the DMA fetch and stop records (build 16) | 34,828 (83%) | 192 | 48 | 60.8 MHz (slack -1.157 ns) |
 | With s5 on the Ethernet transmit channel and INPUT_MOREs ended by the frame (build 17) | 35,708 (85%) | 192 | 48 | 61.7 MHz (slack -0.949 ns). On the board: Ethernet works (DHCP, web, ping, FTP) |
+| With the DMA's quads reaching MACE and LOAD_QUAD's value written back (build 18) | 35,039 (84%) | 192 | 48 | 62.3 MHz (slack -0.659 ns). On the board: the Ethernet driver's LOAD_QUADs read XMTRC 00, XMTFS 80, IR 03; 60 pings of 1,400 bytes, none lost; the MESH trace found Mac OS 8.6's stall |
+| With SDTR answered, MESH's bus free letting ACK go, the MESH interrupt records (build 20) | 35,089 (84%) | 192 | 48 | 60.3 MHz (slack -1.200 ns). On the board: Mac OS 8.5, 8.6 and 9.1 start from their own images to the Finder (8.5 and 9.1 then say the clock is not set: Mac OS's own 2019 limit) |
 
 On the board (DE10-Nano, 128 MB SDRAM) the memory test passes at every RAM
 size the OSD offers (6 to 96 MB, three or more passes each, no error) at
@@ -498,12 +500,18 @@ On the board, `python syn\mister.py trace [--last N] [--from K]` reads the
 trace the core keeps in DDR3 (`PPCMac_trace.sv`, a ring of 2,048 records at
 0x30500000, read through `/dev/mem` on the MiSTer): every SCSI command the
 targets answer (ID, CDB, status, sense, bytes moved, the Toolbox's answer
-from the Main), bus resets and CD mounts; the CPU's accesses to MACE, its
-DMA channels 2 and 3 and Grand Central's interrupt registers (MESH and
-channel A with `TR_MESH` in `PPCMac_machine.sv`); each command those two
-DMA channels finish (its bits, counts, status, whether its interrupt
-fired); and the ADB keyboard's queued keys (and drops) and the commands
-Cuda sends it. Each record has a microsecond time stamp.
+from the Main), bus resets and CD mounts; the CPU's accesses to MACE and
+its DMA channels 2 and 3 (with `cfg --trace-mesh`, status bit 29, also
+MESH's and channel A's, and each change of MESH's and channel A's
+interrupt on its way through Grand Central); each command those two DMA
+channels fetch, finish (its bits, counts, status, a quad's value, whether
+its interrupt fired) or are stopped in; and the ADB keyboard's queued keys
+(and drops) and the commands Cuda sends it. Each record has a microsecond
+time stamp. `trace-capture SECONDS` streams the new records to a file on
+the MiSTer (`syn\trstream.py`) for longer than the ring holds;
+`trace-fetch OUT` and `trace --file OUT` read it. A CPU polling a register
+in a loop fills the queue faster than DDR3 takes it: the records it drops
+are counted.
 Never reload the core on the board while Mac OS has its disk mounted: shut
 it down from the Finder's Special menu first.
 

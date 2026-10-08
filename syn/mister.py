@@ -26,7 +26,8 @@ to the card and the core's UART.
                               [--joy none|mousestick|firebird|gamepad|sidewinder] [--ptr]
                               [--eth] [--net eth0|eth1|wlan0|tap0] [--trace-mesh]
                                                  writes config/PPCMac.CFG (--trace-mesh: the trace
-                                                 also takes MESH's accesses; no OSD entry)
+                                                 also takes MESH's accesses and interrupt;
+                                                 no OSD entry)
     python syn\\mister.py load                    loads _Unstable/PPCMac.rbf (Remote: /api/launch)
     python syn\\mister.py menu                    loads the menu core again (/api/launch/menu)
     python syn\\mister.py shot [OUT.png]          a screenshot of the core's output, fetched
@@ -436,6 +437,11 @@ def trace(last, first, fname=None):
                 kindc = {0: "reset/flush", 2: "listen", 3: "talk"}.get((c >> 2) & 3, "?")
                 print("%s ADB cmd %02x (addr %d %s r%d) answer %02x queue %d" % (
                     t, c, c >> 4, kindc, c & 3, (info >> 8) & 0xFF, info & 7))
+        elif kind == 10:
+            s = r[1]
+            print("%s IRQ cpu %d 68k %d | MESH mask %d event %d line %d | DMA-A mask %d event %d level %d"
+                  % (t, s >> 7, (s >> 6) & 1, (s >> 5) & 1, (s >> 4) & 1, (s >> 3) & 1,
+                     (s >> 2) & 1, (s >> 1) & 1, s & 1))
         elif kind in (5, 8, 9):
             # PPCMac_dbdma fin_info: {cmd_ptr, cmd key bits reqCount, ..., ...}
             w1, w2 = int.from_bytes(r[8:16], "little"), int.from_bytes(r[16:24], "little")
@@ -444,7 +450,10 @@ def trace(last, first, fname=None):
             cmd, key, bits, req = cmdw >> 28, (cmdw >> 24) & 7, (cmdw >> 16) & 0xFF, cmdw & 0xFFFF
             c = "@%08x cmd %d key %d i%d b%d w%d req %d" % (ptr, cmd, key, (bits >> 4) & 3, (bits >> 2) & 3,
                                                            bits & 3, req)
-            if kind == 5:
+            if kind == 5 and cmd in (4, 5):
+                print("%s DMA-%d done %s res %d status %04x value %08x"
+                      % (t, r[1], c, x >> 16, x & 0xFFFF, y))
+            elif kind == 5:
                 print("%s DMA-%d done %s res %d status %04x intsel %04x irq %d"
                       % (t, r[1], c, x >> 16, x & 0xFFFF, y >> 16, y & 1))
             elif kind == 8:

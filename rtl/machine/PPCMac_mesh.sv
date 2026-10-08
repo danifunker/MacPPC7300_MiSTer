@@ -66,8 +66,12 @@
 //                     message before the driver asks MESH for it (the 7300's
 //                     SIM waits for REQ to drop after the status, FFEB8D98,
 //                     and would wait for ever on a target that asks at once)
-//    9  bus free      lets go of ACK unless ATN is up; done once BSY drops, a
-//                     phase mismatch if the target asks for more (REQ) first
+//    9  bus free      lets go of ACK; done once BSY drops, a phase mismatch
+//                     if the target asks for more (REQ) first: with ATN up
+//                     (the SIM's way to answer a message), MESSAGE OUT.
+//                     dingusppc keeps ACK there and moves its target on by
+//                     hand; on a bus of signals only ACK going moves it
+//                     (Mac OS 8.5's driver, 2026-10-08)
 //    C, D             reselection on, off: command done at once
 //    E  reset MESH    the registers dingusppc's reset(false) resets (not the
 //                     bus status, synchronous parameters or destination ID),
@@ -428,7 +432,7 @@ always_ff @(posedge clk) begin
 				sq <= SQ_XFER;
 			end
 			4'h9: begin                     // bus free
-				if (!b_atn) ln_lo[4] <= 1'b0;
+				ln_lo[4] <= 1'b0;
 				db_oe <= 1'b0;
 				sq <= SQ_BUSFREE;
 			end

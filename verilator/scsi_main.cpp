@@ -383,6 +383,31 @@ void finish(uint8_t want_status) {
 	mw(3, 0x0C);
 }
 
+// a message out: ATN on for all but the last byte, as Linux's mesh.c sends one
+void msg_out(const std::vector<uint8_t>& m) {
+	if (m.size() > 1) {
+		mw(1, 0); mw(0, (uint8_t)(m.size() - 1));
+		mw(3, 0x27);
+		for (size_t i = 0; i + 1 < m.size(); i++) mw(2, m[i]);
+		uint8_t s = wait_int(0x07, "message out"); mw(0xA, s);
+		check(s == 0x01, "message out: interrupt %02X", s);
+	}
+	mw(1, 0); mw(0, 1);
+	mw(3, 0x07);
+	mw(2, m.back());
+	uint8_t s = wait_int(0x07, "message out's last byte"); mw(0xA, s);
+	check(s == 0x01, "message out's last byte: interrupt %02X", s);
+}
+
+std::vector<uint8_t> msg_in(int n) {
+	mw(1, 0); mw(0, (uint8_t)n);
+	uint8_t s = command(0x08, "message in");
+	check(s == 0x01, "message in: interrupt %02X", s);
+	std::vector<uint8_t> v;
+	for (int i = 0; i < n; i++) v.push_back(mr(2));
+	return v;
+}
+
 void compare_block(const uint8_t* got, uint32_t lba, int from, int n, const char* what) {
 	uint8_t want[512];
 	disk_read(lba, want);
@@ -682,6 +707,49 @@ int main(int argc, char** argv) {
 		for (int k = 0; ok && k < 512; k++)
 			ok = (k < 496 ? tb_req[16 + k] : tb_tail[1][k - 496]) == (uint8_t)(k * 5 + 1);
 		check(ok, "SEND DATA: the payload is not under the CDB and in tail block 1");
+	}
+
+	// ---- 12: Mac OS 8.5's driver negotiates: SDTR, WDTR, and a message answered with ATN ----
+	std::printf("12. IDENTIFY with SDTR (answered with offset 0), with WDTR (8 bits); a MESSAGE REJECT answered under ATN\n");
+	{
+		arbitrate_select(0, true);
+		msg_out({0xC0, 0x01, 0x03, 0x01, 0x19, 0x0F});
+		check(wait_phase() == 7, "SDTR: no MESSAGE IN");
+		std::vector<uint8_t> m = msg_in(5);
+		check(m == std::vector<uint8_t>({0x01, 0x03, 0x01, 0x19, 0x00}), "SDTR answer %02X %02X %02X %02X %02X",
+			m[0], m[1], m[2], m[3], m[4]);
+		check(wait_phase() == 2, "after SDTR: no COMMAND");
+		send_cdb({0x00, 0, 0, 0, 0, 0});
+		check(wait_phase() == 3, "TEST UNIT READY after SDTR: no STATUS");
+		finish(0x00);
+
+		arbitrate_select(0, true);
+		msg_out({0xC0, 0x01, 0x02, 0x03, 0x01});
+		check(wait_phase() == 7, "WDTR: no MESSAGE IN");
+		m = msg_in(4);
+		check(m == std::vector<uint8_t>({0x01, 0x02, 0x03, 0x00}), "WDTR answer %02X %02X %02X %02X", m[0], m[1], m[2], m[3]);
+		check(wait_phase() == 2, "after WDTR: no COMMAND");
+		send_cdb({0x00, 0, 0, 0, 0, 0});
+		check(wait_phase() == 3, "TEST UNIT READY after WDTR: no STATUS");
+		finish(0x00);
+
+		// the 7300's SIM after a MESSAGE REJECT: ATN up, then bus free, then its message
+		arbitrate_select(0, true);
+		msg_out({0xC0, 0x01, 0x02, 0x99, 0x00});
+		check(wait_phase() == 7, "unknown extended message: no MESSAGE IN");
+		m = msg_in(1);
+		check(m[0] == 0x07, "unknown extended message: answer %02X, MESSAGE REJECT expected", m[0]);
+		mw(4, 0x08);
+		mw(0xA, 0x07);
+		uint8_t s = command(0x09, "bus free under ATN");
+		check(s == 0x02 && (mr(7) & 2) && (mr(4) & 7) == 6, "bus free under ATN: interrupt %02X, exception %02X, phase %d",
+			s, mr(7), mr(4) & 7);
+		mw(4, 0x00);
+		msg_out({0x08});
+		check(wait_phase() == 2, "after a NO OPERATION: no COMMAND");
+		send_cdb({0x00, 0, 0, 0, 0, 0});
+		check(wait_phase() == 3, "TEST UNIT READY after the reject: no STATUS");
+		finish(0x00);
 	}
 
 	std::printf("%llu cycles; DMA: %d lines, %d words; the card: %d blocks read, %d written\n",
