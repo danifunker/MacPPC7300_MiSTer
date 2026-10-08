@@ -760,8 +760,12 @@ driving it.
 
 ## Backlog: what the Quadra 800 core has (surveyed 2026-10-08, at the user's request)
 
-From `..\MacQuadra800_MiSTer` (its OSD menu in `MacQuadra800.sv`, its README
-and area table), each with what it would be here:
+From `..\MacQuadra800_MiSTer` (MiSTer-devel's, branch `main`, 58a05e2: its
+OSD menu in `MacQuadra800.sv`, its README and area table), each with what it
+would be here. The user's order (2026-10-08): this parity first, starting
+with the mouse and the joystick ("we need to fix the mouse joystick"), then
+Mac OS 8.6's grey screen, then 9.1's. The Quadra repository is read only
+for this work (it is in build mode: no edits, commits, pushes or fetches).
 
 | Quadra 800 core | Here |
 |---|---|

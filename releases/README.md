@@ -6,15 +6,14 @@ Test builds of the Power Macintosh 7300/7600 core for the MiSTer
 | File | Date | md5 | What it is |
 |---|---|---|---|
 | `PPCMac_20261008.rbf` | 2026-10-08 | `d8b9fa6c4e7193ef4845054d352eb9ee` | The first test build: Mac OS 7.6.1 boots from a SCSI disk image to the Finder with every extension (Open Transport included), the startup chime plays, Shut Down works, the NVRAM is kept on the SD card. Commit `0efe945`. |
-| `MiSTer` | 2026-10-06 | `eb1799eb1318cd6aac538601ab4b670e` | The Main binary on the test MiSTer when this build was tested (`/media/fat/MiSTer`). |
+| `MiSTer` | 2026-10-07 | `4704874bf6105223b315fbf55844f2fc` | The official MiSTer-devel Main, master of 2026-10-07 (the same binary as MiSTer-devel/MacQuadra800_MiSTer's `releases/MiSTer`). The core was tested on a Main of 2026-10-06; it needs nothing beyond the stock Main. |
 
 ## Installing
 
 1. Copy `PPCMac_20261008.rbf` to `/media/fat/_Unstable/` (or `_Computer/`)
    on the SD card, as `PPCMac.rbf` or under its own name.
 2. Optional: replace `/media/fat/MiSTer` with `MiSTer` from here (keep a
-   copy of yours), then reboot the MiSTer. The core also runs on the stock
-   Main.
+   copy of yours), then reboot the MiSTer. Any recent official Main works.
 3. The ROM: the core needs a Power Macintosh 7300 or 7600 ROM image (4 MB:
    `077D.34F2` from a 7300, or `077D.28F2` from a 7600), dumped from your
    own machine, as `/media/fat/games/PPCMac/boot.rom`. It is not included.
