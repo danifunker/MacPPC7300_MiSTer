@@ -128,7 +128,10 @@ module PPCMac_system
 	output logic [3:0]   dma_wr_be,
 	output logic [255:0] dma_wr_data,
 
-	// the VRAM in DDR3 (the framework's DDRAM port), in the memory's clock
+	// the network bridge chosen (the OSD's Ethernet, taken under reset), in the memory's clock
+	input  logic         net_on,
+
+	// the VRAM and the network's rings in DDR3 (the framework's DDRAM port), in the memory's clock
 	input  logic         ddr_busy,
 	output logic [7:0]   ddr_burstcnt,
 	output logic [28:0]  ddr_addr,
@@ -220,6 +223,11 @@ logic [14:0]  row_words;
 logic [7:0]   dac_cr, dbl_buf_cr, athens_d2, athens_n2, athens_p2, clut_index;
 logic [15:0]  cursor_x;
 logic [23:0]  clut_rgb;
+logic         net_link, net_tx_we, net_tx_go, net_tx_done, net_rx_avail, net_rx_done, net_mac_ok;
+logic [7:0]   net_tx_wa, net_rx_ra;
+logic [63:0]  net_tx_wd, net_rx_q;
+logic [10:0]  net_tx_len, net_rx_len;
+logic [47:0]  net_mac;
 
 PPCMac_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_FAST_BOOT(CUDA_FAST_BOOT)) machine (
 	.clk, .reset, .ram_mb, .boot_memtest,
@@ -231,6 +239,8 @@ PPCMac_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_FAST
 	.sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr, .disk_busy, .cd_left, .cd_right,
 	.dma_wr, .dma_wr_line, .dma_wr_addr, .dma_wr_be, .dma_wr_data,
 	.modem_txd, .modem_rxd, .modem_cts, .modem_rts, .snd_left, .snd_right,
+	.net_link, .net_tx_we, .net_tx_wa, .net_tx_wd, .net_tx_go, .net_tx_len, .net_tx_done,
+	.net_rx_ra, .net_rx_q, .net_rx_avail, .net_rx_len, .net_rx_done, .net_mac, .net_mac_ok,
 	.nv_ld_we, .nv_ld_re, .nv_ld_addr, .nv_ld_data, .nv_ld_rack, .nv_ld_q, .nv_wr_cpu,
 	.mon_std, .mon_ext, .ps2_key, .ps2_mouse, .joy, .clock_ok, .clock_secs,
 	.v_req, .v_we, .v_line, .v_addr, .v_be, .v_wdata, .v_ack, .v_rdata,
@@ -249,11 +259,37 @@ DSPPC604_memcdc vcdc (
 	.b_ack(vb_ack), .b_rdata(vb_rdata)
 );
 
+// ---- the DDR3 port: the video first, then the network's rings ----
+logic        va_busy, va_dout_ready, va_rd, va_we, na_busy, na_dout_ready, na_rd, na_we;
+logic [7:0]  va_burstcnt, va_be, na_burstcnt, na_be;
+logic [28:0] va_addr, na_addr;
+logic [63:0] va_din, na_din;
+
+PPCMac_ddrarb ddrarb (
+	.clk(clk_b), .reset(reset_b),
+	.a_busy(va_busy), .a_burstcnt(va_burstcnt), .a_addr(va_addr), .a_dout_ready(va_dout_ready),
+	.a_rd(va_rd), .a_din(va_din), .a_be(va_be), .a_we(va_we),
+	.b_busy(na_busy), .b_burstcnt(na_burstcnt), .b_addr(na_addr), .b_dout_ready(na_dout_ready),
+	.b_rd(na_rd), .b_din(na_din), .b_be(na_be), .b_we(na_we),
+	.ddr_busy, .ddr_burstcnt, .ddr_addr, .ddr_dout_ready, .ddr_rd, .ddr_din, .ddr_be, .ddr_we
+);
+
+// ---- the network bridge: MACE's frames to and from the Main, through DDR3 ----
+PPCMac_enet enet (
+	.clk_h(clk_b), .reset_h(reset_b), .on(net_on),
+	.ddr_busy(na_busy), .ddr_burstcnt(na_burstcnt), .ddr_addr(na_addr), .ddr_dout, .ddr_dout_ready(na_dout_ready),
+	.ddr_rd(na_rd), .ddr_din(na_din), .ddr_be(na_be), .ddr_we(na_we),
+	.clk, .tx_we(net_tx_we), .tx_wa(net_tx_wa), .tx_wd(net_tx_wd), .tx_go(net_tx_go), .tx_len(net_tx_len),
+	.tx_done(net_tx_done), .rx_ra(net_rx_ra), .rx_q(net_rx_q), .rx_avail(net_rx_avail), .rx_len(net_rx_len),
+	.rx_done(net_rx_done), .link(net_link), .mac(net_mac), .mac_ok(net_mac_ok)
+);
+
 PPCMac_video video (
 	.clk(clk_b), .reset(reset_b),
 	.c_req(vb_req), .c_we(vb_we), .c_line(vb_line), .c_addr(vb_addr[21:2]), .c_be(vb_be), .c_wdata(vb_wdata),
 	.c_ack(vb_ack), .c_rdata(vb_rdata),
-	.ddr_busy, .ddr_burstcnt, .ddr_addr, .ddr_dout, .ddr_dout_ready, .ddr_rd, .ddr_din, .ddr_be, .ddr_we,
+	.ddr_busy(va_busy), .ddr_burstcnt(va_burstcnt), .ddr_addr(va_addr), .ddr_dout, .ddr_dout_ready(va_dout_ready),
+	.ddr_rd(va_rd), .ddr_din(va_din), .ddr_be(va_be), .ddr_we(va_we),
 	.timing_on, .sw_params, .fb_base, .row_words, .hs_pos, .vs_pos, .dac_cr, .dbl_buf_cr,
 	.cursor_x, .cursor_clut, .athens_d2, .athens_n2, .athens_p2, .vbl_start_tog, .vbl_end_tog,
 	.clut_index, .clut_rgb,

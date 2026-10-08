@@ -75,8 +75,9 @@
 //
 //  Left out (docs/PPCMac_stubs.md): STORE_QUAD and LOAD_QUAD to device
 //  registers (only memory is reached), the keys other than 0 (KEY_STREAM0),
-//  the device's own status bits in s7-s0, and INPUT_LAST ending before its
-//  count when the device ends (MESH never does).
+//  and the device's own status bits in s7-s0. An INPUT_LAST ends before its
+//  count when the device marks a byte as a frame's last (di_last: MACE's
+//  receive, 2026-10-08), resCount telling what was left.
 //
 //============================================================================
 
@@ -107,6 +108,7 @@ module PPCMac_dbdma
 	input  logic [7:0]   di_data,
 	output logic         di_take,         // ... taken in this clock
 	input  logic         di_flush,        // no more bytes are coming for now
+	input  logic         di_last,         // the byte taken ends a frame: an INPUT_LAST ends with it
 	input  logic         do_ready,        // the device takes a byte
 	output logic [7:0]   do_data,
 	output logic         do_put,          // ... put in this clock
@@ -173,6 +175,7 @@ logic irq_pend;                         // ... with the stopped command's interr
 logic flush_req;                        // FLUSH asked with an INPUT running
 logic flushing;                         // the write-back in hand is a flush's
 logic pausing;                          // PAUSE: hold where we are
+logic in_end;                           // the device ended the INPUT_LAST's frame
 
 wire  is_in  = (cmd == 4'd2) || (cmd == 4'd3);
 wire  go     = stat[ACTIVE] & ~pausing & ~stop_req;       // may start something new
@@ -298,6 +301,7 @@ always_ff @(posedge clk) begin
 			res_count <= req_count;
 			lv        <= 32'h0;
 			lb_ok     <= 1'b0;
+			in_end    <= 1'b0;
 			case (cmd)
 				4'd0, 4'd1, 4'd2, 4'd3: begin
 					if (key != 3'd0) begin
@@ -331,7 +335,8 @@ always_ff @(posedge clk) begin
 				lline     <= addr[31:5];
 				addr      <= addr + 32'd1;
 				res_count <= res_count - 16'd1;
-				if (addr[4:0] == 5'd31 || res_count == 16'd1) s <= S_INW;
+				if (di_last && cmd == 4'd3) in_end <= 1'b1;
+				if (addr[4:0] == 5'd31 || res_count == 16'd1 || (di_last && cmd == 4'd3)) s <= S_INW;
 			end
 			else if (stop_req || flush_req || (di_flush && lv != 32'h0) || res_count == 16'd0)
 				s <= S_INW;
@@ -364,7 +369,7 @@ always_ff @(posedge clk) begin
 				flushing  <= 1'b1;
 				s <= S_WB;
 			end
-			else s <= (res_count == 16'd0) ? S_WAIT : S_IN;
+			else s <= (res_count == 16'd0 || in_end) ? S_WAIT : S_IN;
 		end
 
 		// ---- data out: a line read, then its bytes put ---------------------------------------
@@ -497,6 +502,7 @@ always_ff @(posedge clk) begin
 		flush_req <= 1'b0;
 		flushing  <= 1'b0;
 		pausing   <= 1'b0;
+		in_end    <= 1'b0;
 		lv        <= 32'h0;
 		lb_ok     <= 1'b0;
 		cmd       <= 4'd7;

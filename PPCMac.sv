@@ -115,6 +115,9 @@ localparam CONF_STR = {
 	"O[13:11],ADB controller (on reset),None,Gravis MouseStick II,Gravis Firebird,Gravis GamePad,SideWinder 3D Pro;",
 	"O[14],Stick moves pointer,No,Yes;",
 	"-;",
+	"O[17],Ethernet (on reset),Off,On;",
+	"O[19:18],Net interface,eth0,eth1,wlan0,tap0;",
+	"-;",
 	"P1,MT32-pi;",
 	"P1-;",
 	"P1O[20],Use MT32-pi,Yes,No;",
@@ -392,9 +395,14 @@ reg cpu_reset_m = 1;
 always @(posedge clk_mem)
 	cpu_reset_m <= reset_in[2] | ~sdram_ready | rom_dl | nv_dl | nvs_hold | (~boot_memtest & ~rom_loaded) | (cfg_hold != 0);
 
-// the ADB game controller, taken under reset (ADB has no hot plug); PPCMac_adb synchronises the bus
+// the ADB game controller and the Ethernet bridge, taken under reset (no hot plug); PPCMac_adb
+// synchronises the controller's bus
 reg  [2:0]  joy_mode = 0;
-always @(posedge clk_mem) if (cpu_reset_m) joy_mode <= (status[13:11] > 3'd4) ? 3'd0 : status[13:11];
+reg         net_on = 0;
+always @(posedge clk_mem) if (cpu_reset_m) begin
+	joy_mode <= (status[13:11] > 3'd4) ? 3'd0 : status[13:11];
+	net_on   <= status[17];
+end
 wire [51:0] joy = {status[14], joy_mode, joystick_r_analog_0, joystick_l_analog_0, joystick_0[15:0]};
 
 // into the CPU's clock (the options are quasi-static: they change only with the reset held)
@@ -592,6 +600,7 @@ PPCMac_system #(.CPU_HZ(CPU_MHZ * 1000000), .TB_HZ(12500000), .SDRAM_MB(128)) sy
 	.sd_lba(disk_lba), .sd_rd(disk_rd), .sd_wr(disk_wr), .sd_blk_cnt(disk_blk_cnt), .sd_ack,
 	.sd_buff_addr, .sd_buff_dout, .sd_buff_din(disk_buff_din), .sd_buff_wr, .disk_busy,
 	.cd_left, .cd_right,
+	.net_on,
 	.ddr_busy(DDRAM_BUSY), .ddr_burstcnt(DDRAM_BURSTCNT), .ddr_addr(DDRAM_ADDR), .ddr_dout(DDRAM_DOUT),
 	.ddr_dout_ready(DDRAM_DOUT_READY), .ddr_rd(DDRAM_RD), .ddr_din(DDRAM_DIN), .ddr_be(DDRAM_BE), .ddr_we(DDRAM_WE),
 	.vid_ce(mac_ce), .vid_r(mac_r), .vid_g(mac_g), .vid_b(mac_b), .vid_hs(mac_hs), .vid_vs(mac_vs),

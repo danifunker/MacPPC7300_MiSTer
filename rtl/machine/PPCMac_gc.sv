@@ -55,7 +55,7 @@
 //    18000        MESH SCSI              PPCMac_mesh: the internal bus's
 //                                        controller; the bus's lines are
 //                                        ports (the disks are outside)
-//    19000        Ethernet address ROM   08 00 07 44 55 66 00 00
+//    19000        Ethernet address ROM   08 00 07 44 55 66 00 00, or the Main's (PPCMac_enet)
 //    1A000        board register 1       E13F (machinetnt.cpp:98-106)
 //    1B000        RaDACal (the Control   PPCMac_radacal (control.cpp:156,
 //                 video's RAMDAC)        appleramdac.cpp); its colour table
@@ -108,6 +108,22 @@ module PPCMac_gc
 	input  logic        modem_rxd,
 	input  logic        modem_cts,
 	output logic        modem_rts,
+
+	// the network bridge (PPCMac_enet): MACE's frame buffers and toggles, the address
+	input  logic        net_link,
+	output logic        net_tx_we,
+	output logic [7:0]  net_tx_wa,
+	output logic [63:0] net_tx_wd,
+	output logic        net_tx_go,
+	output logic [10:0] net_tx_len,
+	input  logic        net_tx_done,
+	output logic [7:0]  net_rx_ra,
+	input  logic [63:0] net_rx_q,
+	input  logic        net_rx_avail,
+	input  logic [10:0] net_rx_len,
+	output logic        net_rx_done,
+	input  logic [47:0] net_mac,
+	input  logic        net_mac_ok,
 
 	// the NVRAM written from outside, a byte a cycle (with the machine held in
 	// reset), or read from outside (nv_ld_re held until nv_ld_rack, the byte
@@ -298,7 +314,7 @@ PPCMac_dbdma dma_a (
 	.sel(dma_a_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_a_rle),
 	.dm_req(a_req), .dm_we(a_we), .dm_line(a_line), .dm_addr(a_addr), .dm_be(a_be), .dm_wdata(a_wdata),
 	.dm_ack(a_ack), .dm_rdata,
-	.di_valid(mi_valid), .di_data(mi_data), .di_take(mi_take), .di_flush(mi_flush),
+	.di_valid(mi_valid), .di_data(mi_data), .di_take(mi_take), .di_flush(mi_flush), .di_last(1'b0),
 	.do_ready(mo_ready), .do_data(mo_data), .do_put(mo_put),
 	/* verilator lint_off PINCONNECTEMPTY */
 	.do_last(), .xfer_in(), .xfer_out(), .active(),
@@ -327,7 +343,7 @@ PPCMac_dbdma dma_8 (
 	.sel(dma_8_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_8_rle),
 	.dm_req(s8_req), .dm_we(s8_we), .dm_line(s8_line), .dm_addr(s8_addr), .dm_be(s8_be), .dm_wdata(s8_wdata),
 	.dm_ack(s8_ack), .dm_rdata,
-	.di_valid(1'b0), .di_data(8'h00), .di_flush(1'b0),
+	.di_valid(1'b0), .di_data(8'h00), .di_flush(1'b0), .di_last(1'b0),
 	.do_ready(s8_ready), .do_data(s8_data), .do_put(s8_put),
 	/* verilator lint_off PINCONNECTEMPTY */
 	.do_last(), .di_take(), .xfer_in(), .xfer_out(), .drained(),
@@ -341,7 +357,7 @@ PPCMac_dbdma dma_9 (
 	.sel(dma_9_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_9_rle),
 	.dm_req(s9_req), .dm_we(s9_we), .dm_line(s9_line), .dm_addr(s9_addr), .dm_be(s9_be), .dm_wdata(s9_wdata),
 	.dm_ack(s9_ack), .dm_rdata,
-	.di_valid(s9_valid), .di_data(s9_data), .di_take(s9_take), .di_flush(1'b0),
+	.di_valid(s9_valid), .di_data(s9_data), .di_take(s9_take), .di_flush(1'b0), .di_last(1'b0),
 	.do_ready(1'b0),
 	/* verilator lint_off PINCONNECTEMPTY */
 	.do_data(), .do_put(), .do_last(), .xfer_in(), .xfer_out(), .drained(),
@@ -355,6 +371,8 @@ PPCMac_dbdma dma_9 (
 logic [7:0]  mace_rq;
 logic [31:0] dma_2_rle, dma_3_rle;
 logic        e2_ready, e2_put, e2_last, e2_irq, e3_irq;
+logic [7:0]  e2_data, e3_data;
+logic        e3_valid, e3_last, e3_take, e3_xin;
 wire         dma_2_sel = sel & dma & (addr[14:8] == 7'd2) & (addr[7:5] == 3'd0);
 wire         dma_3_sel = sel & dma & (addr[14:8] == 7'd3) & (addr[7:5] == 3'd0);
 
@@ -362,7 +380,11 @@ PPCMac_mace mace (
 	.clk, .reset, .us_tick,
 	.sel(sel & devs & (sub == 4'h1)), .we, .rn(off[8:4]), .wdata(wb),
 	.rq(mace_rq),
-	.do_ready(e2_ready), .do_put(e2_put), .do_last(e2_last),
+	.do_ready(e2_ready), .do_data(e2_data), .do_put(e2_put), .do_last(e2_last),
+	.di_valid(e3_valid), .di_data(e3_data), .di_last(e3_last), .di_take(e3_take), .rx_dma(e3_xin),
+	.link(net_link), .tx_we(net_tx_we), .tx_wa(net_tx_wa), .tx_wd(net_tx_wd), .tx_go(net_tx_go),
+	.tx_len(net_tx_len), .tx_done(net_tx_done), .rx_ra(net_rx_ra), .rx_q(net_rx_q), .rx_avail(net_rx_avail),
+	.rx_len(net_rx_len), .rx_done(net_rx_done),
 	.irq(mace_irq)
 );
 
@@ -371,10 +393,10 @@ PPCMac_dbdma dma_2 (
 	.sel(dma_2_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_2_rle),
 	.dm_req(e2_req), .dm_we(e2_we), .dm_line(e2_line), .dm_addr(e2_addr), .dm_be(e2_be), .dm_wdata(e2_wdata),
 	.dm_ack(e2_ack), .dm_rdata,
-	.di_valid(1'b0), .di_data(8'h00), .di_flush(1'b0),
-	.do_ready(e2_ready), .do_put(e2_put), .do_last(e2_last),
+	.di_valid(1'b0), .di_data(8'h00), .di_flush(1'b0), .di_last(1'b0),
+	.do_ready(e2_ready), .do_put(e2_put), .do_last(e2_last), .do_data(e2_data),
 	/* verilator lint_off PINCONNECTEMPTY */
-	.do_data(), .di_take(), .xfer_in(), .xfer_out(), .drained(), .active(),
+	.di_take(), .xfer_in(), .xfer_out(), .drained(), .active(),
 	/* verilator lint_on PINCONNECTEMPTY */
 	.irq(e2_irq)
 );
@@ -384,10 +406,11 @@ PPCMac_dbdma dma_3 (
 	.sel(dma_3_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_3_rle),
 	.dm_req(e3_req), .dm_we(e3_we), .dm_line(e3_line), .dm_addr(e3_addr), .dm_be(e3_be), .dm_wdata(e3_wdata),
 	.dm_ack(e3_ack), .dm_rdata,
-	.di_valid(1'b0), .di_data(8'h00), .di_flush(1'b0),
+	.di_valid(e3_valid), .di_data(e3_data), .di_flush(1'b0), .di_last(e3_last), .di_take(e3_take),
+	.xfer_in(e3_xin),
 	.do_ready(1'b0),
 	/* verilator lint_off PINCONNECTEMPTY */
-	.do_data(), .do_put(), .do_last(), .di_take(), .xfer_in(), .xfer_out(), .drained(), .active(),
+	.do_data(), .do_put(), .do_last(), .xfer_out(), .drained(), .active(),
 	/* verilator lint_on PINCONNECTEMPTY */
 	.irq(e3_irq)
 );
@@ -525,8 +548,9 @@ always_comb begin
 					default:     rq = byte_reg_rdata(be, via_ier | 8'h80);
 				endcase
 			end
-			4'h9: begin
-				case (off[6:4])
+			4'h9: begin                       // the Main's address on the network, else dingusppc's
+				if (net_mac_ok && off[6:4] < 3'd6) rq = byte_reg_rdata(be, net_mac[8 * off[6:4] +: 8]);
+				else case (off[6:4])
 					3'd0:    rq = byte_reg_rdata(be, 8'h08);
 					3'd2:    rq = byte_reg_rdata(be, 8'h07);
 					3'd3:    rq = byte_reg_rdata(be, 8'h44);

@@ -47,6 +47,7 @@ the OSD chooses, a debug readout of rows of squares.
 | Game controllers | the Quadra 800 core's ADB controllers from the MiSTer's joystick 0 (OSD "ADB controller (on reset)", "Stick moves pointer"): Gravis MouseStick II, Firebird, Mac GamePad, SideWinder 3D Pro, with ADB's address collisions; Cuda's firmware takes their answers in `run_cuda.py`; on the board Mac OS 7.6.1 separates a GamePad from the keyboard and a MouseStick from the mouse (2026-10-08, build 7); the controllers themselves are the user's to try |
 | Serial MIDI, MT32-pi, PPP, printer | as the Quadra 800 core: the modem port's TRxC clock a MIDI interface's (31,250 bit/s), the UART's MIDI mode, the MT32-pi on the user port (its OSD page, popups, LCD, audio), CTS and RTS for PPP and the Main's printer daemon; `run_escc.py` measures the rates (2026-10-08, build 8); the devices are the user's and the Discord testers' to try |
 | CD-ROM, BlueSCSI Toolbox | the CD-ROM drive at SCSI ID 3 (slot 4: ISO, TOAST, CUE, BIN, CHD), speaking the Quadra 800 core's contract with the Main's Mac CD layer, its audio (`PPCMac_cdaudio.sv`) mixed after AWACS; the Toolbox's file sharing (ID 0, slot 3) and CD changer (ID 3, slot 5) as the Mac LC core's; `run_scsi.py` checks them against a model of the Main (2026-10-08, build 8). Needs the Main branch `Mac-ppc-enhancements` (ppcmac in the Mac family); with the official Main there is no CD drive |
+| Ethernet | MACE's frames through two rings in DDR3 (`PPCMac_enet.sv`, the DDR3 port shared with the video by `PPCMac_ddrarb.sv`) to the Main's interface (OSD "Ethernet (on reset)", "Net interface"; the Main branch's `mac_eth.cpp`); receive into DMA channel 3 as Linux's `mace.c` reads it (2026-10-08, build 10). Not yet tried: no bench, not on the board; off, MACE's cable stays unplugged as before |
 
 The first full build of the core (2026-10-06: the CPU at 65 MHz, the
 machine, the SDRAM controller at 100 MHz, the debug readout, the MiSTer
@@ -69,6 +70,7 @@ framework), Quartus 17.0, slow 100 C model; this is the number that counts:
 | With the ADB game controllers (build 7, 2026-10-08) | 31,898 (76%) | 168 | 46 | 62.1 MHz (slack -0.729 ns). On the board: the keyboard and mouse beside a GamePad and a MouseStick |
 | With serial MIDI, the MT32-pi, CTS and RTS, the CD-ROM and its audio, the BlueSCSI Toolbox (build 8) | 33,762 (81%) | 178 | 48 | 63.1 MHz (slack -0.472 ns). On the board with the official Main: Mac OS 7.6.1 from disk 0 as before (no CD drive), Open Firmware boots it with a blank NVRAM; 256 colours, thousands and millions all shown right at 832 x 624 |
 | With the 12-inch monitor (build 9) | 33,460 (80%) | 178 | 48 | 60.3 MHz (slack -1.287 ns; placement). On the board Mac OS 7.6.1 at 512 x 384 |
+| With the Ethernet bridge (build 10) | 34,115 (81%) | 182 | 48 | 62.4 MHz (slack -0.852 ns). On the board with Ethernet off: Mac OS 7.6.1 to the Finder as before |
 
 On the board (DE10-Nano, 128 MB SDRAM) the memory test passes at every RAM
 size the OSD offers (6 to 96 MB, three or more passes each, no error) at
