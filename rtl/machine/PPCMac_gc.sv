@@ -23,13 +23,13 @@
 //                 the Control video's VBL (1A, through Chaos)
 //    08000-0FFFF  DMA channel registers, 256 bytes per channel
 //                 (grandcentral.cpp:250-305; dbdma.cpp:307-380): channels
-//                 2, 3 (Ethernet out, in), 8, 9 (sound out, in) and A
-//                 (MESH's) are DBDMA engines (PPCMac_dbdma) sharing the DMA
-//                 port (dm_*), one access at a time, the sound channels
-//                 first; each one's interrupt, sources 02, 03, 08, 09, 0A,
-//                 a level that the clear register drops (dingusppc's
-//                 ack_dma_int, clear_dma_int); channels 0 and 1 (Curio,
-//                 floppy) are stored and read back and never run
+//                 1 (the floppy's), 2, 3 (Ethernet out, in), 8, 9 (sound
+//                 out, in) and A (MESH's) are DBDMA engines (PPCMac_dbdma)
+//                 sharing the DMA port (dm_*), one access at a time, the
+//                 sound channels first; each one's interrupt, sources 01,
+//                 02, 03, 08, 09, 0A, a level that the clear register drops
+//                 (dingusppc's ack_dma_int, clear_dma_int); channel 0
+//                 (Curio's) is stored and read back and never runs
 //    10000        Curio SCSI             PPCMac_sc53c94: the external bus's
 //                                        53CF94, with no target
 //    11000        MACE Ethernet          PPCMac_mace: mace.cpp's registers
@@ -44,9 +44,11 @@
 //                                        the frames to and from channels 8
 //                                        and 9 at the sample rate, the
 //                                        samples out on snd_left/snd_right
-//    15000        SWIM3 floppy           PPCMac_swim3: the chip with an
-//                                        empty Superdrive (swim3.cpp,
-//                                        superdrive.cpp)
+//    15000        SWIM3 floppy           PPCMac_swim3: the chip and a
+//                                        Superdrive (swim3.cpp,
+//                                        superdrive.cpp), a disk image's
+//                                        sectors to channel 1
+//                                        (PPCMac_fdblk)
 //    16000-17FFF  VIA                    viacuda.cpp:142-322, the timers
 //                                        counting at 783,360 Hz; port B and
 //                                        the shift register wired to Cuda
@@ -180,7 +182,18 @@ module PPCMac_gc
 	// ... and MESH's and channel A's interrupt on its way to the CPU, at each change (itr_st:
 	// irq, 68k mode, MESH's mask, event, line, channel A's mask, event, level)
 	output logic         itr_ev,
-	output logic [7:0]   itr_st
+	output logic [7:0]   itr_st,
+
+	// the floppy disk's image (PPCMac_fdblk)
+	input  logic         fd_m_t,
+	input  logic         fd_m_ok,
+	input  logic [1:0]   fd_m_fmt,
+	input  logic         fd_m_dc42,
+	output logic         fd_rq_t,
+	output logic [11:0]  fd_rq_lba,
+	input  logic         fd_dn_t,
+	output logic [9:0]   fd_ra,
+	input  logic [7:0]   fd_q
 );
 
 import PPCMac_pkg::*;
@@ -216,16 +229,16 @@ end
 
 // ---- DMA channels: 0-3 Curio, floppy, Ethernet out and in; 8, 9 sound out and in; A MESH ----
 // (4-7, the serial channels, read 0 and ignore writes, as in dingusppc).
-// Channels 2, 3, 8, 9 and A are PPCMac_dbdma (below); 0's and 1's
-// registers are kept here.
-localparam int NCH = 2;
+// Channels 1, 2, 3, 8, 9 and A are PPCMac_dbdma (below); 0's registers
+// are kept here.
+localparam int NCH = 1;
 logic [15:0] ch_stat [NCH];
 logic [31:0] ch_cmd  [NCH];
 logic [31:0] ch_isel [NCH];
 logic [31:0] ch_bsel [NCH];
 logic [31:0] ch_wsel [NCH];
-wire         ch    = addr[8];
-wire         ch_ok = addr[14:9] == 6'd0;
+wire         ch    = 1'b0;
+wire         ch_ok = addr[14:8] == 7'd0;
 wire [31:0] wle = bswap32(wdata);               // dingusppc swaps a written word (dbdma.cpp:348)
 
 // ---- ESCC (PPCMac_escc) ----------------------------------------------------------------
@@ -273,22 +286,23 @@ wire        dma_a_sel = sel & dma & (addr[14:8] == 7'd10) & (addr[7:5] == 3'd0);
 
 // ---- the DBDMA engines' way to memory: one access at a time ---------------------------------
 // Each engine holds its request until acknowledged; the port is granted to
-// one (sound out, sound in, MESH, Ethernet out, Ethernet in, in that order:
-// the sound channels stream in real time and move little) and released in
-// the cycle of its acknowledge.
+// one (sound out, sound in, MESH, Ethernet out, Ethernet in, the floppy, in
+// that order: the sound channels stream in real time and move little) and
+// released in the cycle of its acknowledge.
 logic         a_req, a_we, a_line, s8_req, s8_we, s8_line, s9_req, s9_we, s9_line;
-logic         e2_req, e2_we, e2_line, e3_req, e3_we, e3_line;
-logic [31:2]  a_addr, s8_addr, s9_addr, e2_addr, e3_addr;
-logic [3:0]   a_be, s8_be, s9_be, e2_be, e3_be;
-logic [255:0] a_wdata, s8_wdata, s9_wdata, e2_wdata, e3_wdata;
+logic         e2_req, e2_we, e2_line, e3_req, e3_we, e3_line, f1_req, f1_we, f1_line;
+logic [31:2]  a_addr, s8_addr, s9_addr, e2_addr, e3_addr, f1_addr;
+logic [3:0]   a_be, s8_be, s9_be, e2_be, e3_be, f1_be;
+logic [255:0] a_wdata, s8_wdata, s9_wdata, e2_wdata, e3_wdata, f1_wdata;
 logic         g_busy;
-logic [2:0]   g_own;                           // 0 MESH (A), 1 sound out (8), 2 sound in (9), 3 Ethernet out (2), 4 in (3)
+logic [2:0]   g_own;                           // 0 MESH (A), 1 sound out (8), 2 sound in (9), 3 Ethernet out (2), 4 in (3), 5 floppy (1)
 always_comb begin
 	case (g_own)
 		3'd1:    begin dm_req = g_busy & s8_req; dm_we = s8_we; dm_line = s8_line; dm_addr = s8_addr; dm_be = s8_be; dm_wdata = s8_wdata; end
 		3'd2:    begin dm_req = g_busy & s9_req; dm_we = s9_we; dm_line = s9_line; dm_addr = s9_addr; dm_be = s9_be; dm_wdata = s9_wdata; end
 		3'd3:    begin dm_req = g_busy & e2_req; dm_we = e2_we; dm_line = e2_line; dm_addr = e2_addr; dm_be = e2_be; dm_wdata = e2_wdata; end
 		3'd4:    begin dm_req = g_busy & e3_req; dm_we = e3_we; dm_line = e3_line; dm_addr = e3_addr; dm_be = e3_be; dm_wdata = e3_wdata; end
+		3'd5:    begin dm_req = g_busy & f1_req; dm_we = f1_we; dm_line = f1_line; dm_addr = f1_addr; dm_be = f1_be; dm_wdata = f1_wdata; end
 		default: begin dm_req = g_busy & a_req;  dm_we = a_we;  dm_line = a_line;  dm_addr = a_addr;  dm_be = a_be;  dm_wdata = a_wdata;  end
 	endcase
 end
@@ -297,6 +311,7 @@ wire s8_ack = dm_ack & g_busy & (g_own == 3'd1);
 wire s9_ack = dm_ack & g_busy & (g_own == 3'd2);
 wire e2_ack = dm_ack & g_busy & (g_own == 3'd3);
 wire e3_ack = dm_ack & g_busy & (g_own == 3'd4);
+wire f1_ack = dm_ack & g_busy & (g_own == 3'd5);
 always_ff @(posedge clk) begin
 	if (dm_ack) g_busy <= 1'b0;
 	else if (!g_busy) begin
@@ -305,6 +320,7 @@ always_ff @(posedge clk) begin
 		else if (a_req)  begin g_busy <= 1'b1; g_own <= 3'd0; end
 		else if (e2_req) begin g_busy <= 1'b1; g_own <= 3'd3; end
 		else if (e3_req) begin g_busy <= 1'b1; g_own <= 3'd4; end
+		else if (f1_req) begin g_busy <= 1'b1; g_own <= 3'd5; end
 	end
 	if (reset) begin
 		g_busy <= 1'b0;
@@ -461,13 +477,34 @@ assign dfin_ch   = e3_fin;
 assign dfin_type = e3_fin ? e3_fin_dec : e2_fin_dec;
 assign dfin_info = e3_fin ? e3_fin_info : e2_fin_info;
 
-// ---- SWIM3 (PPCMac_swim3): byte registers at (offset >> 4) & F (grandcentral.cpp:205) ----
-logic [7:0] swim_rq;
+// ---- SWIM3 (PPCMac_swim3): byte registers at (offset >> 4) & F (grandcentral.cpp:205), ----
+// ---- and its DMA channel 1 ----
+logic [7:0]  swim_rq, fd_data;
+logic [31:0] dma_1_rle;
+logic        fd_valid, fd_take, fd_flush, f1_irq;
+wire         dma_1_sel = sel & dma & (addr[14:8] == 7'd1) & (addr[7:5] == 3'd0);
 
 PPCMac_swim3 swim3 (
 	.clk, .reset, .us_tick,
 	.sel(sel & devs & (sub == 4'h5)), .we, .rn(off[7:4]), .wdata(wb),
-	.rq(swim_rq), .irq(swim_irq)
+	.rq(swim_rq), .irq(swim_irq),
+	.di_valid(fd_valid), .di_data(fd_data), .di_take(fd_take), .di_flush(fd_flush),
+	.m_t(fd_m_t), .m_ok(fd_m_ok), .m_fmt(fd_m_fmt), .m_dc42(fd_m_dc42),
+	.rq_t(fd_rq_t), .rq_lba(fd_rq_lba), .dn_t(fd_dn_t), .b_ra(fd_ra), .b_q(fd_q)
+);
+
+PPCMac_dbdma dma_1 (
+	.clk, .reset,
+	.sel(dma_1_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_1_rle),
+	.dm_req(f1_req), .dm_we(f1_we), .dm_line(f1_line), .dm_addr(f1_addr), .dm_be(f1_be), .dm_wdata(f1_wdata),
+	.dm_ack(f1_ack), .dm_rdata,
+	.di_valid(fd_valid), .di_data(fd_data), .di_take(fd_take), .di_flush(fd_flush), .di_last(1'b0), .dev_st(8'h00),
+	.do_ready(1'b0), .dq_ack(1'b0), .dq_rd(8'h00),
+	/* verilator lint_off PINCONNECTEMPTY */
+	.do_data(), .do_put(), .do_last(), .xfer_in(), .xfer_out(), .drained(), .active(), .fin(), .fin_dec(), .fin_info(),
+	.dq_req(), .dq_we(), .dq_off(), .dq_wd(),
+	/* verilator lint_on PINCONNECTEMPTY */
+	.irq(f1_irq)
 );
 
 // ---- VIA (viacuda.cpp; port B and the shift register as a 6522 and Cuda have them) -------
@@ -556,6 +593,7 @@ always_comb begin
 		else if (addr[14:8] == 7'd9) rq = (off[7:5] == 3'd0) ? bswap32(dma_9_rle) : 32'h0;
 		else if (addr[14:8] == 7'd2) rq = (off[7:5] == 3'd0) ? bswap32(dma_2_rle) : 32'h0;
 		else if (addr[14:8] == 7'd3) rq = (off[7:5] == 3'd0) ? bswap32(dma_3_rle) : 32'h0;
+		else if (addr[14:8] == 7'd1) rq = (off[7:5] == 3'd0) ? bswap32(dma_1_rle) : 32'h0;
 		else if (ch_ok) begin
 			case (off[7:2])
 				6'd1:    rq = bswap32({16'h0, ch_stat[ch]});
@@ -682,6 +720,7 @@ always_ff @(posedge clk) begin
 	if (dma_a_irq) dma_lvl[10] <= 1'b1;
 	if (e2_irq)    dma_lvl[2]  <= 1'b1;
 	if (e3_irq)    dma_lvl[3]  <= 1'b1;
+	if (f1_irq)    dma_lvl[1]  <= 1'b1;
 
 	if (sel & ints & we) begin
 		case (off[7:0])

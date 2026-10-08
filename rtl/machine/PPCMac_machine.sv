@@ -145,6 +145,12 @@ module PPCMac_machine
 	output logic         disk_busy,
 	output logic signed [15:0] cd_left,  // the CD's audio, in this clock
 	output logic signed [15:0] cd_right,
+	// the floppy disk's image: hps_io's slot 6 (the other signals shared), in clk_v
+	input  logic         fd_mounted,
+	output logic [31:0]  fd_lba,
+	output logic         fd_rd,
+	output logic [5:0]   fd_blk_cnt,
+	input  logic         fd_ack,
 
 	// a DMA write to RAM, for the test bench (its reference has no DMA): one
 	// clock, as it goes into memory
@@ -565,6 +571,11 @@ logic         dfin, dfin_ch;
 logic [1:0]   dfin_type;
 logic [127:0] dfin_info;
 logic         itr_ev;
+logic         fd_m_t, fd_m_ok, fd_m_dc42, fd_rq_t, fd_dn_t;
+logic [1:0]   fd_m_fmt;
+logic [11:0]  fd_rq_lba;
+logic [9:0]   fd_ra;
+logic [7:0]   fd_q;
 logic [7:0]   itr_st;
 
 PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
@@ -583,7 +594,8 @@ PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
 	.dm_wdata(gdm_wdata), .dm_ack(gdm_ack), .dm_rdata(gdm_rdata),
 	.snd_left, .snd_right,
 	.dac_cr, .dbl_buf_cr, .cursor_x, .cursor_clut, .clk_v, .clut_index, .clut_rgb,
-	.dfin, .dfin_ch, .dfin_type, .dfin_info, .itr_ev, .itr_st
+	.dfin, .dfin_ch, .dfin_type, .dfin_info, .itr_ev, .itr_st,
+	.fd_m_t, .fd_m_ok, .fd_m_fmt, .fd_m_dc42, .fd_rq_t, .fd_rq_lba, .fd_dn_t, .fd_ra, .fd_q
 );
 
 assign ext_irq = gc_irq;
@@ -599,6 +611,19 @@ PPCMac_scsidisk #(.CLK_HZ(CPU_HZ)) disks (
 	.clk_h(clk_v), .img_mounted, .img_size, .img_readonly,
 	.sd_lba, .sd_rd, .sd_wr, .sd_blk_cnt, .sd_ack, .sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr,
 	.busy(disk_busy), .cd_left, .cd_right, .tr_ev(sd_tr_ev), .tr_rec(sd_tr_rec)
+);
+
+// ---- the floppy disk's image (SWIM3's, in Grand Central) ---------------------------------------
+PPCMac_fdblk fdblk (
+	.clk_m(clk_v), .reset_m(1'b0),
+	.img_mounted(fd_mounted), .img_size, .img_readonly,
+	.sd_lba(fd_lba), .sd_rd(fd_rd), .sd_blk_cnt(fd_blk_cnt), .sd_ack(fd_ack),
+	.sd_buff_addr, .sd_buff_dout, .sd_buff_wr,
+	.m_t(fd_m_t), .m_ok(fd_m_ok), .m_fmt(fd_m_fmt), .m_dc42(fd_m_dc42),
+	/* verilator lint_off PINCONNECTEMPTY */
+	.m_ro(),
+	/* verilator lint_on PINCONNECTEMPTY */
+	.clk, .rq_t(fd_rq_t), .rq_lba(fd_rq_lba), .dn_t(fd_dn_t), .ra(fd_ra), .q(fd_q)
 );
 
 // ---- Cuda ------------------------------------------------------------------------------------

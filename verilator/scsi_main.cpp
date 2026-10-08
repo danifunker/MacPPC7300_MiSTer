@@ -19,7 +19,10 @@
 //      INQUIRY from its window, READ CAPACITY, a 2048-byte READ(10), MODE
 //      SELECT accepted (to the command window) and refused, PLAY (the audio
 //      plays), STOP, an eject and TEST UNIT READY with no disc;
-//   11. the BlueSCSI Toolbox on ID 0: MODE SENSE page 31, LIST, SEND DATA.
+//   11. the BlueSCSI Toolbox on ID 0: MODE SENSE page 31, LIST, SEND DATA;
+//   12. SDTR, WDTR, and a MESSAGE REJECT answered under ATN (Mac OS 8.5);
+//   13. the floppy: SWIM3 and DMA channel 1 reading a DiskCopy 1440K image,
+//      a raw 800K one, an 800K DiskCopy one of an odd size (slot 6).
 // --stock: the official Main instead (no CD drive, nothing written to slot 4).
 //
 // Every byte the drivers take is checked against the image; every step's
@@ -73,8 +76,26 @@ int slot4_writes = 0;
 std::vector<uint8_t> tb_req(512);                       // the Toolbox's last request block
 std::map<uint32_t, std::vector<uint8_t>> tb_tail;       // ... and its tail blocks
 
+// ---- the floppy (slot 6): a DiskCopy 4.2 image of a 1440K disk, its 84-byte header first ------
+// (then a raw 800K GCR image, mounted by test 13)
+const uint32_t FD_SIZE = 84 + 1474560;
+uint32_t fd_hdr = 84, fd_len = 1474560, fd_size = 0;   // fd_size: a size other than hdr + len
+bool fd_remount = false;
+uint8_t fd_data(uint32_t sec, uint32_t k) { return (uint8_t)(sec * 7 + k * 3 + (k >> 8) + 1); }
+uint8_t fd_file(uint32_t o) {
+	if (fd_hdr && o < fd_hdr) {                         // DiskCopy 4.2's header
+		if (o >= 0x40 && o < 0x44) return (uint8_t)(fd_len >> (8 * (0x43 - o)));
+		if (o == 0x50) return fd_len == 409600 ? 0 : fd_len == 819200 ? 1 : fd_len == 737280 ? 2 : 3;
+		if (o == 0x51) return fd_len == 409600 ? 0x02 : 0x22;
+		if (o == 0x52) return 0x01;
+		return 0;
+	}
+	if (o < fd_hdr || o >= fd_hdr + fd_len) return 0;
+	return fd_data((o - fd_hdr) / 512, (o - fd_hdr) % 512);
+}
 void host_fill(int slot, uint32_t lba, uint8_t* out, int n) {
 	std::memset(out, 0, n);
+	if (slot == 6) { for (int k = 0; k < n; k++) out[k] = fd_file(lba * 512 + k); return; }
 	if (slot < 2) { disk_read(lba, out); return; }
 	if (stock) {                                        // the generic path: an ISO's blocks, zeros past its end
 		if (slot == 4 && lba < CD_BLOCKS) for (int k = 0; k < 512; k++) out[k] = cd_byte(lba, k);
@@ -145,14 +166,16 @@ void host_edge() {
 	if (host.clocks == 20) { host.mounted = 0x01; host.size = (uint64_t)BLOCKS * 512; }      // disk 0 (ID 0)
 	if (host.clocks == 30) { host.mounted = 0x10; host.size = (uint64_t)CD_BLOCKS * 512; }   // the CD
 	if (host.clocks == 40 && !stock) { host.mounted = 0x28; host.size = 0; }                 // the Toolbox slots announced
+	if (host.clocks == 50) { host.mounted = 0x40; host.size = FD_SIZE; }                     // the floppy
+	if (fd_remount) { fd_remount = false; host.mounted = 0x40; host.size = fd_size ? fd_size : fd_hdr + fd_len; }
 	switch (host.st) {
 		case 0:
-			if (dut->sd_rd | dut->sd_wr) {
-				unsigned m = dut->sd_rd | dut->sd_wr;
+			if (dut->sd_rd | dut->sd_wr | dut->fd_rd) {
+				unsigned m = dut->sd_rd | dut->sd_wr | (unsigned)dut->fd_rd << 6;
 				host.slot = __builtin_ctz(m);
-				host.we = (dut->sd_wr >> host.slot) & 1;
-				host.lba = dut->sd_lba;
-				host.n = 512 * ((dut->sd_blk_cnt & 0x3F) + 1);
+				host.we = host.slot < 6 && ((dut->sd_wr >> host.slot) & 1);
+				host.lba = host.slot == 6 ? dut->fd_lba : dut->sd_lba;
+				host.n = 512 * (((host.slot == 6 ? dut->fd_blk_cnt : dut->sd_blk_cnt) & 0x3F) + 1);
 				host.wait = 300 + (host.lba % 7) * 50;  // the ARM's file read, some hundreds of clocks
 				host.st = 1;
 			}
@@ -229,9 +252,11 @@ double ta = PA, tb = PB;
 void drive() {
 	dut->dm_ack = mem_ack;
 	for (int k = 0; k < 8; k++) dut->dm_rdata[k] = mem_rd[k];
-	dut->img_mounted = host.mounted;
+	dut->img_mounted = host.mounted & 0x3F;
+	dut->fd_mounted = (host.mounted >> 6) & 1;
 	dut->img_size = host.size;
-	dut->sd_ack = host.ack;
+	dut->sd_ack = host.ack & 0x3F;
+	dut->fd_ack = (host.ack >> 6) & 1;
 	dut->sd_buff_addr = host.addr;
 	dut->sd_buff_dout = host.dout;
 	dut->sd_buff_wr = host.wr;
@@ -383,6 +408,26 @@ void finish(uint8_t want_status) {
 	mw(3, 0x0C);
 }
 
+// SWIM3 (Grand Central's 15000) and its DMA channel 1 (08100)
+const uint32_t SWIM = 0x15000, DMA_1 = 0x08100;
+void sw(int reg, uint8_t v) { access(SWIM + 16 * reg, 1, true, v); }
+uint8_t sr(int reg) { return (uint8_t)access(SWIM + 16 * reg, 1, false, 0); }
+void d1w(int reg, uint32_t le) {
+	uint32_t be = (le >> 24) | ((le >> 8) & 0xFF00) | ((le << 8) & 0xFF0000) | (le << 24);
+	access(DMA_1 + 4 * reg, 4, true, be);
+}
+// a drive command (address 0-5, the value), as the .Sony driver strobes one with CA3
+void fd_cmd(int a, int v) {
+	if (a & 4) sw(7, 0x20); else sw(6, 0x20);           // HEADSEL is the address's top bit
+	sw(4, (uint8_t)(0x08 | (v << 2) | (a & 3)));
+	sw(4, (uint8_t)(0x00 | (a & 3)));
+}
+// a drive status line (address 0-F)
+int fd_stat(int a) {
+	if (a & 8) sw(7, 0x20); else sw(6, 0x20);
+	sw(4, (uint8_t)(a & 7));
+	return (sr(7) >> 2) & 1;
+}
 // a message out: ATN on for all but the last byte, as Linux's mesh.c sends one
 void msg_out(const std::vector<uint8_t>& m) {
 	if (m.size() > 1) {
@@ -426,6 +471,33 @@ void put_cmd(uint32_t at, uint8_t cmd, uint8_t bits, uint16_t req, uint32_t addr
 }
 uint16_t res_count(uint32_t at) { return mem[at + 12] | mem[at + 13] << 8; }
 uint16_t xfer_stat(uint32_t at) { return mem[at + 14] | mem[at + 15] << 8; }
+
+// read n sectors from first by DMA into memory at at, waiting for SECT_DONE
+bool fd_read(uint8_t first, uint8_t n, uint32_t at) {
+	put_cmd(0x900, 3, 0x00, (uint16_t)(512 * n), at);
+	put_cmd(0x910, 7, 0x00, 0, 0);
+	d1w(3, 0x900); d1w(0, 0x80008000);
+	sw(0xD, first); sw(0xE, n);
+	sw(0xF, 0x08);
+	sr(8);
+	sw(7, 0x08);
+	for (int i = 0; i < 200000; i++) {
+		if (sr(8) & 0x08) { sw(6, 0x08); run(200); d1w(0, 0x80000000); return true; }
+		run(50);
+	}
+	sw(6, 0x08); d1w(0, 0x80000000);
+	return false;
+}
+bool fd_check(uint32_t at, uint32_t sec, int n, const char* what) {
+	for (int s = 0; s < n; s++)
+		for (int k = 0; k < 512; k++)
+			if (mem[at + 512 * s + k] != fd_data(sec + s, k)) {
+				check(false, "%s: sector %u byte %d read %02X, the image has %02X", what, sec + s, k,
+					mem[at + 512 * s + k], fd_data(sec + s, k));
+				return false;
+			}
+	return true;
+}
 
 } // namespace
 
@@ -750,6 +822,68 @@ int main(int argc, char** argv) {
 		send_cdb({0x00, 0, 0, 0, 0, 0});
 		check(wait_phase() == 3, "TEST UNIT READY after the reject: no STATUS");
 		finish(0x00);
+	}
+
+	// ---- 13: the floppy: a DiskCopy 1440K image read by SWIM3 into memory by DMA channel 1 ----
+	std::printf("13. the floppy (SWIM3, a DiskCopy 1440K image): status, motor, 3 sectors of track 0, 2 of track 2 side 1\n");
+	{
+		sw(0xF, 0x00);
+		sw(7, 0x03);                                    // INT_ENA, the internal drive
+		check(fd_stat(8) == 0 && fd_stat(7) == 0 && fd_stat(0xF) == 0 && fd_stat(9) == 0,
+			"floppy status: no disk %d no drive %d not HD %d not protected %d", fd_stat(8), fd_stat(7), fd_stat(0xF), fd_stat(9));
+		check(fd_stat(0xD) == 1, "floppy: the drive's mode is not MFM");
+		fd_cmd(2, 0);                                   // motor on
+		check(fd_stat(2) == 0 && fd_stat(0xE) == 0, "floppy: motor %d ready %d", fd_stat(2), fd_stat(0xE));
+		fd_stat(4);                                     // head 0
+		bool ok = fd_read(1, 3, 0x60000);
+		check(ok, "floppy: no SECT_DONE for track 0's sectors 1-3");
+		if (ok) fd_check(0x60000, 0, 3, "track 0 side 0");
+		check(sr(0xA) == 0x00 && sr(0xB) == 0x83 && sr(0xC) == 0x02, "floppy: the last address field %02X %02X %02X",
+			sr(0xA), sr(0xB), sr(0xC));
+		fd_cmd(0, 0);                                   // toward track 79
+		fd_cmd(1, 0); fd_cmd(1, 0);
+		check(fd_stat(0xA) == 1, "floppy: still at track 0 after two steps");
+		fd_stat(0xC);                                   // head 1
+		ok = fd_read(5, 2, 0x61000);
+		check(ok, "floppy: no SECT_DONE for track 2 side 1's sectors 5-6");
+		if (ok) fd_check(0x61000, (2 * 2 + 1) * 18 + 4, 2, "track 2 side 1");
+		check(sr(0xA) == 0x82 && sr(0xB) == 0x86, "floppy: the last address field %02X %02X", sr(0xA), sr(0xB));
+		fd_cmd(3, 1);                                   // eject
+		check(fd_stat(8) == 1 && fd_stat(3) == 1, "floppy: after the eject, disk %d latch %d", fd_stat(8), fd_stat(3));
+
+		std::printf("    then a raw 800K GCR image: 2 sectors of track 20 (11 a track) side 1\n");
+		fd_hdr = 0; fd_len = 819200; fd_remount = true;
+		run(2000);
+		fd_cmd(4, 1);                                   // the eject latch reset
+		check(fd_stat(8) == 0 && fd_stat(0xF) == 1 && fd_stat(0xD) == 0,
+			"800K: no disk %d not HD %d MFM mode %d", fd_stat(8), fd_stat(0xF), fd_stat(0xD));
+		fd_cmd(2, 0);
+		fd_cmd(0, 0);
+		for (int t = 0; t < 20; t++) fd_cmd(1, 0);
+		fd_stat(0xC);
+		ok = fd_read(3, 2, 0x62000);
+		check(ok, "800K: no SECT_DONE for track 20 side 1's sectors 3-4");
+		if (ok) fd_check(0x62000, 384 + 4 * 11 * 2 + 11 + 3, 2, "800K track 20 side 1");
+		check(sr(0xA) == 0x94 && sr(0xB) == 0x84 && sr(0xC) == 0x22, "800K: the last address field %02X %02X %02X",
+			sr(0xA), sr(0xB), sr(0xC));
+
+		std::printf("    then an 800K DiskCopy image of an odd size (838,479), told by its header: track 20 again\n");
+		fd_cmd(3, 1);
+		fd_hdr = 84; fd_len = 819200; fd_size = 838479; fd_remount = true;
+		run(20000);
+		fd_cmd(4, 1);
+		check(fd_stat(8) == 0, "838,479 bytes: no disk");
+		fd_cmd(2, 0);
+		fd_cmd(0, 0);
+		for (int t = 0; t < 20; t++) fd_cmd(1, 0);
+		fd_stat(0xC);
+		ok = fd_read(3, 2, 0x63000);
+		check(ok, "838,479 bytes: no SECT_DONE");
+		if (ok) fd_check(0x63000, 384 + 4 * 11 * 2 + 11 + 3, 2, "838,479 bytes, track 20 side 1");
+		fd_cmd(3, 1);
+		fd_hdr = 0; fd_len = 1000; fd_size = 1000; fd_remount = true;
+		run(20000);
+		check(fd_stat(8) == 1, "1,000 bytes taken for a disk");
 	}
 
 	std::printf("%llu cycles; DMA: %d lines, %d words; the card: %d blocks read, %d written\n",

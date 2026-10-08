@@ -10,8 +10,9 @@ from the 7.6.1 image): programmed-I/O reads, DMA reads into memory with a
 descriptor longer than MESH's count, multi-block DMA, DMA writes, INQUIRY,
 READ CAPACITY, a selection of an absent ID; then the CD-ROM at ID 3 and the
 BlueSCSI Toolbox against a model of the Main's Mac layer (--stock: the
-official Main, no CD drive); last the messages Mac OS 8.5's driver sends
-(SDTR, WDTR, a MESSAGE REJECT answered under ATN). A memory answers the DMA port, and hps_io's
+official Main, no CD drive); the messages Mac OS 8.5's driver sends (SDTR,
+WDTR, a MESSAGE REJECT answered under ATN); last the floppy: SWIM3 reading
+DiskCopy and raw images (1440K, 800K) into memory by DMA channel 1. A memory answers the DMA port, and hps_io's
 block side serves a made-up image (or --disk FILE). Every byte is checked.
 --verbose prints every block the card moves. A few seconds.
 

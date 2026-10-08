@@ -1,8 +1,9 @@
 // The SCSI bench's top: Grand Central (PPCMac_gc: MESH, its DMA channel)
 // and the disks (PPCMac_scsidisk) on the internal bus, wired as
-// PPCMac_machine wires them; Grand Central's register port, its DMA port
-// and the disks' hps_io side are the bench's. The SCSI controllers' 25 MHz
-// tick is made here by phase accumulation, as in PPCMac_machine.
+// PPCMac_machine wires them, and the floppy's image (PPCMac_fdblk) for
+// SWIM3; Grand Central's register port, its DMA port and the hps_io side
+// are the bench's. The SCSI controllers' 25 MHz tick is made here by phase
+// accumulation, as in PPCMac_machine.
 
 module scsi_tb_top
 #(
@@ -47,6 +48,12 @@ module scsi_tb_top
 	input  logic         sd_buff_wr,
 	output logic [15:0]  cd_left,
 	output logic [15:0]  cd_right,
+	// the floppy's slot (6)
+	input  logic         fd_mounted,
+	output logic [31:0]  fd_lba,
+	output logic         fd_rd,
+	output logic [5:0]   fd_blk_cnt,
+	input  logic         fd_ack,
 
 	// the bus, to watch
 	output logic         bus_bsy, bus_sel, bus_req, bus_ack, bus_atn,
@@ -65,6 +72,17 @@ always_ff @(posedge clk) begin
 	else scsi_acc <= scsi_acc + SCSI_HZ;
 	if (reset) begin scsi_acc <= 32'h0; scsi_tick <= 1'b0; end
 end
+
+// the floppy's microseconds, 16 times as fast as the CPU's clock would make them
+logic [1:0] us_div = 2'd0;
+always_ff @(posedge clk) us_div <= us_div + 2'd1;
+wire us_tick = us_div == 2'd0;
+
+logic        fd_m_t, fd_m_ok, fd_m_dc42, fd_rq_t, fd_dn_t;
+logic [1:0]  fd_m_fmt;
+logic [11:0] fd_rq_lba;
+logic [9:0]  fd_ra;
+logic [7:0]  fd_q;
 
 logic       mesh_rst, mesh_bsy, mesh_sel, mesh_atn, mesh_ack, mesh_req, mesh_msg, mesh_cd, mesh_io;
 logic [7:0] mesh_db;
@@ -91,7 +109,7 @@ assign bus_db = scsi_db;
 
 /* verilator lint_off PINCONNECTEMPTY */
 PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
-	.clk, .reset, .via_tick(1'b0), .rtxc_tick(1'b0), .scsi_tick, .us_tick(1'b0), .snd_tick(1'b0),
+	.clk, .reset, .via_tick(1'b0), .rtxc_tick(1'b0), .scsi_tick, .us_tick, .snd_tick(1'b0),
 	.sel, .we, .addr, .be, .wdata, .rdata, .irq,
 	.cuda_treq(1'b1), .cuda_cb1(1'b1), .cb2(1'b1), .via_tip(), .via_byteack(), .via_cb2_oe(), .via_cb2_out(),
 	.modem_txd(), .modem_rxd(1'b1), .modem_cts(1'b0), .modem_rts(),
@@ -105,7 +123,17 @@ PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
 	.dm_req, .dm_we, .dm_line, .dm_addr, .dm_be, .dm_wdata, .dm_ack, .dm_rdata,
 	.snd_left(), .snd_right(),
 	.dac_cr(), .dbl_buf_cr(), .cursor_x(), .cursor_clut(), .clk_v(clk_h), .clut_index(8'h0), .clut_rgb(),
-	.dfin(), .dfin_ch(), .dfin_type(), .dfin_info(), .itr_ev(), .itr_st()
+	.dfin(), .dfin_ch(), .dfin_type(), .dfin_info(), .itr_ev(), .itr_st(),
+	.fd_m_t, .fd_m_ok, .fd_m_fmt, .fd_m_dc42, .fd_rq_t, .fd_rq_lba, .fd_dn_t, .fd_ra, .fd_q
+);
+
+PPCMac_fdblk fdblk (
+	.clk_m(clk_h), .reset_m(reset),
+	.img_mounted(fd_mounted), .img_size, .img_readonly(1'b0),
+	.sd_lba(fd_lba), .sd_rd(fd_rd), .sd_blk_cnt(fd_blk_cnt), .sd_ack(fd_ack),
+	.sd_buff_addr, .sd_buff_dout, .sd_buff_wr,
+	.m_t(fd_m_t), .m_ok(fd_m_ok), .m_fmt(fd_m_fmt), .m_dc42(fd_m_dc42), .m_ro(),
+	.clk, .rq_t(fd_rq_t), .rq_lba(fd_rq_lba), .dn_t(fd_dn_t), .ra(fd_ra), .q(fd_q)
 );
 
 PPCMac_scsidisk #(.CLK_HZ(CPU_HZ)) disks (

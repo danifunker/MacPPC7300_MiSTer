@@ -99,10 +99,12 @@ localparam CONF_STR = {
 	// family's (NVRAM, BlueSCSI Toolbox, CD-ROM, CD changer); slot 2 holds
 	// Grand Central's NVRAM (an 8 KB .nvr file, PPCMac_nvsave); the Toolbox
 	// and the changer are the Main's own (no menu entry); the CD-ROM needs
-	// the Main's Mac CD layer (PPCMac_scsidisk)
+	// the Main's Mac CD layer (PPCMac_scsidisk); the floppy (slot 6) is not
+	// remembered: a disk left in would be tried at every start
 	"SC0,HDAVHD,Mount SCSI disk 0;",
 	"SC1,HDAVHD,Mount SCSI disk 1;",
 	"SC4,ISOTO*CUEBINCHD,Mount CD-ROM;",
+	"S6,DSKIMGIMA,Insert floppy disk;",
 	"SC2,NVR,Mount NVRAM;",
 	"-;",
 	"O[3:1],RAM,16 MB,24 MB,48 MB,64 MB,96 MB,6 MB;",
@@ -190,10 +192,13 @@ wire [26:0] ioctl_addr;
 wire  [7:0] ioctl_dout;
 wire        ioctl_wait;
 
-// the block devices, as the Mac SCSI family's layout has them (VDNUM 6):
-// SCSI disks 0 and 1 on slots 0 and 1, the NVRAM image on 2, the Toolbox on
-// 3, the CD-ROM on 4, the CD changer on 5
-localparam VDNUM = 6;
+// the block devices, as the Mac SCSI family's layout has them: SCSI disks 0
+// and 1 on slots 0 and 1, the NVRAM image on 2, the Toolbox on 3, the CD-ROM
+// on 4, the CD changer on 5; then the floppy disk on 6 (the Main's generic path)
+localparam VDNUM = 7;
+wire [31:0] fd_lba;
+wire        fd_rd;
+wire  [5:0] fd_blk_cnt;
 wire [31:0] nvs_lba;
 wire        nvs_rd, nvs_wr;
 wire  [7:0] nvs_din;
@@ -210,12 +215,15 @@ wire  [7:0] disk_buff_din;
 wire  [5:0] disk_rd, disk_wr, disk_blk_cnt;
 assign sd_lba[0] = disk_lba; assign sd_lba[1] = disk_lba; assign sd_lba[2] = nvs_lba;
 assign sd_lba[3] = disk_lba; assign sd_lba[4] = disk_lba; assign sd_lba[5] = disk_lba;
+assign sd_lba[6] = fd_lba;
 assign sd_blk_cnt[0] = disk_blk_cnt; assign sd_blk_cnt[1] = disk_blk_cnt; assign sd_blk_cnt[2] = 0;
 assign sd_blk_cnt[3] = disk_blk_cnt; assign sd_blk_cnt[4] = disk_blk_cnt; assign sd_blk_cnt[5] = disk_blk_cnt;
-assign sd_rd = {disk_rd[5:3], nvs_rd, disk_rd[1:0]};
-assign sd_wr = {disk_wr[5:3], nvs_wr, disk_wr[1:0]};
+assign sd_blk_cnt[6] = fd_blk_cnt;
+assign sd_rd = {fd_rd, disk_rd[5:3], nvs_rd, disk_rd[1:0]};
+assign sd_wr = {1'b0, disk_wr[5:3], nvs_wr, disk_wr[1:0]};
 assign sd_buff_din[0] = disk_buff_din; assign sd_buff_din[1] = disk_buff_din; assign sd_buff_din[2] = nvs_din;
 assign sd_buff_din[3] = disk_buff_din; assign sd_buff_din[4] = disk_buff_din; assign sd_buff_din[5] = disk_buff_din;
+assign sd_buff_din[6] = 8'd0;
 
 hps_io #(.CONF_STR(CONF_STR), .VDNUM(VDNUM), .BLKSZ(2)) hps_io
 (
@@ -600,8 +608,9 @@ PPCMac_system #(.CPU_HZ(CPU_MHZ * 1000000), .TB_HZ(12500000), .SDRAM_MB(128)) sy
 	.mon_std(mon_c[1][8:6]), .mon_ext(mon_c[1][5:0]),
 	.ps2_key, .ps2_mouse, .joy,           // in the memory clock: PPCMac_adb synchronises them
 	.clock_ok, .clock_secs,
-	.img_mounted, .img_size, .img_readonly,   // the targets' side runs in the memory clock
-	.sd_lba(disk_lba), .sd_rd(disk_rd), .sd_wr(disk_wr), .sd_blk_cnt(disk_blk_cnt), .sd_ack,
+	.img_mounted(img_mounted[5:0]), .img_size, .img_readonly,   // the targets' side runs in the memory clock
+	.sd_lba(disk_lba), .sd_rd(disk_rd), .sd_wr(disk_wr), .sd_blk_cnt(disk_blk_cnt), .sd_ack(sd_ack[5:0]),
+	.fd_mounted(img_mounted[6]), .fd_lba, .fd_rd, .fd_blk_cnt, .fd_ack(sd_ack[6]),
 	.sd_buff_addr, .sd_buff_dout, .sd_buff_din(disk_buff_din), .sd_buff_wr, .disk_busy,
 	.cd_left, .cd_right,
 	.net_on, .tr_mesh(tr_mesh_c[1]),

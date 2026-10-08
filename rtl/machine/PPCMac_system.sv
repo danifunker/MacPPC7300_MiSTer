@@ -112,6 +112,12 @@ module PPCMac_system
 	output logic         disk_busy,
 	output logic signed [15:0] cd_left,  // the CD's audio, in the CPU's clock
 	output logic signed [15:0] cd_right,
+	// the floppy disk's image: hps_io's slot 6 (the other signals shared)
+	input  logic         fd_mounted,
+	output logic [31:0]  fd_lba,
+	output logic         fd_rd,
+	output logic [5:0]   fd_blk_cnt,
+	input  logic         fd_ack,
 
 	// the VRAM's accesses as the picture side answers them, in the memory's
 	// clock (for the test bench)
@@ -241,6 +247,7 @@ PPCMac_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_FAST
 	.snoop_req, .snoop_we, .snoop_addr, .snoop_ack,
 	.img_mounted, .img_size, .img_readonly, .sd_lba, .sd_rd, .sd_wr, .sd_blk_cnt, .sd_ack,
 	.sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr, .disk_busy, .cd_left, .cd_right,
+	.fd_mounted, .fd_lba, .fd_rd, .fd_blk_cnt, .fd_ack,
 	.dma_wr, .dma_wr_line, .dma_wr_addr, .dma_wr_be, .dma_wr_data,
 	.modem_txd, .modem_rxd, .modem_cts, .modem_rts, .snd_left, .snd_right,
 	.net_link, .net_tx_we, .net_tx_wa, .net_tx_wd, .net_tx_go, .net_tx_len, .net_tx_done,
