@@ -321,7 +321,7 @@ PPCMac_dbdma dma_a (
 	.sel(dma_a_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_a_rle),
 	.dm_req(a_req), .dm_we(a_we), .dm_line(a_line), .dm_addr(a_addr), .dm_be(a_be), .dm_wdata(a_wdata),
 	.dm_ack(a_ack), .dm_rdata,
-	.di_valid(mi_valid), .di_data(mi_data), .di_take(mi_take), .di_flush(mi_flush), .di_last(1'b0),
+	.di_valid(mi_valid), .di_data(mi_data), .di_take(mi_take), .di_flush(mi_flush), .di_last(1'b0), .dev_st(8'h00),
 	.do_ready(mo_ready), .do_data(mo_data), .do_put(mo_put),
 	/* verilator lint_off PINCONNECTEMPTY */
 	.do_last(), .xfer_in(), .xfer_out(), .active(), .fin(), .fin_dec(), .fin_info(),
@@ -350,7 +350,7 @@ PPCMac_dbdma dma_8 (
 	.sel(dma_8_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_8_rle),
 	.dm_req(s8_req), .dm_we(s8_we), .dm_line(s8_line), .dm_addr(s8_addr), .dm_be(s8_be), .dm_wdata(s8_wdata),
 	.dm_ack(s8_ack), .dm_rdata,
-	.di_valid(1'b0), .di_data(8'h00), .di_flush(1'b0), .di_last(1'b0),
+	.di_valid(1'b0), .di_data(8'h00), .di_flush(1'b0), .di_last(1'b0), .dev_st(8'h00),
 	.do_ready(s8_ready), .do_data(s8_data), .do_put(s8_put),
 	/* verilator lint_off PINCONNECTEMPTY */
 	.do_last(), .di_take(), .xfer_in(), .xfer_out(), .drained(), .fin(), .fin_dec(), .fin_info(),
@@ -364,7 +364,7 @@ PPCMac_dbdma dma_9 (
 	.sel(dma_9_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_9_rle),
 	.dm_req(s9_req), .dm_we(s9_we), .dm_line(s9_line), .dm_addr(s9_addr), .dm_be(s9_be), .dm_wdata(s9_wdata),
 	.dm_ack(s9_ack), .dm_rdata,
-	.di_valid(s9_valid), .di_data(s9_data), .di_take(s9_take), .di_flush(1'b0), .di_last(1'b0),
+	.di_valid(s9_valid), .di_data(s9_data), .di_take(s9_take), .di_flush(1'b0), .di_last(1'b0), .dev_st(8'h00),
 	.do_ready(1'b0),
 	/* verilator lint_off PINCONNECTEMPTY */
 	.do_data(), .do_put(), .do_last(), .xfer_in(), .xfer_out(), .drained(), .fin(), .fin_dec(), .fin_info(),
@@ -379,6 +379,7 @@ logic [7:0]  mace_rq;
 logic [31:0] dma_2_rle, dma_3_rle;
 logic        e2_ready, e2_put, e2_last, e2_irq, e3_irq, e2_fin, e3_fin;
 logic [1:0]  e2_fin_dec, e3_fin_dec;
+logic        mace_xmtsv;
 logic [127:0] e2_fin_info, e3_fin_info;
 logic [7:0]  e2_data, e3_data;
 logic        e3_valid, e3_last, e3_take, e3_xin;
@@ -394,7 +395,7 @@ PPCMac_mace mace (
 	.link(net_link), .tx_we(net_tx_we), .tx_wa(net_tx_wa), .tx_wd(net_tx_wd), .tx_go(net_tx_go),
 	.tx_len(net_tx_len), .tx_done(net_tx_done), .rx_ra(net_rx_ra), .rx_q(net_rx_q), .rx_avail(net_rx_avail),
 	.rx_len(net_rx_len), .rx_done(net_rx_done),
-	.irq(mace_irq)
+	.irq(mace_irq), .xmtsv(mace_xmtsv)
 );
 
 PPCMac_dbdma dma_2 (
@@ -403,6 +404,7 @@ PPCMac_dbdma dma_2 (
 	.dm_req(e2_req), .dm_we(e2_we), .dm_line(e2_line), .dm_addr(e2_addr), .dm_be(e2_be), .dm_wdata(e2_wdata),
 	.dm_ack(e2_ack), .dm_rdata,
 	.di_valid(1'b0), .di_data(8'h00), .di_flush(1'b0), .di_last(1'b0),
+	.dev_st({2'b00, mace_xmtsv, 5'b00000}),            // s5: MACE's transmit status valid
 	.do_ready(e2_ready), .do_put(e2_put), .do_last(e2_last), .do_data(e2_data),
 	/* verilator lint_off PINCONNECTEMPTY */
 	.di_take(), .xfer_in(), .xfer_out(), .drained(), .active(),
@@ -415,7 +417,7 @@ PPCMac_dbdma #(.S6_EOF(1'b1)) dma_3 (
 	.sel(dma_3_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_3_rle),
 	.dm_req(e3_req), .dm_we(e3_we), .dm_line(e3_line), .dm_addr(e3_addr), .dm_be(e3_be), .dm_wdata(e3_wdata),
 	.dm_ack(e3_ack), .dm_rdata,
-	.di_valid(e3_valid), .di_data(e3_data), .di_flush(1'b0), .di_last(e3_last), .di_take(e3_take),
+	.di_valid(e3_valid), .di_data(e3_data), .di_flush(1'b0), .di_last(e3_last), .di_take(e3_take), .dev_st(8'h00),
 	.xfer_in(e3_xin),
 	.do_ready(1'b0),
 	/* verilator lint_off PINCONNECTEMPTY */

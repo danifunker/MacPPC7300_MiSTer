@@ -74,18 +74,20 @@
 //  ACTIVE (a device that streams, as AWACS, runs while it is set).
 //
 //  Left out (docs/PPCMac_stubs.md): STORE_QUAD and LOAD_QUAD to device
-//  registers (only memory is reached), the keys other than 0 (KEY_STREAM0),
-//  and the device's own status bits in s7-s0 but one: with S6_EOF, s6 reads
-//  1 while an INPUT_LAST that the device ended finishes. An INPUT_LAST ends
-//  before its count when the device marks a byte as a frame's last (di_last:
-//  MACE's receive, 2026-10-08), resCount telling what was left.
+//  registers (only memory is reached) and the keys other than 0
+//  (KEY_STREAM0). The device's status bits come in on dev_st (MACE's
+//  transmit status valid as s5 on channel 2). An INPUT_LAST ends before its
+//  count when the device marks a byte as a frame's last (di_last: MACE's
+//  receive, 2026-10-08), resCount telling what was left; with S6_EOF an
+//  INPUT_MORE too, and s6 reads 1 while the command it ended finishes.
 //
 //============================================================================
 
 module PPCMac_dbdma
 #(
-	// s6 reads 1 while an INPUT_LAST the device ended is finishing (Grand Central's
-	// Ethernet receive channel: Mac OS's interrupt select and NetBSD's if_mc test it)
+	// the device's end of frame ends an INPUT_MORE too, and s6 reads 1 while the command it
+	// ended finishes (Grand Central's Ethernet receive channel: Mac OS gives it INPUT_MOREs;
+	// NetBSD's if_mc tests s6 in xferStatus)
 	parameter bit S6_EOF = 1'b0
 )
 (
@@ -115,6 +117,7 @@ module PPCMac_dbdma
 	output logic         di_take,         // ... taken in this clock
 	input  logic         di_flush,        // no more bytes are coming for now
 	input  logic         di_last,         // the byte taken ends a frame: an INPUT_LAST ends with it
+	input  logic [7:0]   dev_st,          // the device's status bits s7-s0 (ORed in)
 	input  logic         do_ready,        // the device takes a byte
 	output logic [7:0]   do_data,
 	output logic         do_put,          // ... put in this clock
@@ -140,7 +143,8 @@ logic [15:0] stat;
 logic [31:0] cmd_ptr, int_sel, br_sel, wait_sel;
 logic        in_end;                    // the device ended the INPUT_LAST's frame
 assign active = stat[ACTIVE];
-wire  [15:0] st_d = stat | ((S6_EOF && in_end) ? 16'h0040 : 16'h0000);   // with the device's bits
+// with the device's bits
+wire  [15:0] st_d = stat | {8'h00, dev_st} | ((S6_EOF && in_end) ? 16'h0040 : 16'h0000);
 
 always_comb begin
 	case (rn)
@@ -191,6 +195,7 @@ logic flushing;                         // the write-back in hand is a flush's
 logic pausing;                          // PAUSE: hold where we are
 
 wire  is_in  = (cmd == 4'd2) || (cmd == 4'd3);
+wire  eof_ends = (cmd == 4'd3) || (S6_EOF && cmd == 4'd2);   // the device's end of frame ends it
 wire  go     = stat[ACTIVE] & ~pausing & ~stop_req;       // may start something new
 assign xfer_in  = (s == S_IN) & go & (res_count != 16'd0);
 assign xfer_out = (s == S_OUT) & go & lb_ok & (res_count != 16'd0);
@@ -228,9 +233,18 @@ wire [15:0] c_mask = wle[31:16];
 wire [15:0] c_data = wle[15:0];
 wire        c_wr   = sel & we & (rn == 3'd0);
 
+logic         stop_tr = 1'b0;
+logic [127:0] stop_info;
+
 always_ff @(posedge clk) begin
 	irq <= 1'b0;
 	fin <= 1'b0;
+	if (stop_tr) begin
+		stop_tr  <= 1'b0;
+		fin      <= 1'b1;
+		fin_dec  <= 2'd2;
+		fin_info <= stop_info;
+	end
 	if (dm_ack) dm_req <= 1'b0;
 
 	// ---- the registers ------------------------------------------------------------------
@@ -261,11 +275,10 @@ always_ff @(posedge clk) begin
 					stop_req <= 1'b1;
 					irq_pend <= stat[ACTIVE] && cmd < 4'd7 && cond(cmd_bits[5:4], int_sel, st_d);
 				end
-				fin      <= 1'b1;               // the trace: where it was stopped
-				fin_dec  <= 2'd2;
-				fin_info <= {cmd_ptr, cmd, 1'b0, key, cmd_bits, req_count, res_count, st_d,
-				             4'(s), 25'd0, cond(cmd_bits[1:0], wait_sel, st_d), cond(cmd_bits[3:2], br_sel, st_d),
-				             cond(cmd_bits[5:4], int_sel, st_d)};
+				stop_tr   <= 1'b1;              // the trace: where it was stopped (a clock later,
+				stop_info <= {cmd_ptr, cmd, 1'b0, key, cmd_bits, req_count, res_count, st_d,   // after
+				              4'(s), 25'd0, cond(cmd_bits[1:0], wait_sel, st_d),              // the write's
+				              cond(cmd_bits[3:2], br_sel, st_d), cond(cmd_bits[5:4], int_sel, st_d)};  // own)
 				stat[RUN]    <= 1'b0;
 				stat[ACTIVE] <= 1'b0;
 				stat[DEAD]   <= 1'b0;
@@ -357,8 +370,8 @@ always_ff @(posedge clk) begin
 				lline     <= addr[31:5];
 				addr      <= addr + 32'd1;
 				res_count <= res_count - 16'd1;
-				if (di_last && cmd == 4'd3) in_end <= 1'b1;
-				if (addr[4:0] == 5'd31 || res_count == 16'd1 || (di_last && cmd == 4'd3)) s <= S_INW;
+				if (di_last && eof_ends) in_end <= 1'b1;
+				if (addr[4:0] == 5'd31 || res_count == 16'd1 || (di_last && eof_ends)) s <= S_INW;
 			end
 			else if (stop_req || flush_req || (di_flush && lv != 32'h0) || res_count == 16'd0)
 				s <= S_INW;

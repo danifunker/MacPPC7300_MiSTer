@@ -109,7 +109,8 @@ module PPCMac_mace
 	input  logic [10:0] rx_len,
 	output logic        rx_done,
 
-	output logic        irq
+	output logic        irq,
+	output logic        xmtsv            // a sent frame's status is valid (Grand Central: DMA channel 2's s5)
 );
 
 logic [7:0]  xmt_fc, rcv_fc, int_stat, int_mask, biu_cc, fifo_cc, mac_cc, pls_cc, phy_cc, iac, utr, xmt_fs, mpc;
@@ -135,6 +136,7 @@ wire  [11:0] f_time = len_b + 12'd16;
 wire  [63:0] t_next = t_word | ({56'd0, do_data} << {f_len[2:0], 3'b000});
 
 assign irq      = |(int_stat & ~int_mask);
+assign xmtsv    = xmt_fs[7];
 assign do_ready = ~f_held;
 
 always_comb begin

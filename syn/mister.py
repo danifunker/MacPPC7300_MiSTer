@@ -415,8 +415,8 @@ def trace(last, first, fname=None):
             addr = int.from_bytes(r[8:12], "little")
             data = int.from_bytes(r[12:16], "little")
             blk = (addr >> 8) & 0x1FF
-            if blk in (0x100, 0x110, 0x111):
-                reg = ("MESH " + MESH_REGS[(addr >> 4) & 15] if blk == 0x100 else
+            if blk in (0x180, 0x110, 0x111):
+                reg = ("MESH " + MESH_REGS[(addr >> 4) & 15] if blk == 0x180 else
                        "MACE " + MACE_REGS.get((addr >> 4) & 31, "%d" % ((addr >> 4) & 31)))
                 if be == 8:
                     data >>= 24

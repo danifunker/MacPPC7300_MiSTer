@@ -14,7 +14,7 @@ BASE, RECS = 0x30500000, 2048
 secs, out = float(sys.argv[1]), sys.argv[2]
 f = os.open('/dev/mem', os.O_RDONLY | os.O_SYNC)
 m = mmap.mmap(f, 64 + RECS * 32, mmap.MAP_SHARED, mmap.PROT_READ, offset=BASE)
-n0 = struct.unpack('<Q', m[0:8])[0] & 0xFFFFFFFF
+n0 = max(0, (struct.unpack('<Q', m[0:8])[0] & 0xFFFFFFFF) - RECS)    # what the ring still holds
 o = open(out, 'wb')
 end = time.time() + secs
 last, lost = n0, 0
