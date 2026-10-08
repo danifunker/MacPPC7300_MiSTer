@@ -61,7 +61,11 @@
 //                     once the FIFO and the DMA channel have emptied too). A
 //                     data phase's count of 0 is 65,536. After the last byte
 //                     of a message in, ACK stays up (so a reject can be
-//                     signalled) until the next command lets it go
+//                     signalled) until the next command lets it go; after a
+//                     status byte too, so the target cannot ask for the
+//                     message before the driver asks MESH for it (the 7300's
+//                     SIM waits for REQ to drop after the status, FFEB8D98,
+//                     and would wait for ever on a target that asks at once)
 //    9  bus free      lets go of ACK unless ATN is up; done once BSY drops, a
 //                     phase mismatch if the target asks for more (REQ) first
 //    C, D             reselection on, off: command done at once
@@ -343,7 +347,8 @@ always_ff @(posedge clk) begin
 				end
 				else if (bus_push) begin        // in: taken; ACK
 					ln_lo[4] <= 1'b1;
-					last_in  <= (ph == 3'b111) && (xc == 17'd1);
+					// (ACK stays up after a message in's last byte, and a status's)
+					last_in  <= (ph == 3'b111 || ph == 3'b011) && (xc == 17'd1);
 					sq       <= SQ_ACK_WAIT;
 				end
 			end
