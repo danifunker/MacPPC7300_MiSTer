@@ -1,0 +1,26 @@
+; ============================================================================
+; ROM resource 'nlib' -16405 VideoServicesGlobals at FFDFF720
+; ============================================================================
+; data at ROM 1FF720 (CC bytes), entry at 1FF7E0, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 000000cc 00000474
+;
+; Columns: address, flag, raw bytes, instruction, ; comment.
+;   flag '*' executed in the coverage run, ' ' reached by control flow,
+;   '?' decodes as code but neither executed nor reached, 'd' data.
+
+; PEF container: architecture pwpc, format version 1, timestamp ABBB6826, versions 00000000/00000000/00000000
+;   2 sections (1 instantiated)
+;   section 0 pidata     container +000B8 len 00003 (ROM 1FF7D8 = FFDFF7D8), unpacked 00004, total 00004, share 4, align 4
+;   section 1 loader     container +00060 len 00056 (ROM 1FF780 = FFDFF780), unpacked 00000, total 00000, share 4, align 2
+;
+
+; ----------------------------------------------------------------------------
+; data section 0 (pidata), unpacked 4 bytes; addresses are offsets in the section;
+; relocated words are named (imports) or point into a section (code+X / data+X).
+; ----------------------------------------------------------------------------
+; full unpacked image:
+00000000  00 00 00 00                                      |....|
+
+; exports (1):
+;   gMasterList                              class data    section  0 offset 0
+; imports (0):

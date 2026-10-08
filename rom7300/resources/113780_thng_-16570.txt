@@ -1,0 +1,10 @@
+; ROM resource 'thng' -16570  at FFD13780
+; data at ROM 113780 (46 bytes), entry at 1137C0, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 00000046 000003b4
+
+; component description: type 'adio' subtype 'hphn' manufacturer 'appl'
+FFD13780  61 64 69 6F 68 70 68 6E 61 70 70 6C 80 00 00 00  |adiohphnappl....|
+FFD13790  00 00 00 00 61 64 69 6F BF 46 53 54 52 20 BF 46  |....adio.FSTR .F|
+FFD137A0  53 54 52 20 BF 45 49 43 4F 4E BF 46 00 00 00 00  |STR .EICON.F....|
+FFD137B0  00 00 00 01 00 00 00 00 00 00 6B 63 6B 63 6B 63  |..........kckckc|
+FFD137C0  78 00 00 00 00 00                                |x.....|

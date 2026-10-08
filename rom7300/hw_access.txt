@@ -1,0 +1,800 @@
+I/O accesses of the 7300 ROM (077D.34F2) in the coverage run (dingusppc 7300, 32 MB, 604 PVR 00040303,
+10^9 instructions: boot code, Open Firmware, then the Mac OS ROM up to the point where it
+waits for a boot disk). From romcov's device log; 1650037 accesses in total.
+Columns: device, physical address, name, R/W and size, count, first and last instruction
+count, where the accesses came from (code region: count), then the PowerPC instructions
+making them, the most common values, and for accesses by the 68k emulator the 68k
+instructions behind them (the emulator's r24 - 2: the opcode or up to a few bytes past).
+Phases by instruction count: boot code < 1436986 <= Open Firmware < 27955219 <= NanoKernel/Mac OS.
+Values are as dingusppc's device models receive them (its device interface byte order:
+Grand Central registers written with stwbrx appear byte-reversed here).
+
+Devices in the map (as dingusppc places them):
+  device VCI0 at F0000000-F0FFFFFF
+  device Bandit-PCI1 at F2000000-F2FFFFFF
+  device Hammerhead at F8000000-F80004FF
+  device mac-io_grandcentral at F3000000-F301FFFF
+  device Control-Video at 90000000-93FFFFFF
+
+First access per device:
+  Hammerhead             instruction 35         pc FFF03168 address F8000000
+  Bandit-PCI1            instruction 98         pc FFF03824 address F2800000
+  mac-io_grandcentral    instruction 135        pc FFF038B8 address F3000024
+  VCI0                   instruction 26913292   pc FF80AB24 address F0800000
+  Control-Video          instruction 119878363  pc FFF11BF8 address 94000010
+
+device               address  name                               op      count      first       last  from / values
+Control-Video        94000010 Control registers (Chaos PCI BAR,  W4         2  119878363  131169716  kernel:1, RAM code:1
+                                                                                                      pcs FFF11BF8 0004BFF0; values 00000000:1 15040000:1
+Control-Video        94000020 Control registers (Chaos PCI BAR,  W4         2  119878430  131169758  RAM code:2
+                                                                                                      pcs 0004BFF0; values 00000000:1 12040000:1
+Control-Video        94000030 Control registers (Chaos PCI BAR,  W4         2  119878472  131169800  RAM code:2
+                                                                                                      pcs 0004BFF0; values 00000000:1 52000000:1
+Control-Video        94000040 Control registers (Chaos PCI BAR,  W4         2  119878514  131169842  RAM code:2
+                                                                                                      pcs 0004BFF0; values 00000000:1 2B000000:1
+Control-Video        94000050 Control registers (Chaos PCI BAR,  W4         2  119878556  131169884  RAM code:2
+                                                                                                      pcs 0004BFF0; values 00000000:1 04000000:1
+Control-Video        94000060 Control registers (Chaos PCI BAR,  W4         2  119878598  131169926  RAM code:2
+                                                                                                      pcs 0004BFF0; values 00000000:1 18040000:1
+Control-Video        94000070 Control registers (Chaos PCI BAR,  W4         2  119878640  131169968  RAM code:2
+                                                                                                      pcs 0004BFF0; values 00000000:1 1A040000:1
+Control-Video        94000080 Control registers (Chaos PCI BAR,  W4         3  119878682  136819206  RAM code:3
+                                                                                                      pcs 0004BFF0; values 48000000:2 00000000:1
+Control-Video        94000090 Control registers (Chaos PCI BAR,  W4         2  119878724  131170010  RAM code:2
+                                                                                                      pcs 0004BFF0; values 00000000:1 AE010000:1
+Control-Video        940000A0 Control registers (Chaos PCI BAR,  W4         2  119878766  131170052  RAM code:2
+                                                                                                      pcs 0004BFF0; values 00000000:1 89010000:1
+Control-Video        940000B0 Control registers (Chaos PCI BAR,  W4         2  119878808  131170094  RAM code:2
+                                                                                                      pcs 0004BFF0; values 00000000:1 49000000:1
+Control-Video        940000C0 Control registers (Chaos PCI BAR,  W4         2  119878850  131170136  RAM code:2
+                                                                                                      pcs 0004BFF0; values 00000000:1 1F000000:1
+Control-Video        940000D0 Control registers (Chaos PCI BAR,  W4         2  119878892  131170178  RAM code:2
+                                                                                                      pcs 0004BFF0; values 00000000:1 AF010000:1
+Control-Video        940000E0 Control registers (Chaos PCI BAR,  W4         2  119878934  131170220  RAM code:2
+                                                                                                      pcs 0004BFF0; values 00000000:1 10000000:1
+Control-Video        940000F0 Control registers (Chaos PCI BAR,  W4         2  119878976  131170262  RAM code:2
+                                                                                                      pcs 0004BFF0; values 00000000:1 D8000000:1
+Control-Video        94000100 Control registers (Chaos PCI BAR,  W4         2  119879018  131170304  RAM code:2
+                                                                                                      pcs 0004BFF0; values 00000000:1 90010000:1
+Control-Video        94000110 Control registers (Chaos PCI BAR,  W4         1  119879060  119879060  RAM code:1
+                                                                                                      pcs 0004BFF0; values 00000000:1
+Control-Video        94000120 Control registers (Chaos PCI BAR,  R4        26  129642490  138700978  RAM code:26
+                                                                                                      pcs 0004BF8C 0004D2DC 0004CF60; values 3B040000:6 33040000:4 3B000000:4 00000000:3 00040000:3 33000000:3
+Control-Video        94000120 Control registers (Chaos PCI BAR,  W4        22  119879102  132109213  RAM code:22
+                                                                                                      pcs 0004BFCC 0004BFF0; values 3B040000:6 33040000:4 00040000:3 33000000:3 3B000000:2 00000000:1
+Control-Video        94000130 Control registers (Chaos PCI BAR,  W4         3  119879144  136819351  RAM code:3
+                                                                                                      pcs 0004BFF0; values 00020000:2 00000000:1
+Control-Video        94000140 Control registers (Chaos PCI BAR,  W4         3  119879186  136819309  RAM code:3
+                                                                                                      pcs 0004BFF0; values 200A0000:2 00000000:1
+Control-Video        94000150 Control registers (Chaos PCI BAR,  R4         8  122919565  147187031  RAM code:8
+                                                                                                      pcs 0004DD40 0004DE64 0004E084; values B8010000:2 98000000:2 28010000:2 B0010000:2
+Control-Video        94000150 Control registers (Chaos PCI BAR,  W4        17  119879228  147504526  RAM code:17
+                                                                                                      pcs 0004DD84 0004F6B0 0004F6CC 0004F6E0; values 38000000:11 18000000:2 28000000:2 30000000:2
+Control-Video        94000160 Control registers (Chaos PCI BAR,  R4        12  119879339  131171064  RAM code:12
+                                                                                                      pcs 0004BF8C; values 50000000:7 51000000:4 40000000:1
+Control-Video        94000160 Control registers (Chaos PCI BAR,  W4        13  119879270  131171104  RAM code:13
+                                                                                                      pcs 0004BFCC 0004BFF0; values 50000000:7 51000000:5 40000000:1
+Control-Video        94000170 Control registers (Chaos PCI BAR,  W4         3  119879312  136819248  RAM code:3
+                                                                                                      pcs 0004BFF0; values 01000000:3
+Control-Video        94000180 Control registers (Chaos PCI BAR,  W4         1  119984961  119984961  RAM code:1
+                                                                                                      pcs 0004BFF0; values 0C030000:1
+Control-Video        94000190 Control registers (Chaos PCI BAR,  R4         5  121716890  136819560  RAM code:5
+                                                                                                      pcs 0004BF8C; values 04000000:3 00000000:1 0C000000:1
+Control-Video        94000190 Control registers (Chaos PCI BAR,  W4      1868  119985004  999190199  RAM code:1868
+                                                                                                      pcs 0004F628 0004F638 0004BFCC 0004D2FC; values 04000000:934 0C000000:933 00000000:1
+Control-Video        940001A0 Control registers (Chaos PCI BAR,  R4    127304  134350564  139622286  RAM code:127304
+                                                                                                      pcs 0004D330 0004CFB4; values 00000000:127301 04000000:3
+VCI0                 F0800000 CHAOS_CONFIG_ADDR                  R4        18   26913306  119865294  OF:16, emulator:2
+                                                                                                      pcs FF80AA88 680DF480; values 00080000:3 10080000:2 0C080000:2 08080000:2 18080000:2 14080000:2
+                                                                                                      68k code FFC59524:2
+VCI0                 F0800000 CHAOS_CONFIG_ADDR                  W4        18   26913292  119865262  OF:16, kernel:1, emulator:1
+                                                                                                      pcs FF80AB24 FFF11BF8 68061034; values 00080000:3 10080000:2 0C080000:2 08080000:2 18080000:2 14080000:2
+                                                                                                      68k code FFC59516:1
+VCI0                 F0C00000 CHAOS_CONFIG_DATA                  R4        10   26913849  119865360  OF:8, kernel:1, emulator:1
+                                                                                                      pcs FF80AA88 FFF11AA8 68096098; values 00000000:3 6B100300:3 FFFFFFFF:2 00000094:1 00000090:1
+                                                                                                      68k code FFC5953C:1
+VCI0                 F0C00000 CHAOS_CONFIG_DATA                  W4         2   26914094   27396849  OF:2
+                                                                                                      pcs FF80AB24; values 00000002:1 00000090:1
+VCI0                 F0C00004 CHAOS+C00004                       R4         5   26932649   26961627  OF:5
+                                                                                                      pcs FF80AA88; values 00000000:5
+VCI0                 F0C00004 CHAOS+C00004                       W4         1   27399405   27399405  OF:1
+                                                                                                      pcs FF80AB24; values 00000094:1
+Bandit-PCI1          F2800000 BANDIT_CONFIG_ADDR                 R4        28        100   26796988  OF:25, boot:3
+                                                                                                      pcs FF80AA88 FFF0382C FFF0385C FFF0388C; values 04000100:5 0C080000:3 0C000100:2 60080000:2 48080000:2 04080000:2
+Bandit-PCI1          F2800000 BANDIT_CONFIG_ADDR                 W4        28         98   26796974  OF:25, boot:3
+                                                                                                      pcs FF80AB24 FFF03824 FFF03854 FFF03884; values 04000100:5 0C080000:3 0C000100:2 60080000:2 48080000:2 04080000:2
+Bandit-PCI1          F2C00000 BANDIT_CONFIG_DATA                 R4        21        106   26797040  OF:18, boot:3
+                                                                                                      pcs FF80AA88 FFF03844 FFF03874 FFF038A4; values 00000000:5 08000000:3 FFFFFFFF:3 16000002:2 000000F3:1 6B100200:1
+Bandit-PCI1          F2C00000 BANDIT_CONFIG_DATA                 W4        10        104   26785951  OF:7, boot:3
+                                                                                                      pcs FF80AB24 FFF0383C FFF0386C FFF0389C; values 08200000:2 9C000000:2 0000FF00:1 000000F3:1 16000000:1 16000002:1
+mac-io_grandcentral  F3000024 GC_INT_MASK                        R4     13699   28359144  999749298  kernel:10877, emulator:1994, ROM PEF:824, RAM code:4
+                                                                                                      pcs FFF1575C 680E0540 FFEB5634 FFEB5680; values 00801784:7445 00B01F84:4514 00A01F84:1061 00901F84:289 00801F84:165 00801780:123
+                                                                                                      68k code FFC19774:1986 FFC194FA:2 FFC004F2:1 FFC19452:1 FFC19492:1 FFC194CA:1
+mac-io_grandcentral  F3000024 GC_INT_MASK                        W4       511        135  995671604  ROM PEF:497, emulator:8, RAM code:4, boot:1, OF:1
+                                                                                                      pcs FFEB563C FFEB5580 FFEB55B4 FFEB554C; values 00901F84:170 00B01F84:128 00A01F84:103 00801F84:82 00801780:8 00801784:8
+                                                                                                      68k code FFC194FC:2 FFC004F4:1 FFC19454:1 FFC19494:1 FFC194CC:1 FFC194EA:1
+mac-io_grandcentral  F3000028 GC_INT_CLEAR                       R4         1  101442108  101442108  RAM code:1
+                                                                                                      pcs 00052C90; values 00000000:1
+mac-io_grandcentral  F3000028 GC_INT_CLEAR                       W4     10878   28359141  999749295  kernel:10877, RAM code:1
+                                                                                                      pcs FFF15750 00052C98; values 00000080:10877 00000200:1
+mac-io_grandcentral  F300002C GC_INT_LEVELS                      R4     12923   27806555  999749300  kernel:10877, emulator:1986, ROM PEF:59, OF:1
+                                                                                                      pcs FFF15764 680E0540 FFEB5510 FFEB54DC; values 00080000:6357 00080400:4471 00080004:1859 00280000:199 00180000:21 00080404:15
+                                                                                                      68k code FFC19778:1986
+mac-io_grandcentral  F300002C GC_INT_LEVELS                      W4        59   86804202  995671503  ROM PEF:59
+                                                                                                      pcs FFEB5518 FFEB54E4; values 00280000:51 00180000:8
+mac-io_grandcentral  F3008800 GC_DBDMA_AUDIO_OUT.control         W4         1      69494      69494  boot:1
+                                                                                                      pcs FFF04014; values 008000F0:1
+mac-io_grandcentral  F3008804 GC_DBDMA_AUDIO_OUT.status          R4         1    1501135    1501135  OF:1
+                                                                                                      pcs FF808758; values 00800000:1
+mac-io_grandcentral  F300880C GC_DBDMA_AUDIO_OUT.cmdptr          W4         2      69489  101441714  boot:1, RAM code:1
+                                                                                                      pcs FFF04000 00054860; values 2000E0FF:1 A0CF0500:1
+mac-io_grandcentral  F300890C GC_DBDMA_AUDIO_IN.cmdptr           W4         1  101388119  101388119  kernel:1
+                                                                                                      pcs FFF11BF8; values A08F0500:1
+mac-io_grandcentral  F3010020 GC_CURIO_SCSI.fifo                 W1        49  355256682  449144144  ROM PEF:49
+                                                                                                      pcs FFEB2BC8 FFEB2CFC FFEB2BE0; values 00:28 80:7 08:7 01:7
+mac-io_grandcentral  F3010030 GC_CURIO_SCSI.command              R1         7  370883072  464770475  ROM PEF:7
+                                                                                                      pcs FFEB6278; values 42:7
+mac-io_grandcentral  F3010030 GC_CURIO_SCSI.command              W1        27   86804054  464770692  ROM PEF:26, kernel:1
+                                                                                                      pcs FFEB2D50 FFEB2B10 FFEB2B48 FFF11B68; values 01:8 42:7 44:7 02:2 00:2 03:1
+mac-io_grandcentral  F3010040 GC_CURIO_SCSI.status/dest_id       R1       294  355256665  464770478  ROM PEF:294
+                                                                                                      pcs FFEB65E0 FFEB2BCC FFEB6224 FFEB2C40; values 00:280 80:14
+mac-io_grandcentral  F3010040 GC_CURIO_SCSI.status/dest_id       W1         7  355256670  449144073  ROM PEF:7
+                                                                                                      pcs FFEB2C7C; values 06:1 05:1 04:1 03:1 02:1 01:1
+mac-io_grandcentral  F3010050 GC_CURIO_SCSI.int_status/sel_timeo R1         7  370883081  464770484  ROM PEF:7
+                                                                                                      pcs FFEB629C; values 20:7
+mac-io_grandcentral  F3010050 GC_CURIO_SCSI.int_status/sel_timeo W1         1   86804166   86804166  ROM PEF:1
+                                                                                                      pcs FFEB6034; values A7:1
+mac-io_grandcentral  F3010060 GC_CURIO_SCSI.seq_step/sync_period R1         7  370883070  464770473  ROM PEF:7
+                                                                                                      pcs FFEB6270; values 00:7
+mac-io_grandcentral  F3010070 GC_CURIO_SCSI.fifo_flags/sync_offs R1         7  370883078  464770481  ROM PEF:7
+                                                                                                      pcs FFEB6290; values 07:7
+mac-io_grandcentral  F3010070 GC_CURIO_SCSI.fifo_flags/sync_offs W1         8   86804169  464770683  ROM PEF:8
+                                                                                                      pcs FFEB2B24 FFEB6080; values 00:8
+mac-io_grandcentral  F3010080 GC_CURIO_SCSI.config1              W1         1   86804129   86804129  ROM PEF:1
+                                                                                                      pcs FFEB5F10; values 47:1
+mac-io_grandcentral  F3010090 GC_CURIO_SCSI.clock_factor         W1         1   86804163   86804163  ROM PEF:1
+                                                                                                      pcs FFEB6028; values 05:1
+mac-io_grandcentral  F30100B0 GC_CURIO_SCSI.config2              W1         3   86804091   86804131  ROM PEF:3
+                                                                                                      pcs FFEB5E74 FFEB5E7C FFEB5F18; values 40:1 80:1 08:1
+mac-io_grandcentral  F30100C0 GC_CURIO_SCSI.config3              R1         9   87045901  464770687  ROM PEF:9
+                                                                                                      pcs FFEB2B34 FFEB5CE4 FFEB5CE8; values 04:9
+mac-io_grandcentral  F30100C0 GC_CURIO_SCSI.config3              W1         9   86804133  464770690  ROM PEF:9
+                                                                                                      pcs FFEB2B40 FFEB5F20 FFEB5CFC; values 04:9
+mac-io_grandcentral  F30100E0 GC_CURIO_SCSI.xfer_cnt_hi          R1         1   86804100   86804100  ROM PEF:1
+                                                                                                      pcs FFEB5E90; values 00:1
+mac-io_grandcentral  F30110E0 GC_MACE.PLSCC                      W1         1        143        143  boot:1
+                                                                                                      pcs FFF047F4; values 07:1
+mac-io_grandcentral  F3011120 GC_MACE.IAC                        W1         2   17217987   17218567  OF:2
+                                                                                                      pcs FF80AB74; values 04:1 02:1
+mac-io_grandcentral  F3011140 GC_MACE.LADRF                      W1         8   17218605   17218766  OF:8
+                                                                                                      pcs FF80AB74; values 00:8
+mac-io_grandcentral  F3011150 GC_MACE.PADR                       W1         6   17218110   17218535  OF:6
+                                                                                                      pcs FF80AB74; values 08:1 00:1 07:1 44:1 55:1 66:1
+mac-io_grandcentral  F3012000 GC_SCC_B_ctrl                      R1      2720   29007063   29136349  emulator:2719, kernel:1
+                                                                                                      pcs 68084080 FFF11A10; values 44:2720
+                                                                                                      68k code FFC00590:2719
+mac-io_grandcentral  F3012000 GC_SCC_B_ctrl                      W1         2   29007101   29007110  emulator:2
+                                                                                                      pcs 680885E0; values 09:1 C0:1
+                                                                                                      68k code FFC0124A:1 FFC0124E:1
+mac-io_grandcentral  F3013020 GC_SCC_A_ctrl                      W1        32   27614589   27729293  OF:32
+                                                                                                      pcs FF80AB74; values 01:4 09:2 80:2 0D:2 00:2 0C:2
+mac-io_grandcentral  F3014000 GC_AWACS.control                   R4         3      69425  101442093  boot:1, kernel:1, RAM code:1
+                                                                                                      pcs FFF03FDC FFF11AA8 00052C64; values 00000000:1 00000200:1 00024000:1
+mac-io_grandcentral  F3014000 GC_AWACS.control                   W4         3      69427  101442101  RAM code:2, boot:1
+                                                                                                      pcs FFF03FE4 00052BD0 00052C7C; values 00020000:1 00400200:1 00024000:1
+mac-io_grandcentral  F3014010 GC_AWACS.codec_control             R4         4      69460  101442147  boot:3, RAM code:1
+                                                                                                      pcs FFF03F68 00055554; values 00100000:2 8E430000:1 8E230000:1
+mac-io_grandcentral  F3014010 GC_AWACS.codec_control             W4         4      69456  101442175  boot:3, RAM code:1
+                                                                                                      pcs FFF03F28 FFF03F34 FFF03F50 00055594; values 00100000:2 8E430000:1 8E230000:1
+mac-io_grandcentral  F3014020 GC_AWACS.codec_status              R4         2      69473  101442118  boot:1, RAM code:1
+                                                                                                      pcs FFF03F44 00052CB0; values 00314000:2
+mac-io_grandcentral  F3015030 GC_SWIM3.param                     W1         1  225715326  225715326  emulator:1
+                                                                                                      pcs 6806628C; values 95:1
+                                                                                                      68k code FFCFA0BE:1
+mac-io_grandcentral  F3015040 GC_SWIM3.phase                     R1         3  225715063  225715257  emulator:3
+                                                                                                      pcs 68065EC8; values 05:1 06:1 07:1
+                                                                                                      68k code FFCFA078:1 FFCFA08C:1 FFCFA0A0:1
+mac-io_grandcentral  F3015040 GC_SWIM3.phase                     W1        65  225715025  975757148  emulator:65
+                                                                                                      pcs 6806628C; values 03:25 20:24 07:7 06:5 05:3 0E:1
+                                                                                                      68k code FFCFA0EC:24 FFCFA110:24 FFCFA200:6 FFCFA1A0:2 FFCFA1DA:2 FFCFA072:1
+mac-io_grandcentral  F3015050 GC_SWIM3.setup                     R1         1  225715443  225715443  emulator:1
+                                                                                                      pcs 68065EC8; values 4C:1
+                                                                                                      68k code FFCFA0D2:1
+mac-io_grandcentral  F3015050 GC_SWIM3.setup                     W1         1  225715407  225715407  emulator:1
+                                                                                                      pcs 6806628C; values 4C:1
+                                                                                                      68k code FFCFA0CC:1
+mac-io_grandcentral  F3015060 GC_SWIM3.mode0(clear)              W1        83  225714982  975757507  emulator:83
+                                                                                                      pcs 6806628C; values 18:26 04:25 06:25 20:5 02:2
+                                                                                                      68k code FFCFA18C:25 FFCF8E08:24 FFCF8E12:24 FFCFA1A8:2 FFCFA1B0:2 FFCFA1F4:2
+mac-io_grandcentral  F3015070 GC_SWIM3.mode1(set)                R1        32  225716149  975757216  emulator:32
+                                                                                                      pcs 68065EC8; values 0C:30 00:2
+                                                                                                      68k code FFCFA122:24 FFCFA20A:6 FFCFA1E8:2
+mac-io_grandcentral  F3015070 GC_SWIM3.mode1(set)                W1        54  225713335  975757100  emulator:54
+                                                                                                      pcs 6806628C; values 20:26 02:25 04:2 01:1
+                                                                                                      68k code FFCFA196:25 FFCFA0FC:24 FFCFA1BA:2 FFCFA1E2:2 FFCF8390:1
+mac-io_grandcentral  F30150F0 GC_SWIM3.sector_count              W1         1  225713274  225713274  kernel:1
+                                                                                                      pcs FFF11B68; values 00:1
+mac-io_grandcentral  F3016000 GC_VIA.vBufB                       R1     32033        189  975757166  emulator:23868, OF:4760, boot:3405
+                                                                                                      pcs 680A5088 FF80AAC8 680A5090 FFF049B0; values 18:9015 08:7634 30:7535 38:6074 00:884 10:883
+                                                                                                      68k code FFC0E9E8:14014 FFC0EDC2:3334 FFC0EAB4:1732 FFC0EAD2:874 FFC0E9A8:845 FFC0E8BE:429
+mac-io_grandcentral  F3016000 GC_VIA.vBufB                       W1      3480        162  176214558  emulator:3441, OF:23, boot:16
+                                                                                                      pcs 68066F70 680676B0 FF80AB74 FFF04D78; values 10:871 38:870 18:647 08:639 00:440 30:8
+                                                                                                      68k code FFC0EAD6:874 FFC0E9AC:845 FFC0E8F0:429 FFC0EA38:429 FFC0EAE0:429 FFC0EAEA:429
+mac-io_grandcentral  F3016400 GC_VIA.vDirB                       W1         4        165   28784070  emulator:2, boot:1, OF:1
+                                                                                                      pcs 68061C14 FFF0494C FF80AB74; values 30:3 B0:1
+                                                                                                      68k code FFC1418C:2
+mac-io_grandcentral  F3016600 GC_VIA.vDirA                       W1         3        159   28784037  boot:1, kernel:1, emulator:1
+                                                                                                      pcs FFF04934 FFF11B68 68061C14; values 58:3
+                                                                                                      68k code FFC14184:1
+mac-io_grandcentral  F3016800 GC_VIA.vT1C                        R1         3    1427328   32005329  emulator:2, boot:1
+                                                                                                      pcs FFF03AA8 680C8098 680C9098; values D3:1 FF:1 FC:1
+                                                                                                      68k code FFC3B33A:1 FFC3B342:1
+mac-io_grandcentral  F3016A00 GC_VIA.vT1CH                       R1         2    1427326    1427330  boot:2
+                                                                                                      pcs FFF03AA0 FFF03AB0; values BF:2
+mac-io_grandcentral  F3016A00 GC_VIA.vT1CH                       W1         2     116603   32005035  boot:1, emulator:1
+                                                                                                      pcs FFF03A80 68061CD4; values FF:1 A0:1
+                                                                                                      68k code FFC3B32E:1
+mac-io_grandcentral  F3016C00 GC_VIA.vT1L                        W1         1     116601     116601  boot:1
+                                                                                                      pcs FFF03A78; values FF:1
+mac-io_grandcentral  F3017000 GC_VIA.vT2C                        R1      3855   29073512  999751024  emulator:3855
+                                                                                                      pcs 68089148 680CB088 680A5148 68088088; values F8:506 F1:411 D1:303 D9:292 D8:277 EF:255
+                                                                                                      68k code FFC3B130:1923 FFC3B266:1922 FFC0055A:4 FFC3B276:4 FFC3B338:1 FFC3B340:1
+mac-io_grandcentral  F3017000 GC_VIA.vT2C                        W1      1931   29010754  999751078  emulator:1931
+                                                                                                      pcs 68061AD4 68061B54; values BF:354 DF:298 BE:193 DE:162 B6:149 E6:116
+                                                                                                      68k code FFC3B13C:1923 FFC00578:2 FFC0058A:2 FFC005A0:2 FFC005CC:2
+mac-io_grandcentral  F3017200 GC_VIA.vT2CH                       R1      3848   65657712  999750386  emulator:3848
+                                                                                                      pcs 6808A088 680CA088 68089088; values FF:3292 0B:26 2D:10 21:8 0C:8 14:8
+                                                                                                      68k code FFC3B258:1922 FFC3B26A:1922 FFC3B272:4
+mac-io_grandcentral  F3017200 GC_VIA.vT2CH                       W1      3857   29010643  999751103  emulator:3857
+                                                                                                      pcs 68061B94 68061B54 680685B4; values 32:859 E2:730 FF:703 02:679 F2:282 B2:41
+                                                                                                      68k code FFC3B138:1923 FFC3B142:1923 FFC0057C:2 FFC0058E:2 FFC005A4:2 FFC005D0:2
+mac-io_grandcentral  F3017400 GC_VIA.vSR                         R1      3897      20197  176218483  emulator:3867, OF:17, boot:13
+                                                                                                      pcs 680A5148 68088148 FF80AAC8 FFF04DB0; values 00:869 FE:600 FF:510 FB:300 3F:262 2F:257
+                                                                                                      68k code FFC0EA3E:1732 FFC0E9EE:1274 FFC0EA30:429 FFC0EAF4:429 FFC0EDE0:1 FFC0EE30:1
+mac-io_grandcentral  F3017400 GC_VIA.vSR                         W1      1286      27877  176186220  emulator:1274, OF:7, boot:5
+                                                                                                      pcs 68061B54 FF80AB74 FFF04D68 FFF04B18; values 00:428 FE:200 FF:103 0F:101 FB:100 3F:53
+                                                                                                      68k code FFC0E9A4:845 FFC0E8E2:429
+mac-io_grandcentral  F3017600 GC_VIA.vACR                        R1      3874        178  176214216  emulator:3867, boot:7
+                                                                                                      pcs 68067648 68067708 68067728 FFF04D58; values 0C:2163 1C:1711
+                                                                                                      68k code FFC0E9E2:3006 FFC0E8DA:429 FFC0EA2A:429 FFC004FA:1 FFC0FEE4:1 FFC3B31C:1
+mac-io_grandcentral  F3017600 GC_VIA.vACR                        W1       878        171  176191447  emulator:863, boot:8, OF:7
+                                                                                                      pcs 680676B0 FF80AB74 FFF04D60 68061C14; values 1C:440 0C:438
+                                                                                                      68k code FFC0E8DE:429 FFC0EA2E:429 FFC14196:2 FFC0FEE8:1 FFC3B324:1 FFC3B350:1
+mac-io_grandcentral  F3017800 GC_VIA.vPCR                        W1         4        168   28784090  emulator:2, boot:1, OF:1
+                                                                                                      pcs 68061C14 FFF04958 FF80AB74; values 00:4
+                                                                                                      68k code FFC14192:2
+mac-io_grandcentral  F3017A00 GC_VIA.vIFR                        R1    135855       6865  999750337  emulator:115252, boot:17141, OF:3462
+                                                                                                      pcs 68067648 FFF04D88 FFF04DC0 680E0148; values 40:104997 00:20795 C4:6406 E0:3584 E4:37 04:24
+                                                                                                      68k code FFC0EAF0:65628 FFC0E91E:39891 FFC1959E:3498 FFC0E9CE:3006 FFC3B25C:1922 FFC0E99A:1079
+mac-io_grandcentral  F3017A00 GC_VIA.vIFR                        W1         1   18150955   18150955  OF:1
+                                                                                                      pcs FF80AB74; values 7F:1
+mac-io_grandcentral  F3017C00 GC_VIA.vIER                        R1      6217   29199917  999749039  emulator:6217
+                                                                                                      pcs 680E0148 68084080; values A4:3498 A0:2719
+                                                                                                      68k code FFC195A2:3498 FFC005D2:2719
+mac-io_grandcentral  F3017C00 GC_VIA.vIER                        W1         9        173   32004939  emulator:6, boot:2, OF:1
+                                                                                                      pcs 68061B54 68061C14 FFF0496C FFF04990; values 7F:4 84:2 A0:2 20:1
+                                                                                                      68k code FFC1419C:2 FFC0050C:1 FFC0054C:1 FFC0FEEE:1 FFC3B316:1
+mac-io_grandcentral  F3017E00 GC_VIA.vBufA                       W1         3        156   28784023  boot:1, kernel:1, emulator:1
+                                                                                                      pcs FFF04928 FFF11B68 68061C14; values 10:3
+                                                                                                      68k code FFC14180:1
+mac-io_grandcentral  F3018030 GC_MESH_SCSI.sequence              R1        51  230036676  995671523  ROM PEF:51
+                                                                                                      pcs FFEBB2E4; values 02:25 0C:25 01:1
+mac-io_grandcentral  F3018030 GC_MESH_SCSI.sequence              W1       151   86474852  995667305  ROM PEF:151
+                                                                                                      pcs FFEB7B54 FFEB7C34 FFEB7C48 FFEB7C6C; values 0F:50 01:25 0D:25 02:25 0C:25 0E:1
+mac-io_grandcentral  F3018040 GC_MESH_SCSI.bus_status0           R1      2406   29136887  230036704  emulator:2404, kernel:1, ROM PEF:1
+                                                                                                      pcs 68067648 FFF11A10 FFEBB368; values 00:2406
+                                                                                                      68k code FFC005B2:2404
+mac-io_grandcentral  F3018050 GC_MESH_SCSI.bus_status1           W1         2   86264034   86474850  ROM PEF:2
+                                                                                                      pcs FFEBB1D8 FFEBB204; values 80:1 00:1
+mac-io_grandcentral  F3018070 GC_MESH_SCSI.exception             R1        51  230036673  995671520  ROM PEF:51
+                                                                                                      pcs FFEBB2D8; values 01:50 00:1
+mac-io_grandcentral  F3018080 GC_MESH_SCSI.error                 R1        51  230036670  995671517  ROM PEF:51
+                                                                                                      pcs FFEBB2CC; values 00:51
+mac-io_grandcentral  F3018090 GC_MESH_SCSI.int_mask              W1       504   86264031  995671458  ROM PEF:504
+                                                                                                      pcs FFEB5620 FFEB5640 FFEBB1CC FFEBB240; values 00:252 07:252
+mac-io_grandcentral  F30180A0 GC_MESH_SCSI.interrupt             R1      1551  230036411  995671514  ROM PEF:1551
+                                                                                                      pcs FFEBB54C FFEBB27C FFEBB2C0; values 00:1424 01:77 03:50
+mac-io_grandcentral  F30180A0 GC_MESH_SCSI.interrupt             W1        52   86474859  995671531  ROM PEF:52
+                                                                                                      pcs FFEBB2FC FFEBB220; values 01:26 03:25 07:1
+mac-io_grandcentral  F30180B0 GC_MESH_SCSI.source_id             W1         1   86474865   86474865  ROM PEF:1
+                                                                                                      pcs FFEBB238; values 07:1
+mac-io_grandcentral  F30180C0 GC_MESH_SCSI.dest_id               W1        75  230036389  995667303  ROM PEF:75
+                                                                                                      pcs FFEB7B40 FFEB7BF0 FFEB7A8C; values 07:50 00:19 06:1 05:1 04:1 03:1
+mac-io_grandcentral  F30180D0 GC_MESH_SCSI.sync_params           W1        76   86474861  995667298  ROM PEF:76
+                                                                                                      pcs FFEB7A0C FFEB7A78 FFEB7808 FFEBB228; values 02:76
+mac-io_grandcentral  F30180E0 GC_MESH_SCSI.mesh_id               R1         1   86262499   86262499  ROM PEF:1
+                                                                                                      pcs FFEBBD7C; values E2:1
+mac-io_grandcentral  F30180F0 GC_MESH_SCSI.sel_timeout           W1        25  230036760  980040529  ROM PEF:25
+                                                                                                      pcs FFEB7C14; values 19:25
+mac-io_grandcentral  F3019000 GC_ETHERNET_ROM+0                  R1         2   17217998   17218061  OF:2
+                                                                                                      pcs FF80AAC8; values 08:2
+mac-io_grandcentral  F3019010 GC_ETHERNET_ROM+10                 R1         1   17218146   17218146  OF:1
+                                                                                                      pcs FF80AAC8; values 00:1
+mac-io_grandcentral  F3019020 GC_ETHERNET_ROM+20                 R1         1   17218231   17218231  OF:1
+                                                                                                      pcs FF80AAC8; values 07:1
+mac-io_grandcentral  F3019030 GC_ETHERNET_ROM+30                 R1         1   17218316   17218316  OF:1
+                                                                                                      pcs FF80AAC8; values 44:1
+mac-io_grandcentral  F3019040 GC_ETHERNET_ROM+40                 R1         1   17218401   17218401  OF:1
+                                                                                                      pcs FF80AAC8; values 55:1
+mac-io_grandcentral  F3019050 GC_ETHERNET_ROM+50                 R1         1   17218486   17218486  OF:1
+                                                                                                      pcs FF80AAC8; values 66:1
+mac-io_grandcentral  F301A000 GC_BOARD_REG1                      R2         1    9710281    9710281  OF:1
+                                                                                                      pcs FF80AAA8; values 3FE1:1
+mac-io_grandcentral  F301A000 GC_BOARD_REG1                      R1         1   15490286   15490286  OF:1
+                                                                                                      pcs FF80AAC8; values 3F:1
+mac-io_grandcentral  F301A000 GC_BOARD_REG1                      R4        14   28674866   28783263  emulator:13, kernel:1
+                                                                                                      pcs 68065E98 FFF11AA8; values 3FE10000:14
+                                                                                                      68k code FFC14866:13
+mac-io_grandcentral  F301B000 GC_IOBUS2(RaDACal)+0               W1       782  119878030  139692508  RAM code:781, kernel:1
+                                                                                                      pcs 0004D3A8 0004CFF4 0004EA20 0004E2AC; values 20:8 21:6 00:6 11:4 10:4 22:4
+mac-io_grandcentral  F301B010 GC_IOBUS2(RaDACal)+10              W1        24  119878132  119878178  RAM code:24
+                                                                                                      pcs 0004BE74 0004BE7C 0004BE84 0004BE8C; values 00:12 FF:12
+mac-io_grandcentral  F301B020 GC_IOBUS2(RaDACal)+20              R1         6  129751088  136819110  RAM code:6
+                                                                                                      pcs 0004EA30 0004E2C0 0004E2C4; values 00:3 28:3
+mac-io_grandcentral  F301B020 GC_IOBUS2(RaDACal)+20              W1        11  119878071  136819150  RAM code:11
+                                                                                                      pcs 0004EA38 0004E2DC 0004E324 0004BE00; values 00:6 28:3 01:2
+mac-io_grandcentral  F301B030 GC_IOBUS2(RaDACal)+30              W1      3840  129642643  139692655  RAM code:3840
+                                                                                                      pcs 0004D3D4 0004D3E8 0004D3FC 0004D028; values 00:9 01:9 02:9 03:9 04:9 05:9
+mac-io_grandcentral  F301C000 GC_IOBUS3(sixty6)+0                R1         1   19649138   19649138  OF:1
+                                                                                                      pcs FF80AAC8; values 00:1
+mac-io_grandcentral  F301D000 GC_NVRAM_ADDR                      W4       490      69437   29337903  emulator:296, boot:109, hwinit:84, kernel:1
+                                                                                                      pcs 680611B4 FFF037E0 FFF037A0 FFF21178; values 98000000:60 9F000000:36 9B000000:36 9D000000:35 9C000000:35 99000000:32
+                                                                                                      68k code FFC099BE:249 FFC09980:47
+mac-io_grandcentral  F301D000 GC_NVRAM_ADDR                      W1     17932    1501116   27804993  OF:17932
+                                                                                                      pcs FF80AB74 FF808628; values C0:236 00:32 01:32 02:32 03:32 04:32
+mac-io_grandcentral  F301D000 GC_NVRAM_ADDR                      W2       185   29710348  464789235  emulator:185
+                                                                                                      pcs 680610D0; values A000:78 9800:40 9C00:26 9A00:16 9B00:14 9D00:11
+                                                                                                      68k code FFC58320:147 FFC58490:38
+mac-io_grandcentral  F301F000 GC_NVRAM_DATA                      R1       345     113303  156252530  OF:302, emulator:32, boot:6, hwinit:5
+                                                                                                      pcs FF80AAC8 6808EAA0 FFF037F0 FFF21270; values 00:300 12:35 03:6 1F:3 F8:1
+                                                                                                      68k code FFC58334:31 FFC09996:1
+mac-io_grandcentral  F301F000 GC_NVRAM_DATA                      W1       282      76414  135678640  OF:261, emulator:8, hwinit:7, boot:6
+                                                                                                      pcs FF80AB74 FFF21190 68061DD4 FFF037B4; values 00:271 03:6 12:2 F8:1 1F:1 14:1
+                                                                                                      68k code FFC099D6:7 FFC584A8:1
+mac-io_grandcentral  F301F010 GC_NVRAM_DATA+10                   R1       349     113307  464787976  OF:302, emulator:36, boot:6, hwinit:5
+                                                                                                      pcs FF80AAC8 6808EAA0 FFF037F8 FFF21280; values 00:311 75:35 EF:3
+                                                                                                      68k code FFC58334:35 FFC09996:1
+mac-io_grandcentral  F301F010 GC_NVRAM_DATA+10                   W1       283      76416  464789303  OF:261, emulator:9, hwinit:7, boot:6
+                                                                                                      pcs FF80AB74 FFF211A0 68061DD4 FFF037BC; values 00:278 75:2 EF:1 16:1 40:1
+                                                                                                      68k code FFC099D6:7 FFC584A8:2
+mac-io_grandcentral  F301F020 GC_NVRAM_DATA+20                   R1       321     113312  230005519  OF:301, emulator:9, boot:6, hwinit:5
+                                                                                                      pcs FF80AAC8 6808EAA0 FFF03800 FFF21294; values 00:305 05:6 4F:4 40:3 01:2 11:1
+                                                                                                      68k code FFC58334:8 FFC09996:1
+mac-io_grandcentral  F301F020 GC_NVRAM_DATA+20                   W1       282      76418  135668179  OF:260, emulator:9, hwinit:7, boot:6
+                                                                                                      pcs FF80AB74 FFF211B0 68061DD4 FFF037C4; values 00:275 11:2 01:2 05:1 40:1 4F:1
+                                                                                                      68k code FFC099D6:7 FFC584A8:2
+mac-io_grandcentral  F301F030 GC_NVRAM_DATA+30                   R1       316     113317  230005913  OF:299, boot:6, emulator:6, hwinit:5
+                                                                                                      pcs FF80AAC8 FFF03808 FFF212A8 6808EAA0; values 00:305 08:4 62:3 DC:1 C0:1 04:1
+                                                                                                      68k code FFC58334:5 FFC09996:1
+mac-io_grandcentral  F301F030 GC_NVRAM_DATA+30                   W1       283      76420  135670189  OF:261, emulator:9, hwinit:7, boot:6
+                                                                                                      pcs FF80AB74 FFF211C0 68061DD4 FFF037CC; values 00:275 DC:1 C0:1 01:1 04:1 08:1
+                                                                                                      68k code FFC099D6:7 FFC584A8:2
+mac-io_grandcentral  F301F040 GC_NVRAM_DATA+40                   R1       314     113877  184271091  OF:299, boot:7, hwinit:4, emulator:4
+                                                                                                      pcs FF80AAC8 FFF037F0 FFF21270 6808EAA0; values 00:300 FF:5 1F:3 6F:3 03:1 B0:1
+                                                                                                      68k code FFC58334:3 FFC09996:1
+mac-io_grandcentral  F301F040 GC_NVRAM_DATA+40                   W1       285      76434  135669706  OF:265, emulator:8, boot:7, hwinit:5
+                                                                                                      pcs FF80AB74 FFF037B4 68061DD4 FFF21190; values 00:276 FF:3 03:1 C0:1 B0:1 1F:1
+                                                                                                      68k code FFC099D6:7 FFC584A8:1
+mac-io_grandcentral  F301F050 GC_NVRAM_DATA+50                   R1       314     113881  184271485  OF:299, boot:7, hwinit:4, emulator:4
+                                                                                                      pcs FF80AAC8 FFF037F8 FFF21280 6808EAA0; values 00:301 FF:3 EB:3 6F:3 F0:2 72:1
+                                                                                                      68k code FFC58334:3 FFC09996:1
+mac-io_grandcentral  F301F050 GC_NVRAM_DATA+50                   W1       285      76436  135669223  OF:265, emulator:8, boot:7, hwinit:5
+                                                                                                      pcs FF80AB74 FFF037BC 68061DD4 FFF211A0; values 00:277 F0:2 7D:1 72:1 FF:1 EB:1
+                                                                                                      68k code FFC099D6:7 FFC584A8:1
+mac-io_grandcentral  F301F060 GC_NVRAM_DATA+60                   R1       315     113886  184271879  OF:300, boot:7, hwinit:4, emulator:4
+                                                                                                      pcs FF80AAC8 FFF03800 FFF21294 6808EAA0; values 00:301 18:5 FF:3 74:3 31:1 D0:1
+                                                                                                      68k code FFC58334:3 FFC09996:1
+mac-io_grandcentral  F301F060 GC_NVRAM_DATA+60                   W1       283      76438  135668740  OF:263, emulator:8, boot:7, hwinit:5
+                                                                                                      pcs FF80AB74 FFF037C4 68061DD4 FFF211B0; values 00:274 18:3 31:1 D0:1 14:1 FF:1
+                                                                                                      68k code FFC099D6:7 FFC584A8:1
+mac-io_grandcentral  F301F070 GC_NVRAM_DATA+70                   R1       315     113891  184272273  OF:300, boot:7, hwinit:4, emulator:4
+                                                                                                      pcs FF80AAC8 FFF03808 FFF212A8 6808EAA0; values 00:298 10:3 FF:3 04:3 74:3 5C:2
+                                                                                                      68k code FFC58334:3 FFC09996:1
+mac-io_grandcentral  F301F070 GC_NVRAM_DATA+70                   W1       283      76440  135670746  OF:263, emulator:8, boot:7, hwinit:5
+                                                                                                      pcs FF80AB74 FFF037CC 68061DD4 FFF211C0; values 00:273 0A:2 8F:1 44:1 10:1 FF:1
+                                                                                                      68k code FFC099D6:7 FFC584A8:1
+mac-io_grandcentral  F301F080 GC_NVRAM_DATA+80                   R1       318      69441  175676883  OF:300, boot:9, hwinit:5, emulator:4
+                                                                                                      pcs FF80AAC8 FFF037F0 FFF21270 680890A8; values 00:296 03:6 1F:5 20:3 74:3 1B:3
+                                                                                                      68k code FFC09996:2 FFC58334:2
+mac-io_grandcentral  F301F080 GC_NVRAM_DATA+80                   W1       283      71563  135671493  OF:262, emulator:9, boot:7, hwinit:5
+                                                                                                      pcs FF80AB74 68061DD4 FFF037B4 FFF21190; values 00:269 03:6 1F:2 F3:1 18:1 20:1
+                                                                                                      68k code FFC099D6:8 FFC584A8:1
+mac-io_grandcentral  F301F090 GC_NVRAM_DATA+90                   R1       316     113912  175677277  OF:300, boot:8, hwinit:5, emulator:3
+                                                                                                      pcs FF80AAC8 FFF037F8 FFF21280 6808EAA0; values 00:305 E7:3 79:3 E3:2 88:2 01:1
+                                                                                                      68k code FFC58334:2 FFC09996:1
+mac-io_grandcentral  F301F090 GC_NVRAM_DATA+90                   W1       283      71565  135672064  OF:262, emulator:9, boot:7, hwinit:5
+                                                                                                      pcs FF80AB74 68061DD4 FFF037BC FFF211A0; values 00:277 01:1 79:1 E7:1 E3:1 88:1
+                                                                                                      68k code FFC099D6:8 FFC584A8:1
+mac-io_grandcentral  F301F0A0 GC_NVRAM_DATA+A0                   R1       318     113917   29736309  OF:299, boot:8, emulator:6, hwinit:5
+                                                                                                      pcs FF80AAC8 FFF03800 FFF21294 680890A8; values 00:309 25:4 61:3 F0:1 03:1
+                                                                                                      68k code FFC09996:4 FFC58334:2
+mac-io_grandcentral  F301F0A0 GC_NVRAM_DATA+A0                   W1       281      71567  135672549  OF:259, emulator:10, boot:7, hwinit:5
+                                                                                                      pcs FF80AB74 68061DD4 FFF037C4 FFF211B0; values 00:275 25:2 F0:1 61:1 03:1 70:1
+                                                                                                      68k code FFC099D6:8 FFC584A8:2
+mac-io_grandcentral  F301F0B0 GC_NVRAM_DATA+B0                   R1       314     113922   29732015  OF:299, boot:8, hwinit:5, emulator:2
+                                                                                                      pcs FF80AAC8 FFF03808 FFF212A8 680890A8; values 00:302 64:3 04:3 74:3 70:1 1A:1
+                                                                                                      68k code FFC09996:1 FFC58334:1
+mac-io_grandcentral  F301F0B0 GC_NVRAM_DATA+B0                   W1       280      71569  135673034  OF:259, emulator:9, boot:7, hwinit:5
+                                                                                                      pcs FF80AB74 68061DD4 FFF037CC FFF211C0; values 00:273 70:1 1A:1 64:1 74:1 04:1
+                                                                                                      68k code FFC099D6:8 FFC584A8:1
+mac-io_grandcentral  F301F0C0 GC_NVRAM_DATA+C0                   R1       314     113939   29733501  OF:300, boot:8, hwinit:4, emulator:2
+                                                                                                      pcs FF80AAC8 FFF037F0 FFF21270 680890A8; values 00:299 20:3 1F:3 74:3 FF:2 03:2
+                                                                                                      68k code FFC09996:1 FFC58334:1
+mac-io_grandcentral  F301F0C0 GC_NVRAM_DATA+C0                   W1       281      71583  135673519  OF:260, emulator:9, boot:7, hwinit:5
+                                                                                                      pcs FF80AB74 68061DD4 FFF037B4 FFF21190; values 00:272 FF:2 03:1 F8:1 74:1 1F:1
+                                                                                                      68k code FFC099D6:8 FFC584A8:1
+mac-io_grandcentral  F301F0D0 GC_NVRAM_DATA+D0                   R1       314     113943   29733895  OF:300, boot:8, hwinit:4, emulator:2
+                                                                                                      pcs FF80AAC8 FFF037F8 FFF21280 680890A8; values 00:305 E7:3 79:3 F0:2 75:1
+                                                                                                      68k code FFC09996:1 FFC58334:1
+mac-io_grandcentral  F301F0D0 GC_NVRAM_DATA+D0                   W1       281      71585  135674045  OF:260, emulator:9, boot:7, hwinit:5
+                                                                                                      pcs FF80AB74 68061DD4 FFF037BC FFF211A0; values 00:275 F0:2 79:1 E7:1 75:1 08:1
+                                                                                                      68k code FFC099D6:8 FFC584A8:1
+mac-io_grandcentral  F301F0E0 GC_NVRAM_DATA+E0                   R1       316     113948   29788172  OF:300, boot:8, hwinit:4, emulator:4
+                                                                                                      pcs FF80AAC8 FFF03800 FFF21294 6808EAA0; values 00:309 61:3 D0:2 01:1 4D:1
+                                                                                                      68k code FFC58334:3 FFC09996:1
+mac-io_grandcentral  F301F0E0 GC_NVRAM_DATA+E0                   W1       282      71587  135674619  OF:260, emulator:10, boot:7, hwinit:5
+                                                                                                      pcs FF80AB74 68061DD4 FFF037C4 FFF211B0; values 00:276 D0:2 01:1 61:1 4D:1 78:1
+                                                                                                      68k code FFC099D6:8 FFC584A8:2
+mac-io_grandcentral  F301F0F0 GC_NVRAM_DATA+F0                   R1       317     113953   29734683  OF:300, boot:8, emulator:5, hwinit:4
+                                                                                                      pcs FF80AAC8 FFF03808 FFF212A8 680890A8; values 00:309 28:3 66:3 C0:1 63:1
+                                                                                                      68k code FFC09996:3 FFC58334:2
+mac-io_grandcentral  F301F0F0 GC_NVRAM_DATA+F0                   W1       282      71589  135675104  OF:260, emulator:10, boot:7, hwinit:5
+                                                                                                      pcs FF80AB74 68061DD4 FFF037CC FFF211C0; values 00:276 C0:1 28:1 66:1 63:1 78:1
+                                                                                                      68k code FFC099D6:8 FFC584A8:2
+mac-io_grandcentral  F301F100 GC_NVRAM_DATA+100                  R1       319     113722   72848428  OF:300, boot:7, hwinit:6, emulator:6
+                                                                                                      pcs FF80AAC8 FFF037F0 FFF21270 6808EAA0; values 00:299 03:7 FF:5 1F:3 64:3 A8:2
+                                                                                                      68k code FFC58334:4 FFC09996:2
+mac-io_grandcentral  F301F100 GC_NVRAM_DATA+100                  W1       284      73180  135675589  OF:260, emulator:11, boot:7, hwinit:6
+                                                                                                      pcs FF80AB74 68061DD4 FFF037B4 FFF21190; values 00:269 03:7 FF:3 64:1 1F:1 77:1
+                                                                                                      68k code FFC099D6:9 FFC584A8:2
+mac-io_grandcentral  F301F110 GC_NVRAM_DATA+110                  R1       317     113726   29724074  OF:300, boot:7, hwinit:6, emulator:4
+                                                                                                      pcs FF80AAC8 FFF037F8 FFF21280 680890A8; values 00:306 FF:3 E7:3 3A:3 F0:2
+                                                                                                      68k code FFC09996:2 FFC58334:2
+mac-io_grandcentral  F301F110 GC_NVRAM_DATA+110                  W1       283      73182  135676074  OF:260, emulator:10, boot:7, hwinit:6
+                                                                                                      pcs FF80AB74 68061DD4 FFF037BC FFF211A0; values 00:276 F0:2 FF:1 3A:1 E7:1 30:1
+                                                                                                      68k code FFC099D6:8 FFC584A8:2
+mac-io_grandcentral  F301F120 GC_NVRAM_DATA+120                  R1       316     113731   29724468  OF:300, boot:7, hwinit:6, emulator:3
+                                                                                                      pcs FF80AAC8 FFF03800 FFF21294 6808EAA0; values 00:307 FF:3 64:3 11:1 40:1 4E:1
+                                                                                                      68k code FFC58334:2 FFC09996:1
+mac-io_grandcentral  F301F120 GC_NVRAM_DATA+120                  W1       283      73184  135676559  OF:260, emulator:10, boot:7, hwinit:6
+                                                                                                      pcs FF80AB74 68061DD4 FFF037C4 FFF211B0; values 00:278 4E:1 11:1 40:1 FF:1 64:1
+                                                                                                      68k code FFC099D6:8 FFC584A8:2
+mac-io_grandcentral  F301F130 GC_NVRAM_DATA+130                  R1       316     113736   29724862  OF:300, boot:7, hwinit:6, emulator:3
+                                                                                                      pcs FF80AAC8 FFF03808 FFF212A8 6808EAA0; values 00:308 FF:3 69:3 40:1 28:1
+                                                                                                      68k code FFC58334:2 FFC09996:1
+mac-io_grandcentral  F301F130 GC_NVRAM_DATA+130                  W1       283      73186  135677044  OF:260, emulator:10, boot:7, hwinit:6
+                                                                                                      pcs FF80AB74 68061DD4 FFF037CC FFF211C0; values 00:279 28:1 40:1 FF:1 69:1
+                                                                                                      68k code FFC099D6:8 FFC584A8:2
+mac-io_grandcentral  F301F140 GC_NVRAM_DATA+140                  R1       315     113660   29725256  OF:300, boot:7, hwinit:5, emulator:3
+                                                                                                      pcs FF80AAC8 FFF037F0 FFF21270 6808EAA0; values 00:303 1F:6 61:3 FF:1 03:1 CC:1
+                                                                                                      68k code FFC58334:2 FFC09996:1
+mac-io_grandcentral  F301F140 GC_NVRAM_DATA+140                  W1       283      73200  135677529  OF:260, emulator:10, boot:7, hwinit:6
+                                                                                                      pcs FF80AB74 68061DD4 FFF037B4 FFF21190; values 00:277 1F:2 03:1 FF:1 61:1 CC:1
+                                                                                                      68k code FFC099D6:8 FFC584A8:2
+mac-io_grandcentral  F301F150 GC_NVRAM_DATA+150                  R1       315     113664   29725650  OF:300, boot:7, hwinit:5, emulator:3
+                                                                                                      pcs FF80AAC8 FFF037F8 FFF21280 6808EAA0; values 00:301 10:3 F7:3 E7:3 67:3 F2:1
+                                                                                                      68k code FFC58334:2 FFC09996:1
+mac-io_grandcentral  F301F150 GC_NVRAM_DATA+150                  W1       283      73202  135678014  OF:260, emulator:10, boot:7, hwinit:6
+                                                                                                      pcs FF80AB74 68061DD4 FFF037BC FFF211A0; values 00:277 F2:1 10:1 F7:1 67:1 E7:1
+                                                                                                      68k code FFC099D6:8 FFC584A8:2
+mac-io_grandcentral  F301F160 GC_NVRAM_DATA+160                  R1       319     113669  245675720  OF:300, boot:7, emulator:7, hwinit:5
+                                                                                                      pcs FF80AAC8 FFF03800 6808EAA0 FFF21294; values 00:313 73:3 01:1 10:1 CC:1
+                                                                                                      68k code FFC58334:6 FFC09996:1
+mac-io_grandcentral  F301F160 GC_NVRAM_DATA+160                  W1       281      73204   28920266  OF:260, emulator:8, boot:7, hwinit:6
+                                                                                                      pcs FF80AB74 68061DD4 FFF037C4 FFF211B0; values 00:277 10:1 01:1 73:1 CC:1
+                                                                                                      68k code FFC099D6:8
+mac-io_grandcentral  F301F170 GC_NVRAM_DATA+170                  R1       315     113674  230002755  OF:300, boot:7, hwinit:5, emulator:3
+                                                                                                      pcs FF80AAC8 FFF03808 FFF212A8 6808EAA0; values 00:306 09:3 2F:3 F8:1 0A:1 01:1
+                                                                                                      68k code FFC58334:2 FFC09996:1
+mac-io_grandcentral  F301F170 GC_NVRAM_DATA+170                  W1       281      73206   28920781  OF:260, emulator:8, boot:7, hwinit:6
+                                                                                                      pcs FF80AB74 68061DD4 FFF037CC FFF211C0; values 00:276 F8:1 2F:1 09:1 0A:1 01:1
+                                                                                                      68k code FFC099D6:8
+mac-io_grandcentral  F301F180 GC_NVRAM_DATA+180                  R1       317     113784  229999629  OF:300, boot:6, emulator:6, hwinit:4, kernel:1
+                                                                                                      pcs FF80AAC8 FFF037F0 FFF21270 6808EAA0; values 00:297 03:6 1F:6 FF:5 41:3
+                                                                                                      68k code FFC58334:4 FFC09996:2
+mac-io_grandcentral  F301F180 GC_NVRAM_DATA+180                  W1       280      74797  184153309  OF:260, emulator:9, boot:6, hwinit:5
+                                                                                                      pcs FF80AB74 68061DD4 FFF037B4 FFF21190; values 00:267 03:6 FF:3 1F:2 41:1 23:1
+                                                                                                      68k code FFC099D6:8 FFC584A8:1
+mac-io_grandcentral  F301F190 GC_NVRAM_DATA+190                  R1       317     113788  230000023  OF:300, emulator:7, boot:6, hwinit:4
+                                                                                                      pcs FF80AAC8 FFF037F8 FFF21280 6808EAA0; values 00:303 FF:3 F7:3 E3:3 41:3 F0:2
+                                                                                                      68k code FFC58334:4 FFC09996:3
+mac-io_grandcentral  F301F190 GC_NVRAM_DATA+190                  W1       280      74799  184153696  OF:260, emulator:9, boot:6, hwinit:5
+                                                                                                      pcs FF80AB74 68061DD4 FFF037BC FFF211A0; values 00:273 F0:2 FF:1 41:1 F7:1 E3:1
+                                                                                                      68k code FFC099D6:8 FFC584A8:1
+mac-io_grandcentral  F301F1A0 GC_NVRAM_DATA+1A0                  R1       317     113793  230000417  OF:300, emulator:7, boot:6, hwinit:4
+                                                                                                      pcs FF80AAC8 FFF03800 FFF21294 6808EAA0; values 00:309 FF:3 50:3 11:1 31:1
+                                                                                                      68k code FFC58334:4 FFC09996:3
+mac-io_grandcentral  F301F1A0 GC_NVRAM_DATA+1A0                  W1       280      74801  184154083  OF:260, emulator:9, boot:6, hwinit:5
+                                                                                                      pcs FF80AB74 68061DD4 FFF037C4 FFF211B0; values 00:276 11:1 31:1 FF:1 50:1
+                                                                                                      68k code FFC099D6:8 FFC584A8:1
+mac-io_grandcentral  F301F1B0 GC_NVRAM_DATA+1B0                  R1       317     113798  230000811  OF:300, emulator:7, boot:6, hwinit:4
+                                                                                                      pcs FF80AAC8 FFF03808 FFF212A8 6808EAA0; values 00:306 FF:3 04:3 4C:3 40:1 3C:1
+                                                                                                      68k code FFC58334:4 FFC09996:3
+mac-io_grandcentral  F301F1B0 GC_NVRAM_DATA+1B0                  W1       280      74803  184154470  OF:260, emulator:9, boot:6, hwinit:5
+                                                                                                      pcs FF80AB74 68061DD4 FFF037CC FFF211C0; values 00:275 40:1 3C:1 FF:1 4C:1 04:1
+                                                                                                      68k code FFC099D6:8 FFC584A8:1
+mac-io_grandcentral  F301F1C0 GC_NVRAM_DATA+1C0                  R1       312     113362   29728408  OF:299, boot:6, hwinit:5, emulator:2
+                                                                                                      pcs FF80AAC8 FFF037F0 FFF21270 680890A8; values 00:306 1F:3 2C:3
+                                                                                                      68k code FFC09996:1 FFC58334:1
+mac-io_grandcentral  F301F1C0 GC_NVRAM_DATA+1C0                  W1       280      74817   28923356  OF:259, emulator:8, hwinit:7, boot:6
+                                                                                                      pcs FF80AB74 68061DD4 FFF21190 FFF037B4; values 00:277 52:1 2C:1 1F:1
+                                                                                                      68k code FFC099D6:8
+mac-io_grandcentral  F301F1D0 GC_NVRAM_DATA+1D0                  R1       312     113366   29728802  OF:299, boot:6, hwinit:5, emulator:2
+                                                                                                      pcs FF80AAC8 FFF037F8 FFF21280 680890A8; values 00:302 10:3 EF:3 52:3 02:1
+                                                                                                      68k code FFC09996:1 FFC58334:1
+mac-io_grandcentral  F301F1D0 GC_NVRAM_DATA+1D0                  W1       280      74819   28923871  OF:259, emulator:8, hwinit:7, boot:6
+                                                                                                      pcs FF80AB74 68061DD4 FFF211A0 FFF037BC; values 00:275 6F:1 10:1 52:1 EF:1 02:1
+                                                                                                      68k code FFC099D6:8
+mac-io_grandcentral  F301F1E0 GC_NVRAM_DATA+1E0                  R1       312     113371   29729196  OF:299, boot:6, hwinit:5, emulator:2
+                                                                                                      pcs FF80AAC8 FFF03800 FFF21294 680890A8; values 00:307 4F:3 11:1 63:1
+                                                                                                      68k code FFC09996:1 FFC58334:1
+mac-io_grandcentral  F301F1E0 GC_NVRAM_DATA+1E0                  W1       280      74821   28924386  OF:259, emulator:8, hwinit:7, boot:6
+                                                                                                      pcs FF80AB74 68061DD4 FFF211B0 FFF037C4; values 00:276 11:1 62:1 4F:1 63:1
+                                                                                                      68k code FFC099D6:8
+mac-io_grandcentral  F301F1F0 GC_NVRAM_DATA+1F0                  R1       312     113376   29729590  OF:299, boot:6, hwinit:5, emulator:2
+                                                                                                      pcs FF80AAC8 FFF03808 FFF212A8 680890A8; values 00:305 08:3 4D:3 DC:1
+                                                                                                      68k code FFC09996:1 FFC58334:1
+mac-io_grandcentral  F301F1F0 GC_NVRAM_DATA+1F0                  W1       280      74823   28924901  OF:259, emulator:8, hwinit:7, boot:6
+                                                                                                      pcs FF80AB74 68061DD4 FFF211C0 FFF037CC; values 00:276 DC:1 47:1 4D:1 08:1
+                                                                                                      68k code FFC099D6:8
+Hammerhead           F8000000 HH_CPU_ID                          R4         2         35    9683113  boot:1, OF:1
+                                                                                                      pcs FFF03168 FF80AA88; values 39000000:2
+Hammerhead           F8000000 HH_CPU_ID                          R1        15    9710054   28783201  emulator:13, OF:1, kernel:1
+                                                                                                      pcs 68065E38 FF80AAC8 FFF11A10; values 39:15
+                                                                                                      68k code FFC1484A:13
+Hammerhead           F8000020 HH_MOTHERBOARD_ID                  R1         2      69518    9710101  boot:1, OF:1
+                                                                                                      pcs FFF04188 FF80AAC8; values 90:2
+Hammerhead           F8000020 HH_MOTHERBOARD_ID                  R4        14   28674689   28783233  emulator:14
+                                                                                                      pcs 68065E98; values 90000000:14
+                                                                                                      68k code FFC14858:14
+Hammerhead           F8000030 HH_CPU_SPEED                       R4         1      69510      69510  boot:1
+                                                                                                      pcs FFF04168; values 60000000:1
+Hammerhead           F8000030 HH_CPU_SPEED                       R1         1    9710191    9710191  OF:1
+                                                                                                      pcs FF80AAC8; values 60:1
+Hammerhead           F8000050 HH_MEM_TIMING_0                    W4         1      69513      69513  boot:1
+                                                                                                      pcs FFF04174; values 8E000000:1
+Hammerhead           F8000060 HH_MEM_TIMING_1                    W4         1      69515      69515  boot:1
+                                                                                                      pcs FFF0417C; values 4C000000:1
+Hammerhead           F8000070 HH_REFRESH_TIMING                  W4         1      69517      69517  boot:1
+                                                                                                      pcs FFF04184; values C3000000:1
+Hammerhead           F8000080 HH_ROM_TIMING                      W4         1      69523      69523  boot:1
+                                                                                                      pcs FFF041A0; values 8A000000:1
+Hammerhead           F8000090 HH_ARBITER_CONFIG                  R4         1      69524      69524  boot:1
+                                                                                                      pcs FFF041A4; values 00000000:1
+Hammerhead           F8000090 HH_ARBITER_CONFIG                  R1         1   10150217   10150217  OF:1
+                                                                                                      pcs FF80AAC8; values 00:1
+Hammerhead           F8000090 HH_ARBITER_CONFIG                  W4         1      69525      69525  boot:1
+                                                                                                      pcs FFF041A8; values 00000000:1
+Hammerhead           F80000B0 HH_WHO_AM_I                        R4         1         90         90  boot:1
+                                                                                                      pcs FFF03274; values 10000000:1
+Hammerhead           F80000E0 HH_L2_CACHE_CONFIG                 R1         2    1436933    9980952  boot:1, OF:1
+                                                                                                      pcs FFF03D60 FF80AAC8; values 00:2
+Hammerhead           F80001C0 HH_BANK0_BASE_MSB                  R4         3      70746     112236  boot:3
+                                                                                                      pcs FFF04278 FFF042A0 FFF04480; values 02000000:2 00000000:1
+Hammerhead           F80001C0 HH_BANK0_BASE_MSB                  W4         3      69689      71545  boot:3
+                                                                                                      pcs FFF041DC FFF04280 FFF042A8; values 02000000:2 00000000:1
+Hammerhead           F80001D0 HH_BANK0_BASE_LSB                  R4         1     112235     112235  boot:1
+                                                                                                      pcs FFF0447C; values 00000000:1
+Hammerhead           F80001D0 HH_BANK0_BASE_LSB                  W4         2      69688      71549  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values 00000000:2
+Hammerhead           F80001E0 HH_BANK1_BASE_MSB                  R4         2      73160     112230  boot:2
+                                                                                                      pcs FFF042A0 FFF04468; values 00000000:2
+Hammerhead           F80001E0 HH_BANK1_BASE_MSB                  W4         2      69683      73162  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 00000000:2
+Hammerhead           F80001F0 HH_BANK1_BASE_LSB                  R4         1     112229     112229  boot:1
+                                                                                                      pcs FFF04464; values 0C000000:1
+Hammerhead           F80001F0 HH_BANK1_BASE_LSB                  W4         2      69682      73166  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values 10000000:1 0C000000:1
+Hammerhead           F8000200 HH_BANK2_BASE_MSB                  R4         2      74777     112221  boot:2
+                                                                                                      pcs FFF042A0 FFF04480; values 00000000:2
+Hammerhead           F8000200 HH_BANK2_BASE_MSB                  W4         2      69677      74779  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 00000000:2
+Hammerhead           F8000210 HH_BANK2_BASE_LSB                  R4         1     112220     112220  boot:1
+                                                                                                      pcs FFF0447C; values 0C000000:1
+Hammerhead           F8000210 HH_BANK2_BASE_LSB                  W4         2      69676      74783  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values 20000000:1 0C000000:1
+Hammerhead           F8000220 HH_BANK3_BASE_MSB                  R4         2      76394     112215  boot:2
+                                                                                                      pcs FFF042A0 FFF04468; values 00000000:2
+Hammerhead           F8000220 HH_BANK3_BASE_MSB                  W4         2      69671      76396  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 00000000:2
+Hammerhead           F8000230 HH_BANK3_BASE_LSB                  R4         1     112214     112214  boot:1
+                                                                                                      pcs FFF04464; values 0C000000:1
+Hammerhead           F8000230 HH_BANK3_BASE_LSB                  W4         2      69670      76400  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values 30000000:1 0C000000:1
+Hammerhead           F8000240 HH_BANK4_BASE_MSB                  R4         2      78011     112206  boot:2
+                                                                                                      pcs FFF042A0 FFF04480; values 00000000:2
+Hammerhead           F8000240 HH_BANK4_BASE_MSB                  W4         2      69665      78013  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 00000000:2
+Hammerhead           F8000250 HH_BANK4_BASE_LSB                  R4         1     112205     112205  boot:1
+                                                                                                      pcs FFF0447C; values 0C000000:1
+Hammerhead           F8000250 HH_BANK4_BASE_LSB                  W4         2      69664      78017  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values 40000000:1 0C000000:1
+Hammerhead           F8000260 HH_BANK5_BASE_MSB                  R4         2      79628     112200  boot:2
+                                                                                                      pcs FFF042A0 FFF04468; values 00000000:2
+Hammerhead           F8000260 HH_BANK5_BASE_MSB                  W4         2      69659      79630  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 00000000:2
+Hammerhead           F8000270 HH_BANK5_BASE_LSB                  R4         1     112199     112199  boot:1
+                                                                                                      pcs FFF04464; values 0C000000:1
+Hammerhead           F8000270 HH_BANK5_BASE_LSB                  W4         2      69658      79634  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values 50000000:1 0C000000:1
+Hammerhead           F8000280 HH_BANK6_BASE_MSB                  R4         2      81245     112191  boot:2
+                                                                                                      pcs FFF042A0 FFF04480; values 00000000:2
+Hammerhead           F8000280 HH_BANK6_BASE_MSB                  W4         2      69653      81247  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 00000000:2
+Hammerhead           F8000290 HH_BANK6_BASE_LSB                  R4         1     112190     112190  boot:1
+                                                                                                      pcs FFF0447C; values 0C000000:1
+Hammerhead           F8000290 HH_BANK6_BASE_LSB                  W4         2      69652      81251  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values 60000000:1 0C000000:1
+Hammerhead           F80002A0 HH_BANK7_BASE_MSB                  R4         2      82862     112185  boot:2
+                                                                                                      pcs FFF042A0 FFF04468; values 00000000:2
+Hammerhead           F80002A0 HH_BANK7_BASE_MSB                  W4         2      69647      82864  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 00000000:2
+Hammerhead           F80002B0 HH_BANK7_BASE_LSB                  R4         1     112184     112184  boot:1
+                                                                                                      pcs FFF04464; values 0C000000:1
+Hammerhead           F80002B0 HH_BANK7_BASE_LSB                  W4         2      69646      82868  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values 70000000:1 0C000000:1
+Hammerhead           F80002C0 HH_BANK8_BASE_MSB                  R4         2      84479     112176  boot:2
+                                                                                                      pcs FFF042A0 FFF04480; values 00000000:2
+Hammerhead           F80002C0 HH_BANK8_BASE_MSB                  W4         2      69641      84481  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 00000000:2
+Hammerhead           F80002D0 HH_BANK8_BASE_LSB                  R4         1     112175     112175  boot:1
+                                                                                                      pcs FFF0447C; values 0C000000:1
+Hammerhead           F80002D0 HH_BANK8_BASE_LSB                  W4         2      69640      84485  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values 80000000:1 0C000000:1
+Hammerhead           F80002E0 HH_BANK9_BASE_MSB                  R4         2      86096     112170  boot:2
+                                                                                                      pcs FFF042A0 FFF04468; values 00000000:2
+Hammerhead           F80002E0 HH_BANK9_BASE_MSB                  W4         2      69635      86098  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 00000000:2
+Hammerhead           F80002F0 HH_BANK9_BASE_LSB                  R4         1     112169     112169  boot:1
+                                                                                                      pcs FFF04464; values 0C000000:1
+Hammerhead           F80002F0 HH_BANK9_BASE_LSB                  W4         2      69634      86102  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values 90000000:1 0C000000:1
+Hammerhead           F8000300 HH_BANK10_BASE_MSB                 R4         2      87713     112161  boot:2
+                                                                                                      pcs FFF042A0 FFF04480; values 00000000:2
+Hammerhead           F8000300 HH_BANK10_BASE_MSB                 W4         2      69629      87715  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 00000000:2
+Hammerhead           F8000310 HH_BANK10_BASE_LSB                 R4         1     112160     112160  boot:1
+                                                                                                      pcs FFF0447C; values 0C000000:1
+Hammerhead           F8000310 HH_BANK10_BASE_LSB                 W4         2      69628      87719  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values A0000000:1 0C000000:1
+Hammerhead           F8000320 HH_BANK11_BASE_MSB                 R4         2      89330     112155  boot:2
+                                                                                                      pcs FFF042A0 FFF04468; values 00000000:2
+Hammerhead           F8000320 HH_BANK11_BASE_MSB                 W4         2      69623      89332  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 00000000:2
+Hammerhead           F8000330 HH_BANK11_BASE_LSB                 R4         1     112154     112154  boot:1
+                                                                                                      pcs FFF04464; values 0C000000:1
+Hammerhead           F8000330 HH_BANK11_BASE_LSB                 W4         2      69622      89336  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values B0000000:1 0C000000:1
+Hammerhead           F8000340 HH_BANK12_BASE_MSB                 R4         2      90947     112146  boot:2
+                                                                                                      pcs FFF042A0 FFF04480; values 00000000:2
+Hammerhead           F8000340 HH_BANK12_BASE_MSB                 W4         2      69617      90949  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 00000000:2
+Hammerhead           F8000350 HH_BANK12_BASE_LSB                 R4         1     112145     112145  boot:1
+                                                                                                      pcs FFF0447C; values 0C000000:1
+Hammerhead           F8000350 HH_BANK12_BASE_LSB                 W4         2      69616      90953  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values C0000000:1 0C000000:1
+Hammerhead           F8000360 HH_BANK13_BASE_MSB                 R4         2      92564     112140  boot:2
+                                                                                                      pcs FFF042A0 FFF04468; values 00000000:2
+Hammerhead           F8000360 HH_BANK13_BASE_MSB                 W4         2      69611      92566  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 00000000:2
+Hammerhead           F8000370 HH_BANK13_BASE_LSB                 R4         1     112139     112139  boot:1
+                                                                                                      pcs FFF04464; values 0C000000:1
+Hammerhead           F8000370 HH_BANK13_BASE_LSB                 W4         2      69610      92570  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values D0000000:1 0C000000:1
+Hammerhead           F8000380 HH_BANK14_BASE_MSB                 R4         2      94181     112131  boot:2
+                                                                                                      pcs FFF042A0 FFF04480; values 00000000:2
+Hammerhead           F8000380 HH_BANK14_BASE_MSB                 W4         2      69605      94183  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 00000000:2
+Hammerhead           F8000390 HH_BANK14_BASE_LSB                 R4         1     112130     112130  boot:1
+                                                                                                      pcs FFF0447C; values 0C000000:1
+Hammerhead           F8000390 HH_BANK14_BASE_LSB                 W4         2      69604      94187  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values E0000000:1 0C000000:1
+Hammerhead           F80003A0 HH_BANK15_BASE_MSB                 R4         2      95798     112125  boot:2
+                                                                                                      pcs FFF042A0 FFF04468; values 00000000:2
+Hammerhead           F80003A0 HH_BANK15_BASE_MSB                 W4         2      69599      95800  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 00000000:2
+Hammerhead           F80003B0 HH_BANK15_BASE_LSB                 R4         1     112124     112124  boot:1
+                                                                                                      pcs FFF04464; values 0C000000:1
+Hammerhead           F80003B0 HH_BANK15_BASE_LSB                 W4         2      69598      95804  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values F0000000:1 0C000000:1
+Hammerhead           F80003C0 HH_BANK16_BASE_MSB                 R4         2      97415     112116  boot:2
+                                                                                                      pcs FFF042A0 FFF04480; values 01000000:1 00000000:1
+Hammerhead           F80003C0 HH_BANK16_BASE_MSB                 W4         2      69593      97417  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 01000000:1 00000000:1
+Hammerhead           F80003D0 HH_BANK16_BASE_LSB                 R4         1     112115     112115  boot:1
+                                                                                                      pcs FFF0447C; values 0C000000:1
+Hammerhead           F80003D0 HH_BANK16_BASE_LSB                 W4         2      69592      97421  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values 00000000:1 0C000000:1
+Hammerhead           F80003E0 HH_BANK17_BASE_MSB                 R4         2      99032     112110  boot:2
+                                                                                                      pcs FFF042A0 FFF04468; values 01000000:1 00000000:1
+Hammerhead           F80003E0 HH_BANK17_BASE_MSB                 W4         2      69587      99034  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 01000000:1 00000000:1
+Hammerhead           F80003F0 HH_BANK17_BASE_LSB                 R4         1     112109     112109  boot:1
+                                                                                                      pcs FFF04464; values 0C000000:1
+Hammerhead           F80003F0 HH_BANK17_BASE_LSB                 W4         2      69586      99038  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values 10000000:1 0C000000:1
+Hammerhead           F8000400 HH_BANK18_BASE_MSB                 R4         2     100649     112101  boot:2
+                                                                                                      pcs FFF042A0 FFF04480; values 01000000:1 00000000:1
+Hammerhead           F8000400 HH_BANK18_BASE_MSB                 W4         2      69581     100651  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 01000000:1 00000000:1
+Hammerhead           F8000410 HH_BANK18_BASE_LSB                 R4         1     112100     112100  boot:1
+                                                                                                      pcs FFF0447C; values 0C000000:1
+Hammerhead           F8000410 HH_BANK18_BASE_LSB                 W4         2      69580     100655  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values 20000000:1 0C000000:1
+Hammerhead           F8000420 HH_BANK19_BASE_MSB                 R4         2     102266     112095  boot:2
+                                                                                                      pcs FFF042A0 FFF04468; values 01000000:1 00000000:1
+Hammerhead           F8000420 HH_BANK19_BASE_MSB                 W4         2      69575     102268  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 01000000:1 00000000:1
+Hammerhead           F8000430 HH_BANK19_BASE_LSB                 R4         1     112094     112094  boot:1
+                                                                                                      pcs FFF04464; values 0C000000:1
+Hammerhead           F8000430 HH_BANK19_BASE_LSB                 W4         2      69574     102272  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values 30000000:1 0C000000:1
+Hammerhead           F8000440 HH_BANK20_BASE_MSB                 R4         2     103883     112086  boot:2
+                                                                                                      pcs FFF042A0 FFF04480; values 01000000:1 00000000:1
+Hammerhead           F8000440 HH_BANK20_BASE_MSB                 W4         2      69569     103885  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 01000000:1 00000000:1
+Hammerhead           F8000450 HH_BANK20_BASE_LSB                 R4         1     112085     112085  boot:1
+                                                                                                      pcs FFF0447C; values 0C000000:1
+Hammerhead           F8000450 HH_BANK20_BASE_LSB                 W4         2      69568     103889  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values 40000000:1 0C000000:1
+Hammerhead           F8000460 HH_BANK21_BASE_MSB                 R4         2     105500     112080  boot:2
+                                                                                                      pcs FFF042A0 FFF04468; values 01000000:1 00000000:1
+Hammerhead           F8000460 HH_BANK21_BASE_MSB                 W4         2      69563     105502  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 01000000:1 00000000:1
+Hammerhead           F8000470 HH_BANK21_BASE_LSB                 R4         1     112079     112079  boot:1
+                                                                                                      pcs FFF04464; values 0C000000:1
+Hammerhead           F8000470 HH_BANK21_BASE_LSB                 W4         2      69562     105506  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values 50000000:1 0C000000:1
+Hammerhead           F8000480 HH_BANK22_BASE_MSB                 R4         2     107117     112071  boot:2
+                                                                                                      pcs FFF042A0 FFF04480; values 01000000:1 00000000:1
+Hammerhead           F8000480 HH_BANK22_BASE_MSB                 W4         2      69557     107119  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 01000000:1 00000000:1
+Hammerhead           F8000490 HH_BANK22_BASE_LSB                 R4         1     112070     112070  boot:1
+                                                                                                      pcs FFF0447C; values 0C000000:1
+Hammerhead           F8000490 HH_BANK22_BASE_LSB                 W4         2      69556     107123  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values 60000000:1 0C000000:1
+Hammerhead           F80004A0 HH_BANK23_BASE_MSB                 R4         2     108734     112065  boot:2
+                                                                                                      pcs FFF042A0 FFF04468; values 01000000:1 00000000:1
+Hammerhead           F80004A0 HH_BANK23_BASE_MSB                 W4         2      69551     108736  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 01000000:1 00000000:1
+Hammerhead           F80004B0 HH_BANK23_BASE_LSB                 R4         1     112064     112064  boot:1
+                                                                                                      pcs FFF04464; values 0C000000:1
+Hammerhead           F80004B0 HH_BANK23_BASE_LSB                 W4         2      69550     108740  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values 70000000:1 0C000000:1
+Hammerhead           F80004C0 HH_BANK24_BASE_MSB                 R4         2     110351     112056  boot:2
+                                                                                                      pcs FFF042A0 FFF04480; values 01000000:1 00000000:1
+Hammerhead           F80004C0 HH_BANK24_BASE_MSB                 W4         2      69545     110353  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 01000000:1 00000000:1
+Hammerhead           F80004D0 HH_BANK24_BASE_LSB                 R4         1     112055     112055  boot:1
+                                                                                                      pcs FFF0447C; values 0C000000:1
+Hammerhead           F80004D0 HH_BANK24_BASE_LSB                 W4         2      69544     110357  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values 80000000:1 0C000000:1
+Hammerhead           F80004E0 HH_BANK25_BASE_MSB                 R4         2     111968     112050  boot:2
+                                                                                                      pcs FFF042A0 FFF04468; values 01000000:1 00000000:1
+Hammerhead           F80004E0 HH_BANK25_BASE_MSB                 W4         2      69539     111970  boot:2
+                                                                                                      pcs FFF041DC FFF042A8; values 01000000:1 00000000:1
+Hammerhead           F80004F0 HH_BANK25_BASE_LSB                 R4         1     112049     112049  boot:1
+                                                                                                      pcs FFF04464; values 0C000000:1
+Hammerhead           F80004F0 HH_BANK25_BASE_LSB                 W4         2      69538     111974  boot:2
+                                                                                                      pcs FFF041D8 FFF042B8; values 90000000:1 0C000000:1
+
+Control video frame buffer / registers (aggregated per MB):
+  90800000-908FFFFF R 259438 accesses, first at instruction 119985415
+  90800000-908FFFFF W 777012 accesses, first at instruction 119985366
+  90900000-909FFFFF R 48492 accesses, first at instruction 184880871
+  90900000-909FFFFF W 145346 accesses, first at instruction 134036236
+
+Most polled registers (reads > 1000):
+  F3017A00 GC_VIA.vIFR                           135855 reads
+  940001A0 Control registers (Chaos PCI BAR, set by OF)+1A0    127304 reads
+  F3016000 GC_VIA.vBufB                           32033 reads
+  F3000024 GC_INT_MASK                            13699 reads
+  F300002C GC_INT_LEVELS                          12923 reads
+  F3017C00 GC_VIA.vIER                             6217 reads
+  F3017400 GC_VIA.vSR                              3897 reads
+  F3017600 GC_VIA.vACR                             3874 reads
+  F3017000 GC_VIA.vT2C                             3855 reads
+  F3017200 GC_VIA.vT2CH                            3848 reads
+  F3012000 GC_SCC_B_ctrl                           2720 reads
+  F3018040 GC_MESH_SCSI.bus_status0                2406 reads
+  F30180A0 GC_MESH_SCSI.interrupt                  1551 reads

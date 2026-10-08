@@ -1,0 +1,6 @@
+; ROM resource 'mitq' 0  at FFCDEBC0
+; data at ROM 0DEBC0 (18 bytes), entry at 0DEBD0, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 00000018 00000214
+
+FFCDEBC0  00 00 12 A0 00 00 22 00 00 00 3C 00 6B 63 6B 63  |......"...<.kckc|
+FFCDEBD0  78 00 00 00 00 00 00 00                          |x.......|

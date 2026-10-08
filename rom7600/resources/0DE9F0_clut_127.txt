@@ -1,0 +1,10 @@
+; ROM resource 'clut' 127  at FFCDE9F0
+; data at ROM 0DE9F0 (54 bytes), entry at 0DEA40, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 00000054 00000204
+
+FFCDE9F0  00 00 00 7F 00 00 00 07 00 00 00 00 00 00 00 00  |................|
+FFCDEA00  00 01 FC 00 F3 7D 05 2F 00 02 F2 D7 08 56 84 EC  |.....}./.....V..|
+FFCDEA10  00 03 DD 6B 08 C2 06 A2 00 04 02 41 AB 54 EA FF  |...k.......A.T..|
+FFCDEA20  00 05 00 00 80 00 11 B0 00 06 00 00 00 00 D4 00  |................|
+FFCDEA30  00 07 FF FF FF FF FF FF 6B 63 6B 63 6B 63 6B 63  |........kckckckc|
+FFCDEA40  78 00 00 00                                      |x...|

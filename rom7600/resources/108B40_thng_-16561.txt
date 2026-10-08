@@ -1,0 +1,10 @@
+; ROM resource 'thng' -16561  at FFD08B40
+; data at ROM 108B40 (46 bytes), entry at 108B80, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 00000046 00000334
+
+; component description: type 'mixr' subtype 'mixw' manufacturer 'appl'
+FFD08B40  6D 69 78 72 6D 69 78 77 61 70 70 6C 00 80 0C 0D  |mixrmixwappl....|
+FFD08B50  00 00 00 00 73 69 66 74 BF 4F 53 54 52 20 BF 4F  |....sift.OSTR .O|
+FFD08B60  53 54 52 20 BF 3B 49 43 4F 4E BF 4F 00 02 00 00  |STR .;ICON.O....|
+FFD08B70  00 00 00 01 00 00 00 00 00 00 6B 63 6B 63 6B 63  |..........kckckc|
+FFD08B80  78 00 00 00 00 00                                |x.....|

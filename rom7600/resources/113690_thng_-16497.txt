@@ -1,0 +1,10 @@
+; ROM resource 'thng' -16497  at FFD13690
+; data at ROM 113690 (46 bytes), entry at 1136D0, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 00000046 000003a4
+
+; component description: type 'sdev' subtype 'sing' manufacturer 'appl'
+FFD13690  73 64 65 76 73 69 6E 67 61 70 70 6C 80 C0 0C 0C  |sdevsingappl....|
+FFD136A0  00 00 00 00 73 69 66 74 BF 8F 53 54 52 20 BF 4D  |....sift..STR .M|
+FFD136B0  53 54 52 20 BF 8F 49 43 4F 4E BF 4D 00 00 00 00  |STR ..ICON.M....|
+FFD136C0  00 00 00 01 00 00 00 00 00 00 6B 63 6B 63 6B 63  |..........kckckc|
+FFD136D0  78 00 00 00 00 00                                |x.....|

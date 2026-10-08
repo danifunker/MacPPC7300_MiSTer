@@ -1,0 +1,10 @@
+; ROM resource 'thng' -16567  at FFD08C30
+; data at ROM 108C30 (46 bytes), entry at 108C70, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 00000046 00000344
+
+; component description: type 'sdec' subtype 'MAC6' manufacturer 'appl'
+FFD08C30  73 64 65 63 4D 41 43 36 61 70 70 6C 00 00 09 09  |sdecMAC6appl....|
+FFD08C40  00 00 00 00 73 69 66 74 BF 4A 53 54 52 20 BF 49  |....sift.JSTR .I|
+FFD08C50  53 54 52 20 BF 35 49 43 4F 4E BF 53 00 01 00 00  |STR .5ICON.S....|
+FFD08C60  00 00 00 01 00 00 00 00 00 00 6B 63 6B 63 6B 63  |..........kckckc|
+FFD08C70  78 00 00 00 00 00                                |x.....|

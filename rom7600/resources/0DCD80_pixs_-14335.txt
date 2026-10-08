@@ -1,0 +1,10 @@
+; ROM resource 'pixs' -14335  at FFCDCD80
+; data at ROM 0DCD80 (5A bytes), entry at 0DCDD0, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 0000005a 0000017c
+
+FFCDCD80  80 06 00 00 00 00 00 0B 00 0B 00 04 AA AA AA AA  |................|
+FFCDCD90  AA AA AA AA AA AA AA AA AA AA AA AA AA AA AA AA  |................|
+FFCDCDA0  AA AA AA AA AA AA AA AA AA AA AA AA AA AA AA AA  |................|
+FFCDCDB0  AA AA AA AA AA AA AA AA AA AA AA AA AA AA AA AA  |................|
+FFCDCDC0  AA AA AA AA AA AA AA AA AA AA AA AA AA AA 6B 63  |..............kc|
+FFCDCDD0  78 00 00 00 00 00 00 00 00 0D                    |x.........|

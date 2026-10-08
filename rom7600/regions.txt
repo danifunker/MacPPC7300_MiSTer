@@ -1,0 +1,202 @@
+Region map of the 7600 ROM (ROM offset = physical - FFC00000)
+============================================================================
+start    end      size     phys      what                                                    file / how known
+000000   0D34FF   0D3500   FFC00000  68k ROM: header and code                                68k/68k_main_FFC00000.lst; ROM header (RomSize 0x300000, DispTableOff, RomRsrc); 68k execution under the emulator
+0D3500   0D4CFF   001800   FFCD3500  68k trap dispatch tables                                68k/68k_traptable_FFCD3500.txt; header DispTableOff = 0x0D3500; entries match the RAM trap tables at $E00/$400 after boot
+0D4D00   0D4D0F   000010   FFCD4D00  ROM resource list header                                resources/resources.txt; header RomRsrc = 0x0D4D00
+0D4D10   2F35CA   21E8BB   FFCD4D10  ROM resources: 180 (30 PEF, 62 68k code, 88 data), entries interleaved resources/ (index resources.txt); resource list from header RomRsrc; data blocks tagged "Kurt"
+2F35CB   2FFED3   00C909   FFEF35CB  fill ("kc" pattern)                                     ; pattern 6B63
+2FFED4   2FFFFF   00012C   FFEFFED4  slot 0 declaration ROM (DeclROM)                        68k/68k_declrom_FFEFFED4.txt; format block at the top of the 68k ROM: test pattern 5A932BC7, length 12C
+300000   30BFFF   00C000   FFF00000  PowerPC exception vectors and boot code                 ppc/ppc_boot_FFF00000.lst; ConfigInfo ExceptionTableOffset/Size; reset fetch at FFF00100
+30C000   30CFFF   001000   FFF0C000  LA_HardwarePriv (empty)                                 ppc/ppc_configinfo_FFF0D000.txt; ConfigInfo LA_HardwarePriv = FFF0C000
+30D000   30DFFF   001000   FFF0D000  ConfigInfo (NanoKernel configuration)                   ppc/ppc_configinfo_FFF0D000.txt; BootstrapVersion "Boot TNT 0.1p"; ROMImageBaseOffset = -0x30D000
+30E000   30FFFF   002000   FFF0E000  (gap: zero)
+310000   31FFFF   010000   FFF10000  NanoKernel                                              ppc/ppc_nanokernel_FFF10000.lst; ConfigInfo KernelCodeOffset/Size; executed with MSR IR=0 in place
+320000   32FFFF   010000   FFF20000  HWInit / diagnostics                                    ppc/ppc_hwinit_FFF20000.lst; ConfigInfo HWInitCodeOffset/Size; Serial Test Manager strings
+330000   34FFFF   020000   FFF30000  Open Firmware 1.0.5 bundle (XCOFF)                      ppc/ppc_openfirmware_FFF30000.lst; ConfigInfo OpenFWBundleOffset/Size; XCOFF magic 01DF; kernel copied to PA 00408000 = EA FF808000
+350000   35FFFF   010000   FFF50000  (gap: zero)
+360000   37FFFF   020000   FFF60000  68k emulator                                            ppc/ppc_emulator_68060000.lst; ConfigInfo EmulatorCodeOffset/Size; runs mapped at LA_EmulatorCode 68060000
+380000   3FFFFF   080000   FFF80000  68k emulator opcode dispatch table                      ppc/ppc_opcodetable_68080000.lst; ConfigInfo OpcodeTableOffset/Size; 8 bytes per 68k opcode; mapped at LA_DispatchTable 68080000
+
+ROM resources in address order (data block with its 16-byte header; list entries sit
+between the blocks):
+0D4D70   0D4ED7   000168   FFCD4D70  resource 'rovm' 0  (data)                               resources/0D4D80_rovm_0.txt; ROM resource list entry at 0D4ED0
+0D4EF0   0D4F4F   000060   FFCD4EF0  resource 'CURS' 1  (data)                               resources/0D4F00_CURS_1.txt; ROM resource list entry at 0D4F50
+0D4F70   0D4FCF   000060   FFCD4F70  resource 'CURS' 2  (data)                               resources/0D4F80_CURS_2.txt; ROM resource list entry at 0D4FD0
+0D4FF0   0D504F   000060   FFCD4FF0  resource 'CURS' 3  (data)                               resources/0D5000_CURS_3.txt; ROM resource list entry at 0D5050
+0D5070   0D50CF   000060   FFCD5070  resource 'CURS' 4  (data)                               resources/0D5080_CURS_4.txt; ROM resource list entry at 0D50D0
+0D50F0   0D5F29   000E3A   FFCD50F0  resource 'FONT' 12  (data)                              resources/0D5100_FONT_12.txt; ROM resource list entry at 0D5F20
+0D5F40   0D697D   000A3E   FFCD5F40  resource 'FONT' 393  (data)                             resources/0D5F50_FONT_393.txt; ROM resource list entry at 0D6980
+0D69A0   0D7623   000C84   FFCD69A0  resource 'FONT' 396  (data)                             resources/0D69B0_FONT_396.txt; ROM resource list entry at 0D7620
+0D7640   0D7FFF   0009C0   FFCD7640  resource 'FONT' 521  (data)                             resources/0D7650_FONT_521.txt; ROM resource list entry at 0D8000
+0D8020   0D963B   00161C   FFCD8020  resource 'snd ' 1 Simple Beep (data)                    resources/0D8030_snd_1_Simple_Beep.txt; ROM resource list entry at 0D9630
+0D9660   0D9C09   0005AA   FFCD9660  resource 'KCHR' 0 U.S. (data)                           resources/0D9670_KCHR_0_U.S..txt; ROM resource list entry at 0D9C00
+0D9C20   0D9CC1   0000A2   FFCD9C20  resource 'KMAP' 0  (data)                               resources/0D9C30_KMAP_0.txt; ROM resource list entry at 0D9CC0
+0D9CE0   0D9D8B   0000AC   FFCD9CE0  resource 'KMAP' 2  (data)                               resources/0D9CF0_KMAP_2.txt; ROM resource list entry at 0D9D80
+0D9DA0   0D9FF1   000252   FFCD9DA0  resource 'KCAP' 1  (data)                               resources/0D9DB0_KCAP_1.txt; ROM resource list entry at 0D9FF0
+0DA010   0DA307   0002F8   FFCDA010  resource 'KCAP' 2  (data)                               resources/0DA020_KCAP_2.txt; ROM resource list entry at 0DA300
+0DA320   0DA577   000258   FFCDA320  resource 'KCAP' 4  (data)                               resources/0DA330_KCAP_4.txt; ROM resource list entry at 0DA570
+0DA590   0DA891   000302   FFCDA590  resource 'KCAP' 5  (data)                               resources/0DA5A0_KCAP_5.txt; ROM resource list entry at 0DA890
+0DA8B0   0DAE1B   00056C   FFCDA8B0  resource 'CDEF' 0 Main (68k code)                       resources/0DA8C0_CDEF_0_Main.lst; ROM resource list entry at 0DAE10
+0DAE30   0DBAAB   000C7C   FFCDAE30  resource 'CDEF' 1 Main (68k code)                       resources/0DAE40_CDEF_1_Main.lst; ROM resource list entry at 0DBAA0
+0DBAC0   0DBAFD   00003E   FFCDBAC0  resource 'accl' 0  (data)                               resources/0DBAD0_accl_0.txt; ROM resource list entry at 0DBB00
+0DBB20   0DBB9D   00007E   FFCDBB20  resource 'accl' 1  (data)                               resources/0DBB30_accl_1.txt; ROM resource list entry at 0DBBA0
+0DBBC0   0DBC3D   00007E   FFCDBBC0  resource 'accl' 2  (data)                               resources/0DBBD0_accl_2.txt; ROM resource list entry at 0DBC40
+0DBC60   0DBC9D   00003E   FFCDBC60  resource 'accl' 4  (data)                               resources/0DBC70_accl_4.txt; ROM resource list entry at 0DBCA0
+0DBCC0   0DBCFD   00003E   FFCDBCC0  resource 'accl' 5  (data)                               resources/0DBCD0_accl_5.txt; ROM resource list entry at 0DBD00
+0DBD20   0DBD9D   00007E   FFCDBD20  resource 'accl' 6  (data)                               resources/0DBD30_accl_6.txt; ROM resource list entry at 0DBDA0
+0DBDC0   0DBE3D   00007E   FFCDBDC0  resource 'accl' 7  (data)                               resources/0DBDD0_accl_7.txt; ROM resource list entry at 0DBE40
+0DBE60   0DC01D   0001BE   FFCDBE60  resource 'accl' 8  (data)                               resources/0DBE70_accl_8.txt; ROM resource list entry at 0DC020
+0DC040   0DC09B   00005C   FFCDC040  resource 'ics#' -16386  (data)                          resources/0DC050_ics_-16386.txt; ROM resource list entry at 0DC090
+0DC0B0   0DC14B   00009C   FFCDC0B0  resource 'ics4' -16386  (data)                          resources/0DC0C0_ics4_-16386.txt; ROM resource list entry at 0DC140
+0DC160   0DC27B   00011C   FFCDC160  resource 'ics8' -16386  (data)                          resources/0DC170_ics8_-16386.txt; ROM resource list entry at 0DC270
+0DC290   0DC333   0000A4   FFCDC290  resource 'clut' 5  (data)                               resources/0DC2A0_clut_5.txt; ROM resource list entry at 0DC330
+0DC350   0DCB73   000824   FFCDC350  resource 'clut' 9  (data)                               resources/0DC360_clut_9.txt; ROM resource list entry at 0DCB70
+0DCB90   0DCC61   0000D2   FFCDCB90  resource 'ppat' 16  (data)                              resources/0DCBA0_ppat_16.txt; ROM resource list entry at 0DCC60
+0DCC80   0DCD51   0000D2   FFCDCC80  resource 'ppat' 18  (data)                              resources/0DCC90_ppat_18.txt; ROM resource list entry at 0DCD50
+0DCD70   0DCDD9   00006A   FFCDCD70  resource 'pixs' -14335  (data)                          resources/0DCD80_pixs_-14335.txt; ROM resource list entry at 0DCDD0
+0DCDF0   0DCE59   00006A   FFCDCDF0  resource 'pixs' -14334  (data)                          resources/0DCE00_pixs_-14334.txt; ROM resource list entry at 0DCE50
+0DCE70   0DCF15   0000A6   FFCDCE70  resource 'pixs' -10199  (data)                          resources/0DCE80_pixs_-10199.txt; ROM resource list entry at 0DCF10
+0DCF30   0DCFD5   0000A6   FFCDCF30  resource 'pixs' -10200  (data)                          resources/0DCF40_pixs_-10200.txt; ROM resource list entry at 0DCFD0
+0DCFF0   0DD095   0000A6   FFCDCFF0  resource 'pixs' -10201  (data)                          resources/0DD000_pixs_-10201.txt; ROM resource list entry at 0DD090
+0DD0B0   0DD155   0000A6   FFCDD0B0  resource 'pixs' -10202  (data)                          resources/0DD0C0_pixs_-10202.txt; ROM resource list entry at 0DD150
+0DD170   0DD215   0000A6   FFCDD170  resource 'pixs' -10203  (data)                          resources/0DD180_pixs_-10203.txt; ROM resource list entry at 0DD210
+0DD230   0DD2D5   0000A6   FFCDD230  resource 'pixs' -10204  (data)                          resources/0DD240_pixs_-10204.txt; ROM resource list entry at 0DD2D0
+0DD2F0   0DD395   0000A6   FFCDD2F0  resource 'pixs' -10205  (data)                          resources/0DD300_pixs_-10205.txt; ROM resource list entry at 0DD390
+0DD3B0   0DD455   0000A6   FFCDD3B0  resource 'pixs' -10206  (data)                          resources/0DD3C0_pixs_-10206.txt; ROM resource list entry at 0DD450
+0DD470   0DD505   000096   FFCDD470  resource 'pixs' -10207  (data)                          resources/0DD480_pixs_-10207.txt; ROM resource list entry at 0DD500
+0DD520   0DD5C5   0000A6   FFCDD520  resource 'pixs' -10208  (data)                          resources/0DD530_pixs_-10208.txt; ROM resource list entry at 0DD5C0
+0DD5E0   0DE01B   000A3C   FFCDD5E0  resource 'DRVR' 48 .EDisk (68k code)                    resources/0DD5F0_DRVR_48_.EDisk.lst; ROM resource list entry at 0DE010
+0DE030   0DE063   000034   FFCDE030  resource 'clut' 1  (data)                               resources/0DE040_clut_1.txt; ROM resource list entry at 0DE060
+0DE080   0DE0C3   000044   FFCDE080  resource 'clut' 2  (data)                               resources/0DE090_clut_2.txt; ROM resource list entry at 0DE0C0
+0DE0E0   0DE183   0000A4   FFCDE0E0  resource 'clut' 4  (data)                               resources/0DE0F0_clut_4.txt; ROM resource list entry at 0DE180
+0DE1A0   0DE9C3   000824   FFCDE1A0  resource 'clut' 8  (data)                               resources/0DE1B0_clut_8.txt; ROM resource list entry at 0DE9C0
+0DE9E0   0DEA43   000064   FFCDE9E0  resource 'clut' 127  (data)                             resources/0DE9F0_clut_127.txt; ROM resource list entry at 0DEA40
+0DEA60   0DEB87   000128   FFCDEA60  resource 'gama' 0 StdGamma (data)                       resources/0DEA70_gama_0_StdGamma.txt; ROM resource list entry at 0DEB80
+0DEBA0   0DEBC7   000028   FFCDEBA0  resource 'mitq' 0  (data)                               resources/0DEBB0_mitq_0.txt; ROM resource list entry at 0DEBC0
+0DEBE0   0DFC7B   00109C   FFCDEBE0  resource 'WDEF' 0 Main (68k code)                       resources/0DEBF0_WDEF_0_Main.lst; ROM resource list entry at 0DFC70
+0DFC90   0E01AB   00051C   FFCDFC90  resource 'WDEF' 1 Main (68k code)                       resources/0DFCA0_WDEF_1_Main.lst; ROM resource list entry at 0E01A0
+0E01C0   0E020B   00004C   FFCE01C0  resource 'wctb' 0  (data)                               resources/0E01D0_wctb_0.txt; ROM resource list entry at 0E0200
+0E0220   0E0263   000044   FFCE0220  resource 'cctb' 0  (data)                               resources/0E0230_cctb_0.txt; ROM resource list entry at 0E0260
+0E0280   0E147B   0011FC   FFCE0280  resource 'PACK' 0 Main (68k code)                       resources/0E0290_PACK_0_Main.lst; ROM resource list entry at 0E1470
+0E1490   0E161B   00018C   FFCE1490  resource 'LDEF' 0 Main (68k code)                       resources/0E14A0_LDEF_0_Main.lst; ROM resource list entry at 0E1610
+0E1630   0E187B   00024C   FFCE1630  resource 'LDEF' 19 Main (68k code)                      resources/0E1640_LDEF_19_Main.lst; ROM resource list entry at 0E1870
+0E1890   0E392B   00209C   FFCE1890  resource 'PACK' 4 Main (68k code)                       resources/0E18A0_PACK_4_Main.lst; ROM resource list entry at 0E3920
+0E3940   0E4B6B   00122C   FFCE3940  resource 'PACK' 5 Main (68k code)                       resources/0E3950_PACK_5_Main.lst; ROM resource list entry at 0E4B60
+0E4B80   0E50EB   00056C   FFCE4B80  resource 'PACK' 7 Main (68k code)                       resources/0E4B90_PACK_7_Main.lst; ROM resource list entry at 0E50E0
+0E5100   0EAEEB   005DEC   FFCE5100  resource 'PACK' 8 AevtMgr (68k code)                    resources/0E5110_PACK_8_AevtMgr.lst; ROM resource list entry at 0EAEE0
+0EAF00   0EAF27   000028   FFCEAF00  resource 'ppcc' -5856  (data)                           resources/0EAF10_ppcc_-5856.txt; ROM resource list entry at 0EAF20
+0EAF40   0EB620   0006E1   FFCEAF40  resource 'wedg' -5760  (data)                           resources/0EAF50_wedg_-5760.txt; ROM resource list entry at 0EB620
+0EB640   0EBBDF   0005A0   FFCEB640  resource 'wedg' -5759  (data)                           resources/0EB650_wedg_-5759.txt; ROM resource list entry at 0EBBE0
+0EBC00   0EF0EB   0034EC   FFCEBC00  resource 'PACK' 12 Main (68k code)                      resources/0EBC10_PACK_12_Main.lst; ROM resource list entry at 0EF0E0
+0EF100   0F2A0B   00390C   FFCEF100  resource 'PACK' 13 Main (68k code)                      resources/0EF110_PACK_13_Main.lst; ROM resource list entry at 0F2A00
+0F2A20   0F31CB   0007AC   FFCF2A20  resource 'proc' -5728 Main (68k code)                   resources/0F2A30_proc_-5728_Main.lst; ROM resource list entry at 0F31C0
+0F31E0   0F321B   00003C   FFCF31E0  resource 'proc' -5727 Main (68k code)                   resources/0F31F0_proc_-5727_Main.lst; ROM resource list entry at 0F3210
+0F3230   0F4759   00152A   FFCF3230  resource 'dimg' -16385 Main (68k code)                  resources/0F3240_dimg_-16385_Main.lst; ROM resource list entry at 0F4750
+0F4770   0F484B   0000DC   FFCF4770  resource 'WDEF' 126 Main (68k code)                     resources/0F4780_WDEF_126_Main.lst; ROM resource list entry at 0F4840
+0F4860   0F7A1B   0031BC   FFCF4860  resource 'PACK' 15 Main (68k code)                      resources/0F4870_PACK_15_Main.lst; ROM resource list entry at 0F7A10
+0F7A30   0FE1DB   0067AC   FFCF7A30  resource 'DRVR' 4 .Sony (68k code)                      resources/0F7A40_DRVR_4_.Sony.lst; ROM resource list entry at 0FE1D0
+0FE1F0   0FE671   000482   FFCFE1F0  resource 'CDEF' 62  (68k code)                          resources/0FE200_CDEF_62.lst; ROM resource list entry at 0FE670
+0FE690   10010B   001A7C   FFCFE690  resource 'proc' -16498  (68k code)                      resources/0FE6A0_proc_-16498.lst; ROM resource list entry at 100100
+100120   102D81   002C62   FFD00120  resource 'proc' -16497  (68k code)                      resources/100130_proc_-16497.lst; ROM resource list entry at 102D80
+102DA0   103AA9   000D0A   FFD02DA0  resource 'sift' -16557  (68k code)                      resources/102DB0_sift_-16557.lst; ROM resource list entry at 103AA0
+103AC0   1047C1   000D02   FFD03AC0  resource 'sift' -16558  (68k code)                      resources/103AD0_sift_-16558.lst; ROM resource list entry at 1047C0
+1047E0   10504F   000870   FFD047E0  resource 'sift' -16559  (68k code)                      resources/1047F0_sift_-16559.lst; ROM resource list entry at 105050
+105070   1053B3   000344   FFD05070  resource 'sift' -16560  (68k code)                      resources/105080_sift_-16560.lst; ROM resource list entry at 1053B0
+1053D0   107FB1   002BE2   FFD053D0  resource 'sift' -16561  (68k code)                      resources/1053E0_sift_-16561.lst; ROM resource list entry at 107FB0
+107FD0   108959   00098A   FFD07FD0  resource 'sift' -16566  (68k code)                      resources/107FE0_sift_-16566.lst; ROM resource list entry at 108950
+108970   1089C5   000056   FFD08970  resource 'thng' -16557  (data)                          resources/108980_thng_-16557.txt; ROM resource list entry at 1089C0
+1089E0   108A35   000056   FFD089E0  resource 'thng' -16558  (data)                          resources/1089F0_thng_-16558.txt; ROM resource list entry at 108A30
+108A50   108AA5   000056   FFD08A50  resource 'thng' -16559  (data)                          resources/108A60_thng_-16559.txt; ROM resource list entry at 108AA0
+108AC0   108B15   000056   FFD08AC0  resource 'thng' -16560  (data)                          resources/108AD0_thng_-16560.txt; ROM resource list entry at 108B10
+108B30   108B85   000056   FFD08B30  resource 'thng' -16561  (data)                          resources/108B40_thng_-16561.txt; ROM resource list entry at 108B80
+108BA0   108BF5   000056   FFD08BA0  resource 'thng' -16566  (data)                          resources/108BB0_thng_-16566.txt; ROM resource list entry at 108BF0
+108C10   108C65   000056   FFD08C10  resource 'thng' -16567  (data)                          resources/108C20_thng_-16567.txt; ROM resource list entry at 108C60
+108C80   108D1B   00009C   FFD08C80  resource 'ICON' -16557  (data)                          resources/108C90_ICON_-16557.txt; ROM resource list entry at 108D10
+108D30   108DCB   00009C   FFD08D30  resource 'ICON' -16560  (data)                          resources/108D40_ICON_-16560.txt; ROM resource list entry at 108DC0
+108DE0   108E7B   00009C   FFD08DE0  resource 'ICON' -16561  (data)                          resources/108DF0_ICON_-16561.txt; ROM resource list entry at 108E70
+108E90   1098BB   000A2C   FFD08E90  resource 'DRVR' 3 .Sound (68k code)                     resources/108EA0_DRVR_3_.Sound.lst; ROM resource list entry at 1098B0
+1098D0   10AD6B   00149C   FFD098D0  resource 'DRVR' -16495 .AppleSoundInput (68k code)      resources/1098E0_DRVR_-16495_.AppleSoundInput.lst; ROM resource list entry at 10AD60
+10AD90   10C6BB   00192C   FFD0AD90  resource 'DRVR' -16500 .AppleSoundInput (68k code)      resources/10ADA0_DRVR_-16500_.AppleSoundInput.lst; ROM resource list entry at 10C6B0
+10C6E0   10F1EB   002B0C   FFD0C6E0  resource 'DRVR' -16501 .AppleSoundInput (68k code)      resources/10C6F0_DRVR_-16501_.AppleSoundInput.lst; ROM resource list entry at 10F1E0
+10F210   11021B   00100C   FFD0F210  resource 'sift' -16497  (68k code)                      resources/10F220_sift_-16497.lst; ROM resource list entry at 110210
+110230   11190B   0016DC   FFD10230  resource 'sift' -16569  (68k code)                      resources/110240_sift_-16569.lst; ROM resource list entry at 111900
+111920   11323B   00191C   FFD11920  resource 'sift' -16501  (68k code)                      resources/111930_sift_-16501.lst; ROM resource list entry at 113230
+113250   11366B   00041C   FFD13250  resource 'adio' -16570  (68k code)                      resources/113260_adio_-16570.lst; ROM resource list entry at 113660
+113680   1136D5   000056   FFD13680  resource 'thng' -16497  (data)                          resources/113690_thng_-16497.txt; ROM resource list entry at 1136D0
+1136F0   113745   000056   FFD136F0  resource 'thng' -16569  (data)                          resources/113700_thng_-16569.txt; ROM resource list entry at 113740
+113760   1137B5   000056   FFD13760  resource 'thng' -16570  (data)                          resources/113770_thng_-16570.txt; ROM resource list entry at 1137B0
+1137D0   113825   000056   FFD137D0  resource 'thng' -16501  (data)                          resources/1137E0_thng_-16501.txt; ROM resource list entry at 113820
+113840   1138DB   00009C   FFD13840  resource 'ICON' -16563  (data)                          resources/113850_ICON_-16563.txt; ROM resource list entry at 1138D0
+1138F0   11398B   00009C   FFD138F0  resource 'ICON' -16570  (data)                          resources/113900_ICON_-16570.txt; ROM resource list entry at 113980
+1139A0   11517B   0017DC   FFD139A0  resource 'GARY' 1 Main (68k code)                       resources/1139B0_GARY_1_Main.lst; ROM resource list entry at 115170
+115190   126EFB   011D6C   FFD15190  resource 'ncod' 0 CodeFragmentMgr (PEF)                 resources/1151A0_ncod_0_CodeFragmentMgr.lst; ROM resource list entry at 126EF0
+126F20   12C57B   00565C   FFD26F20  resource 'ncod' 1 MixedMode (PEF)                       resources/126F30_ncod_1_MixedMode.lst; ROM resource list entry at 12C570
+12C5A0   12D13B   000B9C   FFD2C5A0  resource 'ncod' 8 ProcessMgrSupport (PEF)               resources/12C5B0_ncod_8_ProcessMgrSupport.lst; ROM resource list entry at 12D130
+12D160   164EDB   037D7C   FFD2D160  resource 'nlib' 5 InterfaceLib (PEF)                    resources/12D170_nlib_5_InterfaceLib.lst; ROM resource list entry at 164ED0
+164F00   170F8B   00C08C   FFD64F00  resource 'nlib' 6 PrivateInterfaceLib (PEF)             resources/164F10_nlib_6_PrivateInterfaceLib.lst; ROM resource list entry at 170F80
+170FB0   18F32B   01E37C   FFD70FB0  resource 'nlib' 9 MathLib (PEF)                         resources/170FC0_nlib_9_MathLib.lst; ROM resource list entry at 18F320
+18F340   1A210B   012DCC   FFD8F340  resource 'nlib' 10 StdCLib (PEF)                        resources/18F350_nlib_10_StdCLib.lst; ROM resource list entry at 1A2100
+1A2120   1D92AB   03718C   FFDA2120  resource 'nlib' 11 NQD (PEF)                            resources/1A2130_nlib_11_NQD.lst; ROM resource list entry at 1D92A0
+1D92C0   1DF83B   00657C   FFDD92C0  resource 'nlib' 15 FMSwapFont (PEF)                     resources/1D92D0_nlib_15_FMSwapFont.lst; ROM resource list entry at 1DF830
+1DF860   1E777B   007F1C   FFDDF860  resource 'nlib' 16 StdText (PEF)                        resources/1DF870_nlib_16_StdText.lst; ROM resource list entry at 1E7770
+1E7790   1F37AB   00C01C   FFDE7790  resource 'nlib' 17 Resources (PEF)                      resources/1E77A0_nlib_17_Resources.lst; ROM resource list entry at 1F37A0
+1F37D0   1F486B   00109C   FFDF37D0  resource 'nlib' 18 QuickdrawText (PEF)                  resources/1F37E0_nlib_18_QuickdrawText.lst; ROM resource list entry at 1F4860
+1F4890   1FF5CB   00AD3C   FFDF4890  resource 'nlib' 19 MemoryMgr (PEF)                      resources/1F48A0_nlib_19_MemoryMgr.lst; ROM resource list entry at 1FF5C0
+1FF700   1FF7DB   0000DC   FFDFF700  resource 'nlib' -16405 VideoServicesGlobals (PEF)       resources/1FF710_nlib_-16405_VideoServicesGlobals.lst; ROM resource list entry at 1FF7D0
+1FF830   1FFE69   00063A   FFDFF830  resource 'nlib' -16407 DSLGlobalsLib (PEF)              resources/1FF840_nlib_-16407_DSLGlobalsLib.lst; ROM resource list entry at 1FFE60
+200000   232C0B   032C0C   FFE00000  resource 'beep' 0 Boot Beep Resource (data)             resources/200010_beep_0_Boot_Beep_Resource.txt; ROM resource list entry at 0D4D10
+232C00   23551B   00291C   FFE32C00  resource 'nlib' -16400 NameRegistryLib (PEF)            resources/232C10_nlib_-16400_NameRegistryLib.lst; ROM resource list entry at 1FF620
+235510   23C69B   00718C   FFE35510  resource 'nlib' -16401 DriverServicesLib (PEF)          resources/235520_nlib_-16401_DriverServicesLib.lst; ROM resource list entry at 1FF650
+23C690   23DC0B   00157C   FFE3C690  resource 'nlib' -16403 VideoServicesLib (PEF)           resources/23C6A0_nlib_-16403_VideoServicesLib.lst; ROM resource list entry at 1FF6B0
+23DC00   23E56B   00096C   FFE3DC00  resource 'nlib' -16404 PCILib (PEF)                     resources/23DC10_nlib_-16404_PCILib.lst; ROM resource list entry at 1FF6E0
+23E560   23E78B   00022C   FFE3E560  resource 'nlib' -16408 MotherBoardHAL (PEF)             resources/23E570_nlib_-16408_MotherBoardHAL.lst; ROM resource list entry at 1FFE90
+23E780   23ED5B   0005DC   FFE3E780  resource 'nlib' -16410 QuickdrawLib (PEF)               resources/23E790_nlib_-16410_QuickdrawLib.lst; ROM resource list entry at 1FFEC0
+23ED50   23F0FB   0003AC   FFE3ED50  resource 'DRVR' 52 .BCScreen (68k code)                 resources/23ED60_DRVR_52_.BCScreen.lst; ROM resource list entry at 1FFEF0
+23F0F0   23F159   00006A   FFE3F0F0  resource 'libr' -20000 appl$SerialHal,1.3 (data)        resources/23F100_libr_-20000_appl_SerialHal_1.3.txt; ROM resource list entry at 1FFFB0
+23F150   23F1DB   00008C   FFE3F150  resource 'sl00' 0  (68k code)                           resources/23F160_sl00_0.lst; ROM resource list entry at 1FFFE0
+23F1D0   23F64D   00047E   FFE3F1D0  resource 'sl00' 1 %A5Init (68k code)                    resources/23F1E0_sl00_1_A5Init.lst; ROM resource list entry at 23F650
+23F670   23F931   0002C2   FFE3F670  resource 'sl00' 2 Main (68k code)                       resources/23F680_sl00_2_Main.lst; ROM resource list entry at 23F930
+23F950   23F9CD   00007E   FFE3F950  resource 'libr' -20001 appl$SerialHalGeneral,1.3 (data) resources/23F960_libr_-20001_appl_SerialHalGeneral_1.3.txt; ROM resource list entry at 23F9D0
+23FA10   23FE43   000434   FFE3FA10  resource 'sl01' 0  (68k code)                           resources/23FA20_sl01_0.lst; ROM resource list entry at 23FE40
+23FEA0   23FF1B   00007C   FFE3FEA0  resource 'libr' -20002 appl$SerialHalScc,1.3 (data)     resources/23FEB0_libr_-20002_appl_SerialHalScc_1.3.txt; ROM resource list entry at 23FF10
+23FFD0   23FFFB   00002C   FFE3FFD0  resource 'libi' -20004  (data)                          resources/23FFE0_libi_-20004.txt; ROM resource list entry at 2A7580
+240000   246283   006284   FFE40000  resource 'beep' 1 Error Beep Resource (data)            resources/240010_beep_1_Error_Beep_Resource.txt; ROM resource list entry at 0D4D40
+246280   262E2B   01CBAC   FFE46280  resource 'nlib' 20 FontDispatch (PEF)                   resources/246290_nlib_20_FontDispatch.lst; ROM resource list entry at 1FF5F0
+262E20   26796B   004B4C   FFE62E20  resource 'nlib' -16402 DriverLoaderLib (PEF)            resources/262E30_nlib_-16402_DriverLoaderLib.lst; ROM resource list entry at 1FF680
+267960   26BD4B   0043EC   FFE67960  resource 'nlib' -16406 InterruptTreeTNT (PEF)           resources/267970_nlib_-16406_InterruptTreeTNT.lst; ROM resource list entry at 1FF800
+26BD40   27695F   00AC20   FFE6BD40  resource 'ndrv' 100  (PEF)                              resources/26BD50_ndrv_100.lst; ROM resource list entry at 1FFF20
+276960   27AB4F   0041F0   FFE76960  resource 'ndrv' 99  (PEF)                               resources/276970_ndrv_99.lst; ROM resource list entry at 1FFF40
+27AB50   285E43   00B2F4   FFE7AB50  resource 'ndrv' 101  (PEF)                              resources/27AB60_ndrv_101.lst; ROM resource list entry at 1FFF60
+285E40   2A391B   01DADC   FFE85E40  resource 'ncod' 50 NativeNub (PEF)                      resources/285E50_ncod_50_NativeNub.lst; ROM resource list entry at 1FFF80
+2A3910   2A3E33   000524   FFEA3910  resource 'sl01' 1 %A5Init (68k code)                    resources/2A3920_sl01_1_A5Init.lst; ROM resource list entry at 23FE60
+2A3E30   2A4DA1   000F72   FFEA3E30  resource 'sl01' 2 Main (68k code)                       resources/2A3E40_sl01_2_Main.lst; ROM resource list entry at 23FE80
+2A4DA0   2A4F5B   0001BC   FFEA4DA0  resource 'sl02' 0  (68k code)                           resources/2A4DB0_sl02_0.lst; ROM resource list entry at 23FF40
+2A4F50   2A55AB   00065C   FFEA4F50  resource 'sl02' 1 %A5Init (68k code)                    resources/2A4F60_sl02_1_A5Init.lst; ROM resource list entry at 23FF60
+2A55A0   2A750F   001F70   FFEA55A0  resource 'sl02' 2 Main (68k code)                       resources/2A55B0_sl02_2_Main.lst; ROM resource list entry at 23FF80
+2A7510   2A758B   00007C   FFEA7510  resource 'libr' -20004 appl$SerialHalTntS,1.3 (data)    resources/2A7520_libr_-20004_appl_SerialHalTntS_1.3.txt; ROM resource list entry at 23FFA0
+2A75A0   2A781B   00027C   FFEA75A0  resource 'sl04' 0  (68k code)                           resources/2A75B0_sl04_0.lst; ROM resource list entry at 2A7810
+2A7830   2A7EED   0006BE   FFEA7830  resource 'sl04' 1 %A5Init (68k code)                    resources/2A7840_sl04_1_A5Init.lst; ROM resource list entry at 2A7EF0
+2A7F10   2AC82B   00491C   FFEA7F10  resource 'sl04' 2 Main (68k code)                       resources/2A7F20_sl04_2_Main.lst; ROM resource list entry at 2AC820
+2AC840   2AC8B1   000072   FFEAC840  resource 'libr' -20005 appl$SerialDrvrStub,1.0 (data)   resources/2AC850_libr_-20005_appl_SerialDrvrStub_1.0.txt; ROM resource list entry at 2AC8B0
+2AC8E0   2AC97B   00009C   FFEAC8E0  resource 'sl05' 0  (68k code)                           resources/2AC8F0_sl05_0.lst; ROM resource list entry at 2AC970
+2AC990   2ACDB3   000424   FFEAC990  resource 'sl05' 1 %A5Init (68k code)                    resources/2AC9A0_sl05_1_A5Init.lst; ROM resource list entry at 2ACDB0
+2ACDD0   2AD769   00099A   FFEACDD0  resource 'sl05' 2 Main (68k code)                       resources/2ACDE0_sl05_2_Main.lst; ROM resource list entry at 2AD760
+2AD780   2AD7FB   00007C   FFEAD780  resource 'libr' -20006 appl$SerialDriver,1.0 (data)     resources/2AD790_libr_-20006_appl_SerialDriver_1.0.txt; ROM resource list entry at 2AD7F0
+2AD820   2ADA83   000264   FFEAD820  resource 'sl06' 0  (68k code)                           resources/2AD830_sl06_0.lst; ROM resource list entry at 2ADA80
+2ADAA0   2ADF55   0004B6   FFEADAA0  resource 'sl06' 1 %A5Init (68k code)                    resources/2ADAB0_sl06_1_A5Init.lst; ROM resource list entry at 2ADF50
+2ADF70   2B1F49   003FDA   FFEADF70  resource 'sl06' 2 Main (68k code)                       resources/2ADF80_sl06_2_Main.lst; ROM resource list entry at 2B1F40
+2B1F60   2B1FD5   000076   FFEB1F60  resource 'libr' -20007 appl$SerialDrvrClass,1.0 (data)  resources/2B1F70_libr_-20007_appl_SerialDrvrClass_1.0.txt; ROM resource list entry at 2B1FD0
+2B2000   2B208B   00008C   FFEB2000  resource 'sl07' 0  (68k code)                           resources/2B2010_sl07_0.lst; ROM resource list entry at 2B2080
+2B20A0   2B24BB   00041C   FFEB20A0  resource 'sl07' 1 %A5Init (68k code)                    resources/2B20B0_sl07_1_A5Init.lst; ROM resource list entry at 2B24B0
+2B24D0   2B2791   0002C2   FFEB24D0  resource 'sl07' 2 Main (68k code)                       resources/2B24E0_sl07_2_Main.lst; ROM resource list entry at 2B2790
+2B27B0   2C58F1   013142   FFEB27B0  resource 'nitt' 43 Native 4.3 (PEF)                     resources/2B27C0_nitt_43_Native_4.3.lst; ROM resource list entry at 2C58F0
+2C5920   2C5B71   000252   FFEC5920  resource 'gcko' 43 Main (68k code)                      resources/2C5930_gcko_43_Main.lst; ROM resource list entry at 2C5B70
+2C5B90   2C9B56   003FC7   FFEC5B90  resource 'ndrv' 505  (PEF)                              resources/2C5BA0_ndrv_505.lst; ROM resource list entry at 2C9B50
+2C9B70   2CA143   0005D4   FFEC9B70  resource 'daud' -16600  (68k code)                      resources/2C9B80_daud_-16600.lst; ROM resource list entry at 2CA140
+2CA160   2CA1C1   000062   FFECA160  resource 'thng' -16600 DAV Audio Component (data)       resources/2CA170_thng_-16600_DAV_Audio_Component.txt; ROM resource list entry at 2CA1C0
+2CA1F0   2CA21F   000030   FFECA1F0  resource 'STR ' -16600 DAV Audio Component (data)       resources/2CA200_STR_-16600_DAV_Audio_Component.txt; ROM resource list entry at 2CA220
+2CA250   2E52E9   01B09A   FFECA250  resource 'PICT' -20032 ROM Picture (data)               resources/2CA260_PICT_-20032_ROM_Picture.txt; ROM resource list entry at 2E52E0
+2E5310   2E67EF   0014E0   FFEE5310  resource 'timd' 26 tmap (data)                          resources/2E5320_timd_26_tmap.txt; ROM resource list entry at 2E67F0
+2E6810   2F0F01   00A6F2   FFEE6810  resource 'timd' 27 bdrop (data)                         resources/2E6820_timd_27_bdrop.txt; ROM resource list entry at 2F0F00
+2F0F20   2F35B5   002696   FFEF0F20  resource 'timd' 29 grp (data)                           resources/2F0F30_timd_29_grp.txt; ROM resource list entry at 2F35B0

@@ -1,0 +1,149 @@
+Disassembler cross-check
+============================================================================
+The listings use dingusppc's PowerPC disassembler and MAME's 68k disassembler. Here the
+same bytes go through an independent disassembler and the results are compared.
+Numbers are compared as values (hex/decimal, sign-extended 16-bit immediates folded),
+mnemonics as text; "simplified forms" are the same instruction written differently
+(e.g. mtsprg1 r1 vs mtspr sprg1,r1).
+
+PowerPC: dingusppc (listings) vs MAME, word by word
+----------------------------------------------------------------------------
+boot code                        5120 words: both invalid 2752, agree 2069, agree, other mnemonic for the same instruction (simplified forms) 162, agree on registers, rotate written as fields vs mask 100, agree, SPR names spelled differently 21, agree, mtcr vs mtcrf 0xFF 6, only MAME decodes 5, agree on target, BO/BI written differently 3, only dingusppc decodes 2
+NanoKernel                       5888 words: agree 4328, agree on registers, rotate written as fields vs mask 531, both invalid 514, agree, other mnemonic for the same instruction (simplified forms) 408, agree, SPR names spelled differently 36, agree on target, BO/BI written differently 21, agree, mtcr vs mtcrf 0xFF 16, agree, nor vs not 16, only dingusppc decodes 16, agree, trap condition written differently 1, only MAME decodes 1
+HWInit                           2048 words: agree 1527, both invalid 211, agree, other mnemonic for the same instruction (simplified forms) 207, agree on registers, rotate written as fields vs mask 80, only MAME decodes 13, agree on target, BO/BI written differently 4, agree, trap condition written differently 3, only dingusppc decodes 3
+Open Firmware kernel             6634 words: agree 4973, both invalid 1327, agree, other mnemonic for the same instruction (simplified forms) 221, agree on registers, rotate written as fields vs mask 98, agree, SPR names spelled differently 8, agree on target, BO/BI written differently 5, agree, mtcr vs mtcrf 0xFF 1, agree, nor vs not 1
+68k emulator                    23808 words: agree 18519, agree on registers, rotate written as fields vs mask 3409, agree, other mnemonic for the same instruction (simplified forms) 1164, both invalid 584, agree on target, BO/BI written differently 78, only MAME decodes 37, agree, nor vs not 9, agree, trap condition written differently 6, only dingusppc decodes 1, agree, mtcr vs mtcrf 0xFF 1
+opcode table (first 64 KB)      16384 words: agree 16067, agree on registers, rotate written as fields vs mask 314, agree, other mnemonic for the same instruction (simplified forms) 3
+InterfaceLib code               39012 words: agree 36467, agree, other mnemonic for the same instruction (simplified forms) 1699, agree on registers, rotate written as fields vs mask 421, agree on target, BO/BI written differently 351, both invalid 69, only dingusppc decodes 4, only MAME decodes 1
+NQD code                        53152 words: agree 46176, agree, other mnemonic for the same instruction (simplified forms) 4506, agree on registers, rotate written as fields vs mask 1349, both invalid 710, agree on target, BO/BI written differently 411
+CodeFragmentMgr code            17467 words: agree 14918, agree, other mnemonic for the same instruction (simplified forms) 1966, agree on registers, rotate written as fields vs mask 260, agree on target, BO/BI written differently 244, both invalid 76, only dingusppc decodes 3
+TOTAL                          169513 words: agree 145044 (85.57%), agree, other mnemonic for the same instruction (simplified forms) 10336 (6.10%), agree on registers, rotate written as fields vs mask 6562 (3.87%), both invalid 6243 (3.68%), agree on target, BO/BI written differently 1117 (0.66%), agree, SPR names spelled differently 65 (0.04%), only MAME decodes 57 (0.03%), only dingusppc decodes 29 (0.02%), agree, nor vs not 26 (0.02%), agree, mtcr vs mtcrf 0xFF 24 (0.01%), agree, trap condition written differently 10 (0.01%)
+
+Samples of each kind of difference (one line per instruction class):
+  [branch/bc/bdz] FFD26A58 436F6E74  dingus: bc      27, 15, 0xFFD2D8CC           MAME: bdz       0xFFD2D8CC
+  [branch/bcla/bdnzla] FFF11E88 4302ABAF  dingus: bcla    24, 2, 0xFFFFABAC            MAME: bdnzla    0xFFFFABAC
+  [branch/bcla/bdzla] FFF21B80 43686563  dingus: bcla    27, 8, 0x00006560            MAME: bdzla     0x00006560
+  [branch/bclrl/blrl] FFF109F8 4E8C0021  dingus: bclrl   20, 12, 0x00000001           MAME: blrl
+  [branch/bdnzf/bc] FFF01028 4002FFF8  dingus: bdnzf   eq, 0xFFF01020               MAME: bc        0x00,cr0[eq],0xFFF01020
+  [branch/bdnzt/bc] FFF21C34 41292020  dingus: bdnzt+  4*cr2+gt, 0xFFF23C54         MAME: bc        0x09,cr2[gt],0xFFF23C54
+  [branch/bdnztl/bcl] FFF11D44 41302C55  dingus: bdnztl+ 4*cr4+lt, 0xFFF14998         MAME: bcl       0x09,cr4[lt],0xFFF14998
+  [branch/bdzf/bc] FFD26AD8 40404040  dingus: bdzf    lt, 0xFFD2AB18               MAME: bc        0x02,cr0[lt],0xFFD2AB18
+  [branch/bdzt/bc] FFD63A28 4170706C  dingus: bdzt+   4*cr4+lt, 0xFFD6AA94         MAME: bc        0x0B,cr4[lt],0xFFD6AA94
+  [branch/bdztl/bcl] FFF11E18 41700001  dingus: bdztl+  4*cr4+lt, 0xFFF11E18         MAME: bcl       0x0B,cr4[lt],0xFFF11E18
+  [branch/crclr/crxor] FFF1140C 4FFFF982  dingus: crclr   crb31                        MAME: crxor     cr7[so],cr7[so],cr7[so]
+  [branch/crmove/cror] FFF66664 4FE21382  dingus: crmove  crb31, crb2                  MAME: cror      cr7[so],cr0[eq],cr0[eq]
+  [branch/crset/creqv] FFF11418 4FFFFA42  dingus: crset   crb31                        MAME: creqv     cr7[so],cr7[so],cr7[so]
+  [mnemonic/addis/addi] FFF100EC 3DEF0040  dingus: addis   r15, r15, 0x0040             MAME: addi      r15,r15,0x00400000
+  [mnemonic/andis./andi.] FFF03DE0 74840100  dingus: andis.  r4, r4, 0x100                MAME: andi.     r4,r4,0x01000000
+  [mnemonic/bns/bnso] FFF00128 408F2ED8  dingus: bns     cr3, 0xFFF03000              MAME: bnso      cr3,0xFFF03000
+  [mnemonic/bnsctr/bnsoctr] FFF66CF4 4C830420  dingus: bnsctr                               MAME: bnsoctr
+  [mnemonic/bnsl/bnsol] FFF6C388 408B06A1  dingus: bnsl    cr2, 0xFFF6CA28              MAME: bnsol     cr2,0xFFF6CA28
+  [mnemonic/bnslr/bnsolr] FFF6C7E8 4C9B0020  dingus: bnslr   cr6                          MAME: bnsolr    cr6
+  [mnemonic/cmplw/cmpl] FFF0359C 7C033840  dingus: cmplw   r3, r7                       MAME: cmpl      r3,r7
+  [mnemonic/cmplwi/cmpli] FFF03ACC 28038000  dingus: cmplwi  cr0, r3, 0x8000              MAME: cmpli     r3,0x8000
+  [mnemonic/cmpw/cmp] FFF01010 7C011800  dingus: cmpw    r1, r3                       MAME: cmp       r1,r3
+  [mnemonic/cmpwi/cmpi] FFF03008 2C040001  dingus: cmpwi   cr0, r4, 0x1                 MAME: cmpi      r4,0x0001
+  [mnemonic/lis/li] FFF01298 3C200800  dingus: lis     r1, 0x0800                   MAME: li        r1,0x08000000
+  [mnemonic/oris/ori] FFF01084 64424000  dingus: oris    r2, r2, 0x4000               MAME: ori       r2,r2,0x40000000
+  [mnemonic/subf/sub] FFF034B8 7C84B850  dingus: subf    r4, r4, r23                  MAME: sub       r4,r23,r4
+  [mnemonic/subf./sub.] FFF042B4 7D0A4851  dingus: subf.   r8, r10, r9                  MAME: sub.      r8,r9,r10
+  [mnemonic/subfc/subc] FFF13634 7E579010  dingus: subfc   r18, r23, r18                MAME: subc      r18,r18,r23
+  [mnemonic/subfc./subc.] FFF67A64 7CA73011  dingus: subfc.  r5, r7, r6                   MAME: subc.     r5,r6,r7
+  [mnemonic/subfco/subco] FFF666D0 7C843410  dingus: subfco  r4, r4, r6                   MAME: subco     r4,r6,r4
+  [mnemonic/subfco./subco.] FFF6360C 7C843411  dingus: subfco. r4, r4, r6                   MAME: subco.    r4,r6,r4
+  [mnemonic/subfo./subo.] FFF13544 7EB5AC51  dingus: subfo.  r21, r21, r21                MAME: subo.     r21,r21,r21
+  [mnemonic/xoris/xori] FFF01094 6C000002  dingus: xoris   r0, r0, 0x2                  MAME: xori      r0,r0,0x00020000
+  [only MAME decodes/10] FFF21AC4 2A2A2A2A  dingus: cmpli   cr4, 1, r10, 0x2A2A          MAME: cmpldid   cr4,r10,0x2A2A
+  [only MAME decodes/10] FFF21AC8 2A2A2A2A  dingus: cmpli   cr4, 1, r10, 0x2A2A          MAME: cmpldid   cr4,r10,0x2A2A
+  [only MAME decodes/10] FFF21ACC 2A2A2A2A  dingus: cmpli   cr4, 1, r10, 0x2A2A          MAME: cmpldid   cr4,r10,0x2A2A
+  [only MAME decodes/11] FFF13A5C 2C2E1814  dingus: cmpi    cr0, 1, r14, 0x1814          MAME: cmpdid    r14,0x1814
+  [only MAME decodes/11] FFD63A94 2E385820  dingus: cmpi    cr4, 1, r24, 0x5820          MAME: cmpdid    cr4,r24,0x5820
+  [only MAME decodes/35] FFF03F14 8E000000  dingus: dc.l    0x8E000000                   MAME: lbzu      r16,0x0000(r0)
+  [only MAME decodes/35] FFF03F34 8E000000  dingus: dc.l    0x8E000000                   MAME: lbzu      r16,0x0000(r0)
+  [only MAME decodes/39] FFF03EDC 9C000000  dingus: dc.l    0x9C000000                   MAME: stbu      r0,0x0000(r0)
+  [only MAME decodes/39] FFF03F1C 9C000000  dingus: dc.l    0x9C000000                   MAME: stbu      r0,0x0000(r0)
+  [only MAME decodes/39] FFF03F5C 9C000000  dingus: dc.l    0x9C000000                   MAME: stbu      r0,0x0000(r0)
+  [only MAME decodes/47] FFF6D784 BCC0C4A8  dingus: dc.l    0xBCC0C4A8                   MAME: stmw      r6,0xFFFFC4A8
+  [only MAME decodes/53] FFF6DAC4 D6A0D6A0  dingus: dc.l    0xD6A0D6A0                   MAME: stfsu     f21,-0x2960(r0)
+  [only MAME decodes/53] FFF6DAC8 D6A0D6A0  dingus: dc.l    0xD6A0D6A0                   MAME: stfsu     f21,-0x2960(r0)
+  [only MAME decodes/53] FFF6DB14 D6A0D6A0  dingus: dc.l    0xD6A0D6A0                   MAME: stfsu     f21,-0x2960(r0)
+  [only dingusppc decodes/10] FFF21C70 28436F6E  dingus: cmplwi  cr0, r3, 0x6F6E              MAME: ?
+  [only dingusppc decodes/11] FFF21CEC 2E504F53  dingus: cmpwi   cr4, r16, 0x4F53             MAME: ?
+  [only dingusppc decodes/11] FFF21DC0 2E536572  dingus: cmpwi   cr4, r19, 0x6572             MAME: ?
+  [only dingusppc decodes/22] FFF03F04 58000000  dingus: rlmi    r0, r0, r0, 0, 0             MAME: ?
+  [only dingusppc decodes/22] FFF03F84 58000000  dingus: rlmi    r0, r0, r0, 0, 0             MAME: ?
+  [only dingusppc decodes/22] FFF6C770 585C6000  dingus: rlmi    r28, r2, r12, 0, 0           MAME: ?
+  [only dingusppc decodes/9] FFF11D0C 25402EBA  dingus: dozi    r10, r0, 0x2EBA              MAME: ?
+  [only dingusppc decodes/9] FFF11D40 24602E52  dingus: dozi    r3, r0, 0x2E52               MAME: ?
+  [only dingusppc decodes/9] FFF11D9C 268BFAF4  dingus: dozi    r20, r11, 0xFAF4             MAME: ?
+  [rotate/clrlslwi/rlwinm] FFF035D4 546625F6  dingus: clrlslwi r6, r3, 27, 4               MAME: rlwinm    r6,r3,4,0x000001F0
+  [rotate/clrlslwi./rlwinm.] FFF69AC8 548C406F  dingus: clrlslwi. r12, r4, 9, 8              MAME: rlwinm.   r12,r4,8,0x7FFFFF00
+  [rotate/clrlwi/and] FFF01080 5462043E  dingus: clrlwi  r2, r3, 16                   MAME: and       r2,r3,0x0000FFFF
+  [rotate/clrlwi./and.] FFF15480 5442077F  dingus: clrlwi. r2, r2, 29                   MAME: and.      r2,r2,0x00000007
+  [rotate/clrrwi/and] FFF0333C 56C3001C  dingus: clrrwi  r3, r22, 17                  MAME: and       r3,r22,0xFFFE0000
+  [rotate/clrrwi./and.] FFF14D80 54E70017  dingus: clrrwi. r7, r7, 20                   MAME: and.      r7,r7,0xFFF00000
+  [rotate/extlwi/rlwinm] FFF040D8 55A5100E  dingus: extlwi  r5, r13, 8, 2                MAME: rlwinm    r5,r13,2,0xFF000000
+  [rotate/extlwi./rlwinm.] FFF10844 55CEF839  dingus: extlwi. r14, r14, 29, 31             MAME: rlwinm.   r14,r14,31,0xFFFFFFF8
+  [rotate/extrwi/rlwinm] FFF01284 540097FE  dingus: extrwi  r0, r0, 1, 17                MAME: rlwinm    r0,r0,18,0x00000001
+  [rotate/extrwi./rlwinm.] FFF10FFC 57758FBF  dingus: extrwi. r21, r27, 2, 15              MAME: rlwinm.   r21,r27,17,0x00000003
+  [rotate/inslwi/rlwimi] FFF1012C 51CC843E  dingus: inslwi  r12, r14, 16, 16             MAME: rlwimi    r12,r14,16,0x0000FFFF
+  [rotate/inslwi./rlwimi.] FFF65234 5088F87F  dingus: inslwi. r8, r4, 31, 1                MAME: rlwimi.   r8,r4,31,0x7FFFFFFF
+  [rotate/insrwi/rlwimi] FFF03668 5083C00E  dingus: insrwi  r3, r4, 8, 0                 MAME: rlwimi    r3,r4,24,0xFF000000
+  [rotate/insrwi./rlwimi.] FFF116D4 52D106BF  dingus: insrwi. r17, r22, 6, 26              MAME: rlwimi.   r17,r22,0,0x0000003F
+  [rotate/rlwimi/rlwimi] FFF012AC 5061498C  dingus: rlwimi  r1, r3, 9, 6, 6              MAME: rlwimi    r1,r3,9,0x02000000
+  [rotate/rlwimi./rlwimi.] FFF142CC 50E74001  dingus: rlwimi. r7, r7, 8, 0, 0              MAME: rlwimi.   r7,r7,8,0x80000000
+  [rotate/rlwinm/and] FFF0332C 54630732  dingus: rlwinm  r3, r3, 0, 28, 25            MAME: and       r3,r3,0xFFFFFFCF
+  [rotate/rlwinm/rlwinm] FFF038A4 54632EFA  dingus: rlwinm  r3, r3, 5, 27, 29            MAME: rlwinm    r3,r3,5,0x0000001C
+  [rotate/rlwinm./and.] FFF031F8 54630109  dingus: rlwinm. r3, r3, 0, 4, 4              MAME: and.      r3,r3,0x08000000
+  [rotate/rlwinm./rlwinm.] FFF10F00 5772967B  dingus: rlwinm. r18, r27, 18, 25, 29         MAME: rlwinm.   r18,r27,18,0x0000007C
+  [rotate/rlwnm/rlwnm] FFF03EE0 5C000000  dingus: rlwnm   r0, r0, r0, 0, 0             MAME: rlwnm     r0,r0,r0,0x80000000
+  [rotate/rlwnm/rlwnm.] FFF01290 5C630043  dingus: rlwnm   r3, r3, r0, 1, 1             MAME: rlwnm.    r3,r3,r0,0x40000000
+  [rotate/rotlw/rlwnm] FFF13604 5E52A83E  dingus: rotlw   r18, r18, r21                MAME: rlwnm     r18,r18,r21,0xFFFFFFFF
+  [rotate/rotlw./rlwnm.] FFF13350 5E94B83F  dingus: rotlw.  r20, r20, r23                MAME: rlwnm.    r20,r20,r23,0xFFFFFFFF
+  [rotate/rotlwi/and] FFF72218 5484003E  dingus: rotlwi  r4, r4, 0                    MAME: and       r4,r4,0xFFFFFFFF
+  [rotate/rotlwi/rlwinm] FFF03624 5484403E  dingus: rotlwi  r4, r4, 8                    MAME: rlwinm    r4,r4,8,0xFFFFFFFF
+  [rotate/rotlwi./rlwinm.] FFF67554 5484083F  dingus: rotlwi. r4, r4, 1                    MAME: rlwinm.   r4,r4,1,0xFFFFFFFF
+  [rotate/rotrwi/rlwinm] FFF34284 5694803E  dingus: rotrwi  r20, r20, 16                 MAME: rlwinm    r20,r20,16,0xFFFFFFFF
+  [rotate/rotrwi./rlwinm.] FFF67514 5484F83F  dingus: rotrwi. r4, r4, 1                    MAME: rlwinm.   r4,r4,31,0xFFFFFFFF
+  [rotate/slwi/rlwinm] FFF034BC 54636824  dingus: slwi    r3, r3, 13                   MAME: rlwinm    r3,r3,13,0xFFFFE000
+  [rotate/slwi./rlwinm.] FFF01238 5423F003  dingus: slwi.   r3, r1, 30                   MAME: rlwinm.   r3,r1,30,0xC0000000
+  [rotate/srwi/rlwinm] FFF01054 5421C23E  dingus: srwi    r1, r1, 8                    MAME: rlwinm    r1,r1,24,0x00FFFFFF
+  [rotate/srwi./rlwinm.] FFF14760 5523843F  dingus: srwi.   r3, r9, 16                   MAME: rlwinm.   r3,r9,16,0x0000FFFF
+
+68k: MAME (listings) vs binutils, at every instruction start of the 68k listing
+----------------------------------------------------------------------------
+254202 instruction starts: same length and mnemonic 245859 (96.72%), A-line trap (both show raw) 6887 (2.71%), same length, other mnemonic 1417 (0.56%), only MAME decodes 29 (0.01%), length differs 10 (0.00%)
+
+Samples of each kind of difference:
+  [length/and.b] FFC6BB34  MAME(4): and.b   ([A6]), D6                   binutils(6): andb %fp@(0)@(1586),%d6
+  [length/btst] FFC71ED2  MAME(6): btst    #$78, 0                      binutils(8): btst #120,@(0)@(2828)
+  [length/move.b] FFC6BB38  MAME(6): move.b  D6, ([-$4b0a])               binutils(8): moveb %d6,@(ffffffffffffb4f6)@(ffffffffffffcc66)
+  [length/move.b] FFCA6132  MAME(6): move.b  ([-$74]), D6                 binutils(8): moveb @(ffffffffffffff8c)@(266e),%d6
+  [length/move.l] FFC564C4  MAME(8): move.l  ([A2]), ($2f30,A6)           binutils(10): movel %a2@(0)@(2f30),%fp@(-32286)
+  [length/move.l] FFC56B7C  MAME(8): move.l  ([A2]), ($0,A6)              binutils(10): movel %a2@(0)@(0),%fp@(0)
+  [length/move.l] FFC6BB1E  MAME(8): move.l  D6, ([$46864136,A5])         binutils(10): movel %d6,%a5@(46864136)@(ffffffffffffc566)
+  [length/neg.w] FFC7D458  MAME(8): neg.w   ([$6572466f,A2])             binutils(10): negw %a2@(6572466f)@(7244)
+  [length/ori.b] FFC86B22  MAME(10): ori.b   #$32, ([$207802b6])          binutils(14): orib #50,@(207802b6)@(217cffff)
+  [length/subi.w] FFC6BAC2  MAME(6): subi.w  #$f66, ([A6])                binutils(8): subiw #3942,%fp@(0)@(a6)
+  [mnemonic/dbra/dbf] FFC0057E  MAME: dbra    D0, $ffc0057e                    binutils: dbf %d0,$FFC0057E
+  [mnemonic/fmoveml/fmovel] FFC42272  MAME: fmovem.l   /fpsr, D0                     binutils: fmovel %fpsr,%d0
+  [mnemonic/pflushr/pflusha] FFC07F00  MAME: pflushr 0, 0, D0                         binutils: pflusha
+  [only MAME/bfclr] FFC6BB18  MAME: bfclr   (-$1a,A6,D4.w*4) {20:D6}; (2+)   binutils: 0166366
+  [only MAME/cmp2.b] FFC0DB70  MAME: cmp2.b  (A6), D0; (2+)                   binutils: 0326
+  [only MAME/cmp2.b] FFC4BE4A  MAME: cmp2.b  ($7601,A2), D0; (2+)             binutils: 0352
+  [only MAME/cmp2.b] FFC863D0  MAME: cmp2.b  (-$c,A4,D0.w), D0; (2+)          binutils: 0364
+  [only MAME/cmp2.l] FFCD03A0  MAME: cmp2.l  ($70ef,A6), D0; (2+)             binutils: 02356
+  [only MAME/cmp2.w] FFCCF1F8  MAME: cmp2.w  (-$a,A2,D0.w*2), D0; (2+)        binutils: 01362
+  [only MAME/cmp2.w] FFCD18B2  MAME: cmp2.w  ($3d4,A4), D0; (2+)              binutils: 01354
+  [only MAME/moves.b] FFCBAD96  MAME: moves.b $c.w, D2; (1+)                   binutils: 07070
+  [only MAME/pbbs] FFC195B2  MAME: pbbs 483c953e                            binutils: 0170360
+  [only MAME/pbbs] FFC196EA  MAME: pbbs 483c953e                            binutils: 0170360
+  [only MAME/pbbs] FFC197BA  MAME: pbbs 483c953e                            binutils: 0170360
+  [only MAME/pbcs] FFCD1F6A  MAME: pbcs ffcd19a3                            binutils: 0170276
+  [only MAME/pmove] FFC07D18  MAME: pmove   tt0, ($1ac,A2)                   binutils: 0170052
+  [only MAME/pmove] FFC07D1E  MAME: pmove   tt1, ($1b0,A2)                   binutils: 0170052
+  [only MAME/pmove] FFC07EF4  MAME: pmove   ($1b0,A2), tt1                   binutils: 0170052
+  [only MAME/pmovefd] FFC0A0F2  MAME: pmovefd ($c,A0), tt0                     binutils: 0170050
+  [only MAME/pmovefd] FFC0A0F8  MAME: pmovefd ($10,A0), tt1                    binutils: 0170050
+  [only MAME/pmovefd] FFC0A0FE  MAME: pmovefd (A0), crp                        binutils: 0170020
+

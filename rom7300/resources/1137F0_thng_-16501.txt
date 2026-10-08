@@ -1,0 +1,10 @@
+; ROM resource 'thng' -16501  at FFD137F0
+; data at ROM 1137F0 (46 bytes), entry at 113830, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 00000046 000003bc
+
+; component description: type 'sdev' subtype 'awgc' manufacturer 'appl'
+FFD137F0  73 64 65 76 61 77 67 63 61 70 70 6C 80 00 00 0C  |sdevawgcappl....|
+FFD13800  00 00 00 00 73 69 66 74 BF 8B 53 54 52 20 BF 4D  |....sift..STR .M|
+FFD13810  53 54 52 20 BF 8B 49 43 4F 4E BF 4D 00 00 00 00  |STR ..ICON.M....|
+FFD13820  00 00 00 01 00 00 00 00 00 00 6B 63 6B 63 6B 63  |..........kckckc|
+FFD13830  78 00 00 00 00 00                                |x.....|

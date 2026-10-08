@@ -1,0 +1,4475 @@
+; ============================================================================
+; ROM resource 'nlib' -16406 InterruptTreeTNT at FFE67970
+; ============================================================================
+; data at ROM 267970 (43DC bytes), entry at 1FF800, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 000043dc 0000047c
+;
+; Columns: address, flag, raw bytes, instruction, ; comment.
+;   flag '*' executed in the coverage run, ' ' reached by control flow,
+;   '?' decodes as code but neither executed nor reached, 'd' data.
+
+; PEF container: architecture pwpc, format version 1, timestamp ABBB6708, versions 00000000/00000000/00000000
+;   3 sections (2 instantiated)
+;   section 0 code       container +00550 len 03D6C (ROM 267EC0 = FFE67EC0), unpacked 03D6C, total 03D6C, share 4, align 4
+;   section 1 pidata     container +042BC len 00114 (ROM 26BC2C = FFE6BC2C), unpacked 004FC, total 004FC, share 4, align 4
+;   section 2 loader     container +00080 len 004CC (ROM 2679F0 = FFE679F0), unpacked 00000, total 00000, share 4, align 2
+;   init: section 1 offset 378
+;   imports from NameRegistryLib: 8 symbols
+;   imports from DriverServicesLib: 11 symbols
+;   imports from DSLGlobalsLib: 2 symbols
+;   imports from PrivateInterfaceLib: 1 symbols
+;
+; ----------------------------------------------------------------------------
+; code section 0: ROM 267EC0-26BC2B = FFE67EC0
+; TOC (r2) = data section + 390; TOC[d] comments name the word at that offset.
+; ----------------------------------------------------------------------------
+
+InitLeafNode:
+FFE67EC0* 9421FFB0  stwu    r1, -0x50(r1)
+FFE67EC4* 7C0802A6  mfspr   r0, LR
+FFE67EC8* 90C10040  stw     r6, 0x40(r1)
+FFE67ECC* 90010058  stw     r0, 0x58(r1)
+FFE67ED0* 38030000  addi    r0, r3, 0x0
+FFE67ED4* 38650000  addi    r3, r5, 0x0
+FFE67ED8* 38A40000  addi    r5, r4, 0x0
+FFE67EDC* 90010038  stw     r0, 0x38(r1)
+FFE67EE0* 90A1003C  stw     r5, 0x3C(r1)
+FFE67EE4* 90E10044  stw     r7, 0x44(r1)
+FFE67EE8* 30800000  addic   r4, r0, 0x0
+FFE67EEC* 480038C1  bl      AssignInterrupt
+FFE67EF0* 4FFFFB82  crmove  crb31, crb31
+FFE67EF4* 80610038  lwz     r3, 0x38(r1)
+FFE67EF8* 8081003C  lwz     r4, 0x3C(r1)
+FFE67EFC* 80E10040  lwz     r7, 0x40(r1)
+FFE67F00* 81010044  lwz     r8, 0x44(r1)
+FFE67F04* 38A00000  li      r5, 0x0
+FFE67F08* 38C00000  li      r6, 0x0
+FFE67F0C* 48003B8D  bl      glue_InstallInterruptFunctions
+FFE67F10* 80410014  lwz     r2, 0x14(r1)
+FFE67F14* 81810058  lwz     r12, 0x58(r1)
+FFE67F18* 30210050  addic   r1, r1, 0x50
+FFE67F1C* 7D8803A6  mtspr   LR, r12
+FFE67F20* 4E800020  blr
+
+GCLevel1TreeDispatcher:
+FFE67F24  38600001  li      r3, 0x1
+FFE67F28  4E800020  blr
+FFE67F2C? 7C0802A6  mfspr   r0, LR
+FFE67F30? 93E1FFFC  stw     r31, -0x4(r1)
+FFE67F34? 90010008  stw     r0, 0x8(r1)
+FFE67F38? 9421FFB0  stwu    r1, -0x50(r1)
+FFE67F3C? 3BE00000  li      r31, 0x0
+FFE67F40? 48003C0D  bl      glue_LMGetExpandMem
+FFE67F44? 80410014  lwz     r2, 0x14(r1)
+FFE67F48? 80830210  lwz     r4, 0x210(r3)
+FFE67F4C? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE67F50? 93E402C8  stw     r31, 0x2C8(r4)
+FFE67F54? 80630000  lwz     r3, 0x0(r3)
+FFE67F58? 80030000  lwz     r0, 0x0(r3)
+FFE67F5C? 60000400  ori     r0, r0, 0x400
+FFE67F60? 90030000  stw     r0, 0x0(r3)
+FFE67F64? 48003BE9  bl      glue_LMGetExpandMem
+FFE67F68? 80410014  lwz     r2, 0x14(r1)
+FFE67F6C? 80630210  lwz     r3, 0x210(r3)
+FFE67F70? 80630000  lwz     r3, 0x0(r3)
+FFE67F74? 80030024  lwz     r0, 0x24(r3)
+FFE67F78? 601F0400  ori     r31, r0, 0x400
+FFE67F7C? 48003BF5  bl      glue_SynchronizeIO
+FFE67F80? 80410014  lwz     r2, 0x14(r1)
+FFE67F84? 48003BC9  bl      glue_LMGetExpandMem
+FFE67F88? 80410014  lwz     r2, 0x14(r1)
+FFE67F8C? 80630210  lwz     r3, 0x210(r3)
+FFE67F90? 80630000  lwz     r3, 0x0(r3)
+FFE67F94? 93E30024  stw     r31, 0x24(r3)
+FFE67F98? 48003BD9  bl      glue_SynchronizeIO
+FFE67F9C? 80410014  lwz     r2, 0x14(r1)
+FFE67FA0? 81810058  lwz     r12, 0x58(r1)
+FFE67FA4? 83E1004C  lwz     r31, 0x4C(r1)
+FFE67FA8? 7D8803A6  mtspr   LR, r12
+FFE67FAC? 30210050  addic   r1, r1, 0x50
+FFE67FB0? 4E800020  blr
+FFE67FB4? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE67FB8? 7C0802A6  mfspr   r0, LR
+FFE67FBC? 3BE00000  li      r31, 0x0
+FFE67FC0? 90010008  stw     r0, 0x8(r1)
+FFE67FC4? 9421FFB0  stwu    r1, -0x50(r1)
+FFE67FC8? 48003B85  bl      glue_LMGetExpandMem
+FFE67FCC? 80410014  lwz     r2, 0x14(r1)
+FFE67FD0? 80630210  lwz     r3, 0x210(r3)
+FFE67FD4? 80630000  lwz     r3, 0x0(r3)
+FFE67FD8? 80630024  lwz     r3, 0x24(r3)
+FFE67FDC? 5463C23E  srwi    r3, r3, 8
+FFE67FE0? 7C601120  mtcrf   0x01, r3
+FFE67FE4? 409D0008  ble     cr7, loc_FFE67FEC
+FFE67FE8? 3BE00001  li      r31, 0x1
+loc_FFE67FEC:
+FFE67FEC? 48003B85  bl      glue_SynchronizeIO
+FFE67FF0? 80410014  lwz     r2, 0x14(r1)
+FFE67FF4? 48003B59  bl      glue_LMGetExpandMem
+FFE67FF8? 80410014  lwz     r2, 0x14(r1)
+FFE67FFC? 80630210  lwz     r3, 0x210(r3)
+FFE68000? 80630000  lwz     r3, 0x0(r3)
+FFE68004? 80630024  lwz     r3, 0x24(r3)
+FFE68008? 547E05A8  rlwinm  r30, r3, 0, 22, 20
+FFE6800C? 48003B65  bl      glue_SynchronizeIO
+FFE68010? 80410014  lwz     r2, 0x14(r1)
+FFE68014? 48003B39  bl      glue_LMGetExpandMem
+FFE68018? 80410014  lwz     r2, 0x14(r1)
+FFE6801C? 80630210  lwz     r3, 0x210(r3)
+FFE68020? 80630000  lwz     r3, 0x0(r3)
+FFE68024? 93C30024  stw     r30, 0x24(r3)
+FFE68028? 48003B49  bl      glue_SynchronizeIO
+FFE6802C? 80410014  lwz     r2, 0x14(r1)
+FFE68030? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE68034? 387F0000  addi    r3, r31, 0x0
+FFE68038? 80840000  lwz     r4, 0x0(r4)
+FFE6803C? 80A40000  lwz     r5, 0x0(r4)
+FFE68040? 54A505A8  rlwinm  r5, r5, 0, 22, 20
+FFE68044? 90A40000  stw     r5, 0x0(r4)
+FFE68048? 81810058  lwz     r12, 0x58(r1)
+FFE6804C? 30210050  addic   r1, r1, 0x50
+FFE68050? 7D8803A6  mtspr   LR, r12
+FFE68054? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE68058? 4E800020  blr
+
+CreateGCLevel1Tree:
+FFE6805C* 9421FFB0  stwu    r1, -0x50(r1)
+FFE68060* 7C0802A6  mfspr   r0, LR
+FFE68064* 30610038  addic   r3, r1, 0x38
+FFE68068* 90010058  stw     r0, 0x58(r1)
+FFE6806C* 48003B29  bl      glue_CreateInterruptSourceTree
+FFE68070* 80410014  lwz     r2, 0x14(r1)
+FFE68074* 2C030000  cmpwi   cr0, r3, 0x0
+FFE68078* 30C1003C  addic   r6, r1, 0x3C
+FFE6807C* 38800001  li      r4, 0x1
+FFE68080* 38A00001  li      r5, 0x1
+FFE68084* 40820098  bne     loc_FFE6811C
+FFE68088* 80610038  lwz     r3, 0x38(r1)
+FFE6808C* 38E00000  li      r7, 0x0
+FFE68090* 480039E5  bl      glue_CreateInterruptSet
+FFE68094* 80410014  lwz     r2, 0x14(r1)
+FFE68098* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6809C* 30C10040  addic   r6, r1, 0x40
+FFE680A0* 38800001  li      r4, 0x1
+FFE680A4* 38A00001  li      r5, 0x1
+FFE680A8* 40820074  bne     loc_FFE6811C
+FFE680AC* 8061003C  lwz     r3, 0x3C(r1)
+FFE680B0* 38E00000  li      r7, 0x0
+FFE680B4* 480039C1  bl      glue_CreateInterruptSet
+FFE680B8* 80410014  lwz     r2, 0x14(r1)
+FFE680BC* 2C030000  cmpwi   cr0, r3, 0x0
+FFE680C0* 80C20064  lwz     r6, 0x64(r2)                       ; TOC[+100] &data+30
+FFE680C4* 38800001  li      r4, 0x1
+FFE680C8* 38A00000  li      r5, 0x0
+FFE680CC* 40820050  bne     loc_FFE6811C
+FFE680D0* 8061003C  lwz     r3, 0x3C(r1)
+FFE680D4* 38E00000  li      r7, 0x0
+FFE680D8* 39000000  li      r8, 0x0
+FFE680DC* 480039BD  bl      glue_InstallInterruptFunctions
+FFE680E0* 80410014  lwz     r2, 0x14(r1)
+FFE680E4* 2C030000  cmpwi   cr0, r3, 0x0
+FFE680E8* 80C20068  lwz     r6, 0x68(r2)                       ; TOC[+104] &data+3C
+FFE680EC* 80E2006C  lwz     r7, 0x6C(r2)                       ; TOC[+108] &data+48
+FFE680F0* 38800001  li      r4, 0x1
+FFE680F4* 40820028  bne     loc_FFE6811C
+FFE680F8* 80610040  lwz     r3, 0x40(r1)
+FFE680FC* 38A00012  li      r5, 0x12
+FFE68100* 4BFFFDC1  bl      InitLeafNode
+FFE68104* 2C030000  cmpwi   cr0, r3, 0x0
+FFE68108* 38800001  li      r4, 0x1
+FFE6810C* 40820010  bne     loc_FFE6811C
+FFE68110* 80610038  lwz     r3, 0x38(r1)
+FFE68114* 48003AA5  bl      glue_ActivateInterruptSourceTree
+FFE68118* 80410014  lwz     r2, 0x14(r1)
+loc_FFE6811C:
+FFE6811C* 81810058  lwz     r12, 0x58(r1)
+FFE68120* 30210050  addic   r1, r1, 0x50
+FFE68124* 7D8803A6  mtspr   LR, r12
+FFE68128* 4E800020  blr
+
+GCLevel2TreeDispatcher:
+FFE6812C* 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE68130* 7C0802A6  mfspr   r0, LR
+FFE68134* 80630000  lwz     r3, 0x0(r3)
+FFE68138* 7D800026  mfcr    r12
+FFE6813C* 80630000  lwz     r3, 0x0(r3)
+FFE68140* 3C800030  lis     r4, 0x0030
+FFE68144* 6084EA7F  ori     r4, r4, 0xEA7F
+FFE68148* 93E1FFFC  stw     r31, -0x4(r1)
+FFE6814C* 91810004  stw     r12, 0x4(r1)
+FFE68150* 90010008  stw     r0, 0x8(r1)
+FFE68154* 9421FFB0  stwu    r1, -0x50(r1)
+FFE68158* 7C7F2038  and     r31, r3, r4
+FFE6815C* 480039F1  bl      glue_LMGetExpandMem
+FFE68160* 80410014  lwz     r2, 0x14(r1)
+FFE68164* 80830210  lwz     r4, 0x210(r3)
+FFE68168* 38600001  li      r3, 0x1
+FFE6816C* 80840410  lwz     r4, 0x410(r4)
+FFE68170* 7FE52038  and     r5, r31, r4
+FFE68174* 7CA20120  mtcrf   0x20, r5
+FFE68178* 418B009C  bso     cr2, loc_FFE68214
+FFE6817C* 54A3C23E  srwi    r3, r5, 8
+FFE68180* 7C601120  mtcrf   0x01, r3
+FFE68184* 38600002  li      r3, 0x2
+FFE68188* 418A008C  beq     cr2, loc_FFE68214
+FFE6818C* 38600003  li      r3, 0x3
+FFE68190* 419E0084  beq     cr7, loc_FFE68214
+FFE68194* 54A4A33E  srwi    r4, r5, 12
+FFE68198* 38600004  li      r3, 0x4
+FFE6819C* 419C0078  blt     cr7, loc_FFE68214
+FFE681A0* 7C801120  mtcrf   0x01, r4
+FFE681A4* 38600005  li      r3, 0x5
+FFE681A8* 419E006C  beq     cr7, loc_FFE68214
+FFE681AC* 38600006  li      r3, 0x6
+FFE681B0* 419D0064  bgt     cr7, loc_FFE68214
+FFE681B4* 38600007  li      r3, 0x7
+FFE681B8* 419C005C  blt     cr7, loc_FFE68214
+FFE681BC* 7CA01120  mtcrf   0x01, r5
+FFE681C0* 38600008  li      r3, 0x8
+FFE681C4* 419F0050  bso     cr7, loc_FFE68214
+FFE681C8* 38600009  li      r3, 0x9
+FFE681CC* 419E0048  beq     cr7, loc_FFE68214
+FFE681D0* 3860000A  li      r3, 0xA
+FFE681D4* 419D0040  bgt     cr7, loc_FFE68214
+FFE681D8  7CA02120  mtcrf   0x02, r5
+FFE681DC  3860000B  li      r3, 0xB
+FFE681E0  419C0034  blt     cr7, loc_FFE68214
+FFE681E4  3860000C  li      r3, 0xC
+FFE681E8  4C180000  mcrf    cr0, cr6
+FFE681EC  41830028  bso     loc_FFE68214
+FFE681F0  40820018  bne     loc_FFE68208
+FFE681F4  3860000D  li      r3, 0xD
+FFE681F8  81810054  lwz     r12, 0x54(r1)
+FFE681FC  80010058  lwz     r0, 0x58(r1)
+FFE68200  7D820120  mtcrf   0x20, r12
+FFE68204  4800001C  b       loc_FFE68220
+loc_FFE68208:
+FFE68208  3860000E  li      r3, 0xE
+FFE6820C  41810008  bgt     loc_FFE68214
+FFE68210  38600000  li      r3, 0x0
+loc_FFE68214:
+FFE68214* 81810054  lwz     r12, 0x54(r1)
+FFE68218* 80010058  lwz     r0, 0x58(r1)
+FFE6821C* 7D820120  mtcrf   0x20, r12
+loc_FFE68220:
+FFE68220* 83E1004C  lwz     r31, 0x4C(r1)
+FFE68224* 7C0803A6  mtspr   LR, r0
+FFE68228* 30210050  addic   r1, r1, 0x50
+FFE6822C* 4E800020  blr
+FFE68230? 7C0802A6  mfspr   r0, LR
+FFE68234? 93E1FFFC  stw     r31, -0x4(r1)
+FFE68238? 90010008  stw     r0, 0x8(r1)
+FFE6823C? 9421FFB0  stwu    r1, -0x50(r1)
+FFE68240? 3BE00000  li      r31, 0x0
+FFE68244? 48003909  bl      glue_LMGetExpandMem
+FFE68248? 80410014  lwz     r2, 0x14(r1)
+FFE6824C? 80830210  lwz     r4, 0x210(r3)
+FFE68250? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE68254? 93E40288  stw     r31, 0x288(r4)
+FFE68258? 80630000  lwz     r3, 0x0(r3)
+FFE6825C? 80030000  lwz     r0, 0x0(r3)
+FFE68260? 64000010  oris    r0, r0, 0x10
+FFE68264? 90030000  stw     r0, 0x0(r3)
+FFE68268? 480038E5  bl      glue_LMGetExpandMem
+FFE6826C? 80410014  lwz     r2, 0x14(r1)
+FFE68270? 80630210  lwz     r3, 0x210(r3)
+FFE68274? 80630000  lwz     r3, 0x0(r3)
+FFE68278? 80030024  lwz     r0, 0x24(r3)
+FFE6827C? 641F0010  oris    r31, r0, 0x10
+FFE68280? 480038F1  bl      glue_SynchronizeIO
+FFE68284? 80410014  lwz     r2, 0x14(r1)
+FFE68288? 480038C5  bl      glue_LMGetExpandMem
+FFE6828C? 80410014  lwz     r2, 0x14(r1)
+FFE68290? 80630210  lwz     r3, 0x210(r3)
+FFE68294? 80630000  lwz     r3, 0x0(r3)
+FFE68298? 93E30024  stw     r31, 0x24(r3)
+FFE6829C? 480038D5  bl      glue_SynchronizeIO
+FFE682A0? 80410014  lwz     r2, 0x14(r1)
+FFE682A4? 81810058  lwz     r12, 0x58(r1)
+FFE682A8? 83E1004C  lwz     r31, 0x4C(r1)
+FFE682AC? 7D8803A6  mtspr   LR, r12
+FFE682B0? 30210050  addic   r1, r1, 0x50
+FFE682B4? 4E800020  blr
+FFE682B8? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE682BC? 7C0802A6  mfspr   r0, LR
+FFE682C0? 7D800026  mfcr    r12
+FFE682C4? 91810004  stw     r12, 0x4(r1)
+FFE682C8? 90010008  stw     r0, 0x8(r1)
+FFE682CC? 9421FFB0  stwu    r1, -0x50(r1)
+FFE682D0? 3BE00000  li      r31, 0x0
+FFE682D4? 48003879  bl      glue_LMGetExpandMem
+FFE682D8? 80410014  lwz     r2, 0x14(r1)
+FFE682DC? 80630210  lwz     r3, 0x210(r3)
+FFE682E0? 80630000  lwz     r3, 0x0(r3)
+FFE682E4? 80630024  lwz     r3, 0x24(r3)
+FFE682E8? 7C620120  mtcrf   0x20, r3
+FFE682EC? 408B0008  bns     cr2, loc_FFE682F4
+FFE682F0? 3BE00001  li      r31, 0x1
+loc_FFE682F4:
+FFE682F4? 4800387D  bl      glue_SynchronizeIO
+FFE682F8? 80410014  lwz     r2, 0x14(r1)
+FFE682FC? 48003851  bl      glue_LMGetExpandMem
+FFE68300? 80410014  lwz     r2, 0x14(r1)
+FFE68304? 80630210  lwz     r3, 0x210(r3)
+FFE68308? 80630000  lwz     r3, 0x0(r3)
+FFE6830C? 80630024  lwz     r3, 0x24(r3)
+FFE68310? 547E0314  rlwinm  r30, r3, 0, 12, 10
+FFE68314? 4800385D  bl      glue_SynchronizeIO
+FFE68318? 80410014  lwz     r2, 0x14(r1)
+FFE6831C? 48003831  bl      glue_LMGetExpandMem
+FFE68320? 80410014  lwz     r2, 0x14(r1)
+FFE68324? 80630210  lwz     r3, 0x210(r3)
+FFE68328? 80630000  lwz     r3, 0x0(r3)
+FFE6832C? 93C30024  stw     r30, 0x24(r3)
+FFE68330? 48003841  bl      glue_SynchronizeIO
+FFE68334? 80410014  lwz     r2, 0x14(r1)
+FFE68338? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6833C? 387F0000  addi    r3, r31, 0x0
+FFE68340? 80840000  lwz     r4, 0x0(r4)
+FFE68344? 80A40000  lwz     r5, 0x0(r4)
+FFE68348? 54A50314  rlwinm  r5, r5, 0, 12, 10
+FFE6834C? 90A40000  stw     r5, 0x0(r4)
+FFE68350? 81810054  lwz     r12, 0x54(r1)
+FFE68354? 80010058  lwz     r0, 0x58(r1)
+FFE68358? 7D820120  mtcrf   0x20, r12
+FFE6835C? 30210050  addic   r1, r1, 0x50
+FFE68360? 7C0803A6  mtspr   LR, r0
+FFE68364? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE68368? 4E800020  blr
+FFE6836C? 7C0802A6  mfspr   r0, LR
+FFE68370? 93E1FFFC  stw     r31, -0x4(r1)
+FFE68374? 90010008  stw     r0, 0x8(r1)
+FFE68378? 9421FFB0  stwu    r1, -0x50(r1)
+FFE6837C? 3BE00000  li      r31, 0x0
+FFE68380? 480037CD  bl      glue_LMGetExpandMem
+FFE68384? 80410014  lwz     r2, 0x14(r1)
+FFE68388? 80830210  lwz     r4, 0x210(r3)
+FFE6838C? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE68390? 93E402A8  stw     r31, 0x2A8(r4)
+FFE68394? 80630000  lwz     r3, 0x0(r3)
+FFE68398? 80030000  lwz     r0, 0x0(r3)
+FFE6839C? 64000020  oris    r0, r0, 0x20
+FFE683A0? 90030000  stw     r0, 0x0(r3)
+FFE683A4? 480037A9  bl      glue_LMGetExpandMem
+FFE683A8? 80410014  lwz     r2, 0x14(r1)
+FFE683AC? 80630210  lwz     r3, 0x210(r3)
+FFE683B0? 80630000  lwz     r3, 0x0(r3)
+FFE683B4? 80030024  lwz     r0, 0x24(r3)
+FFE683B8? 641F0020  oris    r31, r0, 0x20
+FFE683BC? 480037B5  bl      glue_SynchronizeIO
+FFE683C0? 80410014  lwz     r2, 0x14(r1)
+FFE683C4? 48003789  bl      glue_LMGetExpandMem
+FFE683C8? 80410014  lwz     r2, 0x14(r1)
+FFE683CC? 80630210  lwz     r3, 0x210(r3)
+FFE683D0? 80630000  lwz     r3, 0x0(r3)
+FFE683D4? 93E30024  stw     r31, 0x24(r3)
+FFE683D8? 48003799  bl      glue_SynchronizeIO
+FFE683DC? 80410014  lwz     r2, 0x14(r1)
+FFE683E0? 81810058  lwz     r12, 0x58(r1)
+FFE683E4? 83E1004C  lwz     r31, 0x4C(r1)
+FFE683E8? 7D8803A6  mtspr   LR, r12
+FFE683EC? 30210050  addic   r1, r1, 0x50
+FFE683F0? 4E800020  blr
+FFE683F4? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE683F8? 7C0802A6  mfspr   r0, LR
+FFE683FC? 7D800026  mfcr    r12
+FFE68400? 91810004  stw     r12, 0x4(r1)
+FFE68404? 90010008  stw     r0, 0x8(r1)
+FFE68408? 9421FFB0  stwu    r1, -0x50(r1)
+FFE6840C? 3BE00000  li      r31, 0x0
+FFE68410? 4800373D  bl      glue_LMGetExpandMem
+FFE68414? 80410014  lwz     r2, 0x14(r1)
+FFE68418? 80630210  lwz     r3, 0x210(r3)
+FFE6841C? 80630000  lwz     r3, 0x0(r3)
+FFE68420? 80630024  lwz     r3, 0x24(r3)
+FFE68424? 7C620120  mtcrf   0x20, r3
+FFE68428? 408A0008  bne     cr2, loc_FFE68430
+FFE6842C? 3BE00001  li      r31, 0x1
+loc_FFE68430:
+FFE68430? 48003741  bl      glue_SynchronizeIO
+FFE68434? 80410014  lwz     r2, 0x14(r1)
+FFE68438? 48003715  bl      glue_LMGetExpandMem
+FFE6843C? 80410014  lwz     r2, 0x14(r1)
+FFE68440? 80630210  lwz     r3, 0x210(r3)
+FFE68444? 80630000  lwz     r3, 0x0(r3)
+FFE68448? 80630024  lwz     r3, 0x24(r3)
+FFE6844C? 547E02D2  rlwinm  r30, r3, 0, 11, 9
+FFE68450? 48003721  bl      glue_SynchronizeIO
+FFE68454? 80410014  lwz     r2, 0x14(r1)
+FFE68458? 480036F5  bl      glue_LMGetExpandMem
+FFE6845C? 80410014  lwz     r2, 0x14(r1)
+FFE68460? 80630210  lwz     r3, 0x210(r3)
+FFE68464? 80630000  lwz     r3, 0x0(r3)
+FFE68468? 93C30024  stw     r30, 0x24(r3)
+FFE6846C? 48003705  bl      glue_SynchronizeIO
+FFE68470? 80410014  lwz     r2, 0x14(r1)
+FFE68474? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE68478? 387F0000  addi    r3, r31, 0x0
+FFE6847C? 80840000  lwz     r4, 0x0(r4)
+FFE68480? 80A40000  lwz     r5, 0x0(r4)
+FFE68484? 54A502D2  rlwinm  r5, r5, 0, 11, 9
+FFE68488? 90A40000  stw     r5, 0x0(r4)
+FFE6848C? 81810054  lwz     r12, 0x54(r1)
+FFE68490? 80010058  lwz     r0, 0x58(r1)
+FFE68494? 7D820120  mtcrf   0x20, r12
+FFE68498? 30210050  addic   r1, r1, 0x50
+FFE6849C? 7C0803A6  mtspr   LR, r0
+FFE684A0? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE684A4? 4E800020  blr
+FFE684A8? 7C0802A6  mfspr   r0, LR
+FFE684AC? 93E1FFFC  stw     r31, -0x4(r1)
+FFE684B0? 90010008  stw     r0, 0x8(r1)
+FFE684B4? 9421FFB0  stwu    r1, -0x50(r1)
+FFE684B8? 3BE00000  li      r31, 0x0
+FFE684BC? 48003691  bl      glue_LMGetExpandMem
+FFE684C0? 80410014  lwz     r2, 0x14(r1)
+FFE684C4? 80830210  lwz     r4, 0x210(r3)
+FFE684C8? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE684CC? 93E40128  stw     r31, 0x128(r4)
+FFE684D0? 80630000  lwz     r3, 0x0(r3)
+FFE684D4? 80030000  lwz     r0, 0x0(r3)
+FFE684D8? 60000200  ori     r0, r0, 0x200
+FFE684DC? 90030000  stw     r0, 0x0(r3)
+FFE684E0? 4800366D  bl      glue_LMGetExpandMem
+FFE684E4? 80410014  lwz     r2, 0x14(r1)
+FFE684E8? 80630210  lwz     r3, 0x210(r3)
+FFE684EC? 80630000  lwz     r3, 0x0(r3)
+FFE684F0? 80030024  lwz     r0, 0x24(r3)
+FFE684F4? 601F0200  ori     r31, r0, 0x200
+FFE684F8? 48003679  bl      glue_SynchronizeIO
+FFE684FC? 80410014  lwz     r2, 0x14(r1)
+FFE68500? 4800364D  bl      glue_LMGetExpandMem
+FFE68504? 80410014  lwz     r2, 0x14(r1)
+FFE68508? 80630210  lwz     r3, 0x210(r3)
+FFE6850C? 80630000  lwz     r3, 0x0(r3)
+FFE68510? 93E30024  stw     r31, 0x24(r3)
+FFE68514? 4800365D  bl      glue_SynchronizeIO
+FFE68518? 80410014  lwz     r2, 0x14(r1)
+FFE6851C? 81810058  lwz     r12, 0x58(r1)
+FFE68520? 83E1004C  lwz     r31, 0x4C(r1)
+FFE68524? 7D8803A6  mtspr   LR, r12
+FFE68528? 30210050  addic   r1, r1, 0x50
+FFE6852C? 4E800020  blr
+FFE68530? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE68534? 7C0802A6  mfspr   r0, LR
+FFE68538? 3BE00000  li      r31, 0x0
+FFE6853C? 90010008  stw     r0, 0x8(r1)
+FFE68540? 9421FFB0  stwu    r1, -0x50(r1)
+FFE68544? 48003609  bl      glue_LMGetExpandMem
+FFE68548? 80410014  lwz     r2, 0x14(r1)
+FFE6854C? 80630210  lwz     r3, 0x210(r3)
+FFE68550? 80630000  lwz     r3, 0x0(r3)
+FFE68554? 80630024  lwz     r3, 0x24(r3)
+FFE68558? 5463C23E  srwi    r3, r3, 8
+FFE6855C? 7C601120  mtcrf   0x01, r3
+FFE68560? 409E0008  bne     cr7, loc_FFE68568
+FFE68564? 3BE00001  li      r31, 0x1
+loc_FFE68568:
+FFE68568? 48003609  bl      glue_SynchronizeIO
+FFE6856C? 80410014  lwz     r2, 0x14(r1)
+FFE68570? 480035DD  bl      glue_LMGetExpandMem
+FFE68574? 80410014  lwz     r2, 0x14(r1)
+FFE68578? 80630210  lwz     r3, 0x210(r3)
+FFE6857C? 80630000  lwz     r3, 0x0(r3)
+FFE68580? 80630024  lwz     r3, 0x24(r3)
+FFE68584? 547E05EA  rlwinm  r30, r3, 0, 23, 21
+FFE68588? 480035E9  bl      glue_SynchronizeIO
+FFE6858C? 80410014  lwz     r2, 0x14(r1)
+FFE68590? 480035BD  bl      glue_LMGetExpandMem
+FFE68594? 80410014  lwz     r2, 0x14(r1)
+FFE68598? 80630210  lwz     r3, 0x210(r3)
+FFE6859C? 80630000  lwz     r3, 0x0(r3)
+FFE685A0? 93C30024  stw     r30, 0x24(r3)
+FFE685A4? 480035CD  bl      glue_SynchronizeIO
+FFE685A8? 80410014  lwz     r2, 0x14(r1)
+FFE685AC? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE685B0? 387F0000  addi    r3, r31, 0x0
+FFE685B4? 80840000  lwz     r4, 0x0(r4)
+FFE685B8? 80A40000  lwz     r5, 0x0(r4)
+FFE685BC? 54A505EA  rlwinm  r5, r5, 0, 23, 21
+FFE685C0? 90A40000  stw     r5, 0x0(r4)
+FFE685C4? 81810058  lwz     r12, 0x58(r1)
+FFE685C8? 30210050  addic   r1, r1, 0x50
+FFE685CC? 7D8803A6  mtspr   LR, r12
+FFE685D0? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE685D4? 4E800020  blr
+FFE685D8? 7C0802A6  mfspr   r0, LR
+FFE685DC? 93E1FFFC  stw     r31, -0x4(r1)
+FFE685E0? 90010008  stw     r0, 0x8(r1)
+FFE685E4? 9421FFB0  stwu    r1, -0x50(r1)
+FFE685E8? 3BE00000  li      r31, 0x0
+FFE685EC? 48003561  bl      glue_LMGetExpandMem
+FFE685F0? 80410014  lwz     r2, 0x14(r1)
+FFE685F4? 80830210  lwz     r4, 0x210(r3)
+FFE685F8? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE685FC? 93E40168  stw     r31, 0x168(r4)
+FFE68600? 80630000  lwz     r3, 0x0(r3)
+FFE68604? 80030000  lwz     r0, 0x0(r3)
+FFE68608? 60000800  ori     r0, r0, 0x800
+FFE6860C? 90030000  stw     r0, 0x0(r3)
+FFE68610? 4800353D  bl      glue_LMGetExpandMem
+FFE68614? 80410014  lwz     r2, 0x14(r1)
+FFE68618? 80630210  lwz     r3, 0x210(r3)
+FFE6861C? 80630000  lwz     r3, 0x0(r3)
+FFE68620? 80030024  lwz     r0, 0x24(r3)
+FFE68624? 601F0800  ori     r31, r0, 0x800
+FFE68628? 48003549  bl      glue_SynchronizeIO
+FFE6862C? 80410014  lwz     r2, 0x14(r1)
+FFE68630? 4800351D  bl      glue_LMGetExpandMem
+FFE68634? 80410014  lwz     r2, 0x14(r1)
+FFE68638? 80630210  lwz     r3, 0x210(r3)
+FFE6863C? 80630000  lwz     r3, 0x0(r3)
+FFE68640? 93E30024  stw     r31, 0x24(r3)
+FFE68644? 4800352D  bl      glue_SynchronizeIO
+FFE68648? 80410014  lwz     r2, 0x14(r1)
+FFE6864C? 81810058  lwz     r12, 0x58(r1)
+FFE68650? 83E1004C  lwz     r31, 0x4C(r1)
+FFE68654? 7D8803A6  mtspr   LR, r12
+FFE68658? 30210050  addic   r1, r1, 0x50
+FFE6865C? 4E800020  blr
+FFE68660? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE68664? 7C0802A6  mfspr   r0, LR
+FFE68668? 3BE00000  li      r31, 0x0
+FFE6866C? 90010008  stw     r0, 0x8(r1)
+FFE68670? 9421FFB0  stwu    r1, -0x50(r1)
+FFE68674? 480034D9  bl      glue_LMGetExpandMem
+FFE68678? 80410014  lwz     r2, 0x14(r1)
+FFE6867C? 80630210  lwz     r3, 0x210(r3)
+FFE68680? 80630000  lwz     r3, 0x0(r3)
+FFE68684? 80630024  lwz     r3, 0x24(r3)
+FFE68688? 5463C23E  srwi    r3, r3, 8
+FFE6868C? 7C601120  mtcrf   0x01, r3
+FFE68690? 409C0008  bge     cr7, loc_FFE68698
+FFE68694? 3BE00001  li      r31, 0x1
+loc_FFE68698:
+FFE68698? 480034D9  bl      glue_SynchronizeIO
+FFE6869C? 80410014  lwz     r2, 0x14(r1)
+FFE686A0? 480034AD  bl      glue_LMGetExpandMem
+FFE686A4? 80410014  lwz     r2, 0x14(r1)
+FFE686A8? 80630210  lwz     r3, 0x210(r3)
+FFE686AC? 80630000  lwz     r3, 0x0(r3)
+FFE686B0? 80630024  lwz     r3, 0x24(r3)
+FFE686B4? 547E0566  rlwinm  r30, r3, 0, 21, 19
+FFE686B8? 480034B9  bl      glue_SynchronizeIO
+FFE686BC? 80410014  lwz     r2, 0x14(r1)
+FFE686C0? 4800348D  bl      glue_LMGetExpandMem
+FFE686C4? 80410014  lwz     r2, 0x14(r1)
+FFE686C8? 80630210  lwz     r3, 0x210(r3)
+FFE686CC? 80630000  lwz     r3, 0x0(r3)
+FFE686D0? 93C30024  stw     r30, 0x24(r3)
+FFE686D4? 4800349D  bl      glue_SynchronizeIO
+FFE686D8? 80410014  lwz     r2, 0x14(r1)
+FFE686DC? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE686E0? 387F0000  addi    r3, r31, 0x0
+FFE686E4? 80840000  lwz     r4, 0x0(r4)
+FFE686E8? 80A40000  lwz     r5, 0x0(r4)
+FFE686EC? 54A50566  rlwinm  r5, r5, 0, 21, 19
+FFE686F0? 90A40000  stw     r5, 0x0(r4)
+FFE686F4? 81810058  lwz     r12, 0x58(r1)
+FFE686F8? 30210050  addic   r1, r1, 0x50
+FFE686FC? 7D8803A6  mtspr   LR, r12
+FFE68700? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE68704? 4E800020  blr
+FFE68708? 7C0802A6  mfspr   r0, LR
+FFE6870C? 93E1FFFC  stw     r31, -0x4(r1)
+FFE68710? 90010008  stw     r0, 0x8(r1)
+FFE68714? 9421FFB0  stwu    r1, -0x50(r1)
+FFE68718? 3BE00000  li      r31, 0x0
+FFE6871C? 48003431  bl      glue_LMGetExpandMem
+FFE68720? 80410014  lwz     r2, 0x14(r1)
+FFE68724? 80830210  lwz     r4, 0x210(r3)
+FFE68728? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6872C? 93E401A8  stw     r31, 0x1A8(r4)
+FFE68730? 80630000  lwz     r3, 0x0(r3)
+FFE68734? 80030000  lwz     r0, 0x0(r3)
+FFE68738? 60002000  ori     r0, r0, 0x2000
+FFE6873C? 90030000  stw     r0, 0x0(r3)
+FFE68740? 4800340D  bl      glue_LMGetExpandMem
+FFE68744? 80410014  lwz     r2, 0x14(r1)
+FFE68748? 80630210  lwz     r3, 0x210(r3)
+FFE6874C? 80630000  lwz     r3, 0x0(r3)
+FFE68750? 80030024  lwz     r0, 0x24(r3)
+FFE68754? 601F2000  ori     r31, r0, 0x2000
+FFE68758? 48003419  bl      glue_SynchronizeIO
+FFE6875C? 80410014  lwz     r2, 0x14(r1)
+FFE68760? 480033ED  bl      glue_LMGetExpandMem
+FFE68764? 80410014  lwz     r2, 0x14(r1)
+FFE68768? 80630210  lwz     r3, 0x210(r3)
+FFE6876C? 80630000  lwz     r3, 0x0(r3)
+FFE68770? 93E30024  stw     r31, 0x24(r3)
+FFE68774? 480033FD  bl      glue_SynchronizeIO
+FFE68778? 80410014  lwz     r2, 0x14(r1)
+FFE6877C? 81810058  lwz     r12, 0x58(r1)
+FFE68780? 83E1004C  lwz     r31, 0x4C(r1)
+FFE68784? 7D8803A6  mtspr   LR, r12
+FFE68788? 30210050  addic   r1, r1, 0x50
+FFE6878C? 4E800020  blr
+FFE68790? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE68794? 7C0802A6  mfspr   r0, LR
+FFE68798? 3BE00000  li      r31, 0x0
+FFE6879C? 90010008  stw     r0, 0x8(r1)
+FFE687A0? 9421FFB0  stwu    r1, -0x50(r1)
+FFE687A4? 480033A9  bl      glue_LMGetExpandMem
+FFE687A8? 80410014  lwz     r2, 0x14(r1)
+FFE687AC? 80630210  lwz     r3, 0x210(r3)
+FFE687B0? 80630000  lwz     r3, 0x0(r3)
+FFE687B4? 80630024  lwz     r3, 0x24(r3)
+FFE687B8? 5463A33E  srwi    r3, r3, 12
+FFE687BC? 7C601120  mtcrf   0x01, r3
+FFE687C0? 409E0008  bne     cr7, loc_FFE687C8
+FFE687C4? 3BE00001  li      r31, 0x1
+loc_FFE687C8:
+FFE687C8? 480033A9  bl      glue_SynchronizeIO
+FFE687CC? 80410014  lwz     r2, 0x14(r1)
+FFE687D0? 4800337D  bl      glue_LMGetExpandMem
+FFE687D4? 80410014  lwz     r2, 0x14(r1)
+FFE687D8? 80630210  lwz     r3, 0x210(r3)
+FFE687DC? 80630000  lwz     r3, 0x0(r3)
+FFE687E0? 80630024  lwz     r3, 0x24(r3)
+FFE687E4? 547E04E2  rlwinm  r30, r3, 0, 19, 17
+FFE687E8? 48003389  bl      glue_SynchronizeIO
+FFE687EC? 80410014  lwz     r2, 0x14(r1)
+FFE687F0? 4800335D  bl      glue_LMGetExpandMem
+FFE687F4? 80410014  lwz     r2, 0x14(r1)
+FFE687F8? 80630210  lwz     r3, 0x210(r3)
+FFE687FC? 80630000  lwz     r3, 0x0(r3)
+FFE68800? 93C30024  stw     r30, 0x24(r3)
+FFE68804? 4800336D  bl      glue_SynchronizeIO
+FFE68808? 80410014  lwz     r2, 0x14(r1)
+FFE6880C? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE68810? 387F0000  addi    r3, r31, 0x0
+FFE68814? 80840000  lwz     r4, 0x0(r4)
+FFE68818? 80A40000  lwz     r5, 0x0(r4)
+FFE6881C? 54A504E2  rlwinm  r5, r5, 0, 19, 17
+FFE68820? 90A40000  stw     r5, 0x0(r4)
+FFE68824? 81810058  lwz     r12, 0x58(r1)
+FFE68828? 30210050  addic   r1, r1, 0x50
+FFE6882C? 7D8803A6  mtspr   LR, r12
+FFE68830? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE68834? 4E800020  blr
+FFE68838? 7C0802A6  mfspr   r0, LR
+FFE6883C? 93E1FFFC  stw     r31, -0x4(r1)
+FFE68840? 90010008  stw     r0, 0x8(r1)
+FFE68844? 9421FFB0  stwu    r1, -0x50(r1)
+FFE68848? 3BE00000  li      r31, 0x0
+FFE6884C? 48003301  bl      glue_LMGetExpandMem
+FFE68850? 80410014  lwz     r2, 0x14(r1)
+FFE68854? 80830210  lwz     r4, 0x210(r3)
+FFE68858? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6885C? 93E401C8  stw     r31, 0x1C8(r4)
+FFE68860? 80630000  lwz     r3, 0x0(r3)
+FFE68864? 80030000  lwz     r0, 0x0(r3)
+FFE68868? 60004000  ori     r0, r0, 0x4000
+FFE6886C? 90030000  stw     r0, 0x0(r3)
+FFE68870? 480032DD  bl      glue_LMGetExpandMem
+FFE68874? 80410014  lwz     r2, 0x14(r1)
+FFE68878? 80630210  lwz     r3, 0x210(r3)
+FFE6887C? 80630000  lwz     r3, 0x0(r3)
+FFE68880? 80030024  lwz     r0, 0x24(r3)
+FFE68884? 601F4000  ori     r31, r0, 0x4000
+FFE68888? 480032E9  bl      glue_SynchronizeIO
+FFE6888C? 80410014  lwz     r2, 0x14(r1)
+FFE68890? 480032BD  bl      glue_LMGetExpandMem
+FFE68894? 80410014  lwz     r2, 0x14(r1)
+FFE68898? 80630210  lwz     r3, 0x210(r3)
+FFE6889C? 80630000  lwz     r3, 0x0(r3)
+FFE688A0? 93E30024  stw     r31, 0x24(r3)
+FFE688A4? 480032CD  bl      glue_SynchronizeIO
+FFE688A8? 80410014  lwz     r2, 0x14(r1)
+FFE688AC? 81810058  lwz     r12, 0x58(r1)
+FFE688B0? 83E1004C  lwz     r31, 0x4C(r1)
+FFE688B4? 7D8803A6  mtspr   LR, r12
+FFE688B8? 30210050  addic   r1, r1, 0x50
+FFE688BC? 4E800020  blr
+FFE688C0? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE688C4? 7C0802A6  mfspr   r0, LR
+FFE688C8? 3BE00000  li      r31, 0x0
+FFE688CC? 90010008  stw     r0, 0x8(r1)
+FFE688D0? 9421FFB0  stwu    r1, -0x50(r1)
+FFE688D4? 48003279  bl      glue_LMGetExpandMem
+FFE688D8? 80410014  lwz     r2, 0x14(r1)
+FFE688DC? 80630210  lwz     r3, 0x210(r3)
+FFE688E0? 80630000  lwz     r3, 0x0(r3)
+FFE688E4? 80630024  lwz     r3, 0x24(r3)
+FFE688E8? 5463A33E  srwi    r3, r3, 12
+FFE688EC? 7C601120  mtcrf   0x01, r3
+FFE688F0? 409D0008  ble     cr7, loc_FFE688F8
+FFE688F4? 3BE00001  li      r31, 0x1
+loc_FFE688F8:
+FFE688F8? 48003279  bl      glue_SynchronizeIO
+FFE688FC? 80410014  lwz     r2, 0x14(r1)
+FFE68900? 4800324D  bl      glue_LMGetExpandMem
+FFE68904? 80410014  lwz     r2, 0x14(r1)
+FFE68908? 80630210  lwz     r3, 0x210(r3)
+FFE6890C? 80630000  lwz     r3, 0x0(r3)
+FFE68910? 80630024  lwz     r3, 0x24(r3)
+FFE68914? 547E04A0  rlwinm  r30, r3, 0, 18, 16
+FFE68918? 48003259  bl      glue_SynchronizeIO
+FFE6891C? 80410014  lwz     r2, 0x14(r1)
+FFE68920? 4800322D  bl      glue_LMGetExpandMem
+FFE68924? 80410014  lwz     r2, 0x14(r1)
+FFE68928? 80630210  lwz     r3, 0x210(r3)
+FFE6892C? 80630000  lwz     r3, 0x0(r3)
+FFE68930? 93C30024  stw     r30, 0x24(r3)
+FFE68934? 4800323D  bl      glue_SynchronizeIO
+FFE68938? 80410014  lwz     r2, 0x14(r1)
+FFE6893C? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE68940? 387F0000  addi    r3, r31, 0x0
+FFE68944? 80840000  lwz     r4, 0x0(r4)
+FFE68948? 80A40000  lwz     r5, 0x0(r4)
+FFE6894C? 54A504A0  rlwinm  r5, r5, 0, 18, 16
+FFE68950? 90A40000  stw     r5, 0x0(r4)
+FFE68954? 81810058  lwz     r12, 0x58(r1)
+FFE68958? 30210050  addic   r1, r1, 0x50
+FFE6895C? 7D8803A6  mtspr   LR, r12
+FFE68960? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE68964? 4E800020  blr
+FFE68968? 7C0802A6  mfspr   r0, LR
+FFE6896C? 93E1FFFC  stw     r31, -0x4(r1)
+FFE68970? 90010008  stw     r0, 0x8(r1)
+FFE68974? 9421FFB0  stwu    r1, -0x50(r1)
+FFE68978? 3BE00000  li      r31, 0x0
+FFE6897C? 480031D1  bl      glue_LMGetExpandMem
+FFE68980? 80410014  lwz     r2, 0x14(r1)
+FFE68984? 80830210  lwz     r4, 0x210(r3)
+FFE68988? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6898C? 93E401E8  stw     r31, 0x1E8(r4)
+FFE68990? 80630000  lwz     r3, 0x0(r3)
+FFE68994? 80030000  lwz     r0, 0x0(r3)
+FFE68998? 60008000  ori     r0, r0, 0x8000
+FFE6899C? 90030000  stw     r0, 0x0(r3)
+FFE689A0? 480031AD  bl      glue_LMGetExpandMem
+FFE689A4? 80410014  lwz     r2, 0x14(r1)
+FFE689A8? 80630210  lwz     r3, 0x210(r3)
+FFE689AC? 80630000  lwz     r3, 0x0(r3)
+FFE689B0? 80030024  lwz     r0, 0x24(r3)
+FFE689B4? 601F8000  ori     r31, r0, 0x8000
+FFE689B8? 480031B9  bl      glue_SynchronizeIO
+FFE689BC? 80410014  lwz     r2, 0x14(r1)
+FFE689C0? 4800318D  bl      glue_LMGetExpandMem
+FFE689C4? 80410014  lwz     r2, 0x14(r1)
+FFE689C8? 80630210  lwz     r3, 0x210(r3)
+FFE689CC? 80630000  lwz     r3, 0x0(r3)
+FFE689D0? 93E30024  stw     r31, 0x24(r3)
+FFE689D4? 4800319D  bl      glue_SynchronizeIO
+FFE689D8? 80410014  lwz     r2, 0x14(r1)
+FFE689DC? 81810058  lwz     r12, 0x58(r1)
+FFE689E0? 83E1004C  lwz     r31, 0x4C(r1)
+FFE689E4? 7D8803A6  mtspr   LR, r12
+FFE689E8? 30210050  addic   r1, r1, 0x50
+FFE689EC? 4E800020  blr
+FFE689F0? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE689F4? 7C0802A6  mfspr   r0, LR
+FFE689F8? 3BE00000  li      r31, 0x0
+FFE689FC? 90010008  stw     r0, 0x8(r1)
+FFE68A00? 9421FFB0  stwu    r1, -0x50(r1)
+FFE68A04? 48003149  bl      glue_LMGetExpandMem
+FFE68A08? 80410014  lwz     r2, 0x14(r1)
+FFE68A0C? 80630210  lwz     r3, 0x210(r3)
+FFE68A10? 80630000  lwz     r3, 0x0(r3)
+FFE68A14? 80630024  lwz     r3, 0x24(r3)
+FFE68A18? 5463A33E  srwi    r3, r3, 12
+FFE68A1C? 7C601120  mtcrf   0x01, r3
+FFE68A20? 409C0008  bge     cr7, loc_FFE68A28
+FFE68A24? 3BE00001  li      r31, 0x1
+loc_FFE68A28:
+FFE68A28? 48003149  bl      glue_SynchronizeIO
+FFE68A2C? 80410014  lwz     r2, 0x14(r1)
+FFE68A30? 4800311D  bl      glue_LMGetExpandMem
+FFE68A34? 80410014  lwz     r2, 0x14(r1)
+FFE68A38? 80630210  lwz     r3, 0x210(r3)
+FFE68A3C? 80630000  lwz     r3, 0x0(r3)
+FFE68A40? 80630024  lwz     r3, 0x24(r3)
+FFE68A44? 547E045E  rlwinm  r30, r3, 0, 17, 15
+FFE68A48? 48003129  bl      glue_SynchronizeIO
+FFE68A4C? 80410014  lwz     r2, 0x14(r1)
+FFE68A50? 480030FD  bl      glue_LMGetExpandMem
+FFE68A54? 80410014  lwz     r2, 0x14(r1)
+FFE68A58? 80630210  lwz     r3, 0x210(r3)
+FFE68A5C? 80630000  lwz     r3, 0x0(r3)
+FFE68A60? 93C30024  stw     r30, 0x24(r3)
+FFE68A64? 4800310D  bl      glue_SynchronizeIO
+FFE68A68? 80410014  lwz     r2, 0x14(r1)
+FFE68A6C? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE68A70? 387F0000  addi    r3, r31, 0x0
+FFE68A74? 80840000  lwz     r4, 0x0(r4)
+FFE68A78? 80A40000  lwz     r5, 0x0(r4)
+FFE68A7C? 54A5045E  rlwinm  r5, r5, 0, 17, 15
+FFE68A80? 90A40000  stw     r5, 0x0(r4)
+FFE68A84? 81810058  lwz     r12, 0x58(r1)
+FFE68A88? 30210050  addic   r1, r1, 0x50
+FFE68A8C? 7D8803A6  mtspr   LR, r12
+FFE68A90? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE68A94? 4E800020  blr
+FFE68A98? 7C0802A6  mfspr   r0, LR
+FFE68A9C? 93E1FFFC  stw     r31, -0x4(r1)
+FFE68AA0? 90010008  stw     r0, 0x8(r1)
+FFE68AA4? 9421FFB0  stwu    r1, -0x50(r1)
+FFE68AA8? 3BE00000  li      r31, 0x0
+FFE68AAC? 480030A1  bl      glue_LMGetExpandMem
+FFE68AB0? 80410014  lwz     r2, 0x14(r1)
+FFE68AB4? 80830210  lwz     r4, 0x210(r3)
+FFE68AB8? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE68ABC? 93E40008  stw     r31, 0x8(r4)
+FFE68AC0? 80630000  lwz     r3, 0x0(r3)
+FFE68AC4? 80030000  lwz     r0, 0x0(r3)
+FFE68AC8? 60000001  ori     r0, r0, 0x1
+FFE68ACC? 90030000  stw     r0, 0x0(r3)
+FFE68AD0? 4800307D  bl      glue_LMGetExpandMem
+FFE68AD4? 80410014  lwz     r2, 0x14(r1)
+FFE68AD8? 80630210  lwz     r3, 0x210(r3)
+FFE68ADC? 80630000  lwz     r3, 0x0(r3)
+FFE68AE0? 80030024  lwz     r0, 0x24(r3)
+FFE68AE4? 601F0001  ori     r31, r0, 0x1
+FFE68AE8? 48003089  bl      glue_SynchronizeIO
+FFE68AEC? 80410014  lwz     r2, 0x14(r1)
+FFE68AF0? 4800305D  bl      glue_LMGetExpandMem
+FFE68AF4? 80410014  lwz     r2, 0x14(r1)
+FFE68AF8? 80630210  lwz     r3, 0x210(r3)
+FFE68AFC? 80630000  lwz     r3, 0x0(r3)
+FFE68B00? 93E30024  stw     r31, 0x24(r3)
+FFE68B04? 4800306D  bl      glue_SynchronizeIO
+FFE68B08? 80410014  lwz     r2, 0x14(r1)
+FFE68B0C? 81810058  lwz     r12, 0x58(r1)
+FFE68B10? 83E1004C  lwz     r31, 0x4C(r1)
+FFE68B14? 7D8803A6  mtspr   LR, r12
+FFE68B18? 30210050  addic   r1, r1, 0x50
+FFE68B1C? 4E800020  blr
+FFE68B20? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE68B24? 7C0802A6  mfspr   r0, LR
+FFE68B28? 3BE00000  li      r31, 0x0
+FFE68B2C? 90010008  stw     r0, 0x8(r1)
+FFE68B30? 9421FFB0  stwu    r1, -0x50(r1)
+FFE68B34? 48003019  bl      glue_LMGetExpandMem
+FFE68B38? 80410014  lwz     r2, 0x14(r1)
+FFE68B3C? 80630210  lwz     r3, 0x210(r3)
+FFE68B40? 80630000  lwz     r3, 0x0(r3)
+FFE68B44? 80630024  lwz     r3, 0x24(r3)
+FFE68B48? 7C601120  mtcrf   0x01, r3
+FFE68B4C? 409F0008  bns     cr7, loc_FFE68B54
+FFE68B50? 3BE00001  li      r31, 0x1
+loc_FFE68B54:
+FFE68B54? 4800301D  bl      glue_SynchronizeIO
+FFE68B58? 80410014  lwz     r2, 0x14(r1)
+FFE68B5C? 48002FF1  bl      glue_LMGetExpandMem
+FFE68B60? 80410014  lwz     r2, 0x14(r1)
+FFE68B64? 80630210  lwz     r3, 0x210(r3)
+FFE68B68? 80630000  lwz     r3, 0x0(r3)
+FFE68B6C? 80630024  lwz     r3, 0x24(r3)
+FFE68B70? 547E003C  clrrwi  r30, r3, 1
+FFE68B74? 48002FFD  bl      glue_SynchronizeIO
+FFE68B78? 80410014  lwz     r2, 0x14(r1)
+FFE68B7C? 48002FD1  bl      glue_LMGetExpandMem
+FFE68B80? 80410014  lwz     r2, 0x14(r1)
+FFE68B84? 80630210  lwz     r3, 0x210(r3)
+FFE68B88? 80630000  lwz     r3, 0x0(r3)
+FFE68B8C? 93C30024  stw     r30, 0x24(r3)
+FFE68B90? 48002FE1  bl      glue_SynchronizeIO
+FFE68B94? 80410014  lwz     r2, 0x14(r1)
+FFE68B98? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE68B9C? 387F0000  addi    r3, r31, 0x0
+FFE68BA0? 80840000  lwz     r4, 0x0(r4)
+FFE68BA4? 80A40000  lwz     r5, 0x0(r4)
+FFE68BA8? 54A5003C  clrrwi  r5, r5, 1
+FFE68BAC? 90A40000  stw     r5, 0x0(r4)
+FFE68BB0? 81810058  lwz     r12, 0x58(r1)
+FFE68BB4? 30210050  addic   r1, r1, 0x50
+FFE68BB8? 7D8803A6  mtspr   LR, r12
+FFE68BBC? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE68BC0? 4E800020  blr
+FFE68BC4? 7C0802A6  mfspr   r0, LR
+FFE68BC8? 93E1FFFC  stw     r31, -0x4(r1)
+FFE68BCC? 90010008  stw     r0, 0x8(r1)
+FFE68BD0? 9421FFB0  stwu    r1, -0x50(r1)
+FFE68BD4? 3BE00000  li      r31, 0x0
+FFE68BD8? 48002F75  bl      glue_LMGetExpandMem
+FFE68BDC? 80410014  lwz     r2, 0x14(r1)
+FFE68BE0? 80830210  lwz     r4, 0x210(r3)
+FFE68BE4? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE68BE8? 93E40028  stw     r31, 0x28(r4)
+FFE68BEC? 80630000  lwz     r3, 0x0(r3)
+FFE68BF0? 80030000  lwz     r0, 0x0(r3)
+FFE68BF4? 60000002  ori     r0, r0, 0x2
+FFE68BF8? 90030000  stw     r0, 0x0(r3)
+FFE68BFC? 48002F51  bl      glue_LMGetExpandMem
+FFE68C00? 80410014  lwz     r2, 0x14(r1)
+FFE68C04? 80630210  lwz     r3, 0x210(r3)
+FFE68C08? 80630000  lwz     r3, 0x0(r3)
+FFE68C0C? 80030024  lwz     r0, 0x24(r3)
+FFE68C10? 601F0002  ori     r31, r0, 0x2
+FFE68C14? 48002F5D  bl      glue_SynchronizeIO
+FFE68C18? 80410014  lwz     r2, 0x14(r1)
+FFE68C1C? 48002F31  bl      glue_LMGetExpandMem
+FFE68C20? 80410014  lwz     r2, 0x14(r1)
+FFE68C24? 80630210  lwz     r3, 0x210(r3)
+FFE68C28? 80630000  lwz     r3, 0x0(r3)
+FFE68C2C? 93E30024  stw     r31, 0x24(r3)
+FFE68C30? 48002F41  bl      glue_SynchronizeIO
+FFE68C34? 80410014  lwz     r2, 0x14(r1)
+FFE68C38? 81810058  lwz     r12, 0x58(r1)
+FFE68C3C? 83E1004C  lwz     r31, 0x4C(r1)
+FFE68C40? 7D8803A6  mtspr   LR, r12
+FFE68C44? 30210050  addic   r1, r1, 0x50
+FFE68C48? 4E800020  blr
+FFE68C4C? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE68C50? 7C0802A6  mfspr   r0, LR
+FFE68C54? 3BE00000  li      r31, 0x0
+FFE68C58? 90010008  stw     r0, 0x8(r1)
+FFE68C5C? 9421FFB0  stwu    r1, -0x50(r1)
+FFE68C60? 48002EED  bl      glue_LMGetExpandMem
+FFE68C64? 80410014  lwz     r2, 0x14(r1)
+FFE68C68? 80630210  lwz     r3, 0x210(r3)
+FFE68C6C? 80630000  lwz     r3, 0x0(r3)
+FFE68C70? 80630024  lwz     r3, 0x24(r3)
+FFE68C74? 7C601120  mtcrf   0x01, r3
+FFE68C78? 409E0008  bne     cr7, loc_FFE68C80
+FFE68C7C? 3BE00001  li      r31, 0x1
+loc_FFE68C80:
+FFE68C80? 48002EF1  bl      glue_SynchronizeIO
+FFE68C84? 80410014  lwz     r2, 0x14(r1)
+FFE68C88? 48002EC5  bl      glue_LMGetExpandMem
+FFE68C8C? 80410014  lwz     r2, 0x14(r1)
+FFE68C90? 80630210  lwz     r3, 0x210(r3)
+FFE68C94? 80630000  lwz     r3, 0x0(r3)
+FFE68C98? 80630024  lwz     r3, 0x24(r3)
+FFE68C9C? 547E07FA  rlwinm  r30, r3, 0, 31, 29
+FFE68CA0? 48002ED1  bl      glue_SynchronizeIO
+FFE68CA4? 80410014  lwz     r2, 0x14(r1)
+FFE68CA8? 48002EA5  bl      glue_LMGetExpandMem
+FFE68CAC? 80410014  lwz     r2, 0x14(r1)
+FFE68CB0? 80630210  lwz     r3, 0x210(r3)
+FFE68CB4? 80630000  lwz     r3, 0x0(r3)
+FFE68CB8? 93C30024  stw     r30, 0x24(r3)
+FFE68CBC? 48002EB5  bl      glue_SynchronizeIO
+FFE68CC0? 80410014  lwz     r2, 0x14(r1)
+FFE68CC4? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE68CC8? 387F0000  addi    r3, r31, 0x0
+FFE68CCC? 80840000  lwz     r4, 0x0(r4)
+FFE68CD0? 80A40000  lwz     r5, 0x0(r4)
+FFE68CD4? 54A507FA  rlwinm  r5, r5, 0, 31, 29
+FFE68CD8? 90A40000  stw     r5, 0x0(r4)
+FFE68CDC? 81810058  lwz     r12, 0x58(r1)
+FFE68CE0? 30210050  addic   r1, r1, 0x50
+FFE68CE4? 7D8803A6  mtspr   LR, r12
+FFE68CE8? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE68CEC? 4E800020  blr
+FFE68CF0* 7C0802A6  mfspr   r0, LR
+FFE68CF4* 93E1FFFC  stw     r31, -0x4(r1)
+FFE68CF8* 90010008  stw     r0, 0x8(r1)
+FFE68CFC* 9421FFB0  stwu    r1, -0x50(r1)
+FFE68D00* 3BE00000  li      r31, 0x0
+FFE68D04* 48002E49  bl      glue_LMGetExpandMem
+FFE68D08* 80410014  lwz     r2, 0x14(r1)
+FFE68D0C* 80830210  lwz     r4, 0x210(r3)
+FFE68D10* 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE68D14* 93E40048  stw     r31, 0x48(r4)
+FFE68D18* 80630000  lwz     r3, 0x0(r3)
+FFE68D1C* 80030000  lwz     r0, 0x0(r3)
+FFE68D20* 60000004  ori     r0, r0, 0x4
+FFE68D24* 90030000  stw     r0, 0x0(r3)
+FFE68D28* 48002E25  bl      glue_LMGetExpandMem
+FFE68D2C* 80410014  lwz     r2, 0x14(r1)
+FFE68D30* 80630210  lwz     r3, 0x210(r3)
+FFE68D34* 80630000  lwz     r3, 0x0(r3)
+FFE68D38* 80030024  lwz     r0, 0x24(r3)
+FFE68D3C* 601F0004  ori     r31, r0, 0x4
+FFE68D40* 48002E31  bl      glue_SynchronizeIO
+FFE68D44* 80410014  lwz     r2, 0x14(r1)
+FFE68D48* 48002E05  bl      glue_LMGetExpandMem
+FFE68D4C* 80410014  lwz     r2, 0x14(r1)
+FFE68D50* 80630210  lwz     r3, 0x210(r3)
+FFE68D54* 80630000  lwz     r3, 0x0(r3)
+FFE68D58* 93E30024  stw     r31, 0x24(r3)
+FFE68D5C* 48002E15  bl      glue_SynchronizeIO
+FFE68D60* 80410014  lwz     r2, 0x14(r1)
+FFE68D64* 81810058  lwz     r12, 0x58(r1)
+FFE68D68* 83E1004C  lwz     r31, 0x4C(r1)
+FFE68D6C* 7D8803A6  mtspr   LR, r12
+FFE68D70* 30210050  addic   r1, r1, 0x50
+FFE68D74* 4E800020  blr
+FFE68D78* BFC1FFF8  stmw    r30, -0x8(r1)
+FFE68D7C* 7C0802A6  mfspr   r0, LR
+FFE68D80* 3BE00000  li      r31, 0x0
+FFE68D84* 90010008  stw     r0, 0x8(r1)
+FFE68D88* 9421FFB0  stwu    r1, -0x50(r1)
+FFE68D8C* 48002DC1  bl      glue_LMGetExpandMem
+FFE68D90* 80410014  lwz     r2, 0x14(r1)
+FFE68D94* 80630210  lwz     r3, 0x210(r3)
+FFE68D98* 80630000  lwz     r3, 0x0(r3)
+FFE68D9C* 80630024  lwz     r3, 0x24(r3)
+FFE68DA0* 7C601120  mtcrf   0x01, r3
+FFE68DA4* 409D0008  ble     cr7, loc_FFE68DAC
+FFE68DA8* 3BE00001  li      r31, 0x1
+loc_FFE68DAC:
+FFE68DAC* 48002DC5  bl      glue_SynchronizeIO
+FFE68DB0* 80410014  lwz     r2, 0x14(r1)
+FFE68DB4* 48002D99  bl      glue_LMGetExpandMem
+FFE68DB8* 80410014  lwz     r2, 0x14(r1)
+FFE68DBC* 80630210  lwz     r3, 0x210(r3)
+FFE68DC0* 80630000  lwz     r3, 0x0(r3)
+FFE68DC4* 80630024  lwz     r3, 0x24(r3)
+FFE68DC8* 547E07B8  rlwinm  r30, r3, 0, 30, 28
+FFE68DCC* 48002DA5  bl      glue_SynchronizeIO
+FFE68DD0* 80410014  lwz     r2, 0x14(r1)
+FFE68DD4* 48002D79  bl      glue_LMGetExpandMem
+FFE68DD8* 80410014  lwz     r2, 0x14(r1)
+FFE68DDC* 80630210  lwz     r3, 0x210(r3)
+FFE68DE0* 80630000  lwz     r3, 0x0(r3)
+FFE68DE4* 93C30024  stw     r30, 0x24(r3)
+FFE68DE8* 48002D89  bl      glue_SynchronizeIO
+FFE68DEC* 80410014  lwz     r2, 0x14(r1)
+FFE68DF0* 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE68DF4* 387F0000  addi    r3, r31, 0x0
+FFE68DF8* 80840000  lwz     r4, 0x0(r4)
+FFE68DFC* 80A40000  lwz     r5, 0x0(r4)
+FFE68E00* 54A507B8  rlwinm  r5, r5, 0, 30, 28
+FFE68E04* 90A40000  stw     r5, 0x0(r4)
+FFE68E08* 81810058  lwz     r12, 0x58(r1)
+FFE68E0C* 30210050  addic   r1, r1, 0x50
+FFE68E10* 7D8803A6  mtspr   LR, r12
+FFE68E14* BBC1FFF8  lmw     r30, -0x8(r1)
+FFE68E18* 4E800020  blr
+FFE68E1C? 7C0802A6  mfspr   r0, LR
+FFE68E20? 93E1FFFC  stw     r31, -0x4(r1)
+FFE68E24? 90010008  stw     r0, 0x8(r1)
+FFE68E28? 9421FFB0  stwu    r1, -0x50(r1)
+FFE68E2C? 3BE00000  li      r31, 0x0
+FFE68E30? 48002D1D  bl      glue_LMGetExpandMem
+FFE68E34? 80410014  lwz     r2, 0x14(r1)
+FFE68E38? 80830210  lwz     r4, 0x210(r3)
+FFE68E3C? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE68E40? 93E40068  stw     r31, 0x68(r4)
+FFE68E44? 80630000  lwz     r3, 0x0(r3)
+FFE68E48? 80030000  lwz     r0, 0x0(r3)
+FFE68E4C? 60000008  ori     r0, r0, 0x8
+FFE68E50? 90030000  stw     r0, 0x0(r3)
+FFE68E54? 48002CF9  bl      glue_LMGetExpandMem
+FFE68E58? 80410014  lwz     r2, 0x14(r1)
+FFE68E5C? 80630210  lwz     r3, 0x210(r3)
+FFE68E60? 80630000  lwz     r3, 0x0(r3)
+FFE68E64? 80030024  lwz     r0, 0x24(r3)
+FFE68E68? 601F0008  ori     r31, r0, 0x8
+FFE68E6C? 48002D05  bl      glue_SynchronizeIO
+FFE68E70? 80410014  lwz     r2, 0x14(r1)
+FFE68E74? 48002CD9  bl      glue_LMGetExpandMem
+FFE68E78? 80410014  lwz     r2, 0x14(r1)
+FFE68E7C? 80630210  lwz     r3, 0x210(r3)
+FFE68E80? 80630000  lwz     r3, 0x0(r3)
+FFE68E84? 93E30024  stw     r31, 0x24(r3)
+FFE68E88? 48002CE9  bl      glue_SynchronizeIO
+FFE68E8C? 80410014  lwz     r2, 0x14(r1)
+FFE68E90? 81810058  lwz     r12, 0x58(r1)
+FFE68E94? 83E1004C  lwz     r31, 0x4C(r1)
+FFE68E98? 7D8803A6  mtspr   LR, r12
+FFE68E9C? 30210050  addic   r1, r1, 0x50
+FFE68EA0? 4E800020  blr
+FFE68EA4? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE68EA8? 7C0802A6  mfspr   r0, LR
+FFE68EAC? 3BE00000  li      r31, 0x0
+FFE68EB0? 90010008  stw     r0, 0x8(r1)
+FFE68EB4? 9421FFB0  stwu    r1, -0x50(r1)
+FFE68EB8? 48002C95  bl      glue_LMGetExpandMem
+FFE68EBC? 80410014  lwz     r2, 0x14(r1)
+FFE68EC0? 80630210  lwz     r3, 0x210(r3)
+FFE68EC4? 80630000  lwz     r3, 0x0(r3)
+FFE68EC8? 80630024  lwz     r3, 0x24(r3)
+FFE68ECC? 7C601120  mtcrf   0x01, r3
+FFE68ED0? 409C0008  bge     cr7, loc_FFE68ED8
+FFE68ED4? 3BE00001  li      r31, 0x1
+loc_FFE68ED8:
+FFE68ED8? 48002C99  bl      glue_SynchronizeIO
+FFE68EDC? 80410014  lwz     r2, 0x14(r1)
+FFE68EE0? 48002C6D  bl      glue_LMGetExpandMem
+FFE68EE4? 80410014  lwz     r2, 0x14(r1)
+FFE68EE8? 80630210  lwz     r3, 0x210(r3)
+FFE68EEC? 80630000  lwz     r3, 0x0(r3)
+FFE68EF0? 80630024  lwz     r3, 0x24(r3)
+FFE68EF4? 547E0776  rlwinm  r30, r3, 0, 29, 27
+FFE68EF8? 48002C79  bl      glue_SynchronizeIO
+FFE68EFC? 80410014  lwz     r2, 0x14(r1)
+FFE68F00? 48002C4D  bl      glue_LMGetExpandMem
+FFE68F04? 80410014  lwz     r2, 0x14(r1)
+FFE68F08? 80630210  lwz     r3, 0x210(r3)
+FFE68F0C? 80630000  lwz     r3, 0x0(r3)
+FFE68F10? 93C30024  stw     r30, 0x24(r3)
+FFE68F14? 48002C5D  bl      glue_SynchronizeIO
+FFE68F18? 80410014  lwz     r2, 0x14(r1)
+FFE68F1C? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE68F20? 387F0000  addi    r3, r31, 0x0
+FFE68F24? 80840000  lwz     r4, 0x0(r4)
+FFE68F28? 80A40000  lwz     r5, 0x0(r4)
+FFE68F2C? 54A50776  rlwinm  r5, r5, 0, 29, 27
+FFE68F30? 90A40000  stw     r5, 0x0(r4)
+FFE68F34? 81810058  lwz     r12, 0x58(r1)
+FFE68F38? 30210050  addic   r1, r1, 0x50
+FFE68F3C? 7D8803A6  mtspr   LR, r12
+FFE68F40? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE68F44? 4E800020  blr
+FFE68F48? 7C0802A6  mfspr   r0, LR
+FFE68F4C? 93E1FFFC  stw     r31, -0x4(r1)
+FFE68F50? 90010008  stw     r0, 0x8(r1)
+FFE68F54? 9421FFB0  stwu    r1, -0x50(r1)
+FFE68F58? 3BE00000  li      r31, 0x0
+FFE68F5C? 48002BF1  bl      glue_LMGetExpandMem
+FFE68F60? 80410014  lwz     r2, 0x14(r1)
+FFE68F64? 80830210  lwz     r4, 0x210(r3)
+FFE68F68? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE68F6C? 93E40088  stw     r31, 0x88(r4)
+FFE68F70? 80630000  lwz     r3, 0x0(r3)
+FFE68F74? 80030000  lwz     r0, 0x0(r3)
+FFE68F78? 60000010  ori     r0, r0, 0x10
+FFE68F7C? 90030000  stw     r0, 0x0(r3)
+FFE68F80? 48002BCD  bl      glue_LMGetExpandMem
+FFE68F84? 80410014  lwz     r2, 0x14(r1)
+FFE68F88? 80630210  lwz     r3, 0x210(r3)
+FFE68F8C? 80630000  lwz     r3, 0x0(r3)
+FFE68F90? 80030024  lwz     r0, 0x24(r3)
+FFE68F94? 601F0010  ori     r31, r0, 0x10
+FFE68F98? 48002BD9  bl      glue_SynchronizeIO
+FFE68F9C? 80410014  lwz     r2, 0x14(r1)
+FFE68FA0? 48002BAD  bl      glue_LMGetExpandMem
+FFE68FA4? 80410014  lwz     r2, 0x14(r1)
+FFE68FA8? 80630210  lwz     r3, 0x210(r3)
+FFE68FAC? 80630000  lwz     r3, 0x0(r3)
+FFE68FB0? 93E30024  stw     r31, 0x24(r3)
+FFE68FB4? 48002BBD  bl      glue_SynchronizeIO
+FFE68FB8? 80410014  lwz     r2, 0x14(r1)
+FFE68FBC? 81810058  lwz     r12, 0x58(r1)
+FFE68FC0? 83E1004C  lwz     r31, 0x4C(r1)
+FFE68FC4? 7D8803A6  mtspr   LR, r12
+FFE68FC8? 30210050  addic   r1, r1, 0x50
+FFE68FCC? 4E800020  blr
+FFE68FD0? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE68FD4? 7C0802A6  mfspr   r0, LR
+FFE68FD8? 3BE00000  li      r31, 0x0
+FFE68FDC? 90010008  stw     r0, 0x8(r1)
+FFE68FE0? 9421FFB0  stwu    r1, -0x50(r1)
+FFE68FE4? 48002B69  bl      glue_LMGetExpandMem
+FFE68FE8? 80410014  lwz     r2, 0x14(r1)
+FFE68FEC? 80630210  lwz     r3, 0x210(r3)
+FFE68FF0? 80630000  lwz     r3, 0x0(r3)
+FFE68FF4? 80630024  lwz     r3, 0x24(r3)
+FFE68FF8? 7C602120  mtcrf   0x02, r3
+FFE68FFC? 4C180000  mcrf    cr0, cr6
+FFE69000? 40830008  bns     loc_FFE69008
+FFE69004? 3BE00001  li      r31, 0x1
+loc_FFE69008:
+FFE69008? 48002B69  bl      glue_SynchronizeIO
+FFE6900C? 80410014  lwz     r2, 0x14(r1)
+FFE69010? 48002B3D  bl      glue_LMGetExpandMem
+FFE69014? 80410014  lwz     r2, 0x14(r1)
+FFE69018? 80630210  lwz     r3, 0x210(r3)
+FFE6901C? 80630000  lwz     r3, 0x0(r3)
+FFE69020? 80630024  lwz     r3, 0x24(r3)
+FFE69024? 547E0734  rlwinm  r30, r3, 0, 28, 26
+FFE69028? 48002B49  bl      glue_SynchronizeIO
+FFE6902C? 80410014  lwz     r2, 0x14(r1)
+FFE69030? 48002B1D  bl      glue_LMGetExpandMem
+FFE69034? 80410014  lwz     r2, 0x14(r1)
+FFE69038? 80630210  lwz     r3, 0x210(r3)
+FFE6903C? 80630000  lwz     r3, 0x0(r3)
+FFE69040? 93C30024  stw     r30, 0x24(r3)
+FFE69044? 48002B2D  bl      glue_SynchronizeIO
+FFE69048? 80410014  lwz     r2, 0x14(r1)
+FFE6904C? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE69050? 387F0000  addi    r3, r31, 0x0
+FFE69054? 80840000  lwz     r4, 0x0(r4)
+FFE69058? 80A40000  lwz     r5, 0x0(r4)
+FFE6905C? 54A50734  rlwinm  r5, r5, 0, 28, 26
+FFE69060? 90A40000  stw     r5, 0x0(r4)
+FFE69064? 81810058  lwz     r12, 0x58(r1)
+FFE69068? 30210050  addic   r1, r1, 0x50
+FFE6906C? 7D8803A6  mtspr   LR, r12
+FFE69070? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE69074? 4E800020  blr
+FFE69078? 7C0802A6  mfspr   r0, LR
+FFE6907C? 93E1FFFC  stw     r31, -0x4(r1)
+FFE69080? 90010008  stw     r0, 0x8(r1)
+FFE69084? 9421FFB0  stwu    r1, -0x50(r1)
+FFE69088? 3BE00000  li      r31, 0x0
+FFE6908C? 48002AC1  bl      glue_LMGetExpandMem
+FFE69090? 80410014  lwz     r2, 0x14(r1)
+FFE69094? 80830210  lwz     r4, 0x210(r3)
+FFE69098? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6909C? 93E400A8  stw     r31, 0xA8(r4)
+FFE690A0? 80630000  lwz     r3, 0x0(r3)
+FFE690A4? 80030000  lwz     r0, 0x0(r3)
+FFE690A8? 60000020  ori     r0, r0, 0x20
+FFE690AC? 90030000  stw     r0, 0x0(r3)
+FFE690B0? 48002A9D  bl      glue_LMGetExpandMem
+FFE690B4? 80410014  lwz     r2, 0x14(r1)
+FFE690B8? 80630210  lwz     r3, 0x210(r3)
+FFE690BC? 80630000  lwz     r3, 0x0(r3)
+FFE690C0? 80030024  lwz     r0, 0x24(r3)
+FFE690C4? 601F0020  ori     r31, r0, 0x20
+FFE690C8? 48002AA9  bl      glue_SynchronizeIO
+FFE690CC? 80410014  lwz     r2, 0x14(r1)
+FFE690D0? 48002A7D  bl      glue_LMGetExpandMem
+FFE690D4? 80410014  lwz     r2, 0x14(r1)
+FFE690D8? 80630210  lwz     r3, 0x210(r3)
+FFE690DC? 80630000  lwz     r3, 0x0(r3)
+FFE690E0? 93E30024  stw     r31, 0x24(r3)
+FFE690E4? 48002A8D  bl      glue_SynchronizeIO
+FFE690E8? 80410014  lwz     r2, 0x14(r1)
+FFE690EC? 81810058  lwz     r12, 0x58(r1)
+FFE690F0? 83E1004C  lwz     r31, 0x4C(r1)
+FFE690F4? 7D8803A6  mtspr   LR, r12
+FFE690F8? 30210050  addic   r1, r1, 0x50
+FFE690FC? 4E800020  blr
+FFE69100? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE69104? 7C0802A6  mfspr   r0, LR
+FFE69108? 3BE00000  li      r31, 0x0
+FFE6910C? 90010008  stw     r0, 0x8(r1)
+FFE69110? 9421FFB0  stwu    r1, -0x50(r1)
+FFE69114? 48002A39  bl      glue_LMGetExpandMem
+FFE69118? 80410014  lwz     r2, 0x14(r1)
+FFE6911C? 80630210  lwz     r3, 0x210(r3)
+FFE69120? 80630000  lwz     r3, 0x0(r3)
+FFE69124? 80630024  lwz     r3, 0x24(r3)
+FFE69128? 7C602120  mtcrf   0x02, r3
+FFE6912C? 4C180000  mcrf    cr0, cr6
+FFE69130? 40820008  bne     loc_FFE69138
+FFE69134? 3BE00001  li      r31, 0x1
+loc_FFE69138:
+FFE69138? 48002A39  bl      glue_SynchronizeIO
+FFE6913C? 80410014  lwz     r2, 0x14(r1)
+FFE69140? 48002A0D  bl      glue_LMGetExpandMem
+FFE69144? 80410014  lwz     r2, 0x14(r1)
+FFE69148? 80630210  lwz     r3, 0x210(r3)
+FFE6914C? 80630000  lwz     r3, 0x0(r3)
+FFE69150? 80630024  lwz     r3, 0x24(r3)
+FFE69154? 547E06F2  rlwinm  r30, r3, 0, 27, 25
+FFE69158? 48002A19  bl      glue_SynchronizeIO
+FFE6915C? 80410014  lwz     r2, 0x14(r1)
+FFE69160? 480029ED  bl      glue_LMGetExpandMem
+FFE69164? 80410014  lwz     r2, 0x14(r1)
+FFE69168? 80630210  lwz     r3, 0x210(r3)
+FFE6916C? 80630000  lwz     r3, 0x0(r3)
+FFE69170? 93C30024  stw     r30, 0x24(r3)
+FFE69174? 480029FD  bl      glue_SynchronizeIO
+FFE69178? 80410014  lwz     r2, 0x14(r1)
+FFE6917C? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE69180? 387F0000  addi    r3, r31, 0x0
+FFE69184? 80840000  lwz     r4, 0x0(r4)
+FFE69188? 80A40000  lwz     r5, 0x0(r4)
+FFE6918C? 54A506F2  rlwinm  r5, r5, 0, 27, 25
+FFE69190? 90A40000  stw     r5, 0x0(r4)
+FFE69194? 81810058  lwz     r12, 0x58(r1)
+FFE69198? 30210050  addic   r1, r1, 0x50
+FFE6919C? 7D8803A6  mtspr   LR, r12
+FFE691A0? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE691A4? 4E800020  blr
+FFE691A8? 7C0802A6  mfspr   r0, LR
+FFE691AC? 93E1FFFC  stw     r31, -0x4(r1)
+FFE691B0? 90010008  stw     r0, 0x8(r1)
+FFE691B4? 9421FFB0  stwu    r1, -0x50(r1)
+FFE691B8? 3BE00000  li      r31, 0x0
+FFE691BC? 48002991  bl      glue_LMGetExpandMem
+FFE691C0? 80410014  lwz     r2, 0x14(r1)
+FFE691C4? 80830210  lwz     r4, 0x210(r3)
+FFE691C8? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE691CC? 93E400C8  stw     r31, 0xC8(r4)
+FFE691D0? 80630000  lwz     r3, 0x0(r3)
+FFE691D4? 80030000  lwz     r0, 0x0(r3)
+FFE691D8? 60000040  ori     r0, r0, 0x40
+FFE691DC? 90030000  stw     r0, 0x0(r3)
+FFE691E0? 4800296D  bl      glue_LMGetExpandMem
+FFE691E4? 80410014  lwz     r2, 0x14(r1)
+FFE691E8? 80630210  lwz     r3, 0x210(r3)
+FFE691EC? 80630000  lwz     r3, 0x0(r3)
+FFE691F0? 80030024  lwz     r0, 0x24(r3)
+FFE691F4? 601F0040  ori     r31, r0, 0x40
+FFE691F8? 48002979  bl      glue_SynchronizeIO
+FFE691FC? 80410014  lwz     r2, 0x14(r1)
+FFE69200? 4800294D  bl      glue_LMGetExpandMem
+FFE69204? 80410014  lwz     r2, 0x14(r1)
+FFE69208? 80630210  lwz     r3, 0x210(r3)
+FFE6920C? 80630000  lwz     r3, 0x0(r3)
+FFE69210? 93E30024  stw     r31, 0x24(r3)
+FFE69214? 4800295D  bl      glue_SynchronizeIO
+FFE69218? 80410014  lwz     r2, 0x14(r1)
+FFE6921C? 81810058  lwz     r12, 0x58(r1)
+FFE69220? 83E1004C  lwz     r31, 0x4C(r1)
+FFE69224? 7D8803A6  mtspr   LR, r12
+FFE69228? 30210050  addic   r1, r1, 0x50
+FFE6922C? 4E800020  blr
+FFE69230? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE69234? 7C0802A6  mfspr   r0, LR
+FFE69238? 3BE00000  li      r31, 0x0
+FFE6923C? 90010008  stw     r0, 0x8(r1)
+FFE69240? 9421FFB0  stwu    r1, -0x50(r1)
+FFE69244? 48002909  bl      glue_LMGetExpandMem
+FFE69248? 80410014  lwz     r2, 0x14(r1)
+FFE6924C? 80630210  lwz     r3, 0x210(r3)
+FFE69250? 80630000  lwz     r3, 0x0(r3)
+FFE69254? 80630024  lwz     r3, 0x24(r3)
+FFE69258? 7C602120  mtcrf   0x02, r3
+FFE6925C? 4C180000  mcrf    cr0, cr6
+FFE69260? 40810008  ble     loc_FFE69268
+FFE69264? 3BE00001  li      r31, 0x1
+loc_FFE69268:
+FFE69268? 48002909  bl      glue_SynchronizeIO
+FFE6926C? 80410014  lwz     r2, 0x14(r1)
+FFE69270? 480028DD  bl      glue_LMGetExpandMem
+FFE69274? 80410014  lwz     r2, 0x14(r1)
+FFE69278? 80630210  lwz     r3, 0x210(r3)
+FFE6927C? 80630000  lwz     r3, 0x0(r3)
+FFE69280? 80630024  lwz     r3, 0x24(r3)
+FFE69284? 547E06B0  rlwinm  r30, r3, 0, 26, 24
+FFE69288? 480028E9  bl      glue_SynchronizeIO
+FFE6928C? 80410014  lwz     r2, 0x14(r1)
+FFE69290? 480028BD  bl      glue_LMGetExpandMem
+FFE69294? 80410014  lwz     r2, 0x14(r1)
+FFE69298? 80630210  lwz     r3, 0x210(r3)
+FFE6929C? 80630000  lwz     r3, 0x0(r3)
+FFE692A0? 93C30024  stw     r30, 0x24(r3)
+FFE692A4? 480028CD  bl      glue_SynchronizeIO
+FFE692A8? 80410014  lwz     r2, 0x14(r1)
+FFE692AC? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE692B0? 387F0000  addi    r3, r31, 0x0
+FFE692B4? 80840000  lwz     r4, 0x0(r4)
+FFE692B8? 80A40000  lwz     r5, 0x0(r4)
+FFE692BC? 54A506B0  rlwinm  r5, r5, 0, 26, 24
+FFE692C0? 90A40000  stw     r5, 0x0(r4)
+FFE692C4? 81810058  lwz     r12, 0x58(r1)
+FFE692C8? 30210050  addic   r1, r1, 0x50
+FFE692CC? 7D8803A6  mtspr   LR, r12
+FFE692D0? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE692D4? 4E800020  blr
+
+CreateGCLevel2Tree:
+FFE692D8* 9421FFB0  stwu    r1, -0x50(r1)
+FFE692DC* 7C0802A6  mfspr   r0, LR
+FFE692E0* 30610038  addic   r3, r1, 0x38
+FFE692E4* 90010058  stw     r0, 0x58(r1)
+FFE692E8* 480028AD  bl      glue_CreateInterruptSourceTree
+FFE692EC* 80410014  lwz     r2, 0x14(r1)
+FFE692F0* 2C030000  cmpwi   cr0, r3, 0x0
+FFE692F4* 30C1003C  addic   r6, r1, 0x3C
+FFE692F8* 38800001  li      r4, 0x1
+FFE692FC* 38A00001  li      r5, 0x1
+FFE69300* 40820238  bne     loc_FFE69538
+FFE69304* 80610038  lwz     r3, 0x38(r1)
+FFE69308* 38E00000  li      r7, 0x0
+FFE6930C* 48002769  bl      glue_CreateInterruptSet
+FFE69310* 80410014  lwz     r2, 0x14(r1)
+FFE69314* 2C030000  cmpwi   cr0, r3, 0x0
+FFE69318* 30C10040  addic   r6, r1, 0x40
+FFE6931C* 38800001  li      r4, 0x1
+FFE69320* 38A0000E  li      r5, 0xE
+FFE69324* 40820214  bne     loc_FFE69538
+FFE69328* 8061003C  lwz     r3, 0x3C(r1)
+FFE6932C* 38E00000  li      r7, 0x0
+FFE69330* 48002745  bl      glue_CreateInterruptSet
+FFE69334* 80410014  lwz     r2, 0x14(r1)
+FFE69338* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6933C* 80C20074  lwz     r6, 0x74(r2)                       ; TOC[+116] &data+54
+FFE69340* 38800001  li      r4, 0x1
+FFE69344* 38A00000  li      r5, 0x0
+FFE69348* 408201F0  bne     loc_FFE69538
+FFE6934C* 8061003C  lwz     r3, 0x3C(r1)
+FFE69350* 38E00000  li      r7, 0x0
+FFE69354* 39000000  li      r8, 0x0
+FFE69358* 48002741  bl      glue_InstallInterruptFunctions
+FFE6935C* 80410014  lwz     r2, 0x14(r1)
+FFE69360* 2C030000  cmpwi   cr0, r3, 0x0
+FFE69364* 80C20078  lwz     r6, 0x78(r2)                       ; TOC[+120] &data+60
+FFE69368* 80E2007C  lwz     r7, 0x7C(r2)                       ; TOC[+124] &data+6C
+FFE6936C* 38800001  li      r4, 0x1
+FFE69370* 408201C8  bne     loc_FFE69538
+FFE69374* 80610040  lwz     r3, 0x40(r1)
+FFE69378* 38A0000C  li      r5, 0xC
+FFE6937C* 4BFFEB45  bl      InitLeafNode
+FFE69380* 2C030000  cmpwi   cr0, r3, 0x0
+FFE69384* 80C20080  lwz     r6, 0x80(r2)                       ; TOC[+128] &data+78
+FFE69388* 80E20084  lwz     r7, 0x84(r2)                       ; TOC[+132] &data+84
+FFE6938C* 38800002  li      r4, 0x2
+FFE69390* 408201A8  bne     loc_FFE69538
+FFE69394* 80610040  lwz     r3, 0x40(r1)
+FFE69398* 38A0000D  li      r5, 0xD
+FFE6939C* 4BFFEB25  bl      InitLeafNode
+FFE693A0* 2C030000  cmpwi   cr0, r3, 0x0
+FFE693A4* 80C20088  lwz     r6, 0x88(r2)                       ; TOC[+136] &data+90
+FFE693A8* 80E2008C  lwz     r7, 0x8C(r2)                       ; TOC[+140] &data+9C
+FFE693AC* 38800003  li      r4, 0x3
+FFE693B0* 40820188  bne     loc_FFE69538
+FFE693B4* 80610040  lwz     r3, 0x40(r1)
+FFE693B8* 38A00011  li      r5, 0x11
+FFE693BC* 4BFFEB05  bl      InitLeafNode
+FFE693C0* 2C030000  cmpwi   cr0, r3, 0x0
+FFE693C4* 80C20090  lwz     r6, 0x90(r2)                       ; TOC[+144] &data+A8
+FFE693C8* 80E20094  lwz     r7, 0x94(r2)                       ; TOC[+148] &data+B4
+FFE693CC* 38800004  li      r4, 0x4
+FFE693D0* 40820168  bne     loc_FFE69538
+FFE693D4* 80610040  lwz     r3, 0x40(r1)
+FFE693D8* 38A00013  li      r5, 0x13
+FFE693DC* 4BFFEAE5  bl      InitLeafNode
+FFE693E0* 2C030000  cmpwi   cr0, r3, 0x0
+FFE693E4* 80C20098  lwz     r6, 0x98(r2)                       ; TOC[+152] &data+C0
+FFE693E8* 80E2009C  lwz     r7, 0x9C(r2)                       ; TOC[+156] &data+CC
+FFE693EC* 38800005  li      r4, 0x5
+FFE693F0* 40820148  bne     loc_FFE69538
+FFE693F4* 80610040  lwz     r3, 0x40(r1)
+FFE693F8* 38A00015  li      r5, 0x15
+FFE693FC* 4BFFEAC5  bl      InitLeafNode
+FFE69400* 2C030000  cmpwi   cr0, r3, 0x0
+FFE69404* 80C200A0  lwz     r6, 0xA0(r2)                       ; TOC[+160] &data+D8
+FFE69408* 80E200A4  lwz     r7, 0xA4(r2)                       ; TOC[+164] &data+E4
+FFE6940C* 38800006  li      r4, 0x6
+FFE69410* 40820128  bne     loc_FFE69538
+FFE69414* 80610040  lwz     r3, 0x40(r1)
+FFE69418* 38A00016  li      r5, 0x16
+FFE6941C* 4BFFEAA5  bl      InitLeafNode
+FFE69420* 2C030000  cmpwi   cr0, r3, 0x0
+FFE69424* 80C200A8  lwz     r6, 0xA8(r2)                       ; TOC[+168] &data+F0
+FFE69428* 80E200AC  lwz     r7, 0xAC(r2)                       ; TOC[+172] &data+FC
+FFE6942C* 38800007  li      r4, 0x7
+FFE69430* 40820108  bne     loc_FFE69538
+FFE69434* 80610040  lwz     r3, 0x40(r1)
+FFE69438* 38A00017  li      r5, 0x17
+FFE6943C* 4BFFEA85  bl      InitLeafNode
+FFE69440* 2C030000  cmpwi   cr0, r3, 0x0
+FFE69444* 80C200B0  lwz     r6, 0xB0(r2)                       ; TOC[+176] &data+108
+FFE69448* 80E200B4  lwz     r7, 0xB4(r2)                       ; TOC[+180] &data+114
+FFE6944C* 38800008  li      r4, 0x8
+FFE69450* 408200E8  bne     loc_FFE69538
+FFE69454* 80610040  lwz     r3, 0x40(r1)
+FFE69458* 38A00018  li      r5, 0x18
+FFE6945C* 4BFFEA65  bl      InitLeafNode
+FFE69460* 2C030000  cmpwi   cr0, r3, 0x0
+FFE69464* 80C200B8  lwz     r6, 0xB8(r2)                       ; TOC[+184] &data+120
+FFE69468* 80E200BC  lwz     r7, 0xBC(r2)                       ; TOC[+188] &data+12C
+FFE6946C* 38800009  li      r4, 0x9
+FFE69470* 408200C8  bne     loc_FFE69538
+FFE69474* 80610040  lwz     r3, 0x40(r1)
+FFE69478* 38A00019  li      r5, 0x19
+FFE6947C* 4BFFEA45  bl      InitLeafNode
+FFE69480* 2C030000  cmpwi   cr0, r3, 0x0
+FFE69484* 80C200C0  lwz     r6, 0xC0(r2)                       ; TOC[+192] &data+138
+FFE69488* 80E200C4  lwz     r7, 0xC4(r2)                       ; TOC[+196] &data+144
+FFE6948C* 3880000A  li      r4, 0xA
+FFE69490* 408200A8  bne     loc_FFE69538
+FFE69494* 80610040  lwz     r3, 0x40(r1)
+FFE69498* 38A0001A  li      r5, 0x1A
+FFE6949C* 4BFFEA25  bl      InitLeafNode
+FFE694A0* 2C030000  cmpwi   cr0, r3, 0x0
+FFE694A4* 80C200C8  lwz     r6, 0xC8(r2)                       ; TOC[+200] &data+150
+FFE694A8* 80E200CC  lwz     r7, 0xCC(r2)                       ; TOC[+204] &data+15C
+FFE694AC* 3880000B  li      r4, 0xB
+FFE694B0* 40820088  bne     loc_FFE69538
+FFE694B4* 80610040  lwz     r3, 0x40(r1)
+FFE694B8* 38A0001B  li      r5, 0x1B
+FFE694BC* 4BFFEA05  bl      InitLeafNode
+FFE694C0* 2C030000  cmpwi   cr0, r3, 0x0
+FFE694C4* 80C200D0  lwz     r6, 0xD0(r2)                       ; TOC[+208] &data+168
+FFE694C8* 80E200D4  lwz     r7, 0xD4(r2)                       ; TOC[+212] &data+174
+FFE694CC* 3880000C  li      r4, 0xC
+FFE694D0* 40820068  bne     loc_FFE69538
+FFE694D4* 80610040  lwz     r3, 0x40(r1)
+FFE694D8* 38A0001C  li      r5, 0x1C
+FFE694DC* 4BFFE9E5  bl      InitLeafNode
+FFE694E0* 2C030000  cmpwi   cr0, r3, 0x0
+FFE694E4* 80C200D8  lwz     r6, 0xD8(r2)                       ; TOC[+216] &data+180
+FFE694E8* 80E200DC  lwz     r7, 0xDC(r2)                       ; TOC[+220] &data+18C
+FFE694EC* 3880000D  li      r4, 0xD
+FFE694F0* 40820048  bne     loc_FFE69538
+FFE694F4* 80610040  lwz     r3, 0x40(r1)
+FFE694F8* 38A0001D  li      r5, 0x1D
+FFE694FC* 4BFFE9C5  bl      InitLeafNode
+FFE69500* 2C030000  cmpwi   cr0, r3, 0x0
+FFE69504* 80C200E0  lwz     r6, 0xE0(r2)                       ; TOC[+224] &data+198
+FFE69508* 80E200E4  lwz     r7, 0xE4(r2)                       ; TOC[+228] &data+1A4
+FFE6950C* 3880000E  li      r4, 0xE
+FFE69510* 40820028  bne     loc_FFE69538
+FFE69514* 80610040  lwz     r3, 0x40(r1)
+FFE69518* 38A0001E  li      r5, 0x1E
+FFE6951C* 4BFFE9A5  bl      InitLeafNode
+FFE69520* 2C030000  cmpwi   cr0, r3, 0x0
+FFE69524* 38800002  li      r4, 0x2
+FFE69528* 40820010  bne     loc_FFE69538
+FFE6952C* 80610038  lwz     r3, 0x38(r1)
+FFE69530* 48002689  bl      glue_ActivateInterruptSourceTree
+FFE69534* 80410014  lwz     r2, 0x14(r1)
+loc_FFE69538:
+FFE69538* 81810058  lwz     r12, 0x58(r1)
+FFE6953C* 30210050  addic   r1, r1, 0x50
+FFE69540* 7D8803A6  mtspr   LR, r12
+FFE69544* 4E800020  blr
+
+GCLevel3TreeDispatcher:
+FFE69548  38600001  li      r3, 0x1
+FFE6954C  4E800020  blr
+FFE69550? 7C0802A6  mfspr   r0, LR
+FFE69554? 93E1FFFC  stw     r31, -0x4(r1)
+FFE69558? 90010008  stw     r0, 0x8(r1)
+FFE6955C? 9421FFB0  stwu    r1, -0x50(r1)
+FFE69560? 3BE00000  li      r31, 0x0
+FFE69564? 480025E9  bl      glue_LMGetExpandMem
+FFE69568? 80410014  lwz     r2, 0x14(r1)
+FFE6956C? 80830210  lwz     r4, 0x210(r3)
+FFE69570? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE69574? 93E402C8  stw     r31, 0x2C8(r4)
+FFE69578? 80630000  lwz     r3, 0x0(r3)
+FFE6957C? 80030000  lwz     r0, 0x0(r3)
+FFE69580? 64000040  oris    r0, r0, 0x40
+FFE69584? 90030000  stw     r0, 0x0(r3)
+FFE69588? 480025C5  bl      glue_LMGetExpandMem
+FFE6958C? 80410014  lwz     r2, 0x14(r1)
+FFE69590? 80630210  lwz     r3, 0x210(r3)
+FFE69594? 80630000  lwz     r3, 0x0(r3)
+FFE69598? 80030024  lwz     r0, 0x24(r3)
+FFE6959C? 641F0040  oris    r31, r0, 0x40
+FFE695A0? 480025D1  bl      glue_SynchronizeIO
+FFE695A4? 80410014  lwz     r2, 0x14(r1)
+FFE695A8? 480025A5  bl      glue_LMGetExpandMem
+FFE695AC? 80410014  lwz     r2, 0x14(r1)
+FFE695B0? 80630210  lwz     r3, 0x210(r3)
+FFE695B4? 80630000  lwz     r3, 0x0(r3)
+FFE695B8? 93E30024  stw     r31, 0x24(r3)
+FFE695BC? 480025B5  bl      glue_SynchronizeIO
+FFE695C0? 80410014  lwz     r2, 0x14(r1)
+FFE695C4? 81810058  lwz     r12, 0x58(r1)
+FFE695C8? 83E1004C  lwz     r31, 0x4C(r1)
+FFE695CC? 7D8803A6  mtspr   LR, r12
+FFE695D0? 30210050  addic   r1, r1, 0x50
+FFE695D4? 4E800020  blr
+FFE695D8? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE695DC? 7C0802A6  mfspr   r0, LR
+FFE695E0? 7D800026  mfcr    r12
+FFE695E4? 91810004  stw     r12, 0x4(r1)
+FFE695E8? 90010008  stw     r0, 0x8(r1)
+FFE695EC? 9421FFB0  stwu    r1, -0x50(r1)
+FFE695F0? 3BE00000  li      r31, 0x0
+FFE695F4? 48002559  bl      glue_LMGetExpandMem
+FFE695F8? 80410014  lwz     r2, 0x14(r1)
+FFE695FC? 80630210  lwz     r3, 0x210(r3)
+FFE69600? 80630000  lwz     r3, 0x0(r3)
+FFE69604? 80630024  lwz     r3, 0x24(r3)
+FFE69608? 7C620120  mtcrf   0x20, r3
+FFE6960C? 40890008  ble     cr2, loc_FFE69614
+FFE69610? 3BE00001  li      r31, 0x1
+loc_FFE69614:
+FFE69614? 4800255D  bl      glue_SynchronizeIO
+FFE69618? 80410014  lwz     r2, 0x14(r1)
+FFE6961C? 48002531  bl      glue_LMGetExpandMem
+FFE69620? 80410014  lwz     r2, 0x14(r1)
+FFE69624? 80630210  lwz     r3, 0x210(r3)
+FFE69628? 80630000  lwz     r3, 0x0(r3)
+FFE6962C? 80630024  lwz     r3, 0x24(r3)
+FFE69630? 547E0290  rlwinm  r30, r3, 0, 10, 8
+FFE69634? 4800253D  bl      glue_SynchronizeIO
+FFE69638? 80410014  lwz     r2, 0x14(r1)
+FFE6963C? 48002511  bl      glue_LMGetExpandMem
+FFE69640? 80410014  lwz     r2, 0x14(r1)
+FFE69644? 80630210  lwz     r3, 0x210(r3)
+FFE69648? 80630000  lwz     r3, 0x0(r3)
+FFE6964C? 93C30024  stw     r30, 0x24(r3)
+FFE69650? 48002521  bl      glue_SynchronizeIO
+FFE69654? 80410014  lwz     r2, 0x14(r1)
+FFE69658? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6965C? 387F0000  addi    r3, r31, 0x0
+FFE69660? 80840000  lwz     r4, 0x0(r4)
+FFE69664? 80A40000  lwz     r5, 0x0(r4)
+FFE69668? 54A50290  rlwinm  r5, r5, 0, 10, 8
+FFE6966C? 90A40000  stw     r5, 0x0(r4)
+FFE69670? 81810054  lwz     r12, 0x54(r1)
+FFE69674? 80010058  lwz     r0, 0x58(r1)
+FFE69678? 7D820120  mtcrf   0x20, r12
+FFE6967C? 30210050  addic   r1, r1, 0x50
+FFE69680? 7C0803A6  mtspr   LR, r0
+FFE69684? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE69688? 4E800020  blr
+
+CreateGCLevel3Tree:
+FFE6968C* 9421FFB0  stwu    r1, -0x50(r1)
+FFE69690* 7C0802A6  mfspr   r0, LR
+FFE69694* 30610038  addic   r3, r1, 0x38
+FFE69698* 90010058  stw     r0, 0x58(r1)
+FFE6969C* 480024F9  bl      glue_CreateInterruptSourceTree
+FFE696A0* 80410014  lwz     r2, 0x14(r1)
+FFE696A4* 2C030000  cmpwi   cr0, r3, 0x0
+FFE696A8* 30C1003C  addic   r6, r1, 0x3C
+FFE696AC* 38800001  li      r4, 0x1
+FFE696B0* 38A00001  li      r5, 0x1
+FFE696B4* 40820098  bne     loc_FFE6974C
+FFE696B8* 80610038  lwz     r3, 0x38(r1)
+FFE696BC* 38E00000  li      r7, 0x0
+FFE696C0* 480023B5  bl      glue_CreateInterruptSet
+FFE696C4* 80410014  lwz     r2, 0x14(r1)
+FFE696C8* 2C030000  cmpwi   cr0, r3, 0x0
+FFE696CC* 30C10040  addic   r6, r1, 0x40
+FFE696D0* 38800001  li      r4, 0x1
+FFE696D4* 38A00001  li      r5, 0x1
+FFE696D8* 40820074  bne     loc_FFE6974C
+FFE696DC* 8061003C  lwz     r3, 0x3C(r1)
+FFE696E0* 38E00000  li      r7, 0x0
+FFE696E4* 48002391  bl      glue_CreateInterruptSet
+FFE696E8* 80410014  lwz     r2, 0x14(r1)
+FFE696EC* 2C030000  cmpwi   cr0, r3, 0x0
+FFE696F0* 80C200E8  lwz     r6, 0xE8(r2)                       ; TOC[+232] &data+1B0
+FFE696F4* 38800001  li      r4, 0x1
+FFE696F8* 38A00000  li      r5, 0x0
+FFE696FC* 40820050  bne     loc_FFE6974C
+FFE69700* 8061003C  lwz     r3, 0x3C(r1)
+FFE69704* 38E00000  li      r7, 0x0
+FFE69708* 39000000  li      r8, 0x0
+FFE6970C* 4800238D  bl      glue_InstallInterruptFunctions
+FFE69710* 80410014  lwz     r2, 0x14(r1)
+FFE69714* 2C030000  cmpwi   cr0, r3, 0x0
+FFE69718* 80C200EC  lwz     r6, 0xEC(r2)                       ; TOC[+236] &data+1BC
+FFE6971C* 80E200F0  lwz     r7, 0xF0(r2)                       ; TOC[+240] &data+1C8
+FFE69720* 38800001  li      r4, 0x1
+FFE69724* 40820028  bne     loc_FFE6974C
+FFE69728* 80610040  lwz     r3, 0x40(r1)
+FFE6972C* 38A0000E  li      r5, 0xE
+FFE69730* 4BFFE791  bl      InitLeafNode
+FFE69734* 2C030000  cmpwi   cr0, r3, 0x0
+FFE69738* 38800003  li      r4, 0x3
+FFE6973C* 40820010  bne     loc_FFE6974C
+FFE69740* 80610038  lwz     r3, 0x38(r1)
+FFE69744* 48002475  bl      glue_ActivateInterruptSourceTree
+FFE69748* 80410014  lwz     r2, 0x14(r1)
+loc_FFE6974C:
+FFE6974C* 81810058  lwz     r12, 0x58(r1)
+FFE69750* 30210050  addic   r1, r1, 0x50
+FFE69754* 7D8803A6  mtspr   LR, r12
+FFE69758* 4E800020  blr
+
+GCLevel4TreeDispatcher:
+FFE6975C  80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE69760  7C0802A6  mfspr   r0, LR
+FFE69764  80630000  lwz     r3, 0x0(r3)
+FFE69768  7D800026  mfcr    r12
+FFE6976C  80630000  lwz     r3, 0x0(r3)
+FFE69770  3C80FF87  lis     r4, 0xFF87
+FFE69774  60840100  ori     r4, r4, 0x100
+FFE69778  93E1FFFC  stw     r31, -0x4(r1)
+FFE6977C  91810004  stw     r12, 0x4(r1)
+FFE69780  90010008  stw     r0, 0x8(r1)
+FFE69784  9421FFB0  stwu    r1, -0x50(r1)
+FFE69788  7C7F2038  and     r31, r3, r4
+FFE6978C  480023C1  bl      glue_LMGetExpandMem
+FFE69790  80410014  lwz     r2, 0x14(r1)
+FFE69794  80830210  lwz     r4, 0x210(r3)
+FFE69798  3860000D  li      r3, 0xD
+FFE6979C  80840418  lwz     r4, 0x418(r4)
+FFE697A0  7FE42038  and     r4, r31, r4
+FFE697A4  5485C23E  srwi    r5, r4, 8
+FFE697A8  7CA01120  mtcrf   0x01, r5
+FFE697AC  7C820120  mtcrf   0x20, r4
+FFE697B0  419F02B0  bso     cr7, loc_FFE69A60
+FFE697B4  7C840120  mtcrf   0x40, r4
+FFE697B8  3860000C  li      r3, 0xC
+FFE697BC  418802A4  blt     cr2, loc_FFE69A60
+FFE697C0  4084003C  bge     cr1, loc_FFE697FC
+FFE697C4  48002389  bl      glue_LMGetExpandMem
+FFE697C8  80410014  lwz     r2, 0x14(r1)
+FFE697CC  80630210  lwz     r3, 0x210(r3)
+FFE697D0  81810054  lwz     r12, 0x54(r1)
+FFE697D4  80010058  lwz     r0, 0x58(r1)
+FFE697D8  80830000  lwz     r4, 0x0(r3)
+FFE697DC  7D820120  mtcrf   0x20, r12
+FFE697E0  38600004  li      r3, 0x4
+FFE697E4  83E1004C  lwz     r31, 0x4C(r1)
+FFE697E8  3CA00800  lis     r5, 0x0800
+FFE697EC  7C0803A6  mtspr   LR, r0
+FFE697F0  30210050  addic   r1, r1, 0x50
+FFE697F4  90A40028  stw     r5, 0x28(r4)
+FFE697F8  4E800020  blr
+loc_FFE697FC:
+FFE697FC  7C880120  mtcrf   0x80, r4
+FFE69800  4085003C  ble     cr1, loc_FFE6983C
+FFE69804  48002349  bl      glue_LMGetExpandMem
+FFE69808  80410014  lwz     r2, 0x14(r1)
+FFE6980C  80630210  lwz     r3, 0x210(r3)
+FFE69810  81810054  lwz     r12, 0x54(r1)
+FFE69814  80010058  lwz     r0, 0x58(r1)
+FFE69818  80830000  lwz     r4, 0x0(r3)
+FFE6981C  7D820120  mtcrf   0x20, r12
+FFE69820  38600003  li      r3, 0x3
+FFE69824  83E1004C  lwz     r31, 0x4C(r1)
+FFE69828  3CA00400  lis     r5, 0x0400
+FFE6982C  7C0803A6  mtspr   LR, r0
+FFE69830  30210050  addic   r1, r1, 0x50
+FFE69834  90A40028  stw     r5, 0x28(r4)
+FFE69838  4E800020  blr
+loc_FFE6983C:
+FFE6983C  4080003C  bge     loc_FFE69878
+FFE69840  4800230D  bl      glue_LMGetExpandMem
+FFE69844  80410014  lwz     r2, 0x14(r1)
+FFE69848  80630210  lwz     r3, 0x210(r3)
+FFE6984C  81810054  lwz     r12, 0x54(r1)
+FFE69850  80010058  lwz     r0, 0x58(r1)
+FFE69854  80830000  lwz     r4, 0x0(r3)
+FFE69858  7D820120  mtcrf   0x20, r12
+FFE6985C  38600008  li      r3, 0x8
+FFE69860  83E1004C  lwz     r31, 0x4C(r1)
+FFE69864  3CA08000  lis     r5, 0x8000
+FFE69868  7C0803A6  mtspr   LR, r0
+FFE6986C  30210050  addic   r1, r1, 0x50
+FFE69870  90A40028  stw     r5, 0x28(r4)
+FFE69874  4E800020  blr
+loc_FFE69878:
+FFE69878  4081003C  ble     loc_FFE698B4
+FFE6987C  480022D1  bl      glue_LMGetExpandMem
+FFE69880  80410014  lwz     r2, 0x14(r1)
+FFE69884  80630210  lwz     r3, 0x210(r3)
+FFE69888  81810054  lwz     r12, 0x54(r1)
+FFE6988C  80010058  lwz     r0, 0x58(r1)
+FFE69890  80830000  lwz     r4, 0x0(r3)
+FFE69894  7D820120  mtcrf   0x20, r12
+FFE69898  38600007  li      r3, 0x7
+FFE6989C  83E1004C  lwz     r31, 0x4C(r1)
+FFE698A0  3CA04000  lis     r5, 0x4000
+FFE698A4  7C0803A6  mtspr   LR, r0
+FFE698A8  30210050  addic   r1, r1, 0x50
+FFE698AC  90A40028  stw     r5, 0x28(r4)
+FFE698B0  4E800020  blr
+loc_FFE698B4:
+FFE698B4  4082003C  bne     loc_FFE698F0
+FFE698B8  48002295  bl      glue_LMGetExpandMem
+FFE698BC  80410014  lwz     r2, 0x14(r1)
+FFE698C0  80630210  lwz     r3, 0x210(r3)
+FFE698C4  81810054  lwz     r12, 0x54(r1)
+FFE698C8  80010058  lwz     r0, 0x58(r1)
+FFE698CC  80830000  lwz     r4, 0x0(r3)
+FFE698D0  7D820120  mtcrf   0x20, r12
+FFE698D4  38600006  li      r3, 0x6
+FFE698D8  83E1004C  lwz     r31, 0x4C(r1)
+FFE698DC  3CA02000  lis     r5, 0x2000
+FFE698E0  7C0803A6  mtspr   LR, r0
+FFE698E4  30210050  addic   r1, r1, 0x50
+FFE698E8  90A40028  stw     r5, 0x28(r4)
+FFE698EC  4E800020  blr
+loc_FFE698F0:
+FFE698F0  7C810120  mtcrf   0x10, r4
+FFE698F4  4083003C  bns     loc_FFE69930
+FFE698F8  48002255  bl      glue_LMGetExpandMem
+FFE698FC  80410014  lwz     r2, 0x14(r1)
+FFE69900  80630210  lwz     r3, 0x210(r3)
+FFE69904  3CA01000  lis     r5, 0x1000
+FFE69908  80830000  lwz     r4, 0x0(r3)
+FFE6990C  38600005  li      r3, 0x5
+FFE69910  90A40028  stw     r5, 0x28(r4)
+FFE69914  81810054  lwz     r12, 0x54(r1)
+FFE69918  80010058  lwz     r0, 0x58(r1)
+FFE6991C  7D830120  mtcrf   0x30, r12
+FFE69920  83E1004C  lwz     r31, 0x4C(r1)
+FFE69924  7C0803A6  mtspr   LR, r0
+FFE69928  30210050  addic   r1, r1, 0x50
+FFE6992C  4E800020  blr
+loc_FFE69930:
+FFE69930  408E003C  bne     cr3, loc_FFE6996C
+FFE69934  48002219  bl      glue_LMGetExpandMem
+FFE69938  80410014  lwz     r2, 0x14(r1)
+FFE6993C  80630210  lwz     r3, 0x210(r3)
+FFE69940  3CA00002  lis     r5, 0x0002
+FFE69944  80830000  lwz     r4, 0x0(r3)
+FFE69948  3860000A  li      r3, 0xA
+FFE6994C  90A40028  stw     r5, 0x28(r4)
+FFE69950  81810054  lwz     r12, 0x54(r1)
+FFE69954  80010058  lwz     r0, 0x58(r1)
+FFE69958  7D830120  mtcrf   0x30, r12
+FFE6995C  83E1004C  lwz     r31, 0x4C(r1)
+FFE69960  7C0803A6  mtspr   LR, r0
+FFE69964  30210050  addic   r1, r1, 0x50
+FFE69968  4E800020  blr
+loc_FFE6996C:
+FFE6996C  408F003C  bns     cr3, loc_FFE699A8
+FFE69970  480021DD  bl      glue_LMGetExpandMem
+FFE69974  80410014  lwz     r2, 0x14(r1)
+FFE69978  80630210  lwz     r3, 0x210(r3)
+FFE6997C  3CA00001  lis     r5, 0x0001
+FFE69980  80830000  lwz     r4, 0x0(r3)
+FFE69984  38600009  li      r3, 0x9
+FFE69988  90A40028  stw     r5, 0x28(r4)
+FFE6998C  81810054  lwz     r12, 0x54(r1)
+FFE69990  80010058  lwz     r0, 0x58(r1)
+FFE69994  7D830120  mtcrf   0x30, r12
+FFE69998  83E1004C  lwz     r31, 0x4C(r1)
+FFE6999C  7C0803A6  mtspr   LR, r0
+FFE699A0  30210050  addic   r1, r1, 0x50
+FFE699A4  4E800020  blr
+loc_FFE699A8:
+FFE699A8  4087003C  bns     cr1, loc_FFE699E4
+FFE699AC  480021A1  bl      glue_LMGetExpandMem
+FFE699B0  80410014  lwz     r2, 0x14(r1)
+FFE699B4  80630210  lwz     r3, 0x210(r3)
+FFE699B8  3CA00100  lis     r5, 0x0100
+FFE699BC  80830000  lwz     r4, 0x0(r3)
+FFE699C0  38600001  li      r3, 0x1
+FFE699C4  90A40028  stw     r5, 0x28(r4)
+FFE699C8  81810054  lwz     r12, 0x54(r1)
+FFE699CC  80010058  lwz     r0, 0x58(r1)
+FFE699D0  7D830120  mtcrf   0x30, r12
+FFE699D4  83E1004C  lwz     r31, 0x4C(r1)
+FFE699D8  7C0803A6  mtspr   LR, r0
+FFE699DC  30210050  addic   r1, r1, 0x50
+FFE699E0  4E800020  blr
+loc_FFE699E4:
+FFE699E4  408D003C  ble     cr3, loc_FFE69A20
+FFE699E8  48002165  bl      glue_LMGetExpandMem
+FFE699EC  80410014  lwz     r2, 0x14(r1)
+FFE699F0  80630210  lwz     r3, 0x210(r3)
+FFE699F4  3CA00004  lis     r5, 0x0004
+FFE699F8  80830000  lwz     r4, 0x0(r3)
+FFE699FC  3860000B  li      r3, 0xB
+FFE69A00  90A40028  stw     r5, 0x28(r4)
+FFE69A04  81810054  lwz     r12, 0x54(r1)
+FFE69A08  80010058  lwz     r0, 0x58(r1)
+FFE69A0C  7D830120  mtcrf   0x30, r12
+FFE69A10  83E1004C  lwz     r31, 0x4C(r1)
+FFE69A14  7C0803A6  mtspr   LR, r0
+FFE69A18  30210050  addic   r1, r1, 0x50
+FFE69A1C  4E800020  blr
+loc_FFE69A20:
+FFE69A20  38600000  li      r3, 0x0
+FFE69A24  40860020  bne     cr1, loc_FFE69A44
+FFE69A28  48002125  bl      glue_LMGetExpandMem
+FFE69A2C  80410014  lwz     r2, 0x14(r1)
+FFE69A30  80630210  lwz     r3, 0x210(r3)
+FFE69A34  3CA00200  lis     r5, 0x0200
+FFE69A38  80830000  lwz     r4, 0x0(r3)
+FFE69A3C  38600002  li      r3, 0x2
+FFE69A40  90A40028  stw     r5, 0x28(r4)
+loc_FFE69A44:
+FFE69A44  81810054  lwz     r12, 0x54(r1)
+FFE69A48  80010058  lwz     r0, 0x58(r1)
+FFE69A4C  7D830120  mtcrf   0x30, r12
+FFE69A50  83E1004C  lwz     r31, 0x4C(r1)
+FFE69A54  7C0803A6  mtspr   LR, r0
+FFE69A58  30210050  addic   r1, r1, 0x50
+FFE69A5C  4E800020  blr
+loc_FFE69A60:
+FFE69A60  81810054  lwz     r12, 0x54(r1)
+FFE69A64  80010058  lwz     r0, 0x58(r1)
+FFE69A68  7D820120  mtcrf   0x20, r12
+FFE69A6C  83E1004C  lwz     r31, 0x4C(r1)
+FFE69A70  7C0803A6  mtspr   LR, r0
+FFE69A74  30210050  addic   r1, r1, 0x50
+FFE69A78  4E800020  blr
+FFE69A7C? 7C0802A6  mfspr   r0, LR
+FFE69A80? 93E1FFFC  stw     r31, -0x4(r1)
+FFE69A84? 90010008  stw     r0, 0x8(r1)
+FFE69A88? 9421FFB0  stwu    r1, -0x50(r1)
+FFE69A8C? 3BE00000  li      r31, 0x0
+FFE69A90? 480020BD  bl      glue_LMGetExpandMem
+FFE69A94? 80410014  lwz     r2, 0x14(r1)
+FFE69A98? 80830210  lwz     r4, 0x210(r3)
+FFE69A9C? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE69AA0? 93E40308  stw     r31, 0x308(r4)
+FFE69AA4? 80630000  lwz     r3, 0x0(r3)
+FFE69AA8? 80030000  lwz     r0, 0x0(r3)
+FFE69AAC? 64000100  oris    r0, r0, 0x100
+FFE69AB0? 90030000  stw     r0, 0x0(r3)
+FFE69AB4? 48002099  bl      glue_LMGetExpandMem
+FFE69AB8? 80410014  lwz     r2, 0x14(r1)
+FFE69ABC? 80630210  lwz     r3, 0x210(r3)
+FFE69AC0? 80630000  lwz     r3, 0x0(r3)
+FFE69AC4? 80030024  lwz     r0, 0x24(r3)
+FFE69AC8? 641F0100  oris    r31, r0, 0x100
+FFE69ACC? 480020A5  bl      glue_SynchronizeIO
+FFE69AD0? 80410014  lwz     r2, 0x14(r1)
+FFE69AD4? 48002079  bl      glue_LMGetExpandMem
+FFE69AD8? 80410014  lwz     r2, 0x14(r1)
+FFE69ADC? 80630210  lwz     r3, 0x210(r3)
+FFE69AE0? 80630000  lwz     r3, 0x0(r3)
+FFE69AE4? 93E30024  stw     r31, 0x24(r3)
+FFE69AE8? 48002089  bl      glue_SynchronizeIO
+FFE69AEC? 80410014  lwz     r2, 0x14(r1)
+FFE69AF0? 81810058  lwz     r12, 0x58(r1)
+FFE69AF4? 83E1004C  lwz     r31, 0x4C(r1)
+FFE69AF8? 7D8803A6  mtspr   LR, r12
+FFE69AFC? 30210050  addic   r1, r1, 0x50
+FFE69B00? 4E800020  blr
+FFE69B04? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE69B08? 7C0802A6  mfspr   r0, LR
+FFE69B0C? 3BE00000  li      r31, 0x0
+FFE69B10? 90010008  stw     r0, 0x8(r1)
+FFE69B14? 9421FFB0  stwu    r1, -0x50(r1)
+FFE69B18? 48002035  bl      glue_LMGetExpandMem
+FFE69B1C? 80410014  lwz     r2, 0x14(r1)
+FFE69B20? 80630210  lwz     r3, 0x210(r3)
+FFE69B24? 80630000  lwz     r3, 0x0(r3)
+FFE69B28? 80630024  lwz     r3, 0x24(r3)
+FFE69B2C? 7C640120  mtcrf   0x40, r3
+FFE69B30? 40870008  bns     cr1, loc_FFE69B38
+FFE69B34? 3BE00001  li      r31, 0x1
+loc_FFE69B38:
+FFE69B38? 48002039  bl      glue_SynchronizeIO
+FFE69B3C? 80410014  lwz     r2, 0x14(r1)
+FFE69B40? 4800200D  bl      glue_LMGetExpandMem
+FFE69B44? 80410014  lwz     r2, 0x14(r1)
+FFE69B48? 80630210  lwz     r3, 0x210(r3)
+FFE69B4C? 80630000  lwz     r3, 0x0(r3)
+FFE69B50? 80630024  lwz     r3, 0x24(r3)
+FFE69B54? 547E020C  rlwinm  r30, r3, 0, 8, 6
+FFE69B58? 48002019  bl      glue_SynchronizeIO
+FFE69B5C? 80410014  lwz     r2, 0x14(r1)
+FFE69B60? 48001FED  bl      glue_LMGetExpandMem
+FFE69B64? 80410014  lwz     r2, 0x14(r1)
+FFE69B68? 80630210  lwz     r3, 0x210(r3)
+FFE69B6C? 80630000  lwz     r3, 0x0(r3)
+FFE69B70? 93C30024  stw     r30, 0x24(r3)
+FFE69B74? 48001FFD  bl      glue_SynchronizeIO
+FFE69B78? 80410014  lwz     r2, 0x14(r1)
+FFE69B7C? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE69B80? 387F0000  addi    r3, r31, 0x0
+FFE69B84? 80840000  lwz     r4, 0x0(r4)
+FFE69B88? 80A40000  lwz     r5, 0x0(r4)
+FFE69B8C? 54A5020C  rlwinm  r5, r5, 0, 8, 6
+FFE69B90? 90A40000  stw     r5, 0x0(r4)
+FFE69B94? 81810058  lwz     r12, 0x58(r1)
+FFE69B98? 30210050  addic   r1, r1, 0x50
+FFE69B9C? 7D8803A6  mtspr   LR, r12
+FFE69BA0? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE69BA4? 4E800020  blr
+FFE69BA8? 7C0802A6  mfspr   r0, LR
+FFE69BAC? 93E1FFFC  stw     r31, -0x4(r1)
+FFE69BB0? 90010008  stw     r0, 0x8(r1)
+FFE69BB4? 9421FFB0  stwu    r1, -0x50(r1)
+FFE69BB8? 3BE00000  li      r31, 0x0
+FFE69BBC? 48001F91  bl      glue_LMGetExpandMem
+FFE69BC0? 80410014  lwz     r2, 0x14(r1)
+FFE69BC4? 80830210  lwz     r4, 0x210(r3)
+FFE69BC8? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE69BCC? 93E40328  stw     r31, 0x328(r4)
+FFE69BD0? 80630000  lwz     r3, 0x0(r3)
+FFE69BD4? 80030000  lwz     r0, 0x0(r3)
+FFE69BD8? 64000200  oris    r0, r0, 0x200
+FFE69BDC? 90030000  stw     r0, 0x0(r3)
+FFE69BE0? 48001F6D  bl      glue_LMGetExpandMem
+FFE69BE4? 80410014  lwz     r2, 0x14(r1)
+FFE69BE8? 80630210  lwz     r3, 0x210(r3)
+FFE69BEC? 80630000  lwz     r3, 0x0(r3)
+FFE69BF0? 80030024  lwz     r0, 0x24(r3)
+FFE69BF4? 641F0200  oris    r31, r0, 0x200
+FFE69BF8? 48001F79  bl      glue_SynchronizeIO
+FFE69BFC? 80410014  lwz     r2, 0x14(r1)
+FFE69C00? 48001F4D  bl      glue_LMGetExpandMem
+FFE69C04? 80410014  lwz     r2, 0x14(r1)
+FFE69C08? 80630210  lwz     r3, 0x210(r3)
+FFE69C0C? 80630000  lwz     r3, 0x0(r3)
+FFE69C10? 93E30024  stw     r31, 0x24(r3)
+FFE69C14? 48001F5D  bl      glue_SynchronizeIO
+FFE69C18? 80410014  lwz     r2, 0x14(r1)
+FFE69C1C? 81810058  lwz     r12, 0x58(r1)
+FFE69C20? 83E1004C  lwz     r31, 0x4C(r1)
+FFE69C24? 7D8803A6  mtspr   LR, r12
+FFE69C28? 30210050  addic   r1, r1, 0x50
+FFE69C2C? 4E800020  blr
+FFE69C30? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE69C34? 7C0802A6  mfspr   r0, LR
+FFE69C38? 3BE00000  li      r31, 0x0
+FFE69C3C? 90010008  stw     r0, 0x8(r1)
+FFE69C40? 9421FFB0  stwu    r1, -0x50(r1)
+FFE69C44? 48001F09  bl      glue_LMGetExpandMem
+FFE69C48? 80410014  lwz     r2, 0x14(r1)
+FFE69C4C? 80630210  lwz     r3, 0x210(r3)
+FFE69C50? 80630000  lwz     r3, 0x0(r3)
+FFE69C54? 80630024  lwz     r3, 0x24(r3)
+FFE69C58? 7C640120  mtcrf   0x40, r3
+FFE69C5C? 40860008  bne     cr1, loc_FFE69C64
+FFE69C60? 3BE00001  li      r31, 0x1
+loc_FFE69C64:
+FFE69C64? 48001F0D  bl      glue_SynchronizeIO
+FFE69C68? 80410014  lwz     r2, 0x14(r1)
+FFE69C6C? 48001EE1  bl      glue_LMGetExpandMem
+FFE69C70? 80410014  lwz     r2, 0x14(r1)
+FFE69C74? 80630210  lwz     r3, 0x210(r3)
+FFE69C78? 80630000  lwz     r3, 0x0(r3)
+FFE69C7C? 80630024  lwz     r3, 0x24(r3)
+FFE69C80? 547E01CA  rlwinm  r30, r3, 0, 7, 5
+FFE69C84? 48001EED  bl      glue_SynchronizeIO
+FFE69C88? 80410014  lwz     r2, 0x14(r1)
+FFE69C8C? 48001EC1  bl      glue_LMGetExpandMem
+FFE69C90? 80410014  lwz     r2, 0x14(r1)
+FFE69C94? 80630210  lwz     r3, 0x210(r3)
+FFE69C98? 80630000  lwz     r3, 0x0(r3)
+FFE69C9C? 93C30024  stw     r30, 0x24(r3)
+FFE69CA0? 48001ED1  bl      glue_SynchronizeIO
+FFE69CA4? 80410014  lwz     r2, 0x14(r1)
+FFE69CA8? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE69CAC? 387F0000  addi    r3, r31, 0x0
+FFE69CB0? 80840000  lwz     r4, 0x0(r4)
+FFE69CB4? 80A40000  lwz     r5, 0x0(r4)
+FFE69CB8? 54A501CA  rlwinm  r5, r5, 0, 7, 5
+FFE69CBC? 90A40000  stw     r5, 0x0(r4)
+FFE69CC0? 81810058  lwz     r12, 0x58(r1)
+FFE69CC4? 30210050  addic   r1, r1, 0x50
+FFE69CC8? 7D8803A6  mtspr   LR, r12
+FFE69CCC? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE69CD0? 4E800020  blr
+FFE69CD4? 7C0802A6  mfspr   r0, LR
+FFE69CD8? 93E1FFFC  stw     r31, -0x4(r1)
+FFE69CDC? 90010008  stw     r0, 0x8(r1)
+FFE69CE0? 9421FFB0  stwu    r1, -0x50(r1)
+FFE69CE4? 3BE00000  li      r31, 0x0
+FFE69CE8? 48001E65  bl      glue_LMGetExpandMem
+FFE69CEC? 80410014  lwz     r2, 0x14(r1)
+FFE69CF0? 80830210  lwz     r4, 0x210(r3)
+FFE69CF4? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE69CF8? 93E40348  stw     r31, 0x348(r4)
+FFE69CFC? 80630000  lwz     r3, 0x0(r3)
+FFE69D00? 80030000  lwz     r0, 0x0(r3)
+FFE69D04? 64000400  oris    r0, r0, 0x400
+FFE69D08? 90030000  stw     r0, 0x0(r3)
+FFE69D0C? 48001E41  bl      glue_LMGetExpandMem
+FFE69D10? 80410014  lwz     r2, 0x14(r1)
+FFE69D14? 80630210  lwz     r3, 0x210(r3)
+FFE69D18? 80630000  lwz     r3, 0x0(r3)
+FFE69D1C? 80030024  lwz     r0, 0x24(r3)
+FFE69D20? 641F0400  oris    r31, r0, 0x400
+FFE69D24? 48001E4D  bl      glue_SynchronizeIO
+FFE69D28? 80410014  lwz     r2, 0x14(r1)
+FFE69D2C? 48001E21  bl      glue_LMGetExpandMem
+FFE69D30? 80410014  lwz     r2, 0x14(r1)
+FFE69D34? 80630210  lwz     r3, 0x210(r3)
+FFE69D38? 80630000  lwz     r3, 0x0(r3)
+FFE69D3C? 93E30024  stw     r31, 0x24(r3)
+FFE69D40? 48001E31  bl      glue_SynchronizeIO
+FFE69D44? 80410014  lwz     r2, 0x14(r1)
+FFE69D48? 81810058  lwz     r12, 0x58(r1)
+FFE69D4C? 83E1004C  lwz     r31, 0x4C(r1)
+FFE69D50? 7D8803A6  mtspr   LR, r12
+FFE69D54? 30210050  addic   r1, r1, 0x50
+FFE69D58? 4E800020  blr
+FFE69D5C? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE69D60? 7C0802A6  mfspr   r0, LR
+FFE69D64? 3BE00000  li      r31, 0x0
+FFE69D68? 90010008  stw     r0, 0x8(r1)
+FFE69D6C? 9421FFB0  stwu    r1, -0x50(r1)
+FFE69D70? 48001DDD  bl      glue_LMGetExpandMem
+FFE69D74? 80410014  lwz     r2, 0x14(r1)
+FFE69D78? 80630210  lwz     r3, 0x210(r3)
+FFE69D7C? 80630000  lwz     r3, 0x0(r3)
+FFE69D80? 80630024  lwz     r3, 0x24(r3)
+FFE69D84? 7C640120  mtcrf   0x40, r3
+FFE69D88? 40850008  ble     cr1, loc_FFE69D90
+FFE69D8C? 3BE00001  li      r31, 0x1
+loc_FFE69D90:
+FFE69D90? 48001DE1  bl      glue_SynchronizeIO
+FFE69D94? 80410014  lwz     r2, 0x14(r1)
+FFE69D98? 48001DB5  bl      glue_LMGetExpandMem
+FFE69D9C? 80410014  lwz     r2, 0x14(r1)
+FFE69DA0? 80630210  lwz     r3, 0x210(r3)
+FFE69DA4? 80630000  lwz     r3, 0x0(r3)
+FFE69DA8? 80630024  lwz     r3, 0x24(r3)
+FFE69DAC? 547E0188  rlwinm  r30, r3, 0, 6, 4
+FFE69DB0? 48001DC1  bl      glue_SynchronizeIO
+FFE69DB4? 80410014  lwz     r2, 0x14(r1)
+FFE69DB8? 48001D95  bl      glue_LMGetExpandMem
+FFE69DBC? 80410014  lwz     r2, 0x14(r1)
+FFE69DC0? 80630210  lwz     r3, 0x210(r3)
+FFE69DC4? 80630000  lwz     r3, 0x0(r3)
+FFE69DC8? 93C30024  stw     r30, 0x24(r3)
+FFE69DCC? 48001DA5  bl      glue_SynchronizeIO
+FFE69DD0? 80410014  lwz     r2, 0x14(r1)
+FFE69DD4? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE69DD8? 387F0000  addi    r3, r31, 0x0
+FFE69DDC? 80840000  lwz     r4, 0x0(r4)
+FFE69DE0? 80A40000  lwz     r5, 0x0(r4)
+FFE69DE4? 54A50188  rlwinm  r5, r5, 0, 6, 4
+FFE69DE8? 90A40000  stw     r5, 0x0(r4)
+FFE69DEC? 81810058  lwz     r12, 0x58(r1)
+FFE69DF0? 30210050  addic   r1, r1, 0x50
+FFE69DF4? 7D8803A6  mtspr   LR, r12
+FFE69DF8? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE69DFC? 4E800020  blr
+FFE69E00? 7C0802A6  mfspr   r0, LR
+FFE69E04? 93E1FFFC  stw     r31, -0x4(r1)
+FFE69E08? 90010008  stw     r0, 0x8(r1)
+FFE69E0C? 9421FFB0  stwu    r1, -0x50(r1)
+FFE69E10? 3BE00000  li      r31, 0x0
+FFE69E14? 48001D39  bl      glue_LMGetExpandMem
+FFE69E18? 80410014  lwz     r2, 0x14(r1)
+FFE69E1C? 80830210  lwz     r4, 0x210(r3)
+FFE69E20? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE69E24? 93E40368  stw     r31, 0x368(r4)
+FFE69E28? 80630000  lwz     r3, 0x0(r3)
+FFE69E2C? 80030000  lwz     r0, 0x0(r3)
+FFE69E30? 64000800  oris    r0, r0, 0x800
+FFE69E34? 90030000  stw     r0, 0x0(r3)
+FFE69E38? 48001D15  bl      glue_LMGetExpandMem
+FFE69E3C? 80410014  lwz     r2, 0x14(r1)
+FFE69E40? 80630210  lwz     r3, 0x210(r3)
+FFE69E44? 80630000  lwz     r3, 0x0(r3)
+FFE69E48? 80030024  lwz     r0, 0x24(r3)
+FFE69E4C? 641F0800  oris    r31, r0, 0x800
+FFE69E50? 48001D21  bl      glue_SynchronizeIO
+FFE69E54? 80410014  lwz     r2, 0x14(r1)
+FFE69E58? 48001CF5  bl      glue_LMGetExpandMem
+FFE69E5C? 80410014  lwz     r2, 0x14(r1)
+FFE69E60? 80630210  lwz     r3, 0x210(r3)
+FFE69E64? 80630000  lwz     r3, 0x0(r3)
+FFE69E68? 93E30024  stw     r31, 0x24(r3)
+FFE69E6C? 48001D05  bl      glue_SynchronizeIO
+FFE69E70? 80410014  lwz     r2, 0x14(r1)
+FFE69E74? 81810058  lwz     r12, 0x58(r1)
+FFE69E78? 83E1004C  lwz     r31, 0x4C(r1)
+FFE69E7C? 7D8803A6  mtspr   LR, r12
+FFE69E80? 30210050  addic   r1, r1, 0x50
+FFE69E84? 4E800020  blr
+FFE69E88? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE69E8C? 7C0802A6  mfspr   r0, LR
+FFE69E90? 3BE00000  li      r31, 0x0
+FFE69E94? 90010008  stw     r0, 0x8(r1)
+FFE69E98? 9421FFB0  stwu    r1, -0x50(r1)
+FFE69E9C? 48001CB1  bl      glue_LMGetExpandMem
+FFE69EA0? 80410014  lwz     r2, 0x14(r1)
+FFE69EA4? 80630210  lwz     r3, 0x210(r3)
+FFE69EA8? 80630000  lwz     r3, 0x0(r3)
+FFE69EAC? 80630024  lwz     r3, 0x24(r3)
+FFE69EB0? 7C640120  mtcrf   0x40, r3
+FFE69EB4? 40840008  bge     cr1, loc_FFE69EBC
+FFE69EB8? 3BE00001  li      r31, 0x1
+loc_FFE69EBC:
+FFE69EBC? 48001CB5  bl      glue_SynchronizeIO
+FFE69EC0? 80410014  lwz     r2, 0x14(r1)
+FFE69EC4? 48001C89  bl      glue_LMGetExpandMem
+FFE69EC8? 80410014  lwz     r2, 0x14(r1)
+FFE69ECC? 80630210  lwz     r3, 0x210(r3)
+FFE69ED0? 80630000  lwz     r3, 0x0(r3)
+FFE69ED4? 80630024  lwz     r3, 0x24(r3)
+FFE69ED8? 547E0146  rlwinm  r30, r3, 0, 5, 3
+FFE69EDC? 48001C95  bl      glue_SynchronizeIO
+FFE69EE0? 80410014  lwz     r2, 0x14(r1)
+FFE69EE4? 48001C69  bl      glue_LMGetExpandMem
+FFE69EE8? 80410014  lwz     r2, 0x14(r1)
+FFE69EEC? 80630210  lwz     r3, 0x210(r3)
+FFE69EF0? 80630000  lwz     r3, 0x0(r3)
+FFE69EF4? 93C30024  stw     r30, 0x24(r3)
+FFE69EF8? 48001C79  bl      glue_SynchronizeIO
+FFE69EFC? 80410014  lwz     r2, 0x14(r1)
+FFE69F00? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE69F04? 387F0000  addi    r3, r31, 0x0
+FFE69F08? 80840000  lwz     r4, 0x0(r4)
+FFE69F0C? 80A40000  lwz     r5, 0x0(r4)
+FFE69F10? 54A50146  rlwinm  r5, r5, 0, 5, 3
+FFE69F14? 90A40000  stw     r5, 0x0(r4)
+FFE69F18? 81810058  lwz     r12, 0x58(r1)
+FFE69F1C? 30210050  addic   r1, r1, 0x50
+FFE69F20? 7D8803A6  mtspr   LR, r12
+FFE69F24? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE69F28? 4E800020  blr
+FFE69F2C? 7C0802A6  mfspr   r0, LR
+FFE69F30? 93E1FFFC  stw     r31, -0x4(r1)
+FFE69F34? 90010008  stw     r0, 0x8(r1)
+FFE69F38? 9421FFB0  stwu    r1, -0x50(r1)
+FFE69F3C? 3BE00000  li      r31, 0x0
+FFE69F40? 48001C0D  bl      glue_LMGetExpandMem
+FFE69F44? 80410014  lwz     r2, 0x14(r1)
+FFE69F48? 80830210  lwz     r4, 0x210(r3)
+FFE69F4C? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE69F50? 93E40388  stw     r31, 0x388(r4)
+FFE69F54? 80630000  lwz     r3, 0x0(r3)
+FFE69F58? 80030000  lwz     r0, 0x0(r3)
+FFE69F5C? 64001000  oris    r0, r0, 0x1000
+FFE69F60? 90030000  stw     r0, 0x0(r3)
+FFE69F64? 48001BE9  bl      glue_LMGetExpandMem
+FFE69F68? 80410014  lwz     r2, 0x14(r1)
+FFE69F6C? 80630210  lwz     r3, 0x210(r3)
+FFE69F70? 80630000  lwz     r3, 0x0(r3)
+FFE69F74? 80030024  lwz     r0, 0x24(r3)
+FFE69F78? 641F1000  oris    r31, r0, 0x1000
+FFE69F7C? 48001BF5  bl      glue_SynchronizeIO
+FFE69F80? 80410014  lwz     r2, 0x14(r1)
+FFE69F84? 48001BC9  bl      glue_LMGetExpandMem
+FFE69F88? 80410014  lwz     r2, 0x14(r1)
+FFE69F8C? 80630210  lwz     r3, 0x210(r3)
+FFE69F90? 80630000  lwz     r3, 0x0(r3)
+FFE69F94? 93E30024  stw     r31, 0x24(r3)
+FFE69F98? 48001BD9  bl      glue_SynchronizeIO
+FFE69F9C? 80410014  lwz     r2, 0x14(r1)
+FFE69FA0? 81810058  lwz     r12, 0x58(r1)
+FFE69FA4? 83E1004C  lwz     r31, 0x4C(r1)
+FFE69FA8? 7D8803A6  mtspr   LR, r12
+FFE69FAC? 30210050  addic   r1, r1, 0x50
+FFE69FB0? 4E800020  blr
+FFE69FB4? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE69FB8? 7C0802A6  mfspr   r0, LR
+FFE69FBC? 3BE00000  li      r31, 0x0
+FFE69FC0? 90010008  stw     r0, 0x8(r1)
+FFE69FC4? 9421FFB0  stwu    r1, -0x50(r1)
+FFE69FC8? 48001B85  bl      glue_LMGetExpandMem
+FFE69FCC? 80410014  lwz     r2, 0x14(r1)
+FFE69FD0? 80630210  lwz     r3, 0x210(r3)
+FFE69FD4? 80630000  lwz     r3, 0x0(r3)
+FFE69FD8? 80630024  lwz     r3, 0x24(r3)
+FFE69FDC? 7C680120  mtcrf   0x80, r3
+FFE69FE0? 40830008  bns     loc_FFE69FE8
+FFE69FE4? 3BE00001  li      r31, 0x1
+loc_FFE69FE8:
+FFE69FE8? 48001B89  bl      glue_SynchronizeIO
+FFE69FEC? 80410014  lwz     r2, 0x14(r1)
+FFE69FF0? 48001B5D  bl      glue_LMGetExpandMem
+FFE69FF4? 80410014  lwz     r2, 0x14(r1)
+FFE69FF8? 80630210  lwz     r3, 0x210(r3)
+FFE69FFC? 80630000  lwz     r3, 0x0(r3)
+FFE6A000? 80630024  lwz     r3, 0x24(r3)
+FFE6A004? 547E0104  rlwinm  r30, r3, 0, 4, 2
+FFE6A008? 48001B69  bl      glue_SynchronizeIO
+FFE6A00C? 80410014  lwz     r2, 0x14(r1)
+FFE6A010? 48001B3D  bl      glue_LMGetExpandMem
+FFE6A014? 80410014  lwz     r2, 0x14(r1)
+FFE6A018? 80630210  lwz     r3, 0x210(r3)
+FFE6A01C? 80630000  lwz     r3, 0x0(r3)
+FFE6A020? 93C30024  stw     r30, 0x24(r3)
+FFE6A024? 48001B4D  bl      glue_SynchronizeIO
+FFE6A028? 80410014  lwz     r2, 0x14(r1)
+FFE6A02C? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6A030? 387F0000  addi    r3, r31, 0x0
+FFE6A034? 80840000  lwz     r4, 0x0(r4)
+FFE6A038? 80A40000  lwz     r5, 0x0(r4)
+FFE6A03C? 54A50104  rlwinm  r5, r5, 0, 4, 2
+FFE6A040? 90A40000  stw     r5, 0x0(r4)
+FFE6A044? 81810058  lwz     r12, 0x58(r1)
+FFE6A048? 30210050  addic   r1, r1, 0x50
+FFE6A04C? 7D8803A6  mtspr   LR, r12
+FFE6A050? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE6A054? 4E800020  blr
+FFE6A058? 7C0802A6  mfspr   r0, LR
+FFE6A05C? 93E1FFFC  stw     r31, -0x4(r1)
+FFE6A060? 90010008  stw     r0, 0x8(r1)
+FFE6A064? 9421FFB0  stwu    r1, -0x50(r1)
+FFE6A068? 3BE00000  li      r31, 0x0
+FFE6A06C? 48001AE1  bl      glue_LMGetExpandMem
+FFE6A070? 80410014  lwz     r2, 0x14(r1)
+FFE6A074? 80830210  lwz     r4, 0x210(r3)
+FFE6A078? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6A07C? 93E403A8  stw     r31, 0x3A8(r4)
+FFE6A080? 80630000  lwz     r3, 0x0(r3)
+FFE6A084? 80030000  lwz     r0, 0x0(r3)
+FFE6A088? 64002000  oris    r0, r0, 0x2000
+FFE6A08C? 90030000  stw     r0, 0x0(r3)
+FFE6A090? 48001ABD  bl      glue_LMGetExpandMem
+FFE6A094? 80410014  lwz     r2, 0x14(r1)
+FFE6A098? 80630210  lwz     r3, 0x210(r3)
+FFE6A09C? 80630000  lwz     r3, 0x0(r3)
+FFE6A0A0? 80030024  lwz     r0, 0x24(r3)
+FFE6A0A4? 641F2000  oris    r31, r0, 0x2000
+FFE6A0A8? 48001AC9  bl      glue_SynchronizeIO
+FFE6A0AC? 80410014  lwz     r2, 0x14(r1)
+FFE6A0B0? 48001A9D  bl      glue_LMGetExpandMem
+FFE6A0B4? 80410014  lwz     r2, 0x14(r1)
+FFE6A0B8? 80630210  lwz     r3, 0x210(r3)
+FFE6A0BC? 80630000  lwz     r3, 0x0(r3)
+FFE6A0C0? 93E30024  stw     r31, 0x24(r3)
+FFE6A0C4? 48001AAD  bl      glue_SynchronizeIO
+FFE6A0C8? 80410014  lwz     r2, 0x14(r1)
+FFE6A0CC? 81810058  lwz     r12, 0x58(r1)
+FFE6A0D0? 83E1004C  lwz     r31, 0x4C(r1)
+FFE6A0D4? 7D8803A6  mtspr   LR, r12
+FFE6A0D8? 30210050  addic   r1, r1, 0x50
+FFE6A0DC? 4E800020  blr
+FFE6A0E0? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE6A0E4? 7C0802A6  mfspr   r0, LR
+FFE6A0E8? 3BE00000  li      r31, 0x0
+FFE6A0EC? 90010008  stw     r0, 0x8(r1)
+FFE6A0F0? 9421FFB0  stwu    r1, -0x50(r1)
+FFE6A0F4? 48001A59  bl      glue_LMGetExpandMem
+FFE6A0F8? 80410014  lwz     r2, 0x14(r1)
+FFE6A0FC? 80630210  lwz     r3, 0x210(r3)
+FFE6A100? 80630000  lwz     r3, 0x0(r3)
+FFE6A104? 80630024  lwz     r3, 0x24(r3)
+FFE6A108? 7C680120  mtcrf   0x80, r3
+FFE6A10C? 40820008  bne     loc_FFE6A114
+FFE6A110? 3BE00001  li      r31, 0x1
+loc_FFE6A114:
+FFE6A114? 48001A5D  bl      glue_SynchronizeIO
+FFE6A118? 80410014  lwz     r2, 0x14(r1)
+FFE6A11C? 48001A31  bl      glue_LMGetExpandMem
+FFE6A120? 80410014  lwz     r2, 0x14(r1)
+FFE6A124? 80630210  lwz     r3, 0x210(r3)
+FFE6A128? 80630000  lwz     r3, 0x0(r3)
+FFE6A12C? 80630024  lwz     r3, 0x24(r3)
+FFE6A130? 547E00C2  rlwinm  r30, r3, 0, 3, 1
+FFE6A134? 48001A3D  bl      glue_SynchronizeIO
+FFE6A138? 80410014  lwz     r2, 0x14(r1)
+FFE6A13C? 48001A11  bl      glue_LMGetExpandMem
+FFE6A140? 80410014  lwz     r2, 0x14(r1)
+FFE6A144? 80630210  lwz     r3, 0x210(r3)
+FFE6A148? 80630000  lwz     r3, 0x0(r3)
+FFE6A14C? 93C30024  stw     r30, 0x24(r3)
+FFE6A150? 48001A21  bl      glue_SynchronizeIO
+FFE6A154? 80410014  lwz     r2, 0x14(r1)
+FFE6A158? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6A15C? 387F0000  addi    r3, r31, 0x0
+FFE6A160? 80840000  lwz     r4, 0x0(r4)
+FFE6A164? 80A40000  lwz     r5, 0x0(r4)
+FFE6A168? 54A500C2  rlwinm  r5, r5, 0, 3, 1
+FFE6A16C? 90A40000  stw     r5, 0x0(r4)
+FFE6A170? 81810058  lwz     r12, 0x58(r1)
+FFE6A174? 30210050  addic   r1, r1, 0x50
+FFE6A178? 7D8803A6  mtspr   LR, r12
+FFE6A17C? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE6A180? 4E800020  blr
+FFE6A184? 7C0802A6  mfspr   r0, LR
+FFE6A188? 93E1FFFC  stw     r31, -0x4(r1)
+FFE6A18C? 90010008  stw     r0, 0x8(r1)
+FFE6A190? 9421FFB0  stwu    r1, -0x50(r1)
+FFE6A194? 3BE00000  li      r31, 0x0
+FFE6A198? 480019B5  bl      glue_LMGetExpandMem
+FFE6A19C? 80410014  lwz     r2, 0x14(r1)
+FFE6A1A0? 80830210  lwz     r4, 0x210(r3)
+FFE6A1A4? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6A1A8? 93E403C8  stw     r31, 0x3C8(r4)
+FFE6A1AC? 80630000  lwz     r3, 0x0(r3)
+FFE6A1B0? 80030000  lwz     r0, 0x0(r3)
+FFE6A1B4? 64004000  oris    r0, r0, 0x4000
+FFE6A1B8? 90030000  stw     r0, 0x0(r3)
+FFE6A1BC? 48001991  bl      glue_LMGetExpandMem
+FFE6A1C0? 80410014  lwz     r2, 0x14(r1)
+FFE6A1C4? 80630210  lwz     r3, 0x210(r3)
+FFE6A1C8? 80630000  lwz     r3, 0x0(r3)
+FFE6A1CC? 80030024  lwz     r0, 0x24(r3)
+FFE6A1D0? 641F4000  oris    r31, r0, 0x4000
+FFE6A1D4? 4800199D  bl      glue_SynchronizeIO
+FFE6A1D8? 80410014  lwz     r2, 0x14(r1)
+FFE6A1DC? 48001971  bl      glue_LMGetExpandMem
+FFE6A1E0? 80410014  lwz     r2, 0x14(r1)
+FFE6A1E4? 80630210  lwz     r3, 0x210(r3)
+FFE6A1E8? 80630000  lwz     r3, 0x0(r3)
+FFE6A1EC? 93E30024  stw     r31, 0x24(r3)
+FFE6A1F0? 48001981  bl      glue_SynchronizeIO
+FFE6A1F4? 80410014  lwz     r2, 0x14(r1)
+FFE6A1F8? 81810058  lwz     r12, 0x58(r1)
+FFE6A1FC? 83E1004C  lwz     r31, 0x4C(r1)
+FFE6A200? 7D8803A6  mtspr   LR, r12
+FFE6A204? 30210050  addic   r1, r1, 0x50
+FFE6A208? 4E800020  blr
+FFE6A20C? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE6A210? 7C0802A6  mfspr   r0, LR
+FFE6A214? 3BE00000  li      r31, 0x0
+FFE6A218? 90010008  stw     r0, 0x8(r1)
+FFE6A21C? 9421FFB0  stwu    r1, -0x50(r1)
+FFE6A220? 4800192D  bl      glue_LMGetExpandMem
+FFE6A224? 80410014  lwz     r2, 0x14(r1)
+FFE6A228? 80630210  lwz     r3, 0x210(r3)
+FFE6A22C? 80630000  lwz     r3, 0x0(r3)
+FFE6A230? 80630024  lwz     r3, 0x24(r3)
+FFE6A234? 7C680120  mtcrf   0x80, r3
+FFE6A238? 40810008  ble     loc_FFE6A240
+FFE6A23C? 3BE00001  li      r31, 0x1
+loc_FFE6A240:
+FFE6A240? 48001931  bl      glue_SynchronizeIO
+FFE6A244? 80410014  lwz     r2, 0x14(r1)
+FFE6A248? 48001905  bl      glue_LMGetExpandMem
+FFE6A24C? 80410014  lwz     r2, 0x14(r1)
+FFE6A250? 80630210  lwz     r3, 0x210(r3)
+FFE6A254? 80630000  lwz     r3, 0x0(r3)
+FFE6A258? 80630024  lwz     r3, 0x24(r3)
+FFE6A25C? 547E0080  rlwinm  r30, r3, 0, 2, 0
+FFE6A260? 48001911  bl      glue_SynchronizeIO
+FFE6A264? 80410014  lwz     r2, 0x14(r1)
+FFE6A268? 480018E5  bl      glue_LMGetExpandMem
+FFE6A26C? 80410014  lwz     r2, 0x14(r1)
+FFE6A270? 80630210  lwz     r3, 0x210(r3)
+FFE6A274? 80630000  lwz     r3, 0x0(r3)
+FFE6A278? 93C30024  stw     r30, 0x24(r3)
+FFE6A27C? 480018F5  bl      glue_SynchronizeIO
+FFE6A280? 80410014  lwz     r2, 0x14(r1)
+FFE6A284? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6A288? 387F0000  addi    r3, r31, 0x0
+FFE6A28C? 80840000  lwz     r4, 0x0(r4)
+FFE6A290? 80A40000  lwz     r5, 0x0(r4)
+FFE6A294? 54A50080  rlwinm  r5, r5, 0, 2, 0
+FFE6A298? 90A40000  stw     r5, 0x0(r4)
+FFE6A29C? 81810058  lwz     r12, 0x58(r1)
+FFE6A2A0? 30210050  addic   r1, r1, 0x50
+FFE6A2A4? 7D8803A6  mtspr   LR, r12
+FFE6A2A8? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE6A2AC? 4E800020  blr
+FFE6A2B0? 7C0802A6  mfspr   r0, LR
+FFE6A2B4? 93E1FFFC  stw     r31, -0x4(r1)
+FFE6A2B8? 90010008  stw     r0, 0x8(r1)
+FFE6A2BC? 9421FFB0  stwu    r1, -0x50(r1)
+FFE6A2C0? 3BE00000  li      r31, 0x0
+FFE6A2C4? 48001889  bl      glue_LMGetExpandMem
+FFE6A2C8? 80410014  lwz     r2, 0x14(r1)
+FFE6A2CC? 80830210  lwz     r4, 0x210(r3)
+FFE6A2D0? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6A2D4? 93E403E8  stw     r31, 0x3E8(r4)
+FFE6A2D8? 80630000  lwz     r3, 0x0(r3)
+FFE6A2DC? 80030000  lwz     r0, 0x0(r3)
+FFE6A2E0? 64008000  oris    r0, r0, 0x8000
+FFE6A2E4? 90030000  stw     r0, 0x0(r3)
+FFE6A2E8? 48001865  bl      glue_LMGetExpandMem
+FFE6A2EC? 80410014  lwz     r2, 0x14(r1)
+FFE6A2F0? 80630210  lwz     r3, 0x210(r3)
+FFE6A2F4? 80630000  lwz     r3, 0x0(r3)
+FFE6A2F8? 80030024  lwz     r0, 0x24(r3)
+FFE6A2FC? 641F8000  oris    r31, r0, 0x8000
+FFE6A300? 48001871  bl      glue_SynchronizeIO
+FFE6A304? 80410014  lwz     r2, 0x14(r1)
+FFE6A308? 48001845  bl      glue_LMGetExpandMem
+FFE6A30C? 80410014  lwz     r2, 0x14(r1)
+FFE6A310? 80630210  lwz     r3, 0x210(r3)
+FFE6A314? 80630000  lwz     r3, 0x0(r3)
+FFE6A318? 93E30024  stw     r31, 0x24(r3)
+FFE6A31C? 48001855  bl      glue_SynchronizeIO
+FFE6A320? 80410014  lwz     r2, 0x14(r1)
+FFE6A324? 81810058  lwz     r12, 0x58(r1)
+FFE6A328? 83E1004C  lwz     r31, 0x4C(r1)
+FFE6A32C? 7D8803A6  mtspr   LR, r12
+FFE6A330? 30210050  addic   r1, r1, 0x50
+FFE6A334? 4E800020  blr
+FFE6A338? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE6A33C? 7C0802A6  mfspr   r0, LR
+FFE6A340? 3BE00000  li      r31, 0x0
+FFE6A344? 90010008  stw     r0, 0x8(r1)
+FFE6A348? 9421FFB0  stwu    r1, -0x50(r1)
+FFE6A34C? 48001801  bl      glue_LMGetExpandMem
+FFE6A350? 80410014  lwz     r2, 0x14(r1)
+FFE6A354? 80630210  lwz     r3, 0x210(r3)
+FFE6A358? 80630000  lwz     r3, 0x0(r3)
+FFE6A35C? 80630024  lwz     r3, 0x24(r3)
+FFE6A360? 7C680120  mtcrf   0x80, r3
+FFE6A364? 40800008  bge     loc_FFE6A36C
+FFE6A368? 3BE00001  li      r31, 0x1
+loc_FFE6A36C:
+FFE6A36C? 48001805  bl      glue_SynchronizeIO
+FFE6A370? 80410014  lwz     r2, 0x14(r1)
+FFE6A374? 480017D9  bl      glue_LMGetExpandMem
+FFE6A378? 80410014  lwz     r2, 0x14(r1)
+FFE6A37C? 80630210  lwz     r3, 0x210(r3)
+FFE6A380? 80630000  lwz     r3, 0x0(r3)
+FFE6A384? 80630024  lwz     r3, 0x24(r3)
+FFE6A388? 547E007E  clrlwi  r30, r3, 1
+FFE6A38C? 480017E5  bl      glue_SynchronizeIO
+FFE6A390? 80410014  lwz     r2, 0x14(r1)
+FFE6A394? 480017B9  bl      glue_LMGetExpandMem
+FFE6A398? 80410014  lwz     r2, 0x14(r1)
+FFE6A39C? 80630210  lwz     r3, 0x210(r3)
+FFE6A3A0? 80630000  lwz     r3, 0x0(r3)
+FFE6A3A4? 93C30024  stw     r30, 0x24(r3)
+FFE6A3A8? 480017C9  bl      glue_SynchronizeIO
+FFE6A3AC? 80410014  lwz     r2, 0x14(r1)
+FFE6A3B0? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6A3B4? 387F0000  addi    r3, r31, 0x0
+FFE6A3B8? 80840000  lwz     r4, 0x0(r4)
+FFE6A3BC? 80A40000  lwz     r5, 0x0(r4)
+FFE6A3C0? 54A5007E  clrlwi  r5, r5, 1
+FFE6A3C4? 90A40000  stw     r5, 0x0(r4)
+FFE6A3C8? 81810058  lwz     r12, 0x58(r1)
+FFE6A3CC? 30210050  addic   r1, r1, 0x50
+FFE6A3D0? 7D8803A6  mtspr   LR, r12
+FFE6A3D4? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE6A3D8? 4E800020  blr
+FFE6A3DC? 7C0802A6  mfspr   r0, LR
+FFE6A3E0? 93E1FFFC  stw     r31, -0x4(r1)
+FFE6A3E4? 90010008  stw     r0, 0x8(r1)
+FFE6A3E8? 9421FFB0  stwu    r1, -0x50(r1)
+FFE6A3EC? 3BE00000  li      r31, 0x0
+FFE6A3F0? 4800175D  bl      glue_LMGetExpandMem
+FFE6A3F4? 80410014  lwz     r2, 0x14(r1)
+FFE6A3F8? 80830210  lwz     r4, 0x210(r3)
+FFE6A3FC? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6A400? 93E40208  stw     r31, 0x208(r4)
+FFE6A404? 80630000  lwz     r3, 0x0(r3)
+FFE6A408? 80030000  lwz     r0, 0x0(r3)
+FFE6A40C? 64000001  oris    r0, r0, 0x1
+FFE6A410? 90030000  stw     r0, 0x0(r3)
+FFE6A414? 48001739  bl      glue_LMGetExpandMem
+FFE6A418? 80410014  lwz     r2, 0x14(r1)
+FFE6A41C? 80630210  lwz     r3, 0x210(r3)
+FFE6A420? 80630000  lwz     r3, 0x0(r3)
+FFE6A424? 80030024  lwz     r0, 0x24(r3)
+FFE6A428? 641F0001  oris    r31, r0, 0x1
+FFE6A42C? 48001745  bl      glue_SynchronizeIO
+FFE6A430? 80410014  lwz     r2, 0x14(r1)
+FFE6A434? 48001719  bl      glue_LMGetExpandMem
+FFE6A438? 80410014  lwz     r2, 0x14(r1)
+FFE6A43C? 80630210  lwz     r3, 0x210(r3)
+FFE6A440? 80630000  lwz     r3, 0x0(r3)
+FFE6A444? 93E30024  stw     r31, 0x24(r3)
+FFE6A448? 48001729  bl      glue_SynchronizeIO
+FFE6A44C? 80410014  lwz     r2, 0x14(r1)
+FFE6A450? 81810058  lwz     r12, 0x58(r1)
+FFE6A454? 83E1004C  lwz     r31, 0x4C(r1)
+FFE6A458? 7D8803A6  mtspr   LR, r12
+FFE6A45C? 30210050  addic   r1, r1, 0x50
+FFE6A460? 4E800020  blr
+FFE6A464? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE6A468? 7C0802A6  mfspr   r0, LR
+FFE6A46C? 7D800026  mfcr    r12
+FFE6A470? 91810004  stw     r12, 0x4(r1)
+FFE6A474? 90010008  stw     r0, 0x8(r1)
+FFE6A478? 9421FFB0  stwu    r1, -0x50(r1)
+FFE6A47C? 3BE00000  li      r31, 0x0
+FFE6A480? 480016CD  bl      glue_LMGetExpandMem
+FFE6A484? 80410014  lwz     r2, 0x14(r1)
+FFE6A488? 80630210  lwz     r3, 0x210(r3)
+FFE6A48C? 80630000  lwz     r3, 0x0(r3)
+FFE6A490? 80630024  lwz     r3, 0x24(r3)
+FFE6A494? 7C610120  mtcrf   0x10, r3
+FFE6A498? 408F0008  bns     cr3, loc_FFE6A4A0
+FFE6A49C? 3BE00001  li      r31, 0x1
+loc_FFE6A4A0:
+FFE6A4A0? 480016D1  bl      glue_SynchronizeIO
+FFE6A4A4? 80410014  lwz     r2, 0x14(r1)
+FFE6A4A8? 480016A5  bl      glue_LMGetExpandMem
+FFE6A4AC? 80410014  lwz     r2, 0x14(r1)
+FFE6A4B0? 80630210  lwz     r3, 0x210(r3)
+FFE6A4B4? 80630000  lwz     r3, 0x0(r3)
+FFE6A4B8? 80630024  lwz     r3, 0x24(r3)
+FFE6A4BC? 547E041C  rlwinm  r30, r3, 0, 16, 14
+FFE6A4C0? 480016B1  bl      glue_SynchronizeIO
+FFE6A4C4? 80410014  lwz     r2, 0x14(r1)
+FFE6A4C8? 48001685  bl      glue_LMGetExpandMem
+FFE6A4CC? 80410014  lwz     r2, 0x14(r1)
+FFE6A4D0? 80630210  lwz     r3, 0x210(r3)
+FFE6A4D4? 80630000  lwz     r3, 0x0(r3)
+FFE6A4D8? 93C30024  stw     r30, 0x24(r3)
+FFE6A4DC? 48001695  bl      glue_SynchronizeIO
+FFE6A4E0? 80410014  lwz     r2, 0x14(r1)
+FFE6A4E4? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6A4E8? 387F0000  addi    r3, r31, 0x0
+FFE6A4EC? 80840000  lwz     r4, 0x0(r4)
+FFE6A4F0? 80A40000  lwz     r5, 0x0(r4)
+FFE6A4F4? 54A5041C  rlwinm  r5, r5, 0, 16, 14
+FFE6A4F8? 90A40000  stw     r5, 0x0(r4)
+FFE6A4FC? 81810054  lwz     r12, 0x54(r1)
+FFE6A500? 80010058  lwz     r0, 0x58(r1)
+FFE6A504? 7D810120  mtcrf   0x10, r12
+FFE6A508? 30210050  addic   r1, r1, 0x50
+FFE6A50C? 7C0803A6  mtspr   LR, r0
+FFE6A510? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE6A514? 4E800020  blr
+FFE6A518? 7C0802A6  mfspr   r0, LR
+FFE6A51C? 93E1FFFC  stw     r31, -0x4(r1)
+FFE6A520? 90010008  stw     r0, 0x8(r1)
+FFE6A524? 9421FFB0  stwu    r1, -0x50(r1)
+FFE6A528? 3BE00000  li      r31, 0x0
+FFE6A52C? 48001621  bl      glue_LMGetExpandMem
+FFE6A530? 80410014  lwz     r2, 0x14(r1)
+FFE6A534? 80830210  lwz     r4, 0x210(r3)
+FFE6A538? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6A53C? 93E40228  stw     r31, 0x228(r4)
+FFE6A540? 80630000  lwz     r3, 0x0(r3)
+FFE6A544? 80030000  lwz     r0, 0x0(r3)
+FFE6A548? 64000002  oris    r0, r0, 0x2
+FFE6A54C? 90030000  stw     r0, 0x0(r3)
+FFE6A550? 480015FD  bl      glue_LMGetExpandMem
+FFE6A554? 80410014  lwz     r2, 0x14(r1)
+FFE6A558? 80630210  lwz     r3, 0x210(r3)
+FFE6A55C? 80630000  lwz     r3, 0x0(r3)
+FFE6A560? 80030024  lwz     r0, 0x24(r3)
+FFE6A564? 641F0002  oris    r31, r0, 0x2
+FFE6A568? 48001609  bl      glue_SynchronizeIO
+FFE6A56C? 80410014  lwz     r2, 0x14(r1)
+FFE6A570? 480015DD  bl      glue_LMGetExpandMem
+FFE6A574? 80410014  lwz     r2, 0x14(r1)
+FFE6A578? 80630210  lwz     r3, 0x210(r3)
+FFE6A57C? 80630000  lwz     r3, 0x0(r3)
+FFE6A580? 93E30024  stw     r31, 0x24(r3)
+FFE6A584? 480015ED  bl      glue_SynchronizeIO
+FFE6A588? 80410014  lwz     r2, 0x14(r1)
+FFE6A58C? 81810058  lwz     r12, 0x58(r1)
+FFE6A590? 83E1004C  lwz     r31, 0x4C(r1)
+FFE6A594? 7D8803A6  mtspr   LR, r12
+FFE6A598? 30210050  addic   r1, r1, 0x50
+FFE6A59C? 4E800020  blr
+FFE6A5A0? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE6A5A4? 7C0802A6  mfspr   r0, LR
+FFE6A5A8? 7D800026  mfcr    r12
+FFE6A5AC? 91810004  stw     r12, 0x4(r1)
+FFE6A5B0? 90010008  stw     r0, 0x8(r1)
+FFE6A5B4? 9421FFB0  stwu    r1, -0x50(r1)
+FFE6A5B8? 3BE00000  li      r31, 0x0
+FFE6A5BC? 48001591  bl      glue_LMGetExpandMem
+FFE6A5C0? 80410014  lwz     r2, 0x14(r1)
+FFE6A5C4? 80630210  lwz     r3, 0x210(r3)
+FFE6A5C8? 80630000  lwz     r3, 0x0(r3)
+FFE6A5CC? 80630024  lwz     r3, 0x24(r3)
+FFE6A5D0? 7C610120  mtcrf   0x10, r3
+FFE6A5D4? 408E0008  bne     cr3, loc_FFE6A5DC
+FFE6A5D8? 3BE00001  li      r31, 0x1
+loc_FFE6A5DC:
+FFE6A5DC? 48001595  bl      glue_SynchronizeIO
+FFE6A5E0? 80410014  lwz     r2, 0x14(r1)
+FFE6A5E4? 48001569  bl      glue_LMGetExpandMem
+FFE6A5E8? 80410014  lwz     r2, 0x14(r1)
+FFE6A5EC? 80630210  lwz     r3, 0x210(r3)
+FFE6A5F0? 80630000  lwz     r3, 0x0(r3)
+FFE6A5F4? 80630024  lwz     r3, 0x24(r3)
+FFE6A5F8? 547E03DA  rlwinm  r30, r3, 0, 15, 13
+FFE6A5FC? 48001575  bl      glue_SynchronizeIO
+FFE6A600? 80410014  lwz     r2, 0x14(r1)
+FFE6A604? 48001549  bl      glue_LMGetExpandMem
+FFE6A608? 80410014  lwz     r2, 0x14(r1)
+FFE6A60C? 80630210  lwz     r3, 0x210(r3)
+FFE6A610? 80630000  lwz     r3, 0x0(r3)
+FFE6A614? 93C30024  stw     r30, 0x24(r3)
+FFE6A618? 48001559  bl      glue_SynchronizeIO
+FFE6A61C? 80410014  lwz     r2, 0x14(r1)
+FFE6A620? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6A624? 387F0000  addi    r3, r31, 0x0
+FFE6A628? 80840000  lwz     r4, 0x0(r4)
+FFE6A62C? 80A40000  lwz     r5, 0x0(r4)
+FFE6A630? 54A503DA  rlwinm  r5, r5, 0, 15, 13
+FFE6A634? 90A40000  stw     r5, 0x0(r4)
+FFE6A638? 81810054  lwz     r12, 0x54(r1)
+FFE6A63C? 80010058  lwz     r0, 0x58(r1)
+FFE6A640? 7D810120  mtcrf   0x10, r12
+FFE6A644? 30210050  addic   r1, r1, 0x50
+FFE6A648? 7C0803A6  mtspr   LR, r0
+FFE6A64C? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE6A650? 4E800020  blr
+FFE6A654? 7C0802A6  mfspr   r0, LR
+FFE6A658? 93E1FFFC  stw     r31, -0x4(r1)
+FFE6A65C? 90010008  stw     r0, 0x8(r1)
+FFE6A660? 9421FFB0  stwu    r1, -0x50(r1)
+FFE6A664? 3BE00000  li      r31, 0x0
+FFE6A668? 480014E5  bl      glue_LMGetExpandMem
+FFE6A66C? 80410014  lwz     r2, 0x14(r1)
+FFE6A670? 80830210  lwz     r4, 0x210(r3)
+FFE6A674? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6A678? 93E40248  stw     r31, 0x248(r4)
+FFE6A67C? 80630000  lwz     r3, 0x0(r3)
+FFE6A680? 80030000  lwz     r0, 0x0(r3)
+FFE6A684? 64000004  oris    r0, r0, 0x4
+FFE6A688? 90030000  stw     r0, 0x0(r3)
+FFE6A68C? 480014C1  bl      glue_LMGetExpandMem
+FFE6A690? 80410014  lwz     r2, 0x14(r1)
+FFE6A694? 80630210  lwz     r3, 0x210(r3)
+FFE6A698? 80630000  lwz     r3, 0x0(r3)
+FFE6A69C? 80030024  lwz     r0, 0x24(r3)
+FFE6A6A0? 641F0004  oris    r31, r0, 0x4
+FFE6A6A4? 480014CD  bl      glue_SynchronizeIO
+FFE6A6A8? 80410014  lwz     r2, 0x14(r1)
+FFE6A6AC? 480014A1  bl      glue_LMGetExpandMem
+FFE6A6B0? 80410014  lwz     r2, 0x14(r1)
+FFE6A6B4? 80630210  lwz     r3, 0x210(r3)
+FFE6A6B8? 80630000  lwz     r3, 0x0(r3)
+FFE6A6BC? 93E30024  stw     r31, 0x24(r3)
+FFE6A6C0? 480014B1  bl      glue_SynchronizeIO
+FFE6A6C4? 80410014  lwz     r2, 0x14(r1)
+FFE6A6C8? 81810058  lwz     r12, 0x58(r1)
+FFE6A6CC? 83E1004C  lwz     r31, 0x4C(r1)
+FFE6A6D0? 7D8803A6  mtspr   LR, r12
+FFE6A6D4? 30210050  addic   r1, r1, 0x50
+FFE6A6D8? 4E800020  blr
+FFE6A6DC? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE6A6E0? 7C0802A6  mfspr   r0, LR
+FFE6A6E4? 7D800026  mfcr    r12
+FFE6A6E8? 91810004  stw     r12, 0x4(r1)
+FFE6A6EC? 90010008  stw     r0, 0x8(r1)
+FFE6A6F0? 9421FFB0  stwu    r1, -0x50(r1)
+FFE6A6F4? 3BE00000  li      r31, 0x0
+FFE6A6F8? 48001455  bl      glue_LMGetExpandMem
+FFE6A6FC? 80410014  lwz     r2, 0x14(r1)
+FFE6A700? 80630210  lwz     r3, 0x210(r3)
+FFE6A704? 80630000  lwz     r3, 0x0(r3)
+FFE6A708? 80630024  lwz     r3, 0x24(r3)
+FFE6A70C? 7C610120  mtcrf   0x10, r3
+FFE6A710? 408D0008  ble     cr3, loc_FFE6A718
+FFE6A714? 3BE00001  li      r31, 0x1
+loc_FFE6A718:
+FFE6A718? 48001459  bl      glue_SynchronizeIO
+FFE6A71C? 80410014  lwz     r2, 0x14(r1)
+FFE6A720? 4800142D  bl      glue_LMGetExpandMem
+FFE6A724? 80410014  lwz     r2, 0x14(r1)
+FFE6A728? 80630210  lwz     r3, 0x210(r3)
+FFE6A72C? 80630000  lwz     r3, 0x0(r3)
+FFE6A730? 80630024  lwz     r3, 0x24(r3)
+FFE6A734? 547E0398  rlwinm  r30, r3, 0, 14, 12
+FFE6A738? 48001439  bl      glue_SynchronizeIO
+FFE6A73C? 80410014  lwz     r2, 0x14(r1)
+FFE6A740? 4800140D  bl      glue_LMGetExpandMem
+FFE6A744? 80410014  lwz     r2, 0x14(r1)
+FFE6A748? 80630210  lwz     r3, 0x210(r3)
+FFE6A74C? 80630000  lwz     r3, 0x0(r3)
+FFE6A750? 93C30024  stw     r30, 0x24(r3)
+FFE6A754? 4800141D  bl      glue_SynchronizeIO
+FFE6A758? 80410014  lwz     r2, 0x14(r1)
+FFE6A75C? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6A760? 387F0000  addi    r3, r31, 0x0
+FFE6A764? 80840000  lwz     r4, 0x0(r4)
+FFE6A768? 80A40000  lwz     r5, 0x0(r4)
+FFE6A76C? 54A50398  rlwinm  r5, r5, 0, 14, 12
+FFE6A770? 90A40000  stw     r5, 0x0(r4)
+FFE6A774? 81810054  lwz     r12, 0x54(r1)
+FFE6A778? 80010058  lwz     r0, 0x58(r1)
+FFE6A77C? 7D810120  mtcrf   0x10, r12
+FFE6A780? 30210050  addic   r1, r1, 0x50
+FFE6A784? 7C0803A6  mtspr   LR, r0
+FFE6A788? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE6A78C? 4E800020  blr
+FFE6A790? 7C0802A6  mfspr   r0, LR
+FFE6A794? 93E1FFFC  stw     r31, -0x4(r1)
+FFE6A798? 90010008  stw     r0, 0x8(r1)
+FFE6A79C? 9421FFB0  stwu    r1, -0x50(r1)
+FFE6A7A0? 3BE00000  li      r31, 0x0
+FFE6A7A4? 480013A9  bl      glue_LMGetExpandMem
+FFE6A7A8? 80410014  lwz     r2, 0x14(r1)
+FFE6A7AC? 80830210  lwz     r4, 0x210(r3)
+FFE6A7B0? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6A7B4? 93E402E8  stw     r31, 0x2E8(r4)
+FFE6A7B8? 80630000  lwz     r3, 0x0(r3)
+FFE6A7BC? 80030000  lwz     r0, 0x0(r3)
+FFE6A7C0? 64000080  oris    r0, r0, 0x80
+FFE6A7C4? 90030000  stw     r0, 0x0(r3)
+FFE6A7C8? 48001385  bl      glue_LMGetExpandMem
+FFE6A7CC? 80410014  lwz     r2, 0x14(r1)
+FFE6A7D0? 80630210  lwz     r3, 0x210(r3)
+FFE6A7D4? 80630000  lwz     r3, 0x0(r3)
+FFE6A7D8? 80030024  lwz     r0, 0x24(r3)
+FFE6A7DC? 641F0080  oris    r31, r0, 0x80
+FFE6A7E0? 48001391  bl      glue_SynchronizeIO
+FFE6A7E4? 80410014  lwz     r2, 0x14(r1)
+FFE6A7E8? 48001365  bl      glue_LMGetExpandMem
+FFE6A7EC? 80410014  lwz     r2, 0x14(r1)
+FFE6A7F0? 80630210  lwz     r3, 0x210(r3)
+FFE6A7F4? 80630000  lwz     r3, 0x0(r3)
+FFE6A7F8? 93E30024  stw     r31, 0x24(r3)
+FFE6A7FC? 48001375  bl      glue_SynchronizeIO
+FFE6A800? 80410014  lwz     r2, 0x14(r1)
+FFE6A804? 81810058  lwz     r12, 0x58(r1)
+FFE6A808? 83E1004C  lwz     r31, 0x4C(r1)
+FFE6A80C? 7D8803A6  mtspr   LR, r12
+FFE6A810? 30210050  addic   r1, r1, 0x50
+FFE6A814? 4E800020  blr
+FFE6A818? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE6A81C? 7C0802A6  mfspr   r0, LR
+FFE6A820? 7D800026  mfcr    r12
+FFE6A824? 91810004  stw     r12, 0x4(r1)
+FFE6A828? 90010008  stw     r0, 0x8(r1)
+FFE6A82C? 9421FFB0  stwu    r1, -0x50(r1)
+FFE6A830? 3BE00000  li      r31, 0x0
+FFE6A834? 48001319  bl      glue_LMGetExpandMem
+FFE6A838? 80410014  lwz     r2, 0x14(r1)
+FFE6A83C? 80630210  lwz     r3, 0x210(r3)
+FFE6A840? 80630000  lwz     r3, 0x0(r3)
+FFE6A844? 80630024  lwz     r3, 0x24(r3)
+FFE6A848? 7C620120  mtcrf   0x20, r3
+FFE6A84C? 40880008  bge     cr2, loc_FFE6A854
+FFE6A850? 3BE00001  li      r31, 0x1
+loc_FFE6A854:
+FFE6A854? 4800131D  bl      glue_SynchronizeIO
+FFE6A858? 80410014  lwz     r2, 0x14(r1)
+FFE6A85C? 480012F1  bl      glue_LMGetExpandMem
+FFE6A860? 80410014  lwz     r2, 0x14(r1)
+FFE6A864? 80630210  lwz     r3, 0x210(r3)
+FFE6A868? 80630000  lwz     r3, 0x0(r3)
+FFE6A86C? 80630024  lwz     r3, 0x24(r3)
+FFE6A870? 547E024E  rlwinm  r30, r3, 0, 9, 7
+FFE6A874? 480012FD  bl      glue_SynchronizeIO
+FFE6A878? 80410014  lwz     r2, 0x14(r1)
+FFE6A87C? 480012D1  bl      glue_LMGetExpandMem
+FFE6A880? 80410014  lwz     r2, 0x14(r1)
+FFE6A884? 80630210  lwz     r3, 0x210(r3)
+FFE6A888? 80630000  lwz     r3, 0x0(r3)
+FFE6A88C? 93C30024  stw     r30, 0x24(r3)
+FFE6A890? 480012E1  bl      glue_SynchronizeIO
+FFE6A894? 80410014  lwz     r2, 0x14(r1)
+FFE6A898? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6A89C? 387F0000  addi    r3, r31, 0x0
+FFE6A8A0? 80840000  lwz     r4, 0x0(r4)
+FFE6A8A4? 80A40000  lwz     r5, 0x0(r4)
+FFE6A8A8? 54A5024E  rlwinm  r5, r5, 0, 9, 7
+FFE6A8AC? 90A40000  stw     r5, 0x0(r4)
+FFE6A8B0? 81810054  lwz     r12, 0x54(r1)
+FFE6A8B4? 80010058  lwz     r0, 0x58(r1)
+FFE6A8B8? 7D820120  mtcrf   0x20, r12
+FFE6A8BC? 30210050  addic   r1, r1, 0x50
+FFE6A8C0? 7C0803A6  mtspr   LR, r0
+FFE6A8C4? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE6A8C8? 4E800020  blr
+FFE6A8CC? 7C0802A6  mfspr   r0, LR
+FFE6A8D0? 93E1FFFC  stw     r31, -0x4(r1)
+FFE6A8D4? 90010008  stw     r0, 0x8(r1)
+FFE6A8D8? 9421FFB0  stwu    r1, -0x50(r1)
+FFE6A8DC? 3BE00000  li      r31, 0x0
+FFE6A8E0? 4800126D  bl      glue_LMGetExpandMem
+FFE6A8E4? 80410014  lwz     r2, 0x14(r1)
+FFE6A8E8? 80830210  lwz     r4, 0x210(r3)
+FFE6A8EC? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6A8F0? 93E40108  stw     r31, 0x108(r4)
+FFE6A8F4? 80630000  lwz     r3, 0x0(r3)
+FFE6A8F8? 80030000  lwz     r0, 0x0(r3)
+FFE6A8FC? 60000100  ori     r0, r0, 0x100
+FFE6A900? 90030000  stw     r0, 0x0(r3)
+FFE6A904? 48001249  bl      glue_LMGetExpandMem
+FFE6A908? 80410014  lwz     r2, 0x14(r1)
+FFE6A90C? 80630210  lwz     r3, 0x210(r3)
+FFE6A910? 80630000  lwz     r3, 0x0(r3)
+FFE6A914? 80030024  lwz     r0, 0x24(r3)
+FFE6A918? 601F0100  ori     r31, r0, 0x100
+FFE6A91C? 48001255  bl      glue_SynchronizeIO
+FFE6A920? 80410014  lwz     r2, 0x14(r1)
+FFE6A924? 48001229  bl      glue_LMGetExpandMem
+FFE6A928? 80410014  lwz     r2, 0x14(r1)
+FFE6A92C? 80630210  lwz     r3, 0x210(r3)
+FFE6A930? 80630000  lwz     r3, 0x0(r3)
+FFE6A934? 93E30024  stw     r31, 0x24(r3)
+FFE6A938? 48001239  bl      glue_SynchronizeIO
+FFE6A93C? 80410014  lwz     r2, 0x14(r1)
+FFE6A940? 81810058  lwz     r12, 0x58(r1)
+FFE6A944? 83E1004C  lwz     r31, 0x4C(r1)
+FFE6A948? 7D8803A6  mtspr   LR, r12
+FFE6A94C? 30210050  addic   r1, r1, 0x50
+FFE6A950? 4E800020  blr
+FFE6A954? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE6A958? 7C0802A6  mfspr   r0, LR
+FFE6A95C? 3BE00000  li      r31, 0x0
+FFE6A960? 90010008  stw     r0, 0x8(r1)
+FFE6A964? 9421FFB0  stwu    r1, -0x50(r1)
+FFE6A968? 480011E5  bl      glue_LMGetExpandMem
+FFE6A96C? 80410014  lwz     r2, 0x14(r1)
+FFE6A970? 80630210  lwz     r3, 0x210(r3)
+FFE6A974? 80630000  lwz     r3, 0x0(r3)
+FFE6A978? 80630024  lwz     r3, 0x24(r3)
+FFE6A97C? 5463C23E  srwi    r3, r3, 8
+FFE6A980? 7C601120  mtcrf   0x01, r3
+FFE6A984? 409F0008  bns     cr7, loc_FFE6A98C
+FFE6A988? 3BE00001  li      r31, 0x1
+loc_FFE6A98C:
+FFE6A98C? 480011E5  bl      glue_SynchronizeIO
+FFE6A990? 80410014  lwz     r2, 0x14(r1)
+FFE6A994? 480011B9  bl      glue_LMGetExpandMem
+FFE6A998? 80410014  lwz     r2, 0x14(r1)
+FFE6A99C? 80630210  lwz     r3, 0x210(r3)
+FFE6A9A0? 80630000  lwz     r3, 0x0(r3)
+FFE6A9A4? 80630024  lwz     r3, 0x24(r3)
+FFE6A9A8? 547E062C  rlwinm  r30, r3, 0, 24, 22
+FFE6A9AC? 480011C5  bl      glue_SynchronizeIO
+FFE6A9B0? 80410014  lwz     r2, 0x14(r1)
+FFE6A9B4? 48001199  bl      glue_LMGetExpandMem
+FFE6A9B8? 80410014  lwz     r2, 0x14(r1)
+FFE6A9BC? 80630210  lwz     r3, 0x210(r3)
+FFE6A9C0? 80630000  lwz     r3, 0x0(r3)
+FFE6A9C4? 93C30024  stw     r30, 0x24(r3)
+FFE6A9C8? 480011A9  bl      glue_SynchronizeIO
+FFE6A9CC? 80410014  lwz     r2, 0x14(r1)
+FFE6A9D0? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6A9D4? 387F0000  addi    r3, r31, 0x0
+FFE6A9D8? 80840000  lwz     r4, 0x0(r4)
+FFE6A9DC? 80A40000  lwz     r5, 0x0(r4)
+FFE6A9E0? 54A5062C  rlwinm  r5, r5, 0, 24, 22
+FFE6A9E4? 90A40000  stw     r5, 0x0(r4)
+FFE6A9E8? 81810058  lwz     r12, 0x58(r1)
+FFE6A9EC? 30210050  addic   r1, r1, 0x50
+FFE6A9F0? 7D8803A6  mtspr   LR, r12
+FFE6A9F4? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE6A9F8? 4E800020  blr
+
+CreateGCLevel4Tree:
+FFE6A9FC* 9421FFB0  stwu    r1, -0x50(r1)
+FFE6AA00* 7C0802A6  mfspr   r0, LR
+FFE6AA04* 30610038  addic   r3, r1, 0x38
+FFE6AA08* 90010058  stw     r0, 0x58(r1)
+FFE6AA0C* 48001189  bl      glue_CreateInterruptSourceTree
+FFE6AA10* 80410014  lwz     r2, 0x14(r1)
+FFE6AA14* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6AA18* 30C1003C  addic   r6, r1, 0x3C
+FFE6AA1C* 38800001  li      r4, 0x1
+FFE6AA20* 38A00001  li      r5, 0x1
+FFE6AA24* 40820218  bne     loc_FFE6AC3C
+FFE6AA28* 80610038  lwz     r3, 0x38(r1)
+FFE6AA2C* 38E00000  li      r7, 0x0
+FFE6AA30* 48001045  bl      glue_CreateInterruptSet
+FFE6AA34* 80410014  lwz     r2, 0x14(r1)
+FFE6AA38* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6AA3C* 30C10040  addic   r6, r1, 0x40
+FFE6AA40* 38800001  li      r4, 0x1
+FFE6AA44* 38A0000D  li      r5, 0xD
+FFE6AA48* 408201F4  bne     loc_FFE6AC3C
+FFE6AA4C* 8061003C  lwz     r3, 0x3C(r1)
+FFE6AA50* 38E00000  li      r7, 0x0
+FFE6AA54* 48001021  bl      glue_CreateInterruptSet
+FFE6AA58* 80410014  lwz     r2, 0x14(r1)
+FFE6AA5C* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6AA60* 80C200F4  lwz     r6, 0xF4(r2)                       ; TOC[+244] &data+1D4
+FFE6AA64* 38800001  li      r4, 0x1
+FFE6AA68* 38A00000  li      r5, 0x0
+FFE6AA6C* 408201D0  bne     loc_FFE6AC3C
+FFE6AA70* 8061003C  lwz     r3, 0x3C(r1)
+FFE6AA74* 38E00000  li      r7, 0x0
+FFE6AA78* 39000000  li      r8, 0x0
+FFE6AA7C* 4800101D  bl      glue_InstallInterruptFunctions
+FFE6AA80* 80410014  lwz     r2, 0x14(r1)
+FFE6AA84* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6AA88* 80C200F8  lwz     r6, 0xF8(r2)                       ; TOC[+248] &data+1E0
+FFE6AA8C* 80E200FC  lwz     r7, 0xFC(r2)                       ; TOC[+252] &data+1EC
+FFE6AA90* 38800001  li      r4, 0x1
+FFE6AA94* 408201A8  bne     loc_FFE6AC3C
+FFE6AA98* 80610040  lwz     r3, 0x40(r1)
+FFE6AA9C* 38A00000  li      r5, 0x0
+FFE6AAA0* 4BFFD421  bl      InitLeafNode
+FFE6AAA4* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6AAA8* 80C20100  lwz     r6, 0x100(r2)                      ; TOC[+256] &data+1F8
+FFE6AAAC* 80E20104  lwz     r7, 0x104(r2)                      ; TOC[+260] &data+204
+FFE6AAB0* 38800002  li      r4, 0x2
+FFE6AAB4* 40820188  bne     loc_FFE6AC3C
+FFE6AAB8* 80610040  lwz     r3, 0x40(r1)
+FFE6AABC* 38A00001  li      r5, 0x1
+FFE6AAC0* 4BFFD401  bl      InitLeafNode
+FFE6AAC4* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6AAC8* 80C20108  lwz     r6, 0x108(r2)                      ; TOC[+264] &data+210
+FFE6AACC* 80E2010C  lwz     r7, 0x10C(r2)                      ; TOC[+268] &data+21C
+FFE6AAD0* 38800003  li      r4, 0x3
+FFE6AAD4* 40820168  bne     loc_FFE6AC3C
+FFE6AAD8* 80610040  lwz     r3, 0x40(r1)
+FFE6AADC* 38A00002  li      r5, 0x2
+FFE6AAE0* 4BFFD3E1  bl      InitLeafNode
+FFE6AAE4* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6AAE8* 80C20110  lwz     r6, 0x110(r2)                      ; TOC[+272] &data+228
+FFE6AAEC* 80E20114  lwz     r7, 0x114(r2)                      ; TOC[+276] &data+234
+FFE6AAF0* 38800004  li      r4, 0x4
+FFE6AAF4* 40820148  bne     loc_FFE6AC3C
+FFE6AAF8* 80610040  lwz     r3, 0x40(r1)
+FFE6AAFC* 38A00003  li      r5, 0x3
+FFE6AB00* 4BFFD3C1  bl      InitLeafNode
+FFE6AB04* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6AB08* 80C20118  lwz     r6, 0x118(r2)                      ; TOC[+280] &data+240
+FFE6AB0C* 80E2011C  lwz     r7, 0x11C(r2)                      ; TOC[+284] &data+24C
+FFE6AB10* 38800005  li      r4, 0x5
+FFE6AB14* 40820128  bne     loc_FFE6AC3C
+FFE6AB18* 80610040  lwz     r3, 0x40(r1)
+FFE6AB1C* 38A00004  li      r5, 0x4
+FFE6AB20* 4BFFD3A1  bl      InitLeafNode
+FFE6AB24* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6AB28* 80C20120  lwz     r6, 0x120(r2)                      ; TOC[+288] &data+258
+FFE6AB2C* 80E20124  lwz     r7, 0x124(r2)                      ; TOC[+292] &data+264
+FFE6AB30* 38800006  li      r4, 0x6
+FFE6AB34* 40820108  bne     loc_FFE6AC3C
+FFE6AB38* 80610040  lwz     r3, 0x40(r1)
+FFE6AB3C* 38A00005  li      r5, 0x5
+FFE6AB40* 4BFFD381  bl      InitLeafNode
+FFE6AB44* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6AB48* 80C20128  lwz     r6, 0x128(r2)                      ; TOC[+296] &data+270
+FFE6AB4C* 80E2012C  lwz     r7, 0x12C(r2)                      ; TOC[+300] &data+27C
+FFE6AB50* 38800007  li      r4, 0x7
+FFE6AB54* 408200E8  bne     loc_FFE6AC3C
+FFE6AB58* 80610040  lwz     r3, 0x40(r1)
+FFE6AB5C* 38A00006  li      r5, 0x6
+FFE6AB60* 4BFFD361  bl      InitLeafNode
+FFE6AB64* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6AB68* 80C20130  lwz     r6, 0x130(r2)                      ; TOC[+304] &data+288
+FFE6AB6C* 80E20134  lwz     r7, 0x134(r2)                      ; TOC[+308] &data+294
+FFE6AB70* 38800008  li      r4, 0x8
+FFE6AB74* 408200C8  bne     loc_FFE6AC3C
+FFE6AB78* 80610040  lwz     r3, 0x40(r1)
+FFE6AB7C* 38A00007  li      r5, 0x7
+FFE6AB80* 4BFFD341  bl      InitLeafNode
+FFE6AB84* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6AB88* 80C20138  lwz     r6, 0x138(r2)                      ; TOC[+312] &data+2A0
+FFE6AB8C* 80E2013C  lwz     r7, 0x13C(r2)                      ; TOC[+316] &data+2AC
+FFE6AB90* 38800009  li      r4, 0x9
+FFE6AB94* 408200A8  bne     loc_FFE6AC3C
+FFE6AB98* 80610040  lwz     r3, 0x40(r1)
+FFE6AB9C* 38A00008  li      r5, 0x8
+FFE6ABA0* 4BFFD321  bl      InitLeafNode
+FFE6ABA4* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6ABA8* 80C20140  lwz     r6, 0x140(r2)                      ; TOC[+320] &data+2B8
+FFE6ABAC* 80E20144  lwz     r7, 0x144(r2)                      ; TOC[+324] &data+2C4
+FFE6ABB0* 3880000A  li      r4, 0xA
+FFE6ABB4* 40820088  bne     loc_FFE6AC3C
+FFE6ABB8* 80610040  lwz     r3, 0x40(r1)
+FFE6ABBC* 38A00009  li      r5, 0x9
+FFE6ABC0* 4BFFD301  bl      InitLeafNode
+FFE6ABC4* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6ABC8* 80C20148  lwz     r6, 0x148(r2)                      ; TOC[+328] &data+2D0
+FFE6ABCC* 80E2014C  lwz     r7, 0x14C(r2)                      ; TOC[+332] &data+2DC
+FFE6ABD0* 3880000B  li      r4, 0xB
+FFE6ABD4* 40820068  bne     loc_FFE6AC3C
+FFE6ABD8* 80610040  lwz     r3, 0x40(r1)
+FFE6ABDC* 38A0000A  li      r5, 0xA
+FFE6ABE0* 4BFFD2E1  bl      InitLeafNode
+FFE6ABE4* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6ABE8* 80C20150  lwz     r6, 0x150(r2)                      ; TOC[+336] &data+2E8
+FFE6ABEC* 80E20154  lwz     r7, 0x154(r2)                      ; TOC[+340] &data+2F4
+FFE6ABF0* 3880000C  li      r4, 0xC
+FFE6ABF4* 40820048  bne     loc_FFE6AC3C
+FFE6ABF8* 80610040  lwz     r3, 0x40(r1)
+FFE6ABFC* 38A0000F  li      r5, 0xF
+FFE6AC00* 4BFFD2C1  bl      InitLeafNode
+FFE6AC04* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6AC08* 80C20158  lwz     r6, 0x158(r2)                      ; TOC[+344] &data+300
+FFE6AC0C* 80E2015C  lwz     r7, 0x15C(r2)                      ; TOC[+348] &data+30C
+FFE6AC10* 3880000D  li      r4, 0xD
+FFE6AC14* 40820028  bne     loc_FFE6AC3C
+FFE6AC18* 80610040  lwz     r3, 0x40(r1)
+FFE6AC1C* 38A00010  li      r5, 0x10
+FFE6AC20* 4BFFD2A1  bl      InitLeafNode
+FFE6AC24* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6AC28* 38800004  li      r4, 0x4
+FFE6AC2C* 40820010  bne     loc_FFE6AC3C
+FFE6AC30* 80610038  lwz     r3, 0x38(r1)
+FFE6AC34* 48000F85  bl      glue_ActivateInterruptSourceTree
+FFE6AC38* 80410014  lwz     r2, 0x14(r1)
+loc_FFE6AC3C:
+FFE6AC3C* 81810058  lwz     r12, 0x58(r1)
+FFE6AC40* 30210050  addic   r1, r1, 0x50
+FFE6AC44* 7D8803A6  mtspr   LR, r12
+FFE6AC48* 4E800020  blr
+
+GCLevel7TreeDispatcher:
+FFE6AC4C  38600001  li      r3, 0x1
+FFE6AC50  4E800020  blr
+FFE6AC54? 7C0802A6  mfspr   r0, LR
+FFE6AC58? 93E1FFFC  stw     r31, -0x4(r1)
+FFE6AC5C? 90010008  stw     r0, 0x8(r1)
+FFE6AC60? 9421FFB0  stwu    r1, -0x50(r1)
+FFE6AC64? 3BE00000  li      r31, 0x0
+FFE6AC68? 48000EE5  bl      glue_LMGetExpandMem
+FFE6AC6C? 80410014  lwz     r2, 0x14(r1)
+FFE6AC70? 80830210  lwz     r4, 0x210(r3)
+FFE6AC74? 80620058  lwz     r3, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6AC78? 93E40188  stw     r31, 0x188(r4)
+FFE6AC7C? 80630000  lwz     r3, 0x0(r3)
+FFE6AC80? 80030000  lwz     r0, 0x0(r3)
+FFE6AC84? 60001000  ori     r0, r0, 0x1000
+FFE6AC88? 90030000  stw     r0, 0x0(r3)
+FFE6AC8C? 48000EC1  bl      glue_LMGetExpandMem
+FFE6AC90? 80410014  lwz     r2, 0x14(r1)
+FFE6AC94? 80630210  lwz     r3, 0x210(r3)
+FFE6AC98? 80630000  lwz     r3, 0x0(r3)
+FFE6AC9C? 80030024  lwz     r0, 0x24(r3)
+FFE6ACA0? 601F1000  ori     r31, r0, 0x1000
+FFE6ACA4? 48000ECD  bl      glue_SynchronizeIO
+FFE6ACA8? 80410014  lwz     r2, 0x14(r1)
+FFE6ACAC? 48000EA1  bl      glue_LMGetExpandMem
+FFE6ACB0? 80410014  lwz     r2, 0x14(r1)
+FFE6ACB4? 80630210  lwz     r3, 0x210(r3)
+FFE6ACB8? 80630000  lwz     r3, 0x0(r3)
+FFE6ACBC? 93E30024  stw     r31, 0x24(r3)
+FFE6ACC0? 48000EB1  bl      glue_SynchronizeIO
+FFE6ACC4? 80410014  lwz     r2, 0x14(r1)
+FFE6ACC8? 81810058  lwz     r12, 0x58(r1)
+FFE6ACCC? 83E1004C  lwz     r31, 0x4C(r1)
+FFE6ACD0? 7D8803A6  mtspr   LR, r12
+FFE6ACD4? 30210050  addic   r1, r1, 0x50
+FFE6ACD8? 4E800020  blr
+FFE6ACDC? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE6ACE0? 7C0802A6  mfspr   r0, LR
+FFE6ACE4? 3BE00000  li      r31, 0x0
+FFE6ACE8? 90010008  stw     r0, 0x8(r1)
+FFE6ACEC? 9421FFB0  stwu    r1, -0x50(r1)
+FFE6ACF0? 48000E5D  bl      glue_LMGetExpandMem
+FFE6ACF4? 80410014  lwz     r2, 0x14(r1)
+FFE6ACF8? 80630210  lwz     r3, 0x210(r3)
+FFE6ACFC? 80630000  lwz     r3, 0x0(r3)
+FFE6AD00? 80630024  lwz     r3, 0x24(r3)
+FFE6AD04? 5463A33E  srwi    r3, r3, 12
+FFE6AD08? 7C601120  mtcrf   0x01, r3
+FFE6AD0C? 409F0008  bns     cr7, loc_FFE6AD14
+FFE6AD10? 3BE00001  li      r31, 0x1
+loc_FFE6AD14:
+FFE6AD14? 48000E5D  bl      glue_SynchronizeIO
+FFE6AD18? 80410014  lwz     r2, 0x14(r1)
+FFE6AD1C? 48000E31  bl      glue_LMGetExpandMem
+FFE6AD20? 80410014  lwz     r2, 0x14(r1)
+FFE6AD24? 80630210  lwz     r3, 0x210(r3)
+FFE6AD28? 80630000  lwz     r3, 0x0(r3)
+FFE6AD2C? 80630024  lwz     r3, 0x24(r3)
+FFE6AD30? 547E0524  rlwinm  r30, r3, 0, 20, 18
+FFE6AD34? 48000E3D  bl      glue_SynchronizeIO
+FFE6AD38? 80410014  lwz     r2, 0x14(r1)
+FFE6AD3C? 48000E11  bl      glue_LMGetExpandMem
+FFE6AD40? 80410014  lwz     r2, 0x14(r1)
+FFE6AD44? 80630210  lwz     r3, 0x210(r3)
+FFE6AD48? 80630000  lwz     r3, 0x0(r3)
+FFE6AD4C? 93C30024  stw     r30, 0x24(r3)
+FFE6AD50? 48000E21  bl      glue_SynchronizeIO
+FFE6AD54? 80410014  lwz     r2, 0x14(r1)
+FFE6AD58? 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6AD5C? 387F0000  addi    r3, r31, 0x0
+FFE6AD60? 80840000  lwz     r4, 0x0(r4)
+FFE6AD64? 80A40000  lwz     r5, 0x0(r4)
+FFE6AD68? 54A50524  rlwinm  r5, r5, 0, 20, 18
+FFE6AD6C? 90A40000  stw     r5, 0x0(r4)
+FFE6AD70? 81810058  lwz     r12, 0x58(r1)
+FFE6AD74? 30210050  addic   r1, r1, 0x50
+FFE6AD78? 7D8803A6  mtspr   LR, r12
+FFE6AD7C? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE6AD80? 4E800020  blr
+
+CreateGCLevel7Tree:
+FFE6AD84* 9421FFB0  stwu    r1, -0x50(r1)
+FFE6AD88* 7C0802A6  mfspr   r0, LR
+FFE6AD8C* 30610038  addic   r3, r1, 0x38
+FFE6AD90* 90010058  stw     r0, 0x58(r1)
+FFE6AD94* 48000E01  bl      glue_CreateInterruptSourceTree
+FFE6AD98* 80410014  lwz     r2, 0x14(r1)
+FFE6AD9C* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6ADA0* 30C1003C  addic   r6, r1, 0x3C
+FFE6ADA4* 38800001  li      r4, 0x1
+FFE6ADA8* 38A00001  li      r5, 0x1
+FFE6ADAC* 40820098  bne     loc_FFE6AE44
+FFE6ADB0* 80610038  lwz     r3, 0x38(r1)
+FFE6ADB4* 38E00000  li      r7, 0x0
+FFE6ADB8* 48000CBD  bl      glue_CreateInterruptSet
+FFE6ADBC* 80410014  lwz     r2, 0x14(r1)
+FFE6ADC0* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6ADC4* 30C10040  addic   r6, r1, 0x40
+FFE6ADC8* 38800001  li      r4, 0x1
+FFE6ADCC* 38A00001  li      r5, 0x1
+FFE6ADD0* 40820074  bne     loc_FFE6AE44
+FFE6ADD4* 8061003C  lwz     r3, 0x3C(r1)
+FFE6ADD8* 38E00000  li      r7, 0x0
+FFE6ADDC* 48000C99  bl      glue_CreateInterruptSet
+FFE6ADE0* 80410014  lwz     r2, 0x14(r1)
+FFE6ADE4* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6ADE8* 80C20160  lwz     r6, 0x160(r2)                      ; TOC[+352] &data+318
+FFE6ADEC* 38800001  li      r4, 0x1
+FFE6ADF0* 38A00000  li      r5, 0x0
+FFE6ADF4* 40820050  bne     loc_FFE6AE44
+FFE6ADF8* 8061003C  lwz     r3, 0x3C(r1)
+FFE6ADFC* 38E00000  li      r7, 0x0
+FFE6AE00* 39000000  li      r8, 0x0
+FFE6AE04* 48000C95  bl      glue_InstallInterruptFunctions
+FFE6AE08* 80410014  lwz     r2, 0x14(r1)
+FFE6AE0C* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6AE10* 80C20164  lwz     r6, 0x164(r2)                      ; TOC[+356] &data+324
+FFE6AE14* 80E20168  lwz     r7, 0x168(r2)                      ; TOC[+360] &data+330
+FFE6AE18* 38800001  li      r4, 0x1
+FFE6AE1C* 40820028  bne     loc_FFE6AE44
+FFE6AE20* 80610040  lwz     r3, 0x40(r1)
+FFE6AE24* 38A00014  li      r5, 0x14
+FFE6AE28* 4BFFD099  bl      InitLeafNode
+FFE6AE2C* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6AE30* 38800007  li      r4, 0x7
+FFE6AE34* 40820010  bne     loc_FFE6AE44
+FFE6AE38* 80610038  lwz     r3, 0x38(r1)
+FFE6AE3C* 48000D7D  bl      glue_ActivateInterruptSourceTree
+FFE6AE40* 80410014  lwz     r2, 0x14(r1)
+loc_FFE6AE44:
+FFE6AE44* 81810058  lwz     r12, 0x58(r1)
+FFE6AE48* 30210050  addic   r1, r1, 0x50
+FFE6AE4C* 7D8803A6  mtspr   LR, r12
+FFE6AE50* 4E800020  blr
+
+__init:
+FFE6AE54* 7C0802A6  mfspr   r0, LR
+FFE6AE58* 93E1FFFC  stw     r31, -0x4(r1)
+FFE6AE5C* 90010008  stw     r0, 0x8(r1)
+FFE6AE60* 9421FFB0  stwu    r1, -0x50(r1)
+FFE6AE64* 38600004  li      r3, 0x4
+FFE6AE68* 38800001  li      r4, 0x1
+FFE6AE6C* 48000AA5  bl      glue_PoolAllocateResident
+FFE6AE70* 80410014  lwz     r2, 0x14(r1)
+FFE6AE74* 80820058  lwz     r4, 0x58(r2)                       ; TOC[+88] interruptTreeTNTGlobals
+FFE6AE78* 38A00000  li      r5, 0x0
+FFE6AE7C* 90640000  stw     r3, 0x0(r4)
+FFE6AE80* 90A30000  stw     r5, 0x0(r3)
+FFE6AE84* 48000129  bl      sub_FFE6AFAC
+FFE6AE88* 4FFFFB82  crmove  crb31, crb31
+FFE6AE8C* 4BFFD1D1  bl      CreateGCLevel1Tree
+FFE6AE90* 7C7F0735  extsh.  r31, r3
+FFE6AE94* 4082003C  bne     loc_FFE6AED0
+FFE6AE98* 4BFFE441  bl      CreateGCLevel2Tree
+FFE6AE9C* 7C7F0735  extsh.  r31, r3
+FFE6AEA0* 40820030  bne     loc_FFE6AED0
+FFE6AEA4* 4BFFE7E9  bl      CreateGCLevel3Tree
+FFE6AEA8* 7C7F0735  extsh.  r31, r3
+FFE6AEAC* 40820024  bne     loc_FFE6AED0
+FFE6AEB0* 4BFFFB4D  bl      CreateGCLevel4Tree
+FFE6AEB4* 7C7F0735  extsh.  r31, r3
+FFE6AEB8* 40820018  bne     loc_FFE6AED0
+FFE6AEBC* 4BFFFEC9  bl      CreateGCLevel7Tree
+FFE6AEC0* 7C7F0735  extsh.  r31, r3
+FFE6AEC4* 4082000C  bne     loc_FFE6AED0
+FFE6AEC8* 4800084D  bl      sub_FFE6B714
+FFE6AECC* 4FFFFB82  crmove  crb31, crb31
+loc_FFE6AED0:
+FFE6AED0* 387F0000  addi    r3, r31, 0x0
+FFE6AED4* 81810058  lwz     r12, 0x58(r1)
+FFE6AED8* 83E1004C  lwz     r31, 0x4C(r1)
+FFE6AEDC* 7D8803A6  mtspr   LR, r12
+FFE6AEE0* 30210050  addic   r1, r1, 0x50
+FFE6AEE4* 4E800020  blr
+
+sub_FFE6AEE8:
+FFE6AEE8* BFC1FFF8  stmw    r30, -0x8(r1)
+FFE6AEEC* 7C0802A6  mfspr   r0, LR
+FFE6AEF0* 83C20000  lwz     r30, 0x0(r2)                       ; TOC[+0] &code+3D20
+FFE6AEF4* 90010008  stw     r0, 0x8(r1)
+FFE6AEF8* 9421FF80  stwu    r1, -0x80(r1)
+FFE6AEFC* 33E10038  addic   r31, r1, 0x38
+FFE6AF00* 38DF0000  addi    r6, r31, 0x0
+FFE6AF04* 38800010  li      r4, 0x10
+FFE6AF08* 90810038  stw     r4, 0x38(r1)
+FFE6AF0C* 9061006C  stw     r3, 0x6C(r1)
+FFE6AF10* 389E0000  addi    r4, r30, 0x0
+FFE6AF14* 30A1003C  addic   r5, r1, 0x3C
+FFE6AF18* 480009B1  bl      glue_RegistryPropertyGet
+FFE6AF1C* 80410014  lwz     r2, 0x14(r1)
+FFE6AF20* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6AF24* 38600020  li      r3, 0x20
+FFE6AF28* 30A1004C  addic   r5, r1, 0x4C
+FFE6AF2C* 38DF0000  addi    r6, r31, 0x0
+FFE6AF30* 41820068  beq     loc_FFE6AF98
+FFE6AF34* 90610038  stw     r3, 0x38(r1)
+FFE6AF38* 8061006C  lwz     r3, 0x6C(r1)
+FFE6AF3C* 309E000D  addic   r4, r30, 0xD
+FFE6AF40* 48000989  bl      glue_RegistryPropertyGet
+FFE6AF44* 80410014  lwz     r2, 0x14(r1)
+FFE6AF48* 2C030000  cmpwi   cr0, r3, 0x0
+FFE6AF4C* 80610038  lwz     r3, 0x38(r1)
+FFE6AF50* 5465E8FE  srwi    r5, r3, 3
+FFE6AF54* 28850000  cmplwi  cr1, r5, 0x0
+FFE6AF58* 5466F87A  rlwinm  r6, r3, 31, 1, 29
+FFE6AF5C* 4082003C  bne     loc_FFE6AF98
+FFE6AF60* 8061006C  lwz     r3, 0x6C(r1)
+FFE6AF64* 389E0000  addi    r4, r30, 0x0
+FFE6AF68* 40850024  ble     cr1, loc_FFE6AF8C
+FFE6AF6C* 3125FFFF  addic   r9, r5, -0x1
+FFE6AF70* 28090000  cmplwi  cr0, r9, 0x0
+FFE6AF74* 7CA903A6  mtspr   CTR, r5
+FFE6AF78* 31210044  addic   r9, r1, 0x44
+loc_FFE6AF7C:
+FFE6AF7C* 84A90008  lwzu    r5, 0x8(r9)
+FFE6AF80* 3CA5F300  addis   r5, r5, 0xF300
+FFE6AF84* 94BF0004  stwu    r5, 0x4(r31)
+FFE6AF88* 4000FFF4  bdnzf   lt, loc_FFE6AF7C
+loc_FFE6AF8C:
+FFE6AF8C* 30A1003C  addic   r5, r1, 0x3C
+FFE6AF90* 4800095D  bl      glue_RegistryPropertyCreate
+FFE6AF94* 80410014  lwz     r2, 0x14(r1)
+loc_FFE6AF98:
+FFE6AF98* 81810088  lwz     r12, 0x88(r1)
+FFE6AF9C* 30210080  addic   r1, r1, 0x80
+FFE6AFA0* 7D8803A6  mtspr   LR, r12
+FFE6AFA4* BBC1FFF8  lmw     r30, -0x8(r1)
+FFE6AFA8* 4E800020  blr
+
+sub_FFE6AFAC:
+FFE6AFAC* 7C0802A6  mfspr   r0, LR
+FFE6AFB0* 7D800026  mfcr    r12
+FFE6AFB4* BEA1FFD4  stmw    r21, -0x2C(r1)
+FFE6AFB8* 91810004  stw     r12, 0x4(r1)
+FFE6AFBC* 90010008  stw     r0, 0x8(r1)
+FFE6AFC0* 9421FF20  stwu    r1, -0xE0(r1)
+FFE6AFC4* 38600C00  li      r3, 0xC00
+FFE6AFC8* 38800001  li      r4, 0x1
+FFE6AFCC* 48000945  bl      glue_PoolAllocateResident
+FFE6AFD0* 80410014  lwz     r2, 0x14(r1)
+FFE6AFD4* 83220010  lwz     r25, 0x10(r2)                      ; TOC[+16] interruptableDeviceTable
+FFE6AFD8* 90790000  stw     r3, 0x0(r25)
+FFE6AFDC* 3061003A  addic   r3, r1, 0x3A
+FFE6AFE0* 48000955  bl      glue_RegistryEntryIterateCreate
+FFE6AFE4* 80410014  lwz     r2, 0x14(r1)
+FFE6AFE8* 7C600735  extsh.  r0, r3
+FFE6AFEC* 408201D0  bne     loc_FFE6B1BC
+FFE6AFF0* 3BA00000  li      r29, 0x0
+FFE6AFF4* 4C800000  mcrf    cr1, cr0
+FFE6AFF8* 9BA10038  stb     r29, 0x38(r1)
+FFE6AFFC* 40860198  bne     cr1, loc_FFE6B194
+FFE6B000* 33E10064  addic   r31, r1, 0x64
+FFE6B004* 33C10084  addic   r30, r1, 0x84
+FFE6B008* 3B800020  li      r28, 0x20
+FFE6B00C* 83020000  lwz     r24, 0x0(r2)                       ; TOC[+0] &code+3D20
+FFE6B010* 3AA0000C  li      r21, 0xC
+FFE6B014* 48000008  b       loc_FFE6B01C
+loc_FFE6B018:
+FFE6B018* 4092017C  bne     cr4, loc_FFE6B194
+loc_FFE6B01C:
+FFE6B01C* 3061003A  addic   r3, r1, 0x3A
+FFE6B020* 38800001  li      r4, 0x1
+FFE6B024* 30A10054  addic   r5, r1, 0x54
+FFE6B028* 30C10038  addic   r6, r1, 0x38
+FFE6B02C* 4800092D  bl      glue_RegistryEntryIterate
+FFE6B030* 80410014  lwz     r2, 0x14(r1)
+FFE6B034* 7C7A0735  extsh.  r26, r3
+FFE6B038* 88010038  lbz     r0, 0x38(r1)
+FFE6B03C* 2C800000  cmpwi   cr1, r0, 0x0
+FFE6B040* 40820144  bne     loc_FFE6B184
+FFE6B044* 30C10040  addic   r6, r1, 0x40
+FFE6B048* 30610054  addic   r3, r1, 0x54
+FFE6B04C* 40860138  bne     cr1, loc_FFE6B184
+FFE6B050* 93810040  stw     r28, 0x40(r1)
+FFE6B054* 9BA10064  stb     r29, 0x64(r1)
+FFE6B058* 30980011  addic   r4, r24, 0x11
+FFE6B05C* 30A10064  addic   r5, r1, 0x64
+FFE6B060* 48000869  bl      glue_RegistryPropertyGet
+FFE6B064* 80410014  lwz     r2, 0x14(r1)
+FFE6B068* 2C830000  cmpwi   cr1, r3, 0x0
+FFE6B06C* 30C10040  addic   r6, r1, 0x40
+FFE6B070* 30610054  addic   r3, r1, 0x54
+FFE6B074* 4086000C  bne     cr1, loc_FFE6B080
+FFE6B078* 80A10040  lwz     r5, 0x40(r1)
+FFE6B07C* 7FBF29AE  stbx    r29, r31, r5
+loc_FFE6B080:
+FFE6B080* 93810040  stw     r28, 0x40(r1)
+FFE6B084* 9BA10084  stb     r29, 0x84(r1)
+FFE6B088* 30980016  addic   r4, r24, 0x16
+FFE6B08C* 30A10084  addic   r5, r1, 0x84
+FFE6B090* 48000839  bl      glue_RegistryPropertyGet
+FFE6B094* 80410014  lwz     r2, 0x14(r1)
+FFE6B098* 2C830000  cmpwi   cr1, r3, 0x0
+FFE6B09C* 92A10044  stw     r21, 0x44(r1)
+FFE6B0A0* 30A10048  addic   r5, r1, 0x48
+FFE6B0A4* 30C10044  addic   r6, r1, 0x44
+FFE6B0A8* 4086000C  bne     cr1, loc_FFE6B0B4
+FFE6B0AC* 80E10040  lwz     r7, 0x40(r1)
+FFE6B0B0* 7FBE39AE  stbx    r29, r30, r7
+loc_FFE6B0B4:
+FFE6B0B4* 30610054  addic   r3, r1, 0x54
+FFE6B0B8* 30980022  addic   r4, r24, 0x22
+FFE6B0BC* 4800080D  bl      glue_RegistryPropertyGet
+FFE6B0C0* 80410014  lwz     r2, 0x14(r1)
+FFE6B0C4* 80010044  lwz     r0, 0x44(r1)
+FFE6B0C8* 2E830000  cmpwi   cr5, r3, 0x0
+FFE6B0CC* 541BF0BE  srwi    r27, r0, 2
+FFE6B0D0* 289B0000  cmplwi  cr1, r27, 0x0
+FFE6B0D4* 3AE00000  li      r23, 0x0
+FFE6B0D8* 409600AC  bne     cr5, loc_FFE6B184
+FFE6B0DC* 2E1A0000  cmpwi   cr4, r26, 0x0
+FFE6B0E0* 40850098  ble     cr1, loc_FFE6B178
+FFE6B0E4* 30610054  addic   r3, r1, 0x54
+FFE6B0E8* 40920090  bne     cr4, loc_FFE6B178
+FFE6B0EC* 32C10044  addic   r22, r1, 0x44
+FFE6B0F0* 84160004  lwzu    r0, 0x4(r22)
+FFE6B0F4* 80B90000  lwz     r5, 0x0(r25)
+FFE6B0F8* 5406083C  slwi    r6, r0, 1
+FFE6B0FC* 7CC03014  addc    r6, r0, r6
+FFE6B100* 54C62834  slwi    r6, r6, 5
+FFE6B104* 7C05312E  stwx    r0, r5, r6
+FFE6B108* 7F453014  addc    r26, r5, r6
+FFE6B10C* 92FA0004  stw     r23, 0x4(r26)
+FFE6B110* 309A0010  addic   r4, r26, 0x10
+loc_FFE6B114:
+FFE6B114* 48000869  bl      glue_RegistryEntryIDCopy
+FFE6B118* 80410014  lwz     r2, 0x14(r1)
+FFE6B11C* 307A0020  addic   r3, r26, 0x20
+FFE6B120* 30810064  addic   r4, r1, 0x64
+FFE6B124* 4800087D  bl      glue_CStrCopy
+FFE6B128* 80410014  lwz     r2, 0x14(r1)
+FFE6B12C* 307A0040  addic   r3, r26, 0x40
+FFE6B130* 30810084  addic   r4, r1, 0x84
+FFE6B134* 4800086D  bl      glue_CStrCopy
+FFE6B138* 80410014  lwz     r2, 0x14(r1)
+FFE6B13C* 32F70001  addic   r23, r23, 0x1
+FFE6B140* 7C97D840  cmplw   cr1, r23, r27
+FFE6B144* 80D90000  lwz     r6, 0x0(r25)
+FFE6B148* 30610054  addic   r3, r1, 0x54
+FFE6B14C* 4084002C  bge     cr1, loc_FFE6B178
+FFE6B150* 40920028  bne     cr4, loc_FFE6B178
+FFE6B154* 84160004  lwzu    r0, 0x4(r22)
+FFE6B158* 5405083C  slwi    r5, r0, 1
+FFE6B15C* 7CA02814  addc    r5, r0, r5
+FFE6B160* 54A52834  slwi    r5, r5, 5
+FFE6B164* 7F462814  addc    r26, r6, r5
+FFE6B168* 7C06292E  stwx    r0, r6, r5
+FFE6B16C* 92FA0004  stw     r23, 0x4(r26)
+FFE6B170* 309A0010  addic   r4, r26, 0x10
+FFE6B174* 4BFFFFA0  b       loc_FFE6B114
+loc_FFE6B178:
+FFE6B178* 30610054  addic   r3, r1, 0x54
+FFE6B17C* 4BFFFD6D  bl      sub_FFE6AEE8
+FFE6B180* 48000008  b       loc_FFE6B188
+loc_FFE6B184:
+FFE6B184* 2E1A0000  cmpwi   cr4, r26, 0x0
+loc_FFE6B188:
+FFE6B188* 88010038  lbz     r0, 0x38(r1)
+FFE6B18C* 2C800000  cmpwi   cr1, r0, 0x0
+FFE6B190* 4186FE88  beq     cr1, loc_FFE6B018
+loc_FFE6B194:
+FFE6B194* 3061003A  addic   r3, r1, 0x3A
+FFE6B198* 4800082D  bl      glue_RegistryEntryIterateDispose
+FFE6B19C* 80410014  lwz     r2, 0x14(r1)
+FFE6B1A0* 818100E4  lwz     r12, 0xE4(r1)
+FFE6B1A4* 800100E8  lwz     r0, 0xE8(r1)
+FFE6B1A8* 7D808120  mtcrf   0x08, r12
+FFE6B1AC* 302100E0  addic   r1, r1, 0xE0
+FFE6B1B0* 7C0803A6  mtspr   LR, r0
+FFE6B1B4* BAA1FFD4  lmw     r21, -0x2C(r1)
+FFE6B1B8* 4E800020  blr
+loc_FFE6B1BC:
+FFE6B1BC  818100E8  lwz     r12, 0xE8(r1)
+FFE6B1C0  832100C4  lwz     r25, 0xC4(r1)
+FFE6B1C4  7D8803A6  mtspr   LR, r12
+FFE6B1C8  302100E0  addic   r1, r1, 0xE0
+FFE6B1CC  4E800020  blr
+FFE6B1D0? 9421FFB0  stwu    r1, -0x50(r1)
+FFE6B1D4? 9081006C  stw     r4, 0x6C(r1)
+FFE6B1D8? 7C0802A6  mfspr   r0, LR
+FFE6B1DC? 90610068  stw     r3, 0x68(r1)
+FFE6B1E0? 90010058  stw     r0, 0x58(r1)
+FFE6B1E4? 30810040  addic   r4, r1, 0x40
+FFE6B1E8? 48000801  bl      glue_LookupParentMember
+FFE6B1EC? 80410014  lwz     r2, 0x14(r1)
+FFE6B1F0? 80610040  lwz     r3, 0x40(r1)
+FFE6B1F4? 80810044  lwz     r4, 0x44(r1)
+FFE6B1F8? 30A10038  addic   r5, r1, 0x38
+FFE6B1FC? 30E1003C  addic   r7, r1, 0x3C
+FFE6B200? 38C00000  li      r6, 0x0
+FFE6B204? 39000000  li      r8, 0x0
+FFE6B208? 48000805  bl      glue_GetInterruptFunctions
+FFE6B20C? 80410014  lwz     r2, 0x14(r1)
+FFE6B210? 80610038  lwz     r3, 0x38(r1)
+FFE6B214? 8081006C  lwz     r4, 0x6C(r1)
+FFE6B218? 80630010  lwz     r3, 0x10(r3)
+FFE6B21C? 38000001  li      r0, 0x1
+FFE6B220? 7C0321AE  stbx    r0, r3, r4
+FFE6B224? 38A00000  li      r5, 0x0
+FFE6B228? 8161003C  lwz     r11, 0x3C(r1)
+FFE6B22C? 80610040  lwz     r3, 0x40(r1)
+FFE6B230? 80810044  lwz     r4, 0x44(r1)
+FFE6B234? 480007FD  bl      sub_FFE6BA30
+FFE6B238? 80410014  lwz     r2, 0x14(r1)
+FFE6B23C? 81810058  lwz     r12, 0x58(r1)
+FFE6B240? 30210050  addic   r1, r1, 0x50
+FFE6B244? 7D8803A6  mtspr   LR, r12
+FFE6B248? 4E800020  blr
+FFE6B24C? 9421FFB0  stwu    r1, -0x50(r1)
+FFE6B250? 9081006C  stw     r4, 0x6C(r1)
+FFE6B254? 7C0802A6  mfspr   r0, LR
+FFE6B258? 90610068  stw     r3, 0x68(r1)
+FFE6B25C? 90010058  stw     r0, 0x58(r1)
+FFE6B260? 3081003C  addic   r4, r1, 0x3C
+FFE6B264? 48000785  bl      glue_LookupParentMember
+FFE6B268? 80410014  lwz     r2, 0x14(r1)
+FFE6B26C? 8061003C  lwz     r3, 0x3C(r1)
+FFE6B270? 80810040  lwz     r4, 0x40(r1)
+FFE6B274? 30A10038  addic   r5, r1, 0x38
+FFE6B278? 38C00000  li      r6, 0x0
+FFE6B27C? 38E00000  li      r7, 0x0
+FFE6B280? 39000000  li      r8, 0x0
+FFE6B284? 48000789  bl      glue_GetInterruptFunctions
+FFE6B288? 80410014  lwz     r2, 0x14(r1)
+FFE6B28C? 80610038  lwz     r3, 0x38(r1)
+FFE6B290? 80A1006C  lwz     r5, 0x6C(r1)
+FFE6B294? 80630010  lwz     r3, 0x10(r3)
+FFE6B298? 38000000  li      r0, 0x0
+FFE6B29C? 7C8328AE  lbzx    r4, r3, r5
+FFE6B2A0? 7C0329AE  stbx    r0, r3, r5
+FFE6B2A4? 2C040000  cmpwi   cr0, r4, 0x0
+FFE6B2A8? 38600000  li      r3, 0x0
+FFE6B2AC? 41820008  beq     loc_FFE6B2B4
+FFE6B2B0? 38600001  li      r3, 0x1
+loc_FFE6B2B4:
+FFE6B2B4? 81810058  lwz     r12, 0x58(r1)
+FFE6B2B8? 30210050  addic   r1, r1, 0x50
+FFE6B2BC? 7D8803A6  mtspr   LR, r12
+FFE6B2C0? 4E800020  blr
+FFE6B2C4? 81050008  lwz     r8, 0x8(r5)
+FFE6B2C8? 80850000  lwz     r4, 0x0(r5)
+FFE6B2CC? 80E5000C  lwz     r7, 0xC(r5)
+FFE6B2D0? 2C080000  cmpwi   cr0, r8, 0x0
+FFE6B2D4? 3860FFFF  li      r3, -0x1
+FFE6B2D8? 7C843040  cmplw   cr1, r4, r6
+FFE6B2DC? 38070000  addi    r0, r7, 0x0
+FFE6B2E0? 38870000  addi    r4, r7, 0x0
+FFE6B2E4? 41820008  beq     loc_FFE6B2EC
+FFE6B2E8? 41860010  beq     cr1, loc_FFE6B2F8
+loc_FFE6B2EC:
+FFE6B2EC? 39000000  li      r8, 0x0
+FFE6B2F0? 90C50000  stw     r6, 0x0(r5)
+FFE6B2F4? 91050008  stw     r8, 0x8(r5)
+loc_FFE6B2F8:
+FFE6B2F8? 7C083840  cmplw   r8, r7
+FFE6B2FC? 38C00000  li      r6, 0x0
+FFE6B300? 39200001  li      r9, 0x1
+FFE6B304? 4080006C  bge     loc_FFE6B370
+FFE6B308? 80E50004  lwz     r7, 0x4(r5)
+FFE6B30C? 81050008  lwz     r8, 0x8(r5)
+FFE6B310? 30E70001  addic   r7, r7, 0x1
+FFE6B314? 7F072040  cmplw   cr6, r7, r4
+FFE6B318? 31080001  addic   r8, r8, 0x1
+FFE6B31C? 90E50004  stw     r7, 0x4(r5)
+FFE6B320? 91050008  stw     r8, 0x8(r5)
+FFE6B324? 80850010  lwz     r4, 0x10(r5)
+loc_FFE6B328:
+FFE6B328? 40990008  ble     cr6, loc_FFE6B330
+FFE6B32C? 91250004  stw     r9, 0x4(r5)
+loc_FFE6B330:
+FFE6B330? 80E50004  lwz     r7, 0x4(r5)
+FFE6B334? 7C8438AE  lbzx    r4, r4, r7
+FFE6B338? 31470001  addic   r10, r7, 0x1
+FFE6B33C? 2C840000  cmpwi   cr1, r4, 0x0
+FFE6B340? 40860040  bne     cr1, loc_FFE6B380
+FFE6B344? 8085000C  lwz     r4, 0xC(r5)
+FFE6B348? 7C082040  cmplw   r8, r4
+FFE6B34C? 38E40000  addi    r7, r4, 0x0
+FFE6B350? 7F0A3840  cmplw   cr6, r10, r7
+FFE6B354? 4080001C  bge     loc_FFE6B370
+FFE6B358? 80850008  lwz     r4, 0x8(r5)
+FFE6B35C? 91450004  stw     r10, 0x4(r5)
+FFE6B360? 31040001  addic   r8, r4, 0x1
+FFE6B364? 91050008  stw     r8, 0x8(r5)
+FFE6B368? 80850010  lwz     r4, 0x10(r5)
+FFE6B36C? 4BFFFFBC  b       loc_FFE6B328
+loc_FFE6B370:
+FFE6B370? 7C080040  cmplw   r8, r0
+FFE6B374? 41800008  blt     loc_FFE6B37C
+FFE6B378? 90C50008  stw     r6, 0x8(r5)
+loc_FFE6B37C:
+FFE6B37C? 4E800020  blr
+loc_FFE6B380:
+FFE6B380? 38670000  addi    r3, r7, 0x0
+FFE6B384? 4BFFFFEC  b       loc_FFE6B370
+
+sub_FFE6B388:
+FFE6B388  BF21FFE4  stmw    r25, -0x1C(r1)
+FFE6B38C  3BE40000  addi    r31, r4, 0x0
+FFE6B390  7C0802A6  mfspr   r0, LR
+FFE6B394  3BA30000  addi    r29, r3, 0x0
+FFE6B398  90010008  stw     r0, 0x8(r1)
+FFE6B39C  9421FF80  stwu    r1, -0x80(r1)
+FFE6B3A0  90C100A4  stw     r6, 0xA4(r1)
+FFE6B3A4  3B850000  addi    r28, r5, 0x0
+FFE6B3A8  387C0000  addi    r3, r28, 0x0
+FFE6B3AC  90A100A0  stw     r5, 0xA0(r1)
+FFE6B3B0  38860000  addi    r4, r6, 0x0
+FFE6B3B4  30C10038  addic   r6, r1, 0x38
+FFE6B3B8  90810058  stw     r4, 0x58(r1)
+FFE6B3BC  38BD0000  addi    r5, r29, 0x0
+FFE6B3C0  38E00002  li      r7, 0x2
+FFE6B3C4  480006B1  bl      glue_CreateInterruptSet
+FFE6B3C8  80410014  lwz     r2, 0x14(r1)
+FFE6B3CC  7C7E0735  extsh.  r30, r3
+FFE6B3D0  38600014  li      r3, 0x14
+FFE6B3D4  38800001  li      r4, 0x1
+FFE6B3D8  40820140  bne     loc_FFE6B518
+FFE6B3DC  3BC0FFFF  li      r30, -0x1
+FFE6B3E0  48000531  bl      glue_PoolAllocateResident
+FFE6B3E4  80410014  lwz     r2, 0x14(r1)
+FFE6B3E8  2C030000  cmpwi   cr0, r3, 0x0
+FFE6B3EC  38800001  li      r4, 0x1
+FFE6B3F0  3B630000  addi    r27, r3, 0x0
+FFE6B3F4  307D0001  addic   r3, r29, 0x1
+FFE6B3F8  41820120  beq     loc_FFE6B518
+FFE6B3FC  48000515  bl      glue_PoolAllocateResident
+FFE6B400  80410014  lwz     r2, 0x14(r1)
+FFE6B404  2C030000  cmpwi   cr0, r3, 0x0
+FFE6B408  80810058  lwz     r4, 0x58(r1)
+FFE6B40C  38BB0000  addi    r5, r27, 0x0
+FFE6B410  907B0010  stw     r3, 0x10(r27)
+FFE6B414  80C20034  lwz     r6, 0x34(r2)                       ; TOC[+52] &data+C
+FFE6B418  38E00000  li      r7, 0x0
+FFE6B41C  39000000  li      r8, 0x0
+FFE6B420  418200F8  beq     loc_FFE6B518
+FFE6B424  93BB000C  stw     r29, 0xC(r27)
+FFE6B428  387C0000  addi    r3, r28, 0x0
+FFE6B42C  4800066D  bl      glue_InstallInterruptFunctions
+FFE6B430  80410014  lwz     r2, 0x14(r1)
+FFE6B434  7C7E0735  extsh.  r30, r3
+FFE6B438  2C9F0000  cmpwi   cr1, r31, 0x0
+FFE6B43C  39000001  li      r8, 0x1
+FFE6B440  408200D8  bne     loc_FFE6B518
+FFE6B444  9101003C  stw     r8, 0x3C(r1)
+FFE6B448  418600D0  beq     cr1, loc_FFE6B518
+FFE6B44C  8362003C  lwz     r27, 0x3C(r2)                      ; TOC[+60] &data+18
+FFE6B450  83820040  lwz     r28, 0x40(r2)                      ; TOC[+64] &data+24
+FFE6B454  3BA00000  li      r29, 0x0
+FFE6B458  83420000  lwz     r26, 0x0(r2)                       ; TOC[+0] &code+3D20
+FFE6B45C  48000008  b       loc_FFE6B464
+loc_FFE6B460:
+FFE6B460  418200B8  beq     loc_FFE6B518
+loc_FFE6B464:
+FFE6B464  8081003C  lwz     r4, 0x3C(r1)
+FFE6B468  80610038  lwz     r3, 0x38(r1)
+FFE6B46C  38A00000  li      r5, 0x0
+FFE6B470  38C00000  li      r6, 0x0
+FFE6B474  38FB0000  addi    r7, r27, 0x0
+FFE6B478  391C0000  addi    r8, r28, 0x0
+FFE6B47C  4800061D  bl      glue_InstallInterruptFunctions
+FFE6B480  80410014  lwz     r2, 0x14(r1)
+FFE6B484  7C7E0735  extsh.  r30, r3
+FFE6B488  333F0006  addic   r25, r31, 0x6
+FFE6B48C  81010038  lwz     r8, 0x38(r1)
+FFE6B490  8121003C  lwz     r9, 0x3C(r1)
+FFE6B494  40820078  bne     loc_FFE6B50C
+FFE6B498  91010040  stw     r8, 0x40(r1)
+FFE6B49C  91210044  stw     r9, 0x44(r1)
+FFE6B4A0  93A10050  stw     r29, 0x50(r1)
+FFE6B4A4  93A10054  stw     r29, 0x54(r1)
+FFE6B4A8  93A10048  stw     r29, 0x48(r1)
+FFE6B4AC  93A1004C  stw     r29, 0x4C(r1)
+FFE6B4B0  30A10040  addic   r5, r1, 0x40
+FFE6B4B4  38790000  addi    r3, r25, 0x0
+FFE6B4B8  309A0032  addic   r4, r26, 0x32
+FFE6B4BC  38C00018  li      r6, 0x18
+FFE6B4C0  4800042D  bl      glue_RegistryPropertyCreate
+FFE6B4C4  80410014  lwz     r2, 0x14(r1)
+FFE6B4C8  7C7E0735  extsh.  r30, r3
+FFE6B4CC  40820040  bne     loc_FFE6B50C
+FFE6B4D0  891F0004  lbz     r8, 0x4(r31)
+FFE6B4D4  38790000  addi    r3, r25, 0x0
+FFE6B4D8  2C880000  cmpwi   cr1, r8, 0x0
+FFE6B4DC  80810038  lwz     r4, 0x38(r1)
+FFE6B4E0  80A1003C  lwz     r5, 0x3C(r1)
+FFE6B4E4  4186000C  beq     cr1, loc_FFE6B4F0
+FFE6B4E8  48000049  bl      sub_FFE6B530
+FFE6B4EC  7C7E0734  extsh   r30, r3
+loc_FFE6B4F0:
+FFE6B4F0  8101003C  lwz     r8, 0x3C(r1)
+FFE6B4F4  387F0000  addi    r3, r31, 0x0
+FFE6B4F8  31080001  addic   r8, r8, 0x1
+FFE6B4FC  9101003C  stw     r8, 0x3C(r1)
+FFE6B500  83FF0000  lwz     r31, 0x0(r31)
+FFE6B504  480005B9  bl      glue_PoolDeallocate
+FFE6B508  80410014  lwz     r2, 0x14(r1)
+loc_FFE6B50C:
+FFE6B50C  2C1F0000  cmpwi   cr0, r31, 0x0
+FFE6B510  2C9E0000  cmpwi   cr1, r30, 0x0
+FFE6B514  4186FF4C  beq     cr1, loc_FFE6B460
+loc_FFE6B518:
+FFE6B518  387E0000  addi    r3, r30, 0x0
+FFE6B51C  81810088  lwz     r12, 0x88(r1)
+FFE6B520  30210080  addic   r1, r1, 0x80
+FFE6B524  7D8803A6  mtspr   LR, r12
+FFE6B528  BB21FFE4  lmw     r25, -0x1C(r1)
+FFE6B52C  4E800020  blr
+
+sub_FFE6B530:
+FFE6B530  7C0802A6  mfspr   r0, LR
+FFE6B534  BEC1FFD8  stmw    r22, -0x28(r1)
+FFE6B538  90010008  stw     r0, 0x8(r1)
+FFE6B53C  9421FF30  stwu    r1, -0xD0(r1)
+FFE6B540  90610094  stw     r3, 0x94(r1)
+FFE6B544  908100EC  stw     r4, 0xEC(r1)
+FFE6B548  90A100F0  stw     r5, 0xF0(r1)
+FFE6B54C  3061003A  addic   r3, r1, 0x3A
+FFE6B550  480003E5  bl      glue_RegistryEntryIterateCreate
+FFE6B554  80410014  lwz     r2, 0x14(r1)
+FFE6B558  7C760735  extsh.  r22, r3
+FFE6B55C  80810094  lwz     r4, 0x94(r1)
+FFE6B560  3061003A  addic   r3, r1, 0x3A
+FFE6B564  4082018C  bne     loc_FFE6B6F0
+FFE6B568  48000579  bl      glue_RegistryEntryIterateSet
+FFE6B56C  80410014  lwz     r2, 0x14(r1)
+FFE6B570  7C760735  extsh.  r22, r3
+FFE6B574  3BE00000  li      r31, 0x0
+FFE6B578  3B600004  li      r27, 0x4
+FFE6B57C  4C800000  mcrf    cr1, cr0
+FFE6B580  40820170  bne     loc_FFE6B6F0
+FFE6B584  9BE10038  stb     r31, 0x38(r1)
+FFE6B588  3BA00000  li      r29, 0x0
+FFE6B58C  3BC00000  li      r30, 0x0
+FFE6B590  40860140  bne     cr1, loc_FFE6B6D0
+FFE6B594  33810054  addic   r28, r1, 0x54
+FFE6B598  33410074  addic   r26, r1, 0x74
+FFE6B59C  3B200001  li      r25, 0x1
+FFE6B5A0  3AE00020  li      r23, 0x20
+FFE6B5A4  83020000  lwz     r24, 0x0(r2)                       ; TOC[+0] &code+3D20
+FFE6B5A8  48000008  b       loc_FFE6B5B0
+loc_FFE6B5AC:
+FFE6B5AC  40860124  bne     cr1, loc_FFE6B6D0
+loc_FFE6B5B0:
+FFE6B5B0  3061003A  addic   r3, r1, 0x3A
+FFE6B5B4  389B0000  addi    r4, r27, 0x0
+FFE6B5B8  30A10044  addic   r5, r1, 0x44
+FFE6B5BC  30C10038  addic   r6, r1, 0x38
+FFE6B5C0  48000399  bl      glue_RegistryEntryIterate
+FFE6B5C4  80410014  lwz     r2, 0x14(r1)
+FFE6B5C8  7C760735  extsh.  r22, r3
+FFE6B5CC  88010038  lbz     r0, 0x38(r1)
+FFE6B5D0  2C800000  cmpwi   cr1, r0, 0x0
+FFE6B5D4  408200EC  bne     loc_FFE6B6C0
+FFE6B5D8  30A10054  addic   r5, r1, 0x54
+FFE6B5DC  30C10040  addic   r6, r1, 0x40
+FFE6B5E0  30610044  addic   r3, r1, 0x44
+FFE6B5E4  30980011  addic   r4, r24, 0x11
+FFE6B5E8  3B600001  li      r27, 0x1
+FFE6B5EC  408600D4  bne     cr1, loc_FFE6B6C0
+FFE6B5F0  9BE10054  stb     r31, 0x54(r1)
+FFE6B5F4  92E10040  stw     r23, 0x40(r1)
+FFE6B5F8  480002D1  bl      glue_RegistryPropertyGet
+FFE6B5FC  80410014  lwz     r2, 0x14(r1)
+FFE6B600  2C830000  cmpwi   cr1, r3, 0x0
+FFE6B604  30A10074  addic   r5, r1, 0x74
+FFE6B608  30C10040  addic   r6, r1, 0x40
+FFE6B60C  30610044  addic   r3, r1, 0x44
+FFE6B610  4086000C  bne     cr1, loc_FFE6B61C
+FFE6B614  80810040  lwz     r4, 0x40(r1)
+FFE6B618  7FFC21AE  stbx    r31, r28, r4
+loc_FFE6B61C:
+FFE6B61C  9BE10074  stb     r31, 0x74(r1)
+FFE6B620  92E10040  stw     r23, 0x40(r1)
+FFE6B624  30980016  addic   r4, r24, 0x16
+FFE6B628  480002A1  bl      glue_RegistryPropertyGet
+FFE6B62C  80410014  lwz     r2, 0x14(r1)
+FFE6B630  2C830000  cmpwi   cr1, r3, 0x0
+FFE6B634  2C1D0000  cmpwi   cr0, r29, 0x0
+FFE6B638  38600018  li      r3, 0x18
+FFE6B63C  38800001  li      r4, 0x1
+FFE6B640  4086000C  bne     cr1, loc_FFE6B64C
+FFE6B644  80A10040  lwz     r5, 0x40(r1)
+FFE6B648  7FFA29AE  stbx    r31, r26, r5
+loc_FFE6B64C:
+FFE6B64C  40820018  bne     loc_FFE6B664
+FFE6B650  480002C1  bl      glue_PoolAllocateResident
+FFE6B654  80410014  lwz     r2, 0x14(r1)
+FFE6B658  90610098  stw     r3, 0x98(r1)
+FFE6B65C  3BA30000  addi    r29, r3, 0x0
+FFE6B660  48000014  b       loc_FFE6B674
+loc_FFE6B664:
+FFE6B664  480002AD  bl      glue_PoolAllocateResident
+FFE6B668  80410014  lwz     r2, 0x14(r1)
+FFE6B66C  907D0000  stw     r3, 0x0(r29)
+FFE6B670  3BA30000  addi    r29, r3, 0x0
+loc_FFE6B674:
+FFE6B674  9BFD0004  stb     r31, 0x4(r29)
+FFE6B678  30610054  addic   r3, r1, 0x54
+FFE6B67C  3098003D  addic   r4, r24, 0x3D
+FFE6B680  48000485  bl      glue_CStrCmp
+FFE6B684  80410014  lwz     r2, 0x14(r1)
+FFE6B688  7C600735  extsh.  r0, r3
+FFE6B68C  30610074  addic   r3, r1, 0x74
+FFE6B690  30980048  addic   r4, r24, 0x48
+FFE6B694  40820018  bne     loc_FFE6B6AC
+FFE6B698  4800046D  bl      glue_CStrCmp
+FFE6B69C  80410014  lwz     r2, 0x14(r1)
+FFE6B6A0  7C600735  extsh.  r0, r3
+FFE6B6A4  40820008  bne     loc_FFE6B6AC
+FFE6B6A8  9B3D0004  stb     r25, 0x4(r29)
+loc_FFE6B6AC:
+FFE6B6AC  309D0006  addic   r4, r29, 0x6
+FFE6B6B0  30610044  addic   r3, r1, 0x44
+FFE6B6B4  480002C9  bl      glue_RegistryEntryIDCopy
+FFE6B6B8  80410014  lwz     r2, 0x14(r1)
+FFE6B6BC  33DE0001  addic   r30, r30, 0x1
+loc_FFE6B6C0:
+FFE6B6C0  2C960000  cmpwi   cr1, r22, 0x0
+FFE6B6C4  88010038  lbz     r0, 0x38(r1)
+FFE6B6C8  2C000000  cmpwi   cr0, r0, 0x0
+FFE6B6CC  4182FEE0  beq     loc_FFE6B5AC
+loc_FFE6B6D0:
+FFE6B6D0  2C9E0000  cmpwi   cr1, r30, 0x0
+FFE6B6D4  387E0000  addi    r3, r30, 0x0
+FFE6B6D8  80810098  lwz     r4, 0x98(r1)
+FFE6B6DC  40850014  ble     cr1, loc_FFE6B6F0
+FFE6B6E0  80A100EC  lwz     r5, 0xEC(r1)
+FFE6B6E4  80C100F0  lwz     r6, 0xF0(r1)
+FFE6B6E8  4BFFFCA1  bl      sub_FFE6B388
+FFE6B6EC  7C760734  extsh   r22, r3
+loc_FFE6B6F0:
+FFE6B6F0  3061003A  addic   r3, r1, 0x3A
+FFE6B6F4  480002D1  bl      glue_RegistryEntryIterateDispose
+FFE6B6F8  80410014  lwz     r2, 0x14(r1)
+FFE6B6FC  38760000  addi    r3, r22, 0x0
+FFE6B700  818100D8  lwz     r12, 0xD8(r1)
+FFE6B704  302100D0  addic   r1, r1, 0xD0
+FFE6B708  7D8803A6  mtspr   LR, r12
+FFE6B70C  BAC1FFD8  lmw     r22, -0x28(r1)
+FFE6B710  4E800020  blr
+
+sub_FFE6B714:
+FFE6B714* BF81FFF0  stmw    r28, -0x10(r1)
+FFE6B718* 83A20010  lwz     r29, 0x10(r2)                      ; TOC[+16] interruptableDeviceTable
+FFE6B71C* 7C0802A6  mfspr   r0, LR
+FFE6B720* 809D0000  lwz     r4, 0x0(r29)
+FFE6B724* 83C20000  lwz     r30, 0x0(r2)                       ; TOC[+0] &code+3D20
+FFE6B728* 3BE00BA0  li      r31, 0xBA0
+FFE6B72C* 90010008  stw     r0, 0x8(r1)
+FFE6B730* 7F84F814  addc    r28, r4, r31
+FFE6B734* 9421FFB0  stwu    r1, -0x50(r1)
+FFE6B738* 309E003D  addic   r4, r30, 0x3D
+FFE6B73C* 307C0020  addic   r3, r28, 0x20
+loc_FFE6B740:
+FFE6B740* 480003C5  bl      glue_CStrCmp
+FFE6B744* 80410014  lwz     r2, 0x14(r1)
+FFE6B748* 7C640735  extsh.  r4, r3
+FFE6B74C* 307C0040  addic   r3, r28, 0x40
+FFE6B750* 309E0048  addic   r4, r30, 0x48
+FFE6B754* 40820024  bne     loc_FFE6B778
+FFE6B758  480003AD  bl      glue_CStrCmp
+FFE6B75C  80410014  lwz     r2, 0x14(r1)
+FFE6B760  7C640735  extsh.  r4, r3
+FFE6B764  307C0010  addic   r3, r28, 0x10
+FFE6B768  40820010  bne     loc_FFE6B778
+FFE6B76C  80BC000C  lwz     r5, 0xC(r28)
+FFE6B770  809C0008  lwz     r4, 0x8(r28)
+FFE6B774  4BFFFDBD  bl      sub_FFE6B530
+loc_FFE6B778:
+FFE6B778* 2C1F0060  cmpwi   cr0, r31, 0x60
+FFE6B77C* 33FFFFA0  addic   r31, r31, -0x60
+FFE6B780* 41800018  blt     loc_FFE6B798
+FFE6B784* 80FD0000  lwz     r7, 0x0(r29)
+FFE6B788* 309E003D  addic   r4, r30, 0x3D
+FFE6B78C* 7F87F814  addc    r28, r7, r31
+FFE6B790* 307C0020  addic   r3, r28, 0x20
+FFE6B794* 4BFFFFAC  b       loc_FFE6B740
+loc_FFE6B798:
+FFE6B798* 81810058  lwz     r12, 0x58(r1)
+FFE6B79C* 30210050  addic   r1, r1, 0x50
+FFE6B7A0* 7D8803A6  mtspr   LR, r12
+FFE6B7A4* BB81FFF0  lmw     r28, -0x10(r1)
+FFE6B7A8* 4E800020  blr
+
+AssignInterrupt:
+FFE6B7AC* BF41FFE8  stmw    r26, -0x18(r1)
+FFE6B7B0* 3BC50000  addi    r30, r5, 0x0
+FFE6B7B4* 80A20010  lwz     r5, 0x10(r2)                       ; TOC[+16] interruptableDeviceTable
+FFE6B7B8* 7C0802A6  mfspr   r0, LR
+FFE6B7BC* 80E50000  lwz     r7, 0x0(r5)
+FFE6B7C0* 90010008  stw     r0, 0x8(r1)
+FFE6B7C4* 5460083C  slwi    r0, r3, 1
+FFE6B7C8* 9421FF80  stwu    r1, -0x80(r1)
+FFE6B7CC* 30C10038  addic   r6, r1, 0x38
+FFE6B7D0* 7C030014  addc    r0, r3, r0
+FFE6B7D4* 54052834  slwi    r5, r0, 5
+FFE6B7D8* 7F472814  addc    r26, r7, r5
+FFE6B7DC* 7CA7282E  lwzx    r5, r7, r5
+FFE6B7E0* 80020000  lwz     r0, 0x0(r2)                        ; TOC[+0] &code+3D20
+FFE6B7E4* 7C051840  cmplw   r5, r3
+FFE6B7E8* 3BA40000  addi    r29, r4, 0x0
+FFE6B7EC* 3BE00018  li      r31, 0x18
+FFE6B7F0* 33600032  addic   r27, r0, 0x32
+FFE6B7F4* 30A1003C  addic   r5, r1, 0x3C
+FFE6B7F8* 389B0000  addi    r4, r27, 0x0
+FFE6B7FC* 408200BC  bne     loc_FFE6B8B8
+FFE6B800* 339A0010  addic   r28, r26, 0x10
+FFE6B804* 93E10038  stw     r31, 0x38(r1)
+FFE6B808* 387C0000  addi    r3, r28, 0x0
+FFE6B80C* 480000BD  bl      glue_RegistryPropertyGet
+FFE6B810* 80410014  lwz     r2, 0x14(r1)
+FFE6B814* 7C600734  extsh   r0, r3
+FFE6B818* 2C00F615  cmpwi   cr0, r0, 0xF615
+FFE6B81C* 38A00000  li      r5, 0x0
+FFE6B820* 387C0000  addi    r3, r28, 0x0
+FFE6B824* 389B0000  addi    r4, r27, 0x0
+FFE6B828* 40820030  bne     loc_FFE6B858
+FFE6B82C* 90A10048  stw     r5, 0x48(r1)
+FFE6B830* 90A1003C  stw     r5, 0x3C(r1)
+FFE6B834* 90A10040  stw     r5, 0x40(r1)
+FFE6B838* 90A1004C  stw     r5, 0x4C(r1)
+FFE6B83C* 90A10050  stw     r5, 0x50(r1)
+FFE6B840* 90A10044  stw     r5, 0x44(r1)
+FFE6B844* 30A1003C  addic   r5, r1, 0x3C
+FFE6B848* 38C00018  li      r6, 0x18
+FFE6B84C* 480000A1  bl      glue_RegistryPropertyCreate
+FFE6B850* 80410014  lwz     r2, 0x14(r1)
+FFE6B854* 7C600734  extsh   r0, r3
+loc_FFE6B858:
+FFE6B858* 2C000000  cmpwi   cr0, r0, 0x0
+FFE6B85C* 387C0000  addi    r3, r28, 0x0
+FFE6B860* 389B0000  addi    r4, r27, 0x0
+FFE6B864* 30A1003C  addic   r5, r1, 0x3C
+FFE6B868* 4082003C  bne     loc_FFE6B8A4
+FFE6B86C* 801A0004  lwz     r0, 0x4(r26)
+FFE6B870* 38C00018  li      r6, 0x18
+FFE6B874* 54001838  slwi    r0, r0, 3
+FFE6B878* 7CE10014  addc    r7, r1, r0
+FFE6B87C* 93A7003C  stw     r29, 0x3C(r7)
+FFE6B880* 801A0004  lwz     r0, 0x4(r26)
+FFE6B884* 93E10038  stw     r31, 0x38(r1)
+FFE6B888* 54001838  slwi    r0, r0, 3
+FFE6B88C* 7CE10014  addc    r7, r1, r0
+FFE6B890* 93C70040  stw     r30, 0x40(r7)
+FFE6B894* 48000295  bl      glue_RegistryPropertySet
+FFE6B898* 80410014  lwz     r2, 0x14(r1)
+FFE6B89C* 93DA000C  stw     r30, 0xC(r26)
+FFE6B8A0* 93BA0008  stw     r29, 0x8(r26)
+loc_FFE6B8A4:
+FFE6B8A4* 81810088  lwz     r12, 0x88(r1)
+FFE6B8A8* 30210080  addic   r1, r1, 0x80
+FFE6B8AC* 7D8803A6  mtspr   LR, r12
+FFE6B8B0* BB41FFE8  lmw     r26, -0x18(r1)
+FFE6B8B4* 4E800020  blr
+loc_FFE6B8B8:
+FFE6B8B8* BB410068  lmw     r26, 0x68(r1)
+FFE6B8BC* 30210080  addic   r1, r1, 0x80
+FFE6B8C0* 4E800020  blr
+FFE6B8C4d 00000000  .long   0x00000000
+
+glue_RegistryPropertyGet:
+FFE6B8C8* 81820004  lwz     r12, 0x4(r2)                       ; TOC[+4] RegistryPropertyGet
+FFE6B8CC* 90410014  stw     r2, 0x14(r1)
+FFE6B8D0* 800C0000  lwz     r0, 0x0(r12)
+FFE6B8D4* 804C0004  lwz     r2, 0x4(r12)
+FFE6B8D8* 7C0903A6  mtspr   CTR, r0
+FFE6B8DC* 4E800420  bctr
+FFE6B8E0d 00000000  .long   0x00000000
+FFE6B8E4d 000C8000  .long   0x000C8000
+FFE6B8E8d 00000000  .long   0x00000000
+
+glue_RegistryPropertyCreate:
+FFE6B8EC* 81820008  lwz     r12, 0x8(r2)                       ; TOC[+8] RegistryPropertyCreate
+FFE6B8F0* 90410014  stw     r2, 0x14(r1)
+FFE6B8F4* 800C0000  lwz     r0, 0x0(r12)
+FFE6B8F8* 804C0004  lwz     r2, 0x4(r12)
+FFE6B8FC* 7C0903A6  mtspr   CTR, r0
+FFE6B900* 4E800420  bctr
+FFE6B904d 00000000  .long   0x00000000
+FFE6B908d 000C8000  .long   0x000C8000
+FFE6B90Cd 00000000  .long   0x00000000
+
+glue_PoolAllocateResident:
+FFE6B910* 8182000C  lwz     r12, 0xC(r2)                       ; TOC[+12] PoolAllocateResident
+FFE6B914* 90410014  stw     r2, 0x14(r1)
+FFE6B918* 800C0000  lwz     r0, 0x0(r12)
+FFE6B91C* 804C0004  lwz     r2, 0x4(r12)
+FFE6B920* 7C0903A6  mtspr   CTR, r0
+FFE6B924* 4E800420  bctr
+FFE6B928d 00000000  .long   0x00000000
+FFE6B92Cd 000C8000  .long   0x000C8000
+FFE6B930d 00000000  .long   0x00000000
+
+glue_RegistryEntryIterateCreate:
+FFE6B934* 81820014  lwz     r12, 0x14(r2)                      ; TOC[+20] RegistryEntryIterateCreate
+FFE6B938* 90410014  stw     r2, 0x14(r1)
+FFE6B93C* 800C0000  lwz     r0, 0x0(r12)
+FFE6B940* 804C0004  lwz     r2, 0x4(r12)
+FFE6B944* 7C0903A6  mtspr   CTR, r0
+FFE6B948* 4E800420  bctr
+FFE6B94Cd 00000000  .long   0x00000000
+FFE6B950d 000C8000  .long   0x000C8000
+FFE6B954d 00000000  .long   0x00000000
+
+glue_RegistryEntryIterate:
+FFE6B958* 81820018  lwz     r12, 0x18(r2)                      ; TOC[+24] RegistryEntryIterate
+FFE6B95C* 90410014  stw     r2, 0x14(r1)
+FFE6B960* 800C0000  lwz     r0, 0x0(r12)
+FFE6B964* 804C0004  lwz     r2, 0x4(r12)
+FFE6B968* 7C0903A6  mtspr   CTR, r0
+FFE6B96C* 4E800420  bctr
+FFE6B970d 00000000  .long   0x00000000
+FFE6B974d 000C8000  .long   0x000C8000
+FFE6B978d 00000000  .long   0x00000000
+
+glue_RegistryEntryIDCopy:
+FFE6B97C* 8182001C  lwz     r12, 0x1C(r2)                      ; TOC[+28] RegistryEntryIDCopy
+FFE6B980* 90410014  stw     r2, 0x14(r1)
+FFE6B984* 800C0000  lwz     r0, 0x0(r12)
+FFE6B988* 804C0004  lwz     r2, 0x4(r12)
+FFE6B98C* 7C0903A6  mtspr   CTR, r0
+FFE6B990* 4E800420  bctr
+FFE6B994d 00000000  .long   0x00000000
+FFE6B998d 000C8000  .long   0x000C8000
+FFE6B99Cd 00000000  .long   0x00000000
+
+glue_CStrCopy:
+FFE6B9A0* 81820020  lwz     r12, 0x20(r2)                      ; TOC[+32] CStrCopy
+FFE6B9A4* 90410014  stw     r2, 0x14(r1)
+FFE6B9A8* 800C0000  lwz     r0, 0x0(r12)
+FFE6B9AC* 804C0004  lwz     r2, 0x4(r12)
+FFE6B9B0* 7C0903A6  mtspr   CTR, r0
+FFE6B9B4* 4E800420  bctr
+FFE6B9B8d 00000000  .long   0x00000000
+FFE6B9BCd 000C8000  .long   0x000C8000
+FFE6B9C0d 00000000  .long   0x00000000
+
+glue_RegistryEntryIterateDispose:
+FFE6B9C4* 81820024  lwz     r12, 0x24(r2)                      ; TOC[+36] RegistryEntryIterateDispose
+FFE6B9C8* 90410014  stw     r2, 0x14(r1)
+FFE6B9CC* 800C0000  lwz     r0, 0x0(r12)
+FFE6B9D0* 804C0004  lwz     r2, 0x4(r12)
+FFE6B9D4* 7C0903A6  mtspr   CTR, r0
+FFE6B9D8* 4E800420  bctr
+FFE6B9DCd 00000000  .long   0x00000000
+FFE6B9E0d 000C8000  .long   0x000C8000
+FFE6B9E4d 00000000  .long   0x00000000
+
+glue_LookupParentMember:
+FFE6B9E8  81820028  lwz     r12, 0x28(r2)                      ; TOC[+40] LookupParentMember
+FFE6B9EC  90410014  stw     r2, 0x14(r1)
+FFE6B9F0  800C0000  lwz     r0, 0x0(r12)
+FFE6B9F4  804C0004  lwz     r2, 0x4(r12)
+FFE6B9F8  7C0903A6  mtspr   CTR, r0
+FFE6B9FC  4E800420  bctr
+FFE6BA00d 00000000  .long   0x00000000
+FFE6BA04d 000C8000  .long   0x000C8000
+FFE6BA08d 00000000  .long   0x00000000
+
+glue_GetInterruptFunctions:
+FFE6BA0C  8182002C  lwz     r12, 0x2C(r2)                      ; TOC[+44] GetInterruptFunctions
+FFE6BA10  90410014  stw     r2, 0x14(r1)
+FFE6BA14  800C0000  lwz     r0, 0x0(r12)
+FFE6BA18  804C0004  lwz     r2, 0x4(r12)
+FFE6BA1C  7C0903A6  mtspr   CTR, r0
+FFE6BA20  4E800420  bctr
+FFE6BA24d 00000000  .long   0x00000000
+FFE6BA28d 000C8000  .long   0x000C8000
+FFE6BA2Cd 00000000  .long   0x00000000
+
+sub_FFE6BA30:
+FFE6BA30? 800B0000  lwz     r0, 0x0(r11)
+FFE6BA34? 90410014  stw     r2, 0x14(r1)
+FFE6BA38? 7C0903A6  mtspr   CTR, r0
+FFE6BA3C? 804B0004  lwz     r2, 0x4(r11)
+FFE6BA40? 7D6C5B78  mr      r12, r11
+FFE6BA44? 816B0008  lwz     r11, 0x8(r11)
+FFE6BA48? 4E800420  bctr
+FFE6BA4C? 4E800020  blr
+FFE6BA50d 00000000  .long   0x00000000
+FFE6BA54d 000C0000  .long   0x000C0000
+FFE6BA58d ........  .space  0x1C                      ; zero to FFE6BA74
+
+glue_CreateInterruptSet:
+FFE6BA74* 81820030  lwz     r12, 0x30(r2)                      ; TOC[+48] CreateInterruptSet
+FFE6BA78* 90410014  stw     r2, 0x14(r1)
+FFE6BA7C* 800C0000  lwz     r0, 0x0(r12)
+FFE6BA80* 804C0004  lwz     r2, 0x4(r12)
+FFE6BA84* 7C0903A6  mtspr   CTR, r0
+FFE6BA88* 4E800420  bctr
+FFE6BA8Cd 00000000  .long   0x00000000
+FFE6BA90d 000C8000  .long   0x000C8000
+FFE6BA94d 00000000  .long   0x00000000
+
+glue_InstallInterruptFunctions:
+FFE6BA98* 81820038  lwz     r12, 0x38(r2)                      ; TOC[+56] InstallInterruptFunctions
+FFE6BA9C* 90410014  stw     r2, 0x14(r1)
+FFE6BAA0* 800C0000  lwz     r0, 0x0(r12)
+FFE6BAA4* 804C0004  lwz     r2, 0x4(r12)
+FFE6BAA8* 7C0903A6  mtspr   CTR, r0
+FFE6BAAC* 4E800420  bctr
+FFE6BAB0d 00000000  .long   0x00000000
+FFE6BAB4d 000C8000  .long   0x000C8000
+FFE6BAB8d 00000000  .long   0x00000000
+
+glue_PoolDeallocate:
+FFE6BABC  81820044  lwz     r12, 0x44(r2)                      ; TOC[+68] PoolDeallocate
+FFE6BAC0  90410014  stw     r2, 0x14(r1)
+FFE6BAC4  800C0000  lwz     r0, 0x0(r12)
+FFE6BAC8  804C0004  lwz     r2, 0x4(r12)
+FFE6BACC  7C0903A6  mtspr   CTR, r0
+FFE6BAD0  4E800420  bctr
+FFE6BAD4d 00000000  .long   0x00000000
+FFE6BAD8d 000C8000  .long   0x000C8000
+FFE6BADCd 00000000  .long   0x00000000
+
+glue_RegistryEntryIterateSet:
+FFE6BAE0  81820048  lwz     r12, 0x48(r2)                      ; TOC[+72] RegistryEntryIterateSet
+FFE6BAE4  90410014  stw     r2, 0x14(r1)
+FFE6BAE8  800C0000  lwz     r0, 0x0(r12)
+FFE6BAEC  804C0004  lwz     r2, 0x4(r12)
+FFE6BAF0  7C0903A6  mtspr   CTR, r0
+FFE6BAF4  4E800420  bctr
+FFE6BAF8d 00000000  .long   0x00000000
+FFE6BAFCd 000C8000  .long   0x000C8000
+FFE6BB00d 00000000  .long   0x00000000
+
+glue_CStrCmp:
+FFE6BB04* 8182004C  lwz     r12, 0x4C(r2)                      ; TOC[+76] CStrCmp
+FFE6BB08* 90410014  stw     r2, 0x14(r1)
+FFE6BB0C* 800C0000  lwz     r0, 0x0(r12)
+FFE6BB10* 804C0004  lwz     r2, 0x4(r12)
+FFE6BB14* 7C0903A6  mtspr   CTR, r0
+FFE6BB18* 4E800420  bctr
+FFE6BB1Cd 00000000  .long   0x00000000
+FFE6BB20d 000C8000  .long   0x000C8000
+FFE6BB24d 00000000  .long   0x00000000
+
+glue_RegistryPropertySet:
+FFE6BB28* 81820050  lwz     r12, 0x50(r2)                      ; TOC[+80] RegistryPropertySet
+FFE6BB2C* 90410014  stw     r2, 0x14(r1)
+FFE6BB30* 800C0000  lwz     r0, 0x0(r12)
+FFE6BB34* 804C0004  lwz     r2, 0x4(r12)
+FFE6BB38* 7C0903A6  mtspr   CTR, r0
+FFE6BB3C* 4E800420  bctr
+FFE6BB40d 00000000  .long   0x00000000
+FFE6BB44d 000C8000  .long   0x000C8000
+FFE6BB48d 00000000  .long   0x00000000
+
+glue_LMGetExpandMem:
+FFE6BB4C* 81820054  lwz     r12, 0x54(r2)                      ; TOC[+84] LMGetExpandMem
+FFE6BB50* 90410014  stw     r2, 0x14(r1)
+FFE6BB54* 800C0000  lwz     r0, 0x0(r12)
+FFE6BB58* 804C0004  lwz     r2, 0x4(r12)
+FFE6BB5C* 7C0903A6  mtspr   CTR, r0
+FFE6BB60* 4E800420  bctr
+FFE6BB64d 00000000  .long   0x00000000
+FFE6BB68d 000C8000  .long   0x000C8000
+FFE6BB6Cd 00000000  .long   0x00000000
+
+glue_SynchronizeIO:
+FFE6BB70* 8182005C  lwz     r12, 0x5C(r2)                      ; TOC[+92] SynchronizeIO
+FFE6BB74* 90410014  stw     r2, 0x14(r1)
+FFE6BB78* 800C0000  lwz     r0, 0x0(r12)
+FFE6BB7C* 804C0004  lwz     r2, 0x4(r12)
+FFE6BB80* 7C0903A6  mtspr   CTR, r0
+FFE6BB84* 4E800420  bctr
+FFE6BB88d 00000000  .long   0x00000000
+FFE6BB8Cd 000C8000  .long   0x000C8000
+FFE6BB90d 00000000  .long   0x00000000
+
+glue_CreateInterruptSourceTree:
+FFE6BB94* 81820060  lwz     r12, 0x60(r2)                      ; TOC[+96] CreateInterruptSourceTree
+FFE6BB98* 90410014  stw     r2, 0x14(r1)
+FFE6BB9C* 800C0000  lwz     r0, 0x0(r12)
+FFE6BBA0* 804C0004  lwz     r2, 0x4(r12)
+FFE6BBA4* 7C0903A6  mtspr   CTR, r0
+FFE6BBA8* 4E800420  bctr
+FFE6BBACd 00000000  .long   0x00000000
+FFE6BBB0d 000C8000  .long   0x000C8000
+FFE6BBB4d 00000000  .long   0x00000000
+
+glue_ActivateInterruptSourceTree:
+FFE6BBB8* 81820070  lwz     r12, 0x70(r2)                      ; TOC[+112] ActivateInterruptSourceTree
+FFE6BBBC* 90410014  stw     r2, 0x14(r1)
+FFE6BBC0* 800C0000  lwz     r0, 0x0(r12)
+FFE6BBC4* 804C0004  lwz     r2, 0x4(r12)
+FFE6BBC8* 7C0903A6  mtspr   CTR, r0
+FFE6BBCC* 4E800420  bctr
+FFE6BBD0d 00000000  .long   0x00000000
+FFE6BBD4d 000C8000  .long   0x000C8000
+FFE6BBD8d 00000000  .long   0x00000000
+FFE6BBDCd 00000000  .long   0x00000000
+FFE6BBE0d 4141504C  .ascii  "AAPL,address.reg"
+FFE6BBF0d 006E616D  .long   0x006E616D                         ; '.nam'
+FFE6BBF4? 65006465  oris    r0, r8, 0x6465
+FFE6BBF8d 76696365  .ascii  "vice_type.AAPL,i"
+FFE6BC08d 6E746572  .ascii  "nterrupts.driver"
+FFE6BC18d 2D697374  .ascii  "-ist.pci-bridge."
+FFE6BC28? 70636900  andi.   r3, r3, 0x6900
+
+; ----------------------------------------------------------------------------
+; data section 1 (pidata), unpacked 4FC bytes; addresses are offsets in the section;
+; relocated words are named (imports) or point into a section (code+X / data+X).
+; ----------------------------------------------------------------------------
++00000  00000000  -> code+0 = FFE67EC0 InitLeafNode
++00004  00000390  -> data+390
++0000C  00003404  -> code+3404 = FFE6B2C4
++00010  00000390  -> data+390
++00018  00003310  -> code+3310 = FFE6B1D0
++0001C  00000390  -> data+390
++00024  0000338C  -> code+338C = FFE6B24C
++00028  00000390  -> data+390
++00030  00000064  -> code+64 = FFE67F24 GCLevel1TreeDispatcher
++00034  00000390  -> data+390
++0003C  0000006C  -> code+6C = FFE67F2C
++00040  00000390  -> data+390
++00048  000000F4  -> code+F4 = FFE67FB4
++0004C  00000390  -> data+390
++00054  0000026C  -> code+26C = FFE6812C GCLevel2TreeDispatcher
++00058  00000390  -> data+390
++00060  00000370  -> code+370 = FFE68230
++00064  00000390  -> data+390
++0006C  000003F8  -> code+3F8 = FFE682B8
++00070  00000390  -> data+390
++00078  000004AC  -> code+4AC = FFE6836C
++0007C  00000390  -> data+390
++00084  00000534  -> code+534 = FFE683F4
++00088  00000390  -> data+390
++00090  000005E8  -> code+5E8 = FFE684A8
++00094  00000390  -> data+390
++0009C  00000670  -> code+670 = FFE68530
++000A0  00000390  -> data+390
++000A8  00000718  -> code+718 = FFE685D8
++000AC  00000390  -> data+390
++000B4  000007A0  -> code+7A0 = FFE68660
++000B8  00000390  -> data+390
++000C0  00000848  -> code+848 = FFE68708
++000C4  00000390  -> data+390
++000CC  000008D0  -> code+8D0 = FFE68790
++000D0  00000390  -> data+390
++000D8  00000978  -> code+978 = FFE68838
++000DC  00000390  -> data+390
++000E4  00000A00  -> code+A00 = FFE688C0
++000E8  00000390  -> data+390
++000F0  00000AA8  -> code+AA8 = FFE68968
++000F4  00000390  -> data+390
++000FC  00000B30  -> code+B30 = FFE689F0
++00100  00000390  -> data+390
++00108  00000BD8  -> code+BD8 = FFE68A98
++0010C  00000390  -> data+390
++00114  00000C60  -> code+C60 = FFE68B20
++00118  00000390  -> data+390
++00120  00000D04  -> code+D04 = FFE68BC4
++00124  00000390  -> data+390
++0012C  00000D8C  -> code+D8C = FFE68C4C
++00130  00000390  -> data+390
++00138  00000E30  -> code+E30 = FFE68CF0
++0013C  00000390  -> data+390
++00144  00000EB8  -> code+EB8 = FFE68D78
++00148  00000390  -> data+390
++00150  00000F5C  -> code+F5C = FFE68E1C
++00154  00000390  -> data+390
++0015C  00000FE4  -> code+FE4 = FFE68EA4
++00160  00000390  -> data+390
++00168  00001088  -> code+1088 = FFE68F48
++0016C  00000390  -> data+390
++00174  00001110  -> code+1110 = FFE68FD0
++00178  00000390  -> data+390
++00180  000011B8  -> code+11B8 = FFE69078
++00184  00000390  -> data+390
++0018C  00001240  -> code+1240 = FFE69100
++00190  00000390  -> data+390
++00198  000012E8  -> code+12E8 = FFE691A8
++0019C  00000390  -> data+390
++001A4  00001370  -> code+1370 = FFE69230
++001A8  00000390  -> data+390
++001B0  00001688  -> code+1688 = FFE69548 GCLevel3TreeDispatcher
++001B4  00000390  -> data+390
++001BC  00001690  -> code+1690 = FFE69550
++001C0  00000390  -> data+390
++001C8  00001718  -> code+1718 = FFE695D8
++001CC  00000390  -> data+390
++001D4  0000189C  -> code+189C = FFE6975C GCLevel4TreeDispatcher
++001D8  00000390  -> data+390
++001E0  00001BBC  -> code+1BBC = FFE69A7C
++001E4  00000390  -> data+390
++001EC  00001C44  -> code+1C44 = FFE69B04
++001F0  00000390  -> data+390
++001F8  00001CE8  -> code+1CE8 = FFE69BA8
++001FC  00000390  -> data+390
++00204  00001D70  -> code+1D70 = FFE69C30
++00208  00000390  -> data+390
++00210  00001E14  -> code+1E14 = FFE69CD4
++00214  00000390  -> data+390
++0021C  00001E9C  -> code+1E9C = FFE69D5C
++00220  00000390  -> data+390
++00228  00001F40  -> code+1F40 = FFE69E00
++0022C  00000390  -> data+390
++00234  00001FC8  -> code+1FC8 = FFE69E88
++00238  00000390  -> data+390
++00240  0000206C  -> code+206C = FFE69F2C
++00244  00000390  -> data+390
++0024C  000020F4  -> code+20F4 = FFE69FB4
++00250  00000390  -> data+390
++00258  00002198  -> code+2198 = FFE6A058
++0025C  00000390  -> data+390
++00264  00002220  -> code+2220 = FFE6A0E0
++00268  00000390  -> data+390
++00270  000022C4  -> code+22C4 = FFE6A184
++00274  00000390  -> data+390
++0027C  0000234C  -> code+234C = FFE6A20C
++00280  00000390  -> data+390
++00288  000023F0  -> code+23F0 = FFE6A2B0
++0028C  00000390  -> data+390
++00294  00002478  -> code+2478 = FFE6A338
++00298  00000390  -> data+390
++002A0  0000251C  -> code+251C = FFE6A3DC
++002A4  00000390  -> data+390
++002AC  000025A4  -> code+25A4 = FFE6A464
++002B0  00000390  -> data+390
++002B8  00002658  -> code+2658 = FFE6A518
++002BC  00000390  -> data+390
++002C4  000026E0  -> code+26E0 = FFE6A5A0
++002C8  00000390  -> data+390
++002D0  00002794  -> code+2794 = FFE6A654
++002D4  00000390  -> data+390
++002DC  0000281C  -> code+281C = FFE6A6DC
++002E0  00000390  -> data+390
++002E8  000028D0  -> code+28D0 = FFE6A790
++002EC  00000390  -> data+390
++002F4  00002958  -> code+2958 = FFE6A818
++002F8  00000390  -> data+390
++00300  00002A0C  -> code+2A0C = FFE6A8CC
++00304  00000390  -> data+390
++0030C  00002A94  -> code+2A94 = FFE6A954
++00310  00000390  -> data+390
++00318  00002D8C  -> code+2D8C = FFE6AC4C GCLevel7TreeDispatcher
++0031C  00000390  -> data+390
++00324  00002D94  -> code+2D94 = FFE6AC54
++00328  00000390  -> data+390
++00330  00002E1C  -> code+2E1C = FFE6ACDC
++00334  00000390  -> data+390
++0033C  0000019C  -> code+19C = FFE6805C CreateGCLevel1Tree
++00340  00000390  -> data+390
++00348  00001418  -> code+1418 = FFE692D8 CreateGCLevel2Tree
++0034C  00000390  -> data+390
++00354  000017CC  -> code+17CC = FFE6968C CreateGCLevel3Tree
++00358  00000390  -> data+390
++00360  00002B3C  -> code+2B3C = FFE6A9FC CreateGCLevel4Tree
++00364  00000390  -> data+390
++0036C  00002EC4  -> code+2EC4 = FFE6AD84 CreateGCLevel7Tree
++00370  00000390  -> data+390
++00378  00002F94  -> code+2F94 = FFE6AE54 __init
++0037C  00000390  -> data+390
++00384  000038EC  -> code+38EC = FFE6B7AC AssignInterrupt
++00388  00000390  -> data+390
++00390  00003D20  -> code+3D20 = FFE6BBE0
++00394  00000000  -> NameRegistryLib::RegistryPropertyGet
++00398  00000000  -> NameRegistryLib::RegistryPropertyCreate
++0039C  00000000  -> DriverServicesLib::PoolAllocateResident
++003A0  00000000  -> DSLGlobalsLib::interruptableDeviceTable
++003A4  00000000  -> NameRegistryLib::RegistryEntryIterateCreate
++003A8  00000000  -> NameRegistryLib::RegistryEntryIterate
++003AC  00000000  -> NameRegistryLib::RegistryEntryIDCopy
++003B0  00000000  -> DriverServicesLib::CStrCopy
++003B4  00000000  -> NameRegistryLib::RegistryEntryIterateDispose
++003B8  00000000  -> DriverServicesLib::LookupParentMember
++003BC  00000000  -> DriverServicesLib::GetInterruptFunctions
++003C0  00000000  -> DriverServicesLib::CreateInterruptSet
++003C4  0000000C  -> data+C
++003C8  00000000  -> DriverServicesLib::InstallInterruptFunctions
++003CC  00000018  -> data+18
++003D0  00000024  -> data+24
++003D4  00000000  -> DriverServicesLib::PoolDeallocate
++003D8  00000000  -> NameRegistryLib::RegistryEntryIterateSet
++003DC  00000000  -> DriverServicesLib::CStrCmp
++003E0  00000000  -> NameRegistryLib::RegistryPropertySet
++003E4  00000000  -> PrivateInterfaceLib::LMGetExpandMem
++003E8  00000000  -> DSLGlobalsLib::interruptTreeTNTGlobals
++003EC  00000000  -> DriverServicesLib::SynchronizeIO
++003F0  00000000  -> DriverServicesLib::CreateInterruptSourceTree
++003F4  00000030  -> data+30
++003F8  0000003C  -> data+3C
++003FC  00000048  -> data+48
++00400  00000000  -> DriverServicesLib::ActivateInterruptSourceTree
++00404  00000054  -> data+54
++00408  00000060  -> data+60
++0040C  0000006C  -> data+6C
++00410  00000078  -> data+78
++00414  00000084  -> data+84
++00418  00000090  -> data+90
++0041C  0000009C  -> data+9C
++00420  000000A8  -> data+A8
++00424  000000B4  -> data+B4
++00428  000000C0  -> data+C0
++0042C  000000CC  -> data+CC
++00430  000000D8  -> data+D8
++00434  000000E4  -> data+E4
++00438  000000F0  -> data+F0
++0043C  000000FC  -> data+FC
++00440  00000108  -> data+108
++00444  00000114  -> data+114
++00448  00000120  -> data+120
++0044C  0000012C  -> data+12C
++00450  00000138  -> data+138
++00454  00000144  -> data+144
++00458  00000150  -> data+150
++0045C  0000015C  -> data+15C
++00460  00000168  -> data+168
++00464  00000174  -> data+174
++00468  00000180  -> data+180
++0046C  0000018C  -> data+18C
++00470  00000198  -> data+198
++00474  000001A4  -> data+1A4
++00478  000001B0  -> data+1B0
++0047C  000001BC  -> data+1BC
++00480  000001C8  -> data+1C8
++00484  000001D4  -> data+1D4
++00488  000001E0  -> data+1E0
++0048C  000001EC  -> data+1EC
++00490  000001F8  -> data+1F8
++00494  00000204  -> data+204
++00498  00000210  -> data+210
++0049C  0000021C  -> data+21C
++004A0  00000228  -> data+228
++004A4  00000234  -> data+234
++004A8  00000240  -> data+240
++004AC  0000024C  -> data+24C
++004B0  00000258  -> data+258
++004B4  00000264  -> data+264
++004B8  00000270  -> data+270
++004BC  0000027C  -> data+27C
++004C0  00000288  -> data+288
++004C4  00000294  -> data+294
++004C8  000002A0  -> data+2A0
++004CC  000002AC  -> data+2AC
++004D0  000002B8  -> data+2B8
++004D4  000002C4  -> data+2C4
++004D8  000002D0  -> data+2D0
++004DC  000002DC  -> data+2DC
++004E0  000002E8  -> data+2E8
++004E4  000002F4  -> data+2F4
++004E8  00000300  -> data+300
++004EC  0000030C  -> data+30C
++004F0  00000318  -> data+318
++004F4  00000324  -> data+324
++004F8  00000330  -> data+330
+; full unpacked image:
+00000000  00 00 00 00 00 00 03 90 00 00 00 00 00 00 34 04  |..............4.|
+00000010  00 00 03 90 00 00 00 00 00 00 33 10 00 00 03 90  |..........3.....|
+00000020  00 00 00 00 00 00 33 8C 00 00 03 90 00 00 00 00  |......3.........|
+00000030  00 00 00 64 00 00 03 90 00 00 00 00 00 00 00 6C  |...d...........l|
+00000040  00 00 03 90 00 00 00 00 00 00 00 F4 00 00 03 90  |................|
+00000050  00 00 00 00 00 00 02 6C 00 00 03 90 00 00 00 00  |.......l........|
+00000060  00 00 03 70 00 00 03 90 00 00 00 00 00 00 03 F8  |...p............|
+00000070  00 00 03 90 00 00 00 00 00 00 04 AC 00 00 03 90  |................|
+00000080  00 00 00 00 00 00 05 34 00 00 03 90 00 00 00 00  |.......4........|
+00000090  00 00 05 E8 00 00 03 90 00 00 00 00 00 00 06 70  |...............p|
+000000A0  00 00 03 90 00 00 00 00 00 00 07 18 00 00 03 90  |................|
+000000B0  00 00 00 00 00 00 07 A0 00 00 03 90 00 00 00 00  |................|
+000000C0  00 00 08 48 00 00 03 90 00 00 00 00 00 00 08 D0  |...H............|
+000000D0  00 00 03 90 00 00 00 00 00 00 09 78 00 00 03 90  |...........x....|
+000000E0  00 00 00 00 00 00 0A 00 00 00 03 90 00 00 00 00  |................|
+000000F0  00 00 0A A8 00 00 03 90 00 00 00 00 00 00 0B 30  |...............0|
+00000100  00 00 03 90 00 00 00 00 00 00 0B D8 00 00 03 90  |................|
+00000110  00 00 00 00 00 00 0C 60 00 00 03 90 00 00 00 00  |.......`........|
+00000120  00 00 0D 04 00 00 03 90 00 00 00 00 00 00 0D 8C  |................|
+00000130  00 00 03 90 00 00 00 00 00 00 0E 30 00 00 03 90  |...........0....|
+00000140  00 00 00 00 00 00 0E B8 00 00 03 90 00 00 00 00  |................|
+00000150  00 00 0F 5C 00 00 03 90 00 00 00 00 00 00 0F E4  |...\............|
+00000160  00 00 03 90 00 00 00 00 00 00 10 88 00 00 03 90  |................|
+00000170  00 00 00 00 00 00 11 10 00 00 03 90 00 00 00 00  |................|
+00000180  00 00 11 B8 00 00 03 90 00 00 00 00 00 00 12 40  |...............@|
+00000190  00 00 03 90 00 00 00 00 00 00 12 E8 00 00 03 90  |................|
+000001A0  00 00 00 00 00 00 13 70 00 00 03 90 00 00 00 00  |.......p........|
+000001B0  00 00 16 88 00 00 03 90 00 00 00 00 00 00 16 90  |................|
+000001C0  00 00 03 90 00 00 00 00 00 00 17 18 00 00 03 90  |................|
+000001D0  00 00 00 00 00 00 18 9C 00 00 03 90 00 00 00 00  |................|
+000001E0  00 00 1B BC 00 00 03 90 00 00 00 00 00 00 1C 44  |...............D|
+000001F0  00 00 03 90 00 00 00 00 00 00 1C E8 00 00 03 90  |................|
+00000200  00 00 00 00 00 00 1D 70 00 00 03 90 00 00 00 00  |.......p........|
+00000210  00 00 1E 14 00 00 03 90 00 00 00 00 00 00 1E 9C  |................|
+00000220  00 00 03 90 00 00 00 00 00 00 1F 40 00 00 03 90  |...........@....|
+00000230  00 00 00 00 00 00 1F C8 00 00 03 90 00 00 00 00  |................|
+00000240  00 00 20 6C 00 00 03 90 00 00 00 00 00 00 20 F4  |.. l.......... .|
+00000250  00 00 03 90 00 00 00 00 00 00 21 98 00 00 03 90  |..........!.....|
+00000260  00 00 00 00 00 00 22 20 00 00 03 90 00 00 00 00  |......" ........|
+00000270  00 00 22 C4 00 00 03 90 00 00 00 00 00 00 23 4C  |.."...........#L|
+00000280  00 00 03 90 00 00 00 00 00 00 23 F0 00 00 03 90  |..........#.....|
+00000290  00 00 00 00 00 00 24 78 00 00 03 90 00 00 00 00  |......$x........|
+000002A0  00 00 25 1C 00 00 03 90 00 00 00 00 00 00 25 A4  |..%...........%.|
+000002B0  00 00 03 90 00 00 00 00 00 00 26 58 00 00 03 90  |..........&X....|
+000002C0  00 00 00 00 00 00 26 E0 00 00 03 90 00 00 00 00  |......&.........|
+000002D0  00 00 27 94 00 00 03 90 00 00 00 00 00 00 28 1C  |..'...........(.|
+000002E0  00 00 03 90 00 00 00 00 00 00 28 D0 00 00 03 90  |..........(.....|
+000002F0  00 00 00 00 00 00 29 58 00 00 03 90 00 00 00 00  |......)X........|
+00000300  00 00 2A 0C 00 00 03 90 00 00 00 00 00 00 2A 94  |..*...........*.|
+00000310  00 00 03 90 00 00 00 00 00 00 2D 8C 00 00 03 90  |..........-.....|
+00000320  00 00 00 00 00 00 2D 94 00 00 03 90 00 00 00 00  |......-.........|
+00000330  00 00 2E 1C 00 00 03 90 00 00 00 00 00 00 01 9C  |................|
+00000340  00 00 03 90 00 00 00 00 00 00 14 18 00 00 03 90  |................|
+00000350  00 00 00 00 00 00 17 CC 00 00 03 90 00 00 00 00  |................|
+00000360  00 00 2B 3C 00 00 03 90 00 00 00 00 00 00 2E C4  |..+<............|
+00000370  00 00 03 90 00 00 00 00 00 00 2F 94 00 00 03 90  |........../.....|
+00000380  00 00 00 00 00 00 38 EC 00 00 03 90 00 00 00 00  |......8.........|
+00000390  00 00 3D 20 00 00 00 00 00 00 00 00 00 00 00 00  |..= ............|
+000003A0  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |................|
+000003B0  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |................|
+000003C0  00 00 00 00 00 00 00 0C 00 00 00 00 00 00 00 18  |................|
+000003D0  00 00 00 24 00 00 00 00 00 00 00 00 00 00 00 00  |...$............|
+000003E0  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |................|
+000003F0  00 00 00 00 00 00 00 30 00 00 00 3C 00 00 00 48  |.......0...<...H|
+00000400  00 00 00 00 00 00 00 54 00 00 00 60 00 00 00 6C  |.......T...`...l|
+00000410  00 00 00 78 00 00 00 84 00 00 00 90 00 00 00 9C  |...x............|
+00000420  00 00 00 A8 00 00 00 B4 00 00 00 C0 00 00 00 CC  |................|
+00000430  00 00 00 D8 00 00 00 E4 00 00 00 F0 00 00 00 FC  |................|
+00000440  00 00 01 08 00 00 01 14 00 00 01 20 00 00 01 2C  |........... ...,|
+00000450  00 00 01 38 00 00 01 44 00 00 01 50 00 00 01 5C  |...8...D...P...\|
+00000460  00 00 01 68 00 00 01 74 00 00 01 80 00 00 01 8C  |...h...t........|
+00000470  00 00 01 98 00 00 01 A4 00 00 01 B0 00 00 01 BC  |................|
+00000480  00 00 01 C8 00 00 01 D4 00 00 01 E0 00 00 01 EC  |................|
+00000490  00 00 01 F8 00 00 02 04 00 00 02 10 00 00 02 1C  |................|
+000004A0  00 00 02 28 00 00 02 34 00 00 02 40 00 00 02 4C  |...(...4...@...L|
+000004B0  00 00 02 58 00 00 02 64 00 00 02 70 00 00 02 7C  |...X...d...p...||
+000004C0  00 00 02 88 00 00 02 94 00 00 02 A0 00 00 02 AC  |................|
+000004D0  00 00 02 B8 00 00 02 C4 00 00 02 D0 00 00 02 DC  |................|
+000004E0  00 00 02 E8 00 00 02 F4 00 00 03 00 00 00 03 0C  |................|
+000004F0  00 00 03 18 00 00 03 24 00 00 03 30              |.......$...0|
+
+; exports (12):
+;   InitLeafNode                             class tvector section  1 offset 0
+;   GCLevel1TreeDispatcher                   class tvector section  1 offset 30
+;   GCLevel2TreeDispatcher                   class tvector section  1 offset 54
+;   GCLevel3TreeDispatcher                   class tvector section  1 offset 1B0
+;   GCLevel4TreeDispatcher                   class tvector section  1 offset 1D4
+;   GCLevel7TreeDispatcher                   class tvector section  1 offset 318
+;   CreateGCLevel1Tree                       class tvector section  1 offset 33C
+;   CreateGCLevel2Tree                       class tvector section  1 offset 348
+;   CreateGCLevel3Tree                       class tvector section  1 offset 354
+;   CreateGCLevel4Tree                       class tvector section  1 offset 360
+;   CreateGCLevel7Tree                       class tvector section  1 offset 36C
+;   AssignInterrupt                          class tvector section  1 offset 384
+; imports (22):
+;      0 NameRegistryLib          RegistryPropertyGet                      tvector
+;      1 NameRegistryLib          RegistryPropertyCreate                   tvector
+;      2 NameRegistryLib          RegistryEntryIterateCreate               tvector
+;      3 NameRegistryLib          RegistryEntryIterate                     tvector
+;      4 NameRegistryLib          RegistryEntryIDCopy                      tvector
+;      5 NameRegistryLib          RegistryEntryIterateDispose              tvector
+;      6 NameRegistryLib          RegistryEntryIterateSet                  tvector
+;      7 NameRegistryLib          RegistryPropertySet                      tvector
+;      8 DriverServicesLib        PoolAllocateResident                     tvector
+;      9 DriverServicesLib        CStrCopy                                 tvector
+;     10 DriverServicesLib        LookupParentMember                       tvector
+;     11 DriverServicesLib        GetInterruptFunctions                    tvector
+;     12 DriverServicesLib        CreateInterruptSet                       tvector
+;     13 DriverServicesLib        InstallInterruptFunctions                tvector
+;     14 DriverServicesLib        PoolDeallocate                           tvector
+;     15 DriverServicesLib        CStrCmp                                  tvector
+;     16 DriverServicesLib        SynchronizeIO                            tvector
+;     17 DriverServicesLib        CreateInterruptSourceTree                tvector
+;     18 DriverServicesLib        ActivateInterruptSourceTree              tvector
+;     19 DSLGlobalsLib            interruptableDeviceTable                 data
+;     20 DSLGlobalsLib            interruptTreeTNTGlobals                  data
+;     21 PrivateInterfaceLib      LMGetExpandMem                           tvector

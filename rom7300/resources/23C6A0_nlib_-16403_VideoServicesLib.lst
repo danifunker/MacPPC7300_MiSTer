@@ -1,0 +1,1386 @@
+; ============================================================================
+; ROM resource 'nlib' -16403 VideoServicesLib at FFE3C6A0
+; ============================================================================
+; data at ROM 23C6A0 (156C bytes), entry at 1FF6C0, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 0000156c 00000464
+;
+; Columns: address, flag, raw bytes, instruction, ; comment.
+;   flag '*' executed in the coverage run, ' ' reached by control flow,
+;   '?' decodes as code but neither executed nor reached, 'd' data.
+
+; PEF container: architecture pwpc, format version 1, timestamp ABBB68A5, versions 00000000/00000000/00000000
+;   3 sections (2 instantiated)
+;   section 0 code       container +003C0 len 01173 (ROM 23CA60 = FFE3CA60), unpacked 01173, total 01173, share 4, align 4
+;   section 1 pidata     container +01534 len 00029 (ROM 23DBD4 = FFE3DBD4), unpacked 000B8, total 000B8, share 4, align 4
+;   section 2 loader     container +00080 len 00338 (ROM 23C720 = FFE3C720), unpacked 00000, total 00000, share 4, align 2
+;   init: section 1 offset 4
+;   term: section 1 offset 1C
+;   imports from VideoServicesGlobals: 1 symbols
+;   imports from InterfaceLib: 14 symbols
+;   imports from PrivateInterfaceLib: 5 symbols
+;   imports from NameRegistryLib: 2 symbols
+;
+; ----------------------------------------------------------------------------
+; code section 0: ROM 23CA60-23DBD2 = FFE3CA60
+; TOC (r2) = data section + 58; TOC[d] comments name the word at that offset.
+; ----------------------------------------------------------------------------
+
+sub_FFE3CA60:
+FFE3CA60* 80820000  lwz     r4, 0x0(r2)                        ; TOC[+0] gMasterList
+FFE3CA64* 80840000  lwz     r4, 0x0(r4)
+FFE3CA68* 8084000C  lwz     r4, 0xC(r4)
+FFE3CA6C* 7C632278  xor     r3, r3, r4
+FFE3CA70* 4E800020  blr
+
+sub_FFE3CA74:
+FFE3CA74* 80820000  lwz     r4, 0x0(r2)                        ; TOC[+0] gMasterList
+FFE3CA78* 80840000  lwz     r4, 0x0(r4)
+FFE3CA7C* 8084000C  lwz     r4, 0xC(r4)
+FFE3CA80* 7C831A78  xor     r3, r4, r3
+FFE3CA84* 4E800020  blr
+
+sub_FFE3CA88:
+FFE3CA88* 80A30008  lwz     r5, 0x8(r3)
+FFE3CA8C* 2C050000  cmpwi   cr0, r5, 0x0
+FFE3CA90* 41820008  beq     loc_FFE3CA98
+FFE3CA94  90850004  stw     r4, 0x4(r5)
+loc_FFE3CA98:
+FFE3CA98* 90A40000  stw     r5, 0x0(r4)
+FFE3CA9C* 90640008  stw     r3, 0x8(r4)
+FFE3CAA0* 90830008  stw     r4, 0x8(r3)
+FFE3CAA4* 4E800020  blr
+
+sub_FFE3CAA8:
+FFE3CAA8* 80630008  lwz     r3, 0x8(r3)
+FFE3CAAC* 3800FFCE  li      r0, -0x32
+FFE3CAB0* 2C030000  cmpwi   cr0, r3, 0x0
+FFE3CAB4* 41820028  beq     loc_FFE3CADC
+FFE3CAB8* 80C3000C  lwz     r6, 0xC(r3)
+FFE3CABC* 7C843040  cmplw   cr1, r4, r6
+FFE3CAC0* 4186001C  beq     cr1, loc_FFE3CADC
+loc_FFE3CAC4:
+FFE3CAC4  80630000  lwz     r3, 0x0(r3)
+FFE3CAC8  2C030000  cmpwi   cr0, r3, 0x0
+FFE3CACC  41820014  beq     loc_FFE3CAE0
+FFE3CAD0  80C3000C  lwz     r6, 0xC(r3)
+FFE3CAD4  7C843040  cmplw   cr1, r4, r6
+FFE3CAD8  4086FFEC  bne     cr1, loc_FFE3CAC4
+loc_FFE3CADC:
+FFE3CADC* 2C030000  cmpwi   cr0, r3, 0x0
+loc_FFE3CAE0:
+FFE3CAE0* 90650000  stw     r3, 0x0(r5)
+FFE3CAE4* 41820008  beq     loc_FFE3CAEC
+FFE3CAE8* 38000000  li      r0, 0x0
+loc_FFE3CAEC:
+FFE3CAEC* 7C030734  extsh   r3, r0
+FFE3CAF0* 4E800020  blr
+
+sub_FFE3CAF4:
+FFE3CAF4* BF81FFF0  stmw    r28, -0x10(r1)
+FFE3CAF8* 83E20000  lwz     r31, 0x0(r2)                       ; TOC[+0] gMasterList
+FFE3CAFC* 54A6063F  clrlwi. r6, r5, 24
+FFE3CB00* 80BF0000  lwz     r5, 0x0(r31)
+FFE3CB04* 547C063E  clrlwi  r28, r3, 24
+FFE3CB08* 83A50004  lwz     r29, 0x4(r5)
+FFE3CB0C* 7C0802A6  mfspr   r0, LR
+FFE3CB10* 2C9D0000  cmpwi   cr1, r29, 0x0
+FFE3CB14* 90010008  stw     r0, 0x8(r1)
+FFE3CB18* 9421FFB0  stwu    r1, -0x50(r1)
+FFE3CB1C* 3BC40000  addi    r30, r4, 0x0
+FFE3CB20* 3860FFCE  li      r3, -0x32
+FFE3CB24* 4186001C  beq     cr1, loc_FFE3CB40
+loc_FFE3CB28:
+FFE3CB28* 80BD0004  lwz     r5, 0x4(r29)
+FFE3CB2C* 7F05E040  cmplw   cr6, r5, r28
+FFE3CB30* 419A0068  beq     cr6, loc_FFE3CB98
+FFE3CB34  83BD0000  lwz     r29, 0x0(r29)
+FFE3CB38  2C9D0000  cmpwi   cr1, r29, 0x0
+FFE3CB3C  4086FFEC  bne     cr1, loc_FFE3CB28
+loc_FFE3CB40:
+FFE3CB40* 41820040  beq     loc_FFE3CB80
+loc_FFE3CB44:
+FFE3CB44* 3860001C  li      r3, 0x1C
+FFE3CB48* 48000D89  bl      glue_NewPtrSysClear
+FFE3CB4C* 80410014  lwz     r2, 0x14(r1)
+FFE3CB50* 3BA30000  addi    r29, r3, 0x0
+FFE3CB54* 48000DA1  bl      glue_MemError
+FFE3CB58* 80410014  lwz     r2, 0x14(r1)
+FFE3CB5C* 2C1D0000  cmpwi   cr0, r29, 0x0
+FFE3CB60* 7C630734  extsh   r3, r3
+FFE3CB64* 4182001C  beq     loc_FFE3CB80
+FFE3CB68* 939D0004  stw     r28, 0x4(r29)
+FFE3CB6C* 80BF0000  lwz     r5, 0x0(r31)
+FFE3CB70* 80A50004  lwz     r5, 0x4(r5)
+FFE3CB74* 90BD0000  stw     r5, 0x0(r29)
+FFE3CB78* 80BF0000  lwz     r5, 0x0(r31)
+FFE3CB7C* 93A50004  stw     r29, 0x4(r5)
+loc_FFE3CB80:
+FFE3CB80* 93BE0000  stw     r29, 0x0(r30)
+FFE3CB84* 81810058  lwz     r12, 0x58(r1)
+FFE3CB88* 30210050  addic   r1, r1, 0x50
+FFE3CB8C* 7D8803A6  mtspr   LR, r12
+FFE3CB90* BB81FFF0  lmw     r28, -0x10(r1)
+FFE3CB94* 4E800020  blr
+loc_FFE3CB98:
+FFE3CB98* 2C9D0000  cmpwi   cr1, r29, 0x0
+FFE3CB9C* 38600000  li      r3, 0x0
+FFE3CBA0* 4086FFE0  bne     cr1, loc_FFE3CB80
+FFE3CBA4  4182FFDC  beq     loc_FFE3CB80
+FFE3CBA8  4BFFFF9C  b       loc_FFE3CB44
+
+__init:
+FFE3CBAC* BFA1FFF4  stmw    r29, -0xC(r1)
+FFE3CBB0* 7C0802A6  mfspr   r0, LR
+FFE3CBB4* 7D800026  mfcr    r12
+FFE3CBB8* 91810004  stw     r12, 0x4(r1)
+FFE3CBBC* 90010008  stw     r0, 0x8(r1)
+FFE3CBC0* 9421FFB0  stwu    r1, -0x50(r1)
+FFE3CBC4* 3BE00000  li      r31, 0x0
+FFE3CBC8* 48000D51  bl      glue_LMGetExpandMem
+FFE3CBCC* 80410014  lwz     r2, 0x14(r1)
+FFE3CBD0* A8630000  lha     r3, 0x0(r3)
+FFE3CBD4* 2C03013C  cmpwi   cr0, r3, 0x13C
+FFE3CBD8* 4E600382  crmove  crb19, crb0
+FFE3CBDC* 48000D61  bl      glue_GetZone
+FFE3CBE0* 80410014  lwz     r2, 0x14(r1)
+FFE3CBE4* 90610038  stw     r3, 0x38(r1)
+FFE3CBE8* 48000D79  bl      glue_SystemZone
+FFE3CBEC* 80410014  lwz     r2, 0x14(r1)
+FFE3CBF0* 48000D95  bl      glue_SetZone
+FFE3CBF4* 80410014  lwz     r2, 0x14(r1)
+FFE3CBF8* 419300DC  bso     cr4, loc_FFE3CCD4
+FFE3CBFC* 83C20000  lwz     r30, 0x0(r2)                       ; TOC[+0] gMasterList
+FFE3CC00* 809E0000  lwz     r4, 0x0(r30)
+FFE3CC04* 2C040000  cmpwi   cr0, r4, 0x0
+FFE3CC08* 40820050  bne     loc_FFE3CC58
+FFE3CC0C* 48000D0D  bl      glue_LMGetExpandMem
+FFE3CC10* 80410014  lwz     r2, 0x14(r1)
+FFE3CC14* 80830264  lwz     r4, 0x264(r3)
+FFE3CC18* 38600020  li      r3, 0x20
+FFE3CC1C* 2C040000  cmpwi   cr0, r4, 0x0
+FFE3CC20* 909E0000  stw     r4, 0x0(r30)
+FFE3CC24* 40820034  bne     loc_FFE3CC58
+FFE3CC28* 48000CA9  bl      glue_NewPtrSysClear
+FFE3CC2C* 80410014  lwz     r2, 0x14(r1)
+FFE3CC30* 907E0000  stw     r3, 0x0(r30)
+FFE3CC34* 3860006C  li      r3, 0x6C
+FFE3CC38* 48000C99  bl      glue_NewPtrSysClear
+FFE3CC3C* 80410014  lwz     r2, 0x14(r1)
+FFE3CC40* 809E0000  lwz     r4, 0x0(r30)
+FFE3CC44* 3BA30000  addi    r29, r3, 0x0
+FFE3CC48* 2C040000  cmpwi   cr0, r4, 0x0
+FFE3CC4C* 2C9D0000  cmpwi   cr1, r29, 0x0
+FFE3CC50* 4182007C  beq     loc_FFE3CCCC
+FFE3CC54* 48000010  b       loc_FFE3CC64
+loc_FFE3CC58:
+FFE3CC58  83A40000  lwz     r29, 0x0(r4)
+FFE3CC5C  2C9D0000  cmpwi   cr1, r29, 0x0
+FFE3CC60  4182006C  beq     loc_FFE3CCCC
+loc_FFE3CC64:
+FFE3CC64* 41860068  beq     cr1, loc_FFE3CCCC
+FFE3CC68* 48000D41  bl      glue_TickCount
+FFE3CC6C* 80410014  lwz     r2, 0x14(r1)
+FFE3CC70* 809E0000  lwz     r4, 0x0(r30)
+FFE3CC74* 3CA00007  lis     r5, 0x0007
+FFE3CC78* 9064000C  stw     r3, 0xC(r4)
+FFE3CC7C* 807E0000  lwz     r3, 0x0(r30)
+FFE3CC80* 30851132  addic   r4, r5, 0x1132
+FFE3CC84* 93A30000  stw     r29, 0x0(r3)
+FFE3CC88* 80BD0000  lwz     r5, 0x0(r29)
+FFE3CC8C* 80620020  lwz     r3, 0x20(r2)                       ; TOC[+32] &data+0
+FFE3CC90* 2C050000  cmpwi   cr0, r5, 0x0
+FFE3CC94* 80630000  lwz     r3, 0x0(r3)
+FFE3CC98* 38A00001  li      r5, 0x1
+FFE3CC9C* 40820010  bne     loc_FFE3CCAC
+FFE3CCA0* 48000D2D  bl      glue_NewRoutineDescriptor
+FFE3CCA4* 80410014  lwz     r2, 0x14(r1)
+FFE3CCA8* 907D0000  stw     r3, 0x0(r29)
+loc_FFE3CCAC:
+FFE3CCAC* 48000C6D  bl      glue_LMGetExpandMem
+FFE3CCB0* 80410014  lwz     r2, 0x14(r1)
+FFE3CCB4* 809E0000  lwz     r4, 0x0(r30)
+FFE3CCB8* 90830264  stw     r4, 0x264(r3)
+FFE3CCBC* 48000C5D  bl      glue_LMGetExpandMem
+FFE3CCC0* 80410014  lwz     r2, 0x14(r1)
+FFE3CCC4* 93A30260  stw     r29, 0x260(r3)
+FFE3CCC8* 48000010  b       loc_FFE3CCD8
+loc_FFE3CCCC:
+FFE3CCCC  3BE0FF94  li      r31, -0x6C
+FFE3CCD0  48000008  b       loc_FFE3CCD8
+loc_FFE3CCD4:
+FFE3CCD4  3BE0FFCE  li      r31, -0x32
+loc_FFE3CCD8:
+FFE3CCD8* 80610038  lwz     r3, 0x38(r1)
+FFE3CCDC* 48000CA9  bl      glue_SetZone
+FFE3CCE0* 80410014  lwz     r2, 0x14(r1)
+FFE3CCE4* 387F0000  addi    r3, r31, 0x0
+FFE3CCE8* 81810054  lwz     r12, 0x54(r1)
+FFE3CCEC* 80010058  lwz     r0, 0x58(r1)
+FFE3CCF0* 7D808120  mtcrf   0x08, r12
+FFE3CCF4* 30210050  addic   r1, r1, 0x50
+FFE3CCF8* 7C0803A6  mtspr   LR, r0
+FFE3CCFC* BBA1FFF4  lmw     r29, -0xC(r1)
+FFE3CD00* 4E800020  blr
+
+__term:
+FFE3CD04  7C0802A6  mfspr   r0, LR
+FFE3CD08  93E1FFFC  stw     r31, -0x4(r1)
+FFE3CD0C  90010008  stw     r0, 0x8(r1)
+FFE3CD10  9421FFB0  stwu    r1, -0x50(r1)
+FFE3CD14  48000C05  bl      glue_LMGetExpandMem
+FFE3CD18  80410014  lwz     r2, 0x14(r1)
+FFE3CD1C  A8030000  lha     r0, 0x0(r3)
+FFE3CD20  2C00013C  cmpwi   cr0, r0, 0x13C
+FFE3CD24  4180003C  blt     loc_FFE3CD60
+FFE3CD28  48000BF1  bl      glue_LMGetExpandMem
+FFE3CD2C  80410014  lwz     r2, 0x14(r1)
+FFE3CD30  83E30260  lwz     r31, 0x260(r3)
+FFE3CD34  2C1F0000  cmpwi   cr0, r31, 0x0
+FFE3CD38  41820018  beq     loc_FFE3CD50
+FFE3CD3C  807F0000  lwz     r3, 0x0(r31)
+FFE3CD40  48000CB1  bl      glue_DisposeRoutineDescriptor
+FFE3CD44  80410014  lwz     r2, 0x14(r1)
+FFE3CD48  38000000  li      r0, 0x0
+FFE3CD4C  901F0000  stw     r0, 0x0(r31)
+loc_FFE3CD50:
+FFE3CD50  48000BC9  bl      glue_LMGetExpandMem
+FFE3CD54  80410014  lwz     r2, 0x14(r1)
+FFE3CD58  38000000  li      r0, 0x0
+FFE3CD5C  90030260  stw     r0, 0x260(r3)
+loc_FFE3CD60:
+FFE3CD60  81810058  lwz     r12, 0x58(r1)
+FFE3CD64  83E1004C  lwz     r31, 0x4C(r1)
+FFE3CD68  7D8803A6  mtspr   LR, r12
+FFE3CD6C  30210050  addic   r1, r1, 0x50
+FFE3CD70  4E800020  blr
+
+sub_FFE3CD74:
+FFE3CD74* BFA1FFF4  stmw    r29, -0xC(r1)
+FFE3CD78* 3BA30000  addi    r29, r3, 0x0
+FFE3CD7C* 7C0802A6  mfspr   r0, LR
+FFE3CD80* 3BC40000  addi    r30, r4, 0x0
+FFE3CD84* 90010008  stw     r0, 0x8(r1)
+FFE3CD88* 9421FFB0  stwu    r1, -0x50(r1)
+FFE3CD8C* 3BE0FF94  li      r31, -0x6C
+FFE3CD90* 3860002A  li      r3, 0x2A
+FFE3CD94* 48000B3D  bl      glue_NewPtrSysClear
+FFE3CD98* 80410014  lwz     r2, 0x14(r1)
+FFE3CD9C* 2C030000  cmpwi   cr0, r3, 0x0
+FFE3CDA0* 41820020  beq     loc_FFE3CDC0
+FFE3CDA4* 3BE00000  li      r31, 0x0
+FFE3CDA8* 93A3000C  stw     r29, 0xC(r3)
+FFE3CDAC* 93E30000  stw     r31, 0x0(r3)
+FFE3CDB0* 93E30004  stw     r31, 0x4(r3)
+FFE3CDB4* B3E30010  sth     r31, 0x10(r3)
+FFE3CDB8* 93E30012  stw     r31, 0x12(r3)
+FFE3CDBC* 93E30016  stw     r31, 0x16(r3)
+loc_FFE3CDC0:
+FFE3CDC0* 907E0000  stw     r3, 0x0(r30)
+FFE3CDC4* 387F0000  addi    r3, r31, 0x0
+FFE3CDC8* 81810058  lwz     r12, 0x58(r1)
+FFE3CDCC* 30210050  addic   r1, r1, 0x50
+FFE3CDD0* 7D8803A6  mtspr   LR, r12
+FFE3CDD4* BBA1FFF4  lmw     r29, -0xC(r1)
+FFE3CDD8* 4E800020  blr
+
+sub_FFE3CDDC:
+FFE3CDDC* BFC1FFF8  stmw    r30, -0x8(r1)
+FFE3CDE0* 3BC50000  addi    r30, r5, 0x0
+FFE3CDE4* 7C0802A6  mfspr   r0, LR
+FFE3CDE8* 80630000  lwz     r3, 0x0(r3)
+FFE3CDEC* 90010008  stw     r0, 0x8(r1)
+FFE3CDF0* 9421FFA0  stwu    r1, -0x60(r1)
+FFE3CDF4* 90810040  stw     r4, 0x40(r1)
+FFE3CDF8* 3BE00000  li      r31, 0x0
+FFE3CDFC* 93E10038  stw     r31, 0x38(r1)
+FFE3CE00* 88630028  lbz     r3, 0x28(r3)
+FFE3CE04* 3081003C  addic   r4, r1, 0x3C
+FFE3CE08* 7C630774  extsb   r3, r3
+FFE3CE0C* 38A00001  li      r5, 0x1
+FFE3CE10* 4BFFFCE5  bl      sub_FFE3CAF4
+FFE3CE14* 7C670735  extsh.  r7, r3
+FFE3CE18* 8061003C  lwz     r3, 0x3C(r1)
+FFE3CE1C* 30A10038  addic   r5, r1, 0x38
+FFE3CE20* 40820044  bne     loc_FFE3CE64
+FFE3CE24* 80810040  lwz     r4, 0x40(r1)
+FFE3CE28* 4BFFFC81  bl      sub_FFE3CAA8
+FFE3CE2C* 7C630735  extsh.  r3, r3
+FFE3CE30* 38640000  addi    r3, r4, 0x0
+FFE3CE34* 38850000  addi    r4, r5, 0x0
+FFE3CE38* 38E0FFCE  li      r7, -0x32
+FFE3CE3C* 40820010  bne     loc_FFE3CE4C
+FFE3CE40  93E10038  stw     r31, 0x38(r1)
+FFE3CE44  80610038  lwz     r3, 0x38(r1)
+FFE3CE48  48000020  b       loc_FFE3CE68
+loc_FFE3CE4C:
+FFE3CE4C* 93E10038  stw     r31, 0x38(r1)
+FFE3CE50* 4BFFFF25  bl      sub_FFE3CD74
+FFE3CE54* 7C670735  extsh.  r7, r3
+FFE3CE58* 8061003C  lwz     r3, 0x3C(r1)
+FFE3CE5C* 80810038  lwz     r4, 0x38(r1)
+FFE3CE60* 4182FC29  beql    sub_FFE3CA88
+loc_FFE3CE64:
+FFE3CE64* 80610038  lwz     r3, 0x38(r1)
+loc_FFE3CE68:
+FFE3CE68* 4BFFFBF9  bl      sub_FFE3CA60
+FFE3CE6C* 907E0000  stw     r3, 0x0(r30)
+FFE3CE70* 38670000  addi    r3, r7, 0x0
+FFE3CE74* 81810068  lwz     r12, 0x68(r1)
+FFE3CE78* 30210060  addic   r1, r1, 0x60
+FFE3CE7C* 7D8803A6  mtspr   LR, r12
+FFE3CE80* BBC1FFF8  lmw     r30, -0x8(r1)
+FFE3CE84* 4E800020  blr
+
+sub_FFE3CE88:
+FFE3CE88  BFA1FFF4  stmw    r29, -0xC(r1)
+FFE3CE8C  3BC30000  addi    r30, r3, 0x0
+FFE3CE90  2C1E0000  cmpwi   cr0, r30, 0x0
+FFE3CE94  7C0802A6  mfspr   r0, LR
+FFE3CE98  3860FFCE  li      r3, -0x32
+FFE3CE9C  90010008  stw     r0, 0x8(r1)
+FFE3CEA0  9421FFB0  stwu    r1, -0x50(r1)
+FFE3CEA4  418200A0  beq     loc_FFE3CF44
+FFE3CEA8  807E0004  lwz     r3, 0x4(r30)
+FFE3CEAC  80BE0000  lwz     r5, 0x0(r30)
+FFE3CEB0  2C830000  cmpwi   cr1, r3, 0x0
+FFE3CEB4  33FE0010  addic   r31, r30, 0x10
+FFE3CEB8  38C50000  addi    r6, r5, 0x0
+FFE3CEBC  389F0000  addi    r4, r31, 0x0
+FFE3CEC0  40860010  bne     cr1, loc_FFE3CED0
+FFE3CEC4  807E0008  lwz     r3, 0x8(r30)
+FFE3CEC8  90A30008  stw     r5, 0x8(r3)
+FFE3CECC  48000008  b       loc_FFE3CED4
+loc_FFE3CED0:
+FFE3CED0  90C30000  stw     r6, 0x0(r3)
+loc_FFE3CED4:
+FFE3CED4  807E0000  lwz     r3, 0x0(r30)
+FFE3CED8  2C030000  cmpwi   cr0, r3, 0x0
+FFE3CEDC  4182000C  beq     loc_FFE3CEE8
+FFE3CEE0  80BE0004  lwz     r5, 0x4(r30)
+FFE3CEE4  90A30004  stw     r5, 0x4(r3)
+loc_FFE3CEE8:
+FFE3CEE8  83BE0012  lwz     r29, 0x12(r30)
+FFE3CEEC  2C9D0000  cmpwi   cr1, r29, 0x0
+FFE3CEF0  387D0000  addi    r3, r29, 0x0
+FFE3CEF4  4186002C  beq     cr1, loc_FFE3CF20
+loc_FFE3CEF8:
+FFE3CEF8  48000B1D  bl      glue_Dequeue
+FFE3CEFC  80410014  lwz     r2, 0x14(r1)
+FFE3CF00  387D0000  addi    r3, r29, 0x0
+FFE3CF04  48000B35  bl      glue_VInstall
+FFE3CF08  80410014  lwz     r2, 0x14(r1)
+FFE3CF0C  83BE0012  lwz     r29, 0x12(r30)
+FFE3CF10  389F0000  addi    r4, r31, 0x0
+FFE3CF14  2C1D0000  cmpwi   cr0, r29, 0x0
+FFE3CF18  387D0000  addi    r3, r29, 0x0
+FFE3CF1C  4082FFDC  bne     loc_FFE3CEF8
+loc_FFE3CF20:
+FFE3CF20  387E0000  addi    r3, r30, 0x0
+FFE3CF24  48000B39  bl      glue_DisposePtr
+FFE3CF28  80410014  lwz     r2, 0x14(r1)
+FFE3CF2C  38600000  li      r3, 0x0
+FFE3CF30  81810058  lwz     r12, 0x58(r1)
+FFE3CF34  30210050  addic   r1, r1, 0x50
+FFE3CF38  7D8803A6  mtspr   LR, r12
+FFE3CF3C  BBA1FFF4  lmw     r29, -0xC(r1)
+FFE3CF40  4E800020  blr
+loc_FFE3CF44:
+FFE3CF44  83C10048  lwz     r30, 0x48(r1)
+FFE3CF48  30210050  addic   r1, r1, 0x50
+FFE3CF4C  4E800020  blr
+
+sub_FFE3CF50:
+FFE3CF50* BFC1FFF8  stmw    r30, -0x8(r1)
+FFE3CF54* 7C0802A6  mfspr   r0, LR
+FFE3CF58* 83C20038  lwz     r30, 0x38(r2)                      ; TOC[+56] &code+1168
+FFE3CF5C* 90010008  stw     r0, 0x8(r1)
+FFE3CF60* 9421FFB0  stwu    r1, -0x50(r1)
+FFE3CF64* 3BE40000  addi    r31, r4, 0x0
+FFE3CF68* 9061003C  stw     r3, 0x3C(r1)
+FFE3CF6C* 38000000  li      r0, 0x0
+FFE3CF70* B01F0000  sth     r0, 0x0(r31)
+FFE3CF74* 389E0000  addi    r4, r30, 0x0
+FFE3CF78* 30A10038  addic   r5, r1, 0x38
+FFE3CF7C* 48000B05  bl      glue_RegistryPropertyGetSize
+FFE3CF80* 80410014  lwz     r2, 0x14(r1)
+FFE3CF84* 7C630735  extsh.  r3, r3
+FFE3CF88* 80010038  lwz     r0, 0x38(r1)
+FFE3CF8C* 28800002  cmplwi  cr1, r0, 0x2
+FFE3CF90* 40820024  bne     loc_FFE3CFB4
+FFE3CF94* 389E0000  addi    r4, r30, 0x0
+FFE3CF98* 38BF0000  addi    r5, r31, 0x0
+FFE3CF9C* 30C10038  addic   r6, r1, 0x38
+FFE3CFA0* 40860014  bne     cr1, loc_FFE3CFB4
+FFE3CFA4* 8061003C  lwz     r3, 0x3C(r1)
+FFE3CFA8* 48000AFD  bl      glue_RegistryPropertyGet
+FFE3CFAC* 80410014  lwz     r2, 0x14(r1)
+FFE3CFB0* 7C630734  extsh   r3, r3
+loc_FFE3CFB4:
+FFE3CFB4* 81810058  lwz     r12, 0x58(r1)
+FFE3CFB8* 30210050  addic   r1, r1, 0x50
+FFE3CFBC* 7D8803A6  mtspr   LR, r12
+FFE3CFC0* BBC1FFF8  lmw     r30, -0x8(r1)
+FFE3CFC4* 4E800020  blr
+
+VSLNewInterruptService:
+FFE3CFC8* 9421FFB0  stwu    r1, -0x50(r1)
+FFE3CFCC* 9081003C  stw     r4, 0x3C(r1)
+FFE3CFD0* 7C0802A6  mfspr   r0, LR
+FFE3CFD4* 90A10040  stw     r5, 0x40(r1)
+FFE3CFD8* 90010058  stw     r0, 0x58(r1)
+FFE3CFDC* 30810038  addic   r4, r1, 0x38
+FFE3CFE0* 4BFFFF71  bl      sub_FFE3CF50
+FFE3CFE4* 7C630735  extsh.  r3, r3
+FFE3CFE8* 40820038  bne     loc_FFE3D020
+FFE3CFEC* A8610038  lha     r3, 0x38(r1)
+FFE3CFF0* 48000AD9  bl      glue_GetDCtlEntry
+FFE3CFF4* 80410014  lwz     r2, 0x14(r1)
+FFE3CFF8* 2C030000  cmpwi   cr0, r3, 0x0
+FFE3CFFC* 8081003C  lwz     r4, 0x3C(r1)
+FFE3D000* 80A10040  lwz     r5, 0x40(r1)
+FFE3D004* 41820018  beq     loc_FFE3D01C
+FFE3D008* 4BFFFDD5  bl      sub_FFE3CDDC
+FFE3D00C* 7C630734  extsh   r3, r3
+FFE3D010* 81810058  lwz     r12, 0x58(r1)
+FFE3D014* 30210050  addic   r1, r1, 0x50
+FFE3D018* 48000010  b       loc_FFE3D028
+loc_FFE3D01C:
+FFE3D01C  3860FFCE  li      r3, -0x32
+loc_FFE3D020:
+FFE3D020  81810058  lwz     r12, 0x58(r1)
+FFE3D024  30210050  addic   r1, r1, 0x50
+loc_FFE3D028:
+FFE3D028* 7D8803A6  mtspr   LR, r12
+FFE3D02C* 4E800020  blr
+
+VSLDisposeInterruptService:
+FFE3D030  7C0802A6  mfspr   r0, LR
+FFE3D034  9421FFC0  stwu    r1, -0x40(r1)
+FFE3D038  90010048  stw     r0, 0x48(r1)
+FFE3D03C  4BFFFA39  bl      sub_FFE3CA74
+FFE3D040  4BFFFE49  bl      sub_FFE3CE88
+FFE3D044  7C630734  extsh   r3, r3
+FFE3D048  81810048  lwz     r12, 0x48(r1)
+FFE3D04C  30210040  addic   r1, r1, 0x40
+FFE3D050  7D8803A6  mtspr   LR, r12
+FFE3D054  4E800020  blr
+
+VSLDoInterruptService:
+FFE3D058* 7C0802A6  mfspr   r0, LR
+FFE3D05C* BF61FFEC  stmw    r27, -0x14(r1)
+FFE3D060* 90010008  stw     r0, 0x8(r1)
+FFE3D064* 9421FFA0  stwu    r1, -0x60(r1)
+FFE3D068* 4BFFFA0D  bl      sub_FFE3CA74
+FFE3D06C* 3BA30000  addi    r29, r3, 0x0
+FFE3D070* 3BE0FFCE  li      r31, -0x32
+FFE3D074* 48000A79  bl      glue_LMGetScrnVBLPtr
+FFE3D078* 80410014  lwz     r2, 0x14(r1)
+FFE3D07C* 2C9D0000  cmpwi   cr1, r29, 0x0
+FFE3D080* 33DD0010  addic   r30, r29, 0x10
+FFE3D084* 418600D4  beq     cr1, loc_FFE3D158
+FFE3D088* 3BE00000  li      r31, 0x0
+FFE3D08C* 48000A61  bl      glue_LMGetScrnVBLPtr
+FFE3D090* 80410014  lwz     r2, 0x14(r1)
+FFE3D094* 7C9E1840  cmplw   cr1, r30, r3
+FFE3D098* 40860038  bne     cr1, loc_FFE3D0D0
+FFE3D09C* 48000A75  bl      glue_LMGetJCrsrTask
+FFE3D0A0* 80410014  lwz     r2, 0x14(r1)
+FFE3D0A4* 2C830000  cmpwi   cr1, r3, 0x0
+FFE3D0A8* 90610038  stw     r3, 0x38(r1)
+FFE3D0AC* 41860024  beq     cr1, loc_FFE3D0D0
+FFE3D0B0* 48000A85  bl      glue_LMGetCrsrDevice
+FFE3D0B4* 80410014  lwz     r2, 0x14(r1)
+FFE3D0B8* 38A30000  addi    r5, r3, 0x0
+FFE3D0BC* 3C800001  lis     r4, 0x0001
+FFE3D0C0* 80610038  lwz     r3, 0x38(r1)
+FFE3D0C4* 30849802  addic   r4, r4, -0x67FE
+FFE3D0C8* 48000A91  bl      glue_CallUniversalProc
+FFE3D0CC* 80410014  lwz     r2, 0x14(r1)
+loc_FFE3D0D0:
+FFE3D0D0* 837D0012  lwz     r27, 0x12(r29)
+FFE3D0D4* 3C800001  lis     r4, 0x0001
+FFE3D0D8* 2C9B0000  cmpwi   cr1, r27, 0x0
+FFE3D0DC* 33A49802  addic   r29, r4, -0x67FE
+FFE3D0E0* 389D0000  addi    r4, r29, 0x0
+FFE3D0E4* 38BB0000  addi    r5, r27, 0x0
+FFE3D0E8* 41860070  beq     cr1, loc_FFE3D158
+FFE3D0EC  A8DB000A  lha     r6, 0xA(r27)
+FFE3D0F0  839B0000  lwz     r28, 0x0(r27)
+FFE3D0F4  30C6FFFF  addic   r6, r6, -0x1
+FFE3D0F8  B0DB000A  sth     r6, 0xA(r27)
+FFE3D0FC  7CC60735  extsh.  r6, r6
+loc_FFE3D100:
+FFE3D100  4082002C  bne     loc_FFE3D12C
+FFE3D104  807B0006  lwz     r3, 0x6(r27)
+FFE3D108  48000A51  bl      glue_CallUniversalProc
+FFE3D10C  80410014  lwz     r2, 0x14(r1)
+FFE3D110  A89B000A  lha     r4, 0xA(r27)
+FFE3D114  387B0000  addi    r3, r27, 0x0
+FFE3D118  2C840000  cmpwi   cr1, r4, 0x0
+FFE3D11C  389E0000  addi    r4, r30, 0x0
+FFE3D120  4086000C  bne     cr1, loc_FFE3D12C
+FFE3D124  480008F1  bl      glue_Dequeue
+FFE3D128  80410014  lwz     r2, 0x14(r1)
+loc_FFE3D12C:
+FFE3D12C  2C9C0000  cmpwi   cr1, r28, 0x0
+FFE3D130  3B7C0000  addi    r27, r28, 0x0
+FFE3D134  389D0000  addi    r4, r29, 0x0
+FFE3D138  38BB0000  addi    r5, r27, 0x0
+FFE3D13C  4186001C  beq     cr1, loc_FFE3D158
+FFE3D140  A8DB000A  lha     r6, 0xA(r27)
+FFE3D144  839B0000  lwz     r28, 0x0(r27)
+FFE3D148  30C6FFFF  addic   r6, r6, -0x1
+FFE3D14C  7CCA0735  extsh.  r10, r6
+FFE3D150  B0DB000A  sth     r6, 0xA(r27)
+FFE3D154  4BFFFFAC  b       loc_FFE3D100
+loc_FFE3D158:
+FFE3D158* 387F0000  addi    r3, r31, 0x0
+FFE3D15C* 81810068  lwz     r12, 0x68(r1)
+FFE3D160* 30210060  addic   r1, r1, 0x60
+FFE3D164* 7D8803A6  mtspr   LR, r12
+FFE3D168* BB61FFEC  lmw     r27, -0x14(r1)
+FFE3D16C* 4E800020  blr
+
+sub_FFE3D170:
+FFE3D170* BFC1FFF8  stmw    r30, -0x8(r1)
+FFE3D174* 3BC30000  addi    r30, r3, 0x0
+FFE3D178* 5463043E  clrlwi  r3, r3, 16
+FFE3D17C* 2C03000F  cmpwi   cr0, r3, 0xF
+FFE3D180* 7C0802A6  mfspr   r0, LR
+FFE3D184* 38A00000  li      r5, 0x0
+FFE3D188* 90010008  stw     r0, 0x8(r1)
+FFE3D18C* 9421FFA0  stwu    r1, -0x60(r1)
+FFE3D190* 90810040  stw     r4, 0x40(r1)
+FFE3D194* 30810038  addic   r4, r1, 0x38
+FFE3D198* 3BE00000  li      r31, 0x0
+FFE3D19C* 40810040  ble     loc_FFE3D1DC
+FFE3D1A0* 4BFFF955  bl      sub_FFE3CAF4
+FFE3D1A4* 7C630735  extsh.  r3, r3
+FFE3D1A8* 80810040  lwz     r4, 0x40(r1)
+FFE3D1AC* 80610038  lwz     r3, 0x38(r1)
+FFE3D1B0* 30A1003C  addic   r5, r1, 0x3C
+FFE3D1B4* 40820038  bne     loc_FFE3D1EC
+FFE3D1B8* 4BFFF8F1  bl      sub_FFE3CAA8
+FFE3D1BC* 7C630735  extsh.  r3, r3
+FFE3D1C0* 8061003C  lwz     r3, 0x3C(r1)
+FFE3D1C4* 40820028  bne     loc_FFE3D1EC
+FFE3D1C8* 33E30010  addic   r31, r3, 0x10
+FFE3D1CC* 387F0000  addi    r3, r31, 0x0
+FFE3D1D0* 81810068  lwz     r12, 0x68(r1)
+FFE3D1D4* 30210060  addic   r1, r1, 0x60
+FFE3D1D8* 48000020  b       loc_FFE3D1F8
+loc_FFE3D1DC:
+FFE3D1DC  480009A1  bl      glue_LMGetSlotQDT
+FFE3D1E0  80410014  lwz     r2, 0x14(r1)
+FFE3D1E4  57C413BA  clrlslwi r4, r30, 16, 2
+FFE3D1E8  7FE3202E  lwzx    r31, r3, r4
+loc_FFE3D1EC:
+FFE3D1EC  387F0000  addi    r3, r31, 0x0
+FFE3D1F0  81810068  lwz     r12, 0x68(r1)
+FFE3D1F4  30210060  addic   r1, r1, 0x60
+loc_FFE3D1F8:
+FFE3D1F8* 7D8803A6  mtspr   LR, r12
+FFE3D1FC* BBC1FFF8  lmw     r30, -0x8(r1)
+FFE3D200* 4E800020  blr
+FFE3D204? 7C0802A6  mfspr   r0, LR
+FFE3D208? 93E1FFFC  stw     r31, -0x4(r1)
+FFE3D20C? 90010008  stw     r0, 0x8(r1)
+FFE3D210? 9421FFB0  stwu    r1, -0x50(r1)
+FFE3D214? 90A10038  stw     r5, 0x38(r1)
+FFE3D218? 5463043E  clrlwi  r3, r3, 16
+FFE3D21C? 3BE00000  li      r31, 0x0
+FFE3D220? 4BFFFF51  bl      sub_FFE3D170
+FFE3D224? 2C030000  cmpwi   cr0, r3, 0x0
+FFE3D228? 38830000  addi    r4, r3, 0x0
+FFE3D22C? 80610038  lwz     r3, 0x38(r1)
+FFE3D230? 41820018  beq     loc_FFE3D248
+FFE3D234? 4800096D  bl      glue_Enqueue
+FFE3D238? 80410014  lwz     r2, 0x14(r1)
+FFE3D23C? 387F0000  addi    r3, r31, 0x0
+FFE3D240? 81810058  lwz     r12, 0x58(r1)
+FFE3D244? 48000010  b       loc_FFE3D254
+loc_FFE3D248:
+FFE3D248? 3BE0FFCE  li      r31, -0x32
+FFE3D24C? 387F0000  addi    r3, r31, 0x0
+FFE3D250? 81810058  lwz     r12, 0x58(r1)
+loc_FFE3D254:
+FFE3D254? 83E1004C  lwz     r31, 0x4C(r1)
+FFE3D258? 7D8803A6  mtspr   LR, r12
+FFE3D25C? 30210050  addic   r1, r1, 0x50
+FFE3D260? 4E800020  blr
+FFE3D264? 7C0802A6  mfspr   r0, LR
+FFE3D268? 93E1FFFC  stw     r31, -0x4(r1)
+FFE3D26C? 90010008  stw     r0, 0x8(r1)
+FFE3D270? 9421FFB0  stwu    r1, -0x50(r1)
+FFE3D274? 90A10038  stw     r5, 0x38(r1)
+FFE3D278? 5463043E  clrlwi  r3, r3, 16
+FFE3D27C? 3BE00000  li      r31, 0x0
+FFE3D280? 4BFFFEF1  bl      sub_FFE3D170
+FFE3D284? 2C030000  cmpwi   cr0, r3, 0x0
+FFE3D288? 38830000  addi    r4, r3, 0x0
+FFE3D28C? 80610038  lwz     r3, 0x38(r1)
+FFE3D290? 41820018  beq     loc_FFE3D2A8
+FFE3D294? 48000781  bl      glue_Dequeue
+FFE3D298? 80410014  lwz     r2, 0x14(r1)
+FFE3D29C? 387F0000  addi    r3, r31, 0x0
+FFE3D2A0? 81810058  lwz     r12, 0x58(r1)
+FFE3D2A4? 48000010  b       loc_FFE3D2B4
+loc_FFE3D2A8:
+FFE3D2A8? 3BE0FFCE  li      r31, -0x32
+FFE3D2AC? 387F0000  addi    r3, r31, 0x0
+FFE3D2B0? 81810058  lwz     r12, 0x58(r1)
+loc_FFE3D2B4:
+FFE3D2B4? 83E1004C  lwz     r31, 0x4C(r1)
+FFE3D2B8? 7D8803A6  mtspr   LR, r12
+FFE3D2BC? 30210050  addic   r1, r1, 0x50
+FFE3D2C0? 4E800020  blr
+
+sub_FFE3D2C4:
+FFE3D2C4  A0030000  lhz     r0, 0x0(r3)
+FFE3D2C8  38600000  li      r3, 0x0
+FFE3D2CC  2C000001  cmpwi   cr0, r0, 0x1
+FFE3D2D0  41810020  bgt     loc_FFE3D2F0
+FFE3D2D4  A0840000  lhz     r4, 0x0(r4)
+FFE3D2D8  2C840001  cmpwi   cr1, r4, 0x1
+FFE3D2DC  41850014  bgt     cr1, loc_FFE3D2F0
+FFE3D2E0  A0A50000  lhz     r5, 0x0(r5)
+FFE3D2E4  2C050001  cmpwi   cr0, r5, 0x1
+FFE3D2E8  41810008  bgt     loc_FFE3D2F0
+FFE3D2EC  38600001  li      r3, 0x1
+loc_FFE3D2F0:
+FFE3D2F0  5463063E  clrlwi  r3, r3, 24
+FFE3D2F4  4E800020  blr
+
+VSLPrepareCursorForHardwareCursor:
+FFE3D2F8  BDA1FFB4  stmw    r13, -0x4C(r1)
+FFE3D2FC  7C0802A6  mfspr   r0, LR
+FFE3D300  3A200000  li      r17, 0x0
+FFE3D304  90010008  stw     r0, 0x8(r1)
+FFE3D308  7D800026  mfcr    r12
+FFE3D30C  91810004  stw     r12, 0x4(r1)
+FFE3D310  9421FB30  stwu    r1, -0x4D0(r1)
+FFE3D314  92210038  stw     r17, 0x38(r1)
+FFE3D318  B221003C  sth     r17, 0x3C(r1)
+FFE3D31C  B2210040  sth     r17, 0x40(r1)
+FFE3D320  B221004A  sth     r17, 0x4A(r1)
+FFE3D324  B221004C  sth     r17, 0x4C(r1)
+FFE3D328  B221004E  sth     r17, 0x4E(r1)
+FFE3D32C  38C00001  li      r6, 0x1
+FFE3D330  B0C10048  sth     r6, 0x48(r1)
+FFE3D334  B0C1003E  sth     r6, 0x3E(r1)
+FFE3D338  3CC00001  lis     r6, 0x0001
+FFE3D33C  30C6FFFF  addic   r6, r6, -0x1
+FFE3D340  B0C10046  sth     r6, 0x46(r1)
+FFE3D344  B0C10042  sth     r6, 0x42(r1)
+FFE3D348  3B450000  addi    r26, r5, 0x0
+FFE3D34C  B0C10044  sth     r6, 0x44(r1)
+FFE3D350  3A040000  addi    r16, r4, 0x0
+FFE3D354  38C30000  addi    r6, r3, 0x0
+FFE3D358  3B310000  addi    r25, r17, 0x0
+FFE3D35C  4BFFFF69  bl      sub_FFE3D2C4
+FFE3D360  5463063F  clrlwi. r3, r3, 24
+FFE3D364  41820550  beq     loc_FFE3D8B4
+FFE3D368  80A60008  lwz     r5, 0x8(r6)
+FFE3D36C  80C60004  lwz     r6, 0x4(r6)
+FFE3D370  80A50000  lwz     r5, 0x0(r5)
+FFE3D374  83660000  lwz     r27, 0x0(r6)
+FFE3D378  A8C50004  lha     r6, 0x4(r5)
+FFE3D37C  90A10450  stw     r5, 0x450(r1)
+FFE3D380  54D2047E  clrlwi  r18, r6, 17
+FFE3D384  A8BB0004  lha     r5, 0x4(r27)
+FFE3D388  A89B000A  lha     r4, 0xA(r27)
+FFE3D38C  A81B0008  lha     r0, 0x8(r27)
+FFE3D390  A8DB0006  lha     r6, 0x6(r27)
+FFE3D394  A8FB000C  lha     r7, 0xC(r27)
+FFE3D398  7CC62010  subfc   r6, r6, r4
+FFE3D39C  7DE03810  subfc   r15, r0, r7
+FFE3D3A0  90C10454  stw     r6, 0x454(r1)
+FFE3D3A4  90DA0004  stw     r6, 0x4(r26)
+FFE3D3A8  91FA0008  stw     r15, 0x8(r26)
+FFE3D3AC  A8DB0004  lha     r6, 0x4(r27)
+FFE3D3B0  54B4047E  clrlwi  r20, r5, 17
+FFE3D3B4  54C5A33E  srwi    r5, r6, 12
+FFE3D3B8  7CA01120  mtcrf   0x01, r5
+FFE3D3BC  409C001C  bge     cr7, loc_FFE3D3D8
+FFE3D3C0  80BB002A  lwz     r5, 0x2A(r27)
+FFE3D3C4  AA7B0020  lha     r19, 0x20(r27)
+FFE3D3C8  83850000  lwz     r28, 0x0(r5)
+FFE3D3CC  8010000C  lwz     r0, 0xC(r16)
+FFE3D3D0  A8DC0006  lha     r6, 0x6(r28)
+FFE3D3D4  48000014  b       loc_FFE3D3E8
+loc_FFE3D3D8:
+FFE3D3D8  3A600001  li      r19, 0x1
+FFE3D3DC  33810038  addic   r28, r1, 0x38
+FFE3D3E0  8010000C  lwz     r0, 0xC(r16)
+FFE3D3E4  A8DC0006  lha     r6, 0x6(r28)
+loc_FFE3D3E8:
+FFE3D3E8  7CAF01D6  mullw   r5, r15, r0
+FFE3D3EC  30A50007  addic   r5, r5, 0x7
+FFE3D3F0  54A5E8FE  srwi    r5, r5, 3
+FFE3D3F4  90A1045C  stw     r5, 0x45C(r1)
+FFE3D3F8  22C00020  subfic  r22, r0, 0x20
+FFE3D3FC  90C10458  stw     r6, 0x458(r1)
+FFE3D400  38A0FFFF  li      r5, -0x1
+FFE3D404  7CA00430  srw     r0, r5, r0
+FFE3D408  7CA59C30  srw     r5, r5, r19
+FFE3D40C  21C5FFFF  subfic  r14, r5, -0x1
+FFE3D410  80A10454  lwz     r5, 0x454(r1)
+FFE3D414  22E0FFFF  subfic  r23, r0, -0x1
+FFE3D418  28850000  cmplwi  cr1, r5, 0x0
+FFE3D41C  30A60001  addic   r5, r6, 0x1
+FFE3D420  90A10460  stw     r5, 0x460(r1)
+FFE3D424  80A10450  lwz     r5, 0x450(r1)
+FFE3D428  22B30020  subfic  r21, r19, 0x20
+FFE3D42C  83DB0000  lwz     r30, 0x0(r27)
+FFE3D430  83A50000  lwz     r29, 0x0(r5)
+FFE3D434  3BF10000  addi    r31, r17, 0x0
+FFE3D438  40850138  ble     cr1, loc_FFE3D570
+FFE3D43C  2C030001  cmpwi   cr0, r3, 0x1
+FFE3D440  40820130  bne     loc_FFE3D570
+FFE3D444  2B8F0000  cmplwi  cr7, r15, 0x0
+FFE3D448  409D00E8  ble     cr7, loc_FFE3D530
+FFE3D44C  7D72E810  subfc   r11, r18, r29
+FFE3D450  7D94F010  subfc   r12, r20, r30
+FFE3D454  83010454  lwz     r24, 0x454(r1)
+FFE3D458  33FF0001  addic   r31, r31, 0x1
+FFE3D45C  7D1FC040  cmplw   cr2, r31, r24
+FFE3D460  48000010  b       loc_FFE3D470
+loc_FFE3D464:
+FFE3D464  4088010C  bge     cr2, loc_FFE3D570
+FFE3D468  33FF0001  addic   r31, r31, 0x1
+FFE3D46C  7D1FC040  cmplw   cr2, r31, r24
+loc_FFE3D470:
+FFE3D470  7CECA06E  lwzux   r7, r12, r20
+FFE3D474  7C0B906E  lwzux   r0, r11, r18
+FFE3D478  390E0000  addi    r8, r14, 0x0
+FFE3D47C  3CA08000  lis     r5, 0x8000
+FFE3D480  38D10000  addi    r6, r17, 0x0
+FFE3D484  40820098  bne     loc_FFE3D51C
+FFE3D488  393E0000  addi    r9, r30, 0x0
+FFE3D48C  395D0000  addi    r10, r29, 0x0
+FFE3D490  7C042839  and.    r4, r0, r5
+FFE3D494  48000024  b       loc_FFE3D4B8
+loc_FFE3D498:
+FFE3D498  4082000C  bne     loc_FFE3D4A4
+FFE3D49C  390E0000  addi    r8, r14, 0x0
+FFE3D4A0  84E90004  lwzu    r7, 0x4(r9)
+loc_FFE3D4A4:
+FFE3D4A4  408E000C  bne     cr3, loc_FFE3D4B0
+FFE3D4A8  3CA08000  lis     r5, 0x8000
+FFE3D4AC  840A0004  lwzu    r0, 0x4(r10)
+loc_FFE3D4B0:
+FFE3D4B0  4098006C  bge     cr6, loc_FFE3D51C
+FFE3D4B4  7C042839  and.    r4, r0, r5
+loc_FFE3D4B8:
+FFE3D4B8  30C60001  addic   r6, r6, 0x1
+FFE3D4BC  7F067840  cmplw   cr6, r6, r15
+FFE3D4C0  7CE44038  and     r4, r7, r8
+FFE3D4C4  4082002C  bne     loc_FFE3D4F0
+FFE3D4C8  2C040000  cmpwi   cr0, r4, 0x0
+FFE3D4CC  7F844040  cmplw   cr7, r4, r8
+FFE3D4D0  41820020  beq     loc_FFE3D4F0
+FFE3D4D4  409E0018  bne     cr7, loc_FFE3D4EC
+FFE3D4D8  3B200001  li      r25, 0x1
+FFE3D4DC  7D089C31  srw.    r8, r8, r19
+FFE3D4E0  54A5F87E  srwi    r5, r5, 1
+FFE3D4E4  2F830001  cmpwi   cr7, r3, 0x1
+FFE3D4E8  48000014  b       loc_FFE3D4FC
+loc_FFE3D4EC:
+FFE3D4EC  38710000  addi    r3, r17, 0x0
+loc_FFE3D4F0:
+FFE3D4F0  7D089C31  srw.    r8, r8, r19
+FFE3D4F4  54A5F87E  srwi    r5, r5, 1
+FFE3D4F8  2F830001  cmpwi   cr7, r3, 0x1
+loc_FFE3D4FC:
+FFE3D4FC  2D850000  cmpwi   cr3, r5, 0x0
+FFE3D500  419EFF98  beq     cr7, loc_FFE3D498
+FFE3D504  4082000C  bne     loc_FFE3D510
+FFE3D508  390E0000  addi    r8, r14, 0x0
+FFE3D50C  84E90004  lwzu    r7, 0x4(r9)
+loc_FFE3D510:
+FFE3D510  408E000C  bne     cr3, loc_FFE3D51C
+FFE3D514  3CA08000  lis     r5, 0x8000
+FFE3D518  840A0004  lwzu    r0, 0x4(r10)
+loc_FFE3D51C:
+FFE3D51C  2C030001  cmpwi   cr0, r3, 0x1
+FFE3D520  7FDEA014  addc    r30, r30, r20
+FFE3D524  7FBD9014  addc    r29, r29, r18
+FFE3D528  4182FF3C  beq     loc_FFE3D464
+FFE3D52C  48000044  b       loc_FFE3D570
+loc_FFE3D530:
+FFE3D530  7CD4F010  subfc   r6, r20, r30
+FFE3D534  7CB2E810  subfc   r5, r18, r29
+FFE3D538  38800001  li      r4, 0x1
+FFE3D53C  7C06A06E  lwzux   r0, r6, r20
+FFE3D540  7C05906E  lwzux   r0, r5, r18
+FFE3D544  80010454  lwz     r0, 0x454(r1)
+FFE3D548  83E10454  lwz     r31, 0x454(r1)
+FFE3D54C  7F840040  cmplw   cr7, r4, r0
+FFE3D550  38800002  li      r4, 0x2
+loc_FFE3D554:
+FFE3D554  409C001C  bge     cr7, loc_FFE3D570
+FFE3D558  40820018  bne     loc_FFE3D570
+FFE3D55C  7F84F840  cmplw   cr7, r4, r31
+FFE3D560  7C06A06E  lwzux   r0, r6, r20
+FFE3D564  7C05906E  lwzux   r0, r5, r18
+FFE3D568  30840001  addic   r4, r4, 0x1
+FFE3D56C  4BFFFFE8  b       loc_FFE3D554
+loc_FFE3D570:
+FFE3D570  2C190001  cmpwi   cr0, r25, 0x1
+FFE3D574  4082001C  bne     loc_FFE3D590
+FFE3D578  80B00020  lwz     r5, 0x20(r16)
+FFE3D57C  7CA01120  mtcrf   0x01, r5
+FFE3D580  419D0018  bgt     cr7, loc_FFE3D598
+FFE3D584  38710000  addi    r3, r17, 0x0
+FFE3D588  419F0018  bso     cr7, loc_FFE3D5A0
+FFE3D58C  48000010  b       loc_FFE3D59C
+loc_FFE3D590:
+FFE3D590  80B00020  lwz     r5, 0x20(r16)
+FFE3D594  7CA01120  mtcrf   0x01, r5
+loc_FFE3D598:
+FFE3D598  419F0008  bso     cr7, loc_FFE3D5A0
+loc_FFE3D59C:
+FFE3D59C  38710000  addi    r3, r17, 0x0
+loc_FFE3D5A0:
+FFE3D5A0  80B00004  lwz     r5, 0x4(r16)
+FFE3D5A4  80C10454  lwz     r6, 0x454(r1)
+FFE3D5A8  7C062840  cmplw   r6, r5
+FFE3D5AC  41810020  bgt     loc_FFE3D5CC
+FFE3D5B0  80B00008  lwz     r5, 0x8(r16)
+FFE3D5B4  7F8F2840  cmplw   cr7, r15, r5
+FFE3D5B8  419D0014  bgt     cr7, loc_FFE3D5CC
+FFE3D5BC  80B00014  lwz     r5, 0x14(r16)
+FFE3D5C0  80C10460  lwz     r6, 0x460(r1)
+FFE3D5C4  7C062840  cmplw   r6, r5
+FFE3D5C8  40810024  ble     loc_FFE3D5EC
+loc_FFE3D5CC:
+FFE3D5CC  818104D4  lwz     r12, 0x4D4(r1)
+FFE3D5D0  800104D8  lwz     r0, 0x4D8(r1)
+FFE3D5D4  7D830120  mtcrf   0x30, r12
+FFE3D5D8  38710000  addi    r3, r17, 0x0
+FFE3D5DC  302104D0  addic   r1, r1, 0x4D0
+FFE3D5E0  7C0803A6  mtspr   LR, r0
+FFE3D5E4  B9C1FFB8  lmw     r14, -0x48(r1)
+FFE3D5E8  4E800020  blr
+loc_FFE3D5EC:
+FFE3D5EC  2C030000  cmpwi   cr0, r3, 0x0
+FFE3D5F0  418202C4  beq     loc_FFE3D8B4
+FFE3D5F4  38A60000  addi    r5, r6, 0x0
+FFE3D5F8  2B850000  cmplwi  cr7, r5, 0x0
+FFE3D5FC  409D003C  ble     cr7, loc_FFE3D638
+FFE3D600  80A10458  lwz     r5, 0x458(r1)
+FFE3D604  30E10050  addic   r7, r1, 0x50
+FFE3D608  28050000  cmplwi  cr0, r5, 0x0
+FFE3D60C  38A60000  addi    r5, r6, 0x0
+FFE3D610  7CA903A6  mtspr   CTR, r5
+FFE3D614  38DC0000  addi    r6, r28, 0x0
+FFE3D618  38B10000  addi    r5, r17, 0x0
+loc_FFE3D61C:
+FFE3D61C  80900018  lwz     r4, 0x18(r16)
+FFE3D620  AC060008  lhau    r0, 0x8(r6)
+FFE3D624  7C84282E  lwzx    r4, r4, r5
+FFE3D628  5408103A  slwi    r8, r0, 2
+FFE3D62C  7C87412E  stwx    r4, r7, r8
+FFE3D630  30A50004  addic   r5, r5, 0x4
+FFE3D634  4000FFE8  bdnzf   lt, loc_FFE3D61C
+loc_FFE3D638:
+FFE3D638  80A10460  lwz     r5, 0x460(r1)
+FFE3D63C  2B850000  cmplwi  cr7, r5, 0x0
+FFE3D640  409D0078  ble     cr7, loc_FFE3D6B8
+FFE3D644  80A10458  lwz     r5, 0x458(r1)
+FFE3D648  317C0006  addic   r11, r28, 0x6
+FFE3D64C  28050000  cmplwi  cr0, r5, 0x0
+FFE3D650  30A50001  addic   r5, r5, 0x1
+FFE3D654  7CA903A6  mtspr   CTR, r5
+FFE3D658  31210050  addic   r9, r1, 0x50
+FFE3D65C  38E0000E  li      r7, 0xE
+FFE3D660  3940000C  li      r10, 0xC
+FFE3D664  3880000A  li      r4, 0xA
+FFE3D668  39000008  li      r8, 0x8
+loc_FFE3D66C:
+FFE3D66C  A8CB0002  lha     r6, 0x2(r11)
+FFE3D670  80BA000C  lwz     r5, 0xC(r26)
+FFE3D674  54C6103A  slwi    r6, r6, 2
+FFE3D678  7CC9302E  lwzx    r6, r9, r6
+FFE3D67C  7CC5432E  sthx    r6, r5, r8
+FFE3D680  80BA000C  lwz     r5, 0xC(r26)
+FFE3D684  A18B0004  lhz     r12, 0x4(r11)
+FFE3D688  31080008  addic   r8, r8, 0x8
+FFE3D68C  7D85232E  sthx    r12, r5, r4
+FFE3D690  80BA000C  lwz     r5, 0xC(r26)
+FFE3D694  A0CB0006  lhz     r6, 0x6(r11)
+FFE3D698  30840008  addic   r4, r4, 0x8
+FFE3D69C  7CC5532E  sthx    r6, r5, r10
+FFE3D6A0  80BA000C  lwz     r5, 0xC(r26)
+FFE3D6A4  A58B0008  lhzu    r12, 0x8(r11)
+FFE3D6A8  314A0008  addic   r10, r10, 0x8
+FFE3D6AC  7D853B2E  sthx    r12, r5, r7
+FFE3D6B0  30E70008  addic   r7, r7, 0x8
+FFE3D6B4  4000FFB8  bdnzf   lt, loc_FFE3D66C
+loc_FFE3D6B8:
+FFE3D6B8  80A10450  lwz     r5, 0x450(r1)
+FFE3D6BC  80DB0000  lwz     r6, 0x0(r27)
+FFE3D6C0  80850000  lwz     r4, 0x0(r5)
+FFE3D6C4  833A0010  lwz     r25, 0x10(r26)
+FFE3D6C8  90C10464  stw     r6, 0x464(r1)
+FFE3D6CC  90810468  stw     r4, 0x468(r1)
+FFE3D6D0  83500028  lwz     r26, 0x28(r16)
+FFE3D6D4  83100024  lwz     r24, 0x24(r16)
+FFE3D6D8  31A10050  addic   r13, r1, 0x50
+FFE3D6DC  408501D8  ble     cr1, loc_FFE3D8B4
+FFE3D6E0  30AFFFFF  addic   r5, r15, -0x1
+FFE3D6E4  2B850000  cmplwi  cr7, r5, 0x0
+FFE3D6E8  30B9FFFC  addic   r5, r25, -0x4
+FFE3D6EC  90A1046C  stw     r5, 0x46C(r1)
+FFE3D6F0  80A1045C  lwz     r5, 0x45C(r1)
+FFE3D6F4  298F0000  cmplwi  cr3, r15, 0x0
+FFE3D6F8  7CC5C810  subfc   r6, r5, r25
+FFE3D6FC  80A10468  lwz     r5, 0x468(r1)
+FFE3D700  90C10470  stw     r6, 0x470(r1)
+FFE3D704  7CB22810  subfc   r5, r18, r5
+FFE3D708  90A10474  stw     r5, 0x474(r1)
+FFE3D70C  80A10464  lwz     r5, 0x464(r1)
+FFE3D710  7C942810  subfc   r4, r20, r5
+FFE3D714  90810478  stw     r4, 0x478(r1)
+FFE3D718  48000018  b       loc_FFE3D730
+loc_FFE3D71C:
+FFE3D71C  419A0008  beq     cr6, loc_FFE3D724
+FFE3D720  90BC0000  stw     r5, 0x0(r28)
+loc_FFE3D724:
+FFE3D724  80A1046C  lwz     r5, 0x46C(r1)
+FFE3D728  7CA62814  addc    r5, r6, r5
+FFE3D72C  90A1046C  stw     r5, 0x46C(r1)
+loc_FFE3D730:
+FFE3D730  80A10454  lwz     r5, 0x454(r1)
+FFE3D734  32310001  addic   r17, r17, 0x1
+FFE3D738  7C912840  cmplw   cr1, r17, r5
+FFE3D73C  80A10478  lwz     r5, 0x478(r1)
+FFE3D740  80C10470  lwz     r6, 0x470(r1)
+FFE3D744  7FC5A06E  lwzux   r30, r5, r20
+FFE3D748  39950000  addi    r12, r21, 0x0
+FFE3D74C  90A10478  stw     r5, 0x478(r1)
+FFE3D750  80A10474  lwz     r5, 0x474(r1)
+FFE3D754  3B990000  addi    r28, r25, 0x0
+FFE3D758  7FA5906E  lwzux   r29, r5, r18
+FFE3D75C  396E0000  addi    r11, r14, 0x0
+FFE3D760  90A10474  stw     r5, 0x474(r1)
+FFE3D764  80A1045C  lwz     r5, 0x45C(r1)
+FFE3D768  3F608000  lis     r27, 0x8000
+FFE3D76C  7CA6286E  lwzux   r5, r6, r5
+FFE3D770  39170000  addi    r8, r23, 0x0
+FFE3D774  90C10470  stw     r6, 0x470(r1)
+FFE3D778  39360000  addi    r9, r22, 0x0
+FFE3D77C  408D00FC  ble     cr3, loc_FFE3D878
+FFE3D780  83E10464  lwz     r31, 0x464(r1)
+FFE3D784  80810468  lwz     r4, 0x468(r1)
+FFE3D788  8141046C  lwz     r10, 0x46C(r1)
+FFE3D78C  7DE903A6  mtspr   CTR, r15
+FFE3D790  48000028  b       loc_FFE3D7B8
+loc_FFE3D794:
+FFE3D794  409A000C  bne     cr6, loc_FFE3D7A0
+FFE3D798  3F608000  lis     r27, 0x8000
+FFE3D79C  87A40004  lwzu    r29, 0x4(r4)
+loc_FFE3D7A0:
+FFE3D7A0  40820018  bne     loc_FFE3D7B8
+FFE3D7A4  94AA0004  stwu    r5, 0x4(r10)
+FFE3D7A8  339C0004  addic   r28, r28, 0x4
+FFE3D7AC  39170000  addi    r8, r23, 0x0
+FFE3D7B0  39360000  addi    r9, r22, 0x0
+FFE3D7B4  80AA0004  lwz     r5, 0x4(r10)
+loc_FFE3D7B8:
+FFE3D7B8  7FA6D839  and.    r6, r29, r27
+FFE3D7BC  7FC65838  and     r6, r30, r11
+FFE3D7C0  2F060000  cmpwi   cr6, r6, 0x0
+FFE3D7C4  7D6B9C30  srw     r11, r11, r19
+FFE3D7C8  80F0000C  lwz     r7, 0xC(r16)
+FFE3D7CC  41820020  beq     loc_FFE3D7EC
+FFE3D7D0  7CC66430  srw     r6, r6, r12
+FFE3D7D4  54C6103A  slwi    r6, r6, 2
+FFE3D7D8  7CCD302E  lwzx    r6, r13, r6
+FFE3D7DC  7CA54078  andc    r5, r5, r8
+FFE3D7E0  7CC64830  slw     r6, r6, r9
+FFE3D7E4  7CA53378  or      r5, r5, r6
+FFE3D7E8  4800003C  b       loc_FFE3D824
+loc_FFE3D7EC:
+FFE3D7EC  7CA64078  andc    r6, r5, r8
+FFE3D7F0  38A60000  addi    r5, r6, 0x0
+FFE3D7F4  7F404830  slw     r0, r26, r9
+FFE3D7F8  419A0024  beq     cr6, loc_FFE3D81C
+FFE3D7FC  7CA50378  or      r5, r5, r0
+FFE3D800  2C0B0000  cmpwi   cr0, r11, 0x0
+FFE3D804  577BF87E  srwi    r27, r27, 1
+FFE3D808  2F1B0000  cmpwi   cr6, r27, 0x0
+FFE3D80C  7D083C30  srw     r8, r8, r7
+FFE3D810  7D936010  subfc   r12, r19, r12
+FFE3D814  40820034  bne     loc_FFE3D848
+FFE3D818  48000024  b       loc_FFE3D83C
+loc_FFE3D81C:
+FFE3D81C  7F054830  slw     r5, r24, r9
+FFE3D820  7CC52B78  or      r5, r6, r5
+loc_FFE3D824:
+FFE3D824  2C0B0000  cmpwi   cr0, r11, 0x0
+FFE3D828  577BF87E  srwi    r27, r27, 1
+FFE3D82C  2F1B0000  cmpwi   cr6, r27, 0x0
+FFE3D830  7D083C30  srw     r8, r8, r7
+FFE3D834  7D936010  subfc   r12, r19, r12
+FFE3D838  40820010  bne     loc_FFE3D848
+loc_FFE3D83C:
+FFE3D83C  396E0000  addi    r11, r14, 0x0
+FFE3D840  39950000  addi    r12, r21, 0x0
+FFE3D844  87DF0004  lwzu    r30, 0x4(r31)
+loc_FFE3D848:
+FFE3D848  2C080000  cmpwi   cr0, r8, 0x0
+FFE3D84C  7D274810  subfc   r9, r7, r9
+FFE3D850  401CFF44  bdnzf   4*cr7+lt, loc_FFE3D794
+FFE3D854  409A000C  bne     cr6, loc_FFE3D860
+FFE3D858  3F608000  lis     r27, 0x8000
+FFE3D85C  87A40004  lwzu    r29, 0x4(r4)
+loc_FFE3D860:
+FFE3D860  40820018  bne     loc_FFE3D878
+FFE3D864  94AA0004  stwu    r5, 0x4(r10)
+FFE3D868  339C0004  addic   r28, r28, 0x4
+FFE3D86C  39170000  addi    r8, r23, 0x0
+FFE3D870  39360000  addi    r9, r22, 0x0
+FFE3D874  80AA0004  lwz     r5, 0x4(r10)
+loc_FFE3D878:
+FFE3D878  80C10464  lwz     r6, 0x464(r1)
+FFE3D87C  7F08B840  cmplw   cr6, r8, r23
+FFE3D880  7CC6A014  addc    r6, r6, r20
+FFE3D884  90C10464  stw     r6, 0x464(r1)
+FFE3D888  80C10468  lwz     r6, 0x468(r1)
+FFE3D88C  7C869014  addc    r4, r6, r18
+FFE3D890  80C1045C  lwz     r6, 0x45C(r1)
+FFE3D894  90810468  stw     r4, 0x468(r1)
+FFE3D898  7F393014  addc    r25, r25, r6
+FFE3D89C  4184FE80  blt     cr1, loc_FFE3D71C
+FFE3D8A0  419A0008  beq     cr6, loc_FFE3D8A8
+FFE3D8A4  90BC0000  stw     r5, 0x0(r28)
+loc_FFE3D8A8:
+FFE3D8A8  80A1046C  lwz     r5, 0x46C(r1)
+FFE3D8AC  7CA62814  addc    r5, r6, r5
+FFE3D8B0  90A1046C  stw     r5, 0x46C(r1)
+loc_FFE3D8B4:
+FFE3D8B4  818104D4  lwz     r12, 0x4D4(r1)
+FFE3D8B8  800104D8  lwz     r0, 0x4D8(r1)
+FFE3D8BC  7D830120  mtcrf   0x30, r12
+FFE3D8C0  302104D0  addic   r1, r1, 0x4D0
+FFE3D8C4  7C0803A6  mtspr   LR, r0
+FFE3D8C8  B9A1FFB4  lmw     r13, -0x4C(r1)
+FFE3D8CC  4E800020  blr
+
+glue_NewPtrSysClear:
+FFE3D8D0* 81820004  lwz     r12, 0x4(r2)                       ; TOC[+4] NewPtrSysClear
+FFE3D8D4* 90410014  stw     r2, 0x14(r1)
+FFE3D8D8* 800C0000  lwz     r0, 0x0(r12)
+FFE3D8DC* 804C0004  lwz     r2, 0x4(r12)
+FFE3D8E0* 7C0903A6  mtspr   CTR, r0
+FFE3D8E4* 4E800420  bctr
+FFE3D8E8d 00000000  .long   0x00000000
+FFE3D8ECd 000C8000  .long   0x000C8000
+FFE3D8F0d 00000000  .long   0x00000000
+
+glue_MemError:
+FFE3D8F4* 81820008  lwz     r12, 0x8(r2)                       ; TOC[+8] MemError
+FFE3D8F8* 90410014  stw     r2, 0x14(r1)
+FFE3D8FC* 800C0000  lwz     r0, 0x0(r12)
+FFE3D900* 804C0004  lwz     r2, 0x4(r12)
+FFE3D904* 7C0903A6  mtspr   CTR, r0
+FFE3D908* 4E800420  bctr
+FFE3D90Cd 00000000  .long   0x00000000
+FFE3D910d 000C8000  .long   0x000C8000
+FFE3D914d 00000000  .long   0x00000000
+
+glue_LMGetExpandMem:
+FFE3D918* 8182000C  lwz     r12, 0xC(r2)                       ; TOC[+12] LMGetExpandMem
+FFE3D91C* 90410014  stw     r2, 0x14(r1)
+FFE3D920* 800C0000  lwz     r0, 0x0(r12)
+FFE3D924* 804C0004  lwz     r2, 0x4(r12)
+FFE3D928* 7C0903A6  mtspr   CTR, r0
+FFE3D92C* 4E800420  bctr
+FFE3D930d 00000000  .long   0x00000000
+FFE3D934d 000C8000  .long   0x000C8000
+FFE3D938d 00000000  .long   0x00000000
+
+glue_GetZone:
+FFE3D93C* 81820010  lwz     r12, 0x10(r2)                      ; TOC[+16] GetZone
+FFE3D940* 90410014  stw     r2, 0x14(r1)
+FFE3D944* 800C0000  lwz     r0, 0x0(r12)
+FFE3D948* 804C0004  lwz     r2, 0x4(r12)
+FFE3D94C* 7C0903A6  mtspr   CTR, r0
+FFE3D950* 4E800420  bctr
+FFE3D954d 00000000  .long   0x00000000
+FFE3D958d 000C8000  .long   0x000C8000
+FFE3D95Cd 00000000  .long   0x00000000
+
+glue_SystemZone:
+FFE3D960* 81820014  lwz     r12, 0x14(r2)                      ; TOC[+20] SystemZone
+FFE3D964* 90410014  stw     r2, 0x14(r1)
+FFE3D968* 800C0000  lwz     r0, 0x0(r12)
+FFE3D96C* 804C0004  lwz     r2, 0x4(r12)
+FFE3D970* 7C0903A6  mtspr   CTR, r0
+FFE3D974* 4E800420  bctr
+FFE3D978d 00000000  .long   0x00000000
+FFE3D97Cd 000C8000  .long   0x000C8000
+FFE3D980d 00000000  .long   0x00000000
+
+glue_SetZone:
+FFE3D984* 81820018  lwz     r12, 0x18(r2)                      ; TOC[+24] SetZone
+FFE3D988* 90410014  stw     r2, 0x14(r1)
+FFE3D98C* 800C0000  lwz     r0, 0x0(r12)
+FFE3D990* 804C0004  lwz     r2, 0x4(r12)
+FFE3D994* 7C0903A6  mtspr   CTR, r0
+FFE3D998* 4E800420  bctr
+FFE3D99Cd 00000000  .long   0x00000000
+FFE3D9A0d 000C8000  .long   0x000C8000
+FFE3D9A4d 00000000  .long   0x00000000
+
+glue_TickCount:
+FFE3D9A8* 8182001C  lwz     r12, 0x1C(r2)                      ; TOC[+28] TickCount
+FFE3D9AC* 90410014  stw     r2, 0x14(r1)
+FFE3D9B0* 800C0000  lwz     r0, 0x0(r12)
+FFE3D9B4* 804C0004  lwz     r2, 0x4(r12)
+FFE3D9B8* 7C0903A6  mtspr   CTR, r0
+FFE3D9BC* 4E800420  bctr
+FFE3D9C0d 00000000  .long   0x00000000
+FFE3D9C4d 000C8000  .long   0x000C8000
+FFE3D9C8d 00000000  .long   0x00000000
+
+glue_NewRoutineDescriptor:
+FFE3D9CC* 81820024  lwz     r12, 0x24(r2)                      ; TOC[+36] NewRoutineDescriptor
+FFE3D9D0* 90410014  stw     r2, 0x14(r1)
+FFE3D9D4* 800C0000  lwz     r0, 0x0(r12)
+FFE3D9D8* 804C0004  lwz     r2, 0x4(r12)
+FFE3D9DC* 7C0903A6  mtspr   CTR, r0
+FFE3D9E0* 4E800420  bctr
+FFE3D9E4d 00000000  .long   0x00000000
+FFE3D9E8d 000C8000  .long   0x000C8000
+FFE3D9ECd 00000000  .long   0x00000000
+
+glue_DisposeRoutineDescriptor:
+FFE3D9F0  81820028  lwz     r12, 0x28(r2)                      ; TOC[+40] DisposeRoutineDescriptor
+FFE3D9F4  90410014  stw     r2, 0x14(r1)
+FFE3D9F8  800C0000  lwz     r0, 0x0(r12)
+FFE3D9FC  804C0004  lwz     r2, 0x4(r12)
+FFE3DA00  7C0903A6  mtspr   CTR, r0
+FFE3DA04  4E800420  bctr
+FFE3DA08d 00000000  .long   0x00000000
+FFE3DA0Cd 000C8000  .long   0x000C8000
+FFE3DA10d 00000000  .long   0x00000000
+
+glue_Dequeue:
+FFE3DA14  8182002C  lwz     r12, 0x2C(r2)                      ; TOC[+44] Dequeue
+FFE3DA18  90410014  stw     r2, 0x14(r1)
+FFE3DA1C  800C0000  lwz     r0, 0x0(r12)
+FFE3DA20  804C0004  lwz     r2, 0x4(r12)
+FFE3DA24  7C0903A6  mtspr   CTR, r0
+FFE3DA28  4E800420  bctr
+FFE3DA2Cd 00000000  .long   0x00000000
+FFE3DA30d 000C8000  .long   0x000C8000
+FFE3DA34d 00000000  .long   0x00000000
+
+glue_VInstall:
+FFE3DA38  81820030  lwz     r12, 0x30(r2)                      ; TOC[+48] VInstall
+FFE3DA3C  90410014  stw     r2, 0x14(r1)
+FFE3DA40  800C0000  lwz     r0, 0x0(r12)
+FFE3DA44  804C0004  lwz     r2, 0x4(r12)
+FFE3DA48  7C0903A6  mtspr   CTR, r0
+FFE3DA4C  4E800420  bctr
+FFE3DA50d 00000000  .long   0x00000000
+FFE3DA54d 000C8000  .long   0x000C8000
+FFE3DA58d 00000000  .long   0x00000000
+
+glue_DisposePtr:
+FFE3DA5C  81820034  lwz     r12, 0x34(r2)                      ; TOC[+52] DisposePtr
+FFE3DA60  90410014  stw     r2, 0x14(r1)
+FFE3DA64  800C0000  lwz     r0, 0x0(r12)
+FFE3DA68  804C0004  lwz     r2, 0x4(r12)
+FFE3DA6C  7C0903A6  mtspr   CTR, r0
+FFE3DA70  4E800420  bctr
+FFE3DA74d 00000000  .long   0x00000000
+FFE3DA78d 000C8000  .long   0x000C8000
+FFE3DA7Cd 00000000  .long   0x00000000
+
+glue_RegistryPropertyGetSize:
+FFE3DA80* 8182003C  lwz     r12, 0x3C(r2)                      ; TOC[+60] RegistryPropertyGetSize
+FFE3DA84* 90410014  stw     r2, 0x14(r1)
+FFE3DA88* 800C0000  lwz     r0, 0x0(r12)
+FFE3DA8C* 804C0004  lwz     r2, 0x4(r12)
+FFE3DA90* 7C0903A6  mtspr   CTR, r0
+FFE3DA94* 4E800420  bctr
+FFE3DA98d 00000000  .long   0x00000000
+FFE3DA9Cd 000C8000  .long   0x000C8000
+FFE3DAA0d 00000000  .long   0x00000000
+
+glue_RegistryPropertyGet:
+FFE3DAA4* 81820040  lwz     r12, 0x40(r2)                      ; TOC[+64] RegistryPropertyGet
+FFE3DAA8* 90410014  stw     r2, 0x14(r1)
+FFE3DAAC* 800C0000  lwz     r0, 0x0(r12)
+FFE3DAB0* 804C0004  lwz     r2, 0x4(r12)
+FFE3DAB4* 7C0903A6  mtspr   CTR, r0
+FFE3DAB8* 4E800420  bctr
+FFE3DABCd 00000000  .long   0x00000000
+FFE3DAC0d 000C8000  .long   0x000C8000
+FFE3DAC4d 00000000  .long   0x00000000
+
+glue_GetDCtlEntry:
+FFE3DAC8* 81820044  lwz     r12, 0x44(r2)                      ; TOC[+68] GetDCtlEntry
+FFE3DACC* 90410014  stw     r2, 0x14(r1)
+FFE3DAD0* 800C0000  lwz     r0, 0x0(r12)
+FFE3DAD4* 804C0004  lwz     r2, 0x4(r12)
+FFE3DAD8* 7C0903A6  mtspr   CTR, r0
+FFE3DADC* 4E800420  bctr
+FFE3DAE0d 00000000  .long   0x00000000
+FFE3DAE4d 000C8000  .long   0x000C8000
+FFE3DAE8d 00000000  .long   0x00000000
+
+glue_LMGetScrnVBLPtr:
+FFE3DAEC* 81820048  lwz     r12, 0x48(r2)                      ; TOC[+72] LMGetScrnVBLPtr
+FFE3DAF0* 90410014  stw     r2, 0x14(r1)
+FFE3DAF4* 800C0000  lwz     r0, 0x0(r12)
+FFE3DAF8* 804C0004  lwz     r2, 0x4(r12)
+FFE3DAFC* 7C0903A6  mtspr   CTR, r0
+FFE3DB00* 4E800420  bctr
+FFE3DB04d 00000000  .long   0x00000000
+FFE3DB08d 000C8000  .long   0x000C8000
+FFE3DB0Cd 00000000  .long   0x00000000
+
+glue_LMGetJCrsrTask:
+FFE3DB10* 8182004C  lwz     r12, 0x4C(r2)                      ; TOC[+76] LMGetJCrsrTask
+FFE3DB14* 90410014  stw     r2, 0x14(r1)
+FFE3DB18* 800C0000  lwz     r0, 0x0(r12)
+FFE3DB1C* 804C0004  lwz     r2, 0x4(r12)
+FFE3DB20* 7C0903A6  mtspr   CTR, r0
+FFE3DB24* 4E800420  bctr
+FFE3DB28d 00000000  .long   0x00000000
+FFE3DB2Cd 000C8000  .long   0x000C8000
+FFE3DB30d 00000000  .long   0x00000000
+
+glue_LMGetCrsrDevice:
+FFE3DB34* 81820050  lwz     r12, 0x50(r2)                      ; TOC[+80] LMGetCrsrDevice
+FFE3DB38* 90410014  stw     r2, 0x14(r1)
+FFE3DB3C* 800C0000  lwz     r0, 0x0(r12)
+FFE3DB40* 804C0004  lwz     r2, 0x4(r12)
+FFE3DB44* 7C0903A6  mtspr   CTR, r0
+FFE3DB48* 4E800420  bctr
+FFE3DB4Cd 00000000  .long   0x00000000
+FFE3DB50d 000C8000  .long   0x000C8000
+FFE3DB54d 00000000  .long   0x00000000
+
+glue_CallUniversalProc:
+FFE3DB58* 81820054  lwz     r12, 0x54(r2)                      ; TOC[+84] CallUniversalProc
+FFE3DB5C* 90410014  stw     r2, 0x14(r1)
+FFE3DB60* 800C0000  lwz     r0, 0x0(r12)
+FFE3DB64* 804C0004  lwz     r2, 0x4(r12)
+FFE3DB68* 7C0903A6  mtspr   CTR, r0
+FFE3DB6C* 4E800420  bctr
+FFE3DB70d 00000000  .long   0x00000000
+FFE3DB74d 000C8000  .long   0x000C8000
+FFE3DB78d 00000000  .long   0x00000000
+
+glue_LMGetSlotQDT:
+FFE3DB7C  81820058  lwz     r12, 0x58(r2)                      ; TOC[+88] LMGetSlotQDT
+FFE3DB80  90410014  stw     r2, 0x14(r1)
+FFE3DB84  800C0000  lwz     r0, 0x0(r12)
+FFE3DB88  804C0004  lwz     r2, 0x4(r12)
+FFE3DB8C  7C0903A6  mtspr   CTR, r0
+FFE3DB90  4E800420  bctr
+FFE3DB94d 00000000  .long   0x00000000
+FFE3DB98d 000C8000  .long   0x000C8000
+FFE3DB9Cd 00000000  .long   0x00000000
+
+glue_Enqueue:
+FFE3DBA0  8182005C  lwz     r12, 0x5C(r2)                      ; TOC[+92] Enqueue
+FFE3DBA4  90410014  stw     r2, 0x14(r1)
+FFE3DBA8  800C0000  lwz     r0, 0x0(r12)
+FFE3DBAC  804C0004  lwz     r2, 0x4(r12)
+FFE3DBB0  7C0903A6  mtspr   CTR, r0
+FFE3DBB4  4E800420  bctr
+FFE3DBB8d 00000000  .long   0x00000000
+FFE3DBBCd 000C8000  .long   0x000C8000
+FFE3DBC0d 00000000  .long   0x00000000
+FFE3DBC4d 00000000  .long   0x00000000
+FFE3DBC8d 64726976  .ascii  "driver-r"
+
+; ----------------------------------------------------------------------------
+; data section 1 (pidata), unpacked B8 bytes; addresses are offsets in the section;
+; relocated words are named (imports) or point into a section (code+X / data+X).
+; ----------------------------------------------------------------------------
++00000  00000010  -> data+10
++00004  0000014C  -> code+14C = FFE3CBAC __init
++00008  00000058  -> data+58
++00010  00000710  -> code+710 = FFE3D170
++00014  00000058  -> data+58
++0001C  000002A4  -> code+2A4 = FFE3CD04 __term
++00020  00000058  -> data+58
++00028  00000568  -> code+568 = FFE3CFC8 VSLNewInterruptService
++0002C  00000058  -> data+58
++00034  000005D0  -> code+5D0 = FFE3D030 VSLDisposeInterruptService
++00038  00000058  -> data+58
++00040  000005F8  -> code+5F8 = FFE3D058 VSLDoInterruptService
++00044  00000058  -> data+58
++0004C  00000898  -> code+898 = FFE3D2F8 VSLPrepareCursorForHardwareCursor
++00050  00000058  -> data+58
++00058  00000000  -> VideoServicesGlobals::gMasterList
++0005C  00000000  -> InterfaceLib::NewPtrSysClear
++00060  00000000  -> InterfaceLib::MemError
++00064  00000000  -> PrivateInterfaceLib::LMGetExpandMem
++00068  00000000  -> InterfaceLib::GetZone
++0006C  00000000  -> InterfaceLib::SystemZone
++00070  00000000  -> InterfaceLib::SetZone
++00074  00000000  -> InterfaceLib::TickCount
++00078  00000000  -> data+0
++0007C  00000000  -> InterfaceLib::NewRoutineDescriptor
++00080  00000000  -> InterfaceLib::DisposeRoutineDescriptor
++00084  00000000  -> InterfaceLib::Dequeue
++00088  00000000  -> InterfaceLib::VInstall
++0008C  00000000  -> InterfaceLib::DisposePtr
++00090  00001168  -> code+1168 = FFE3DBC8
++00094  00000000  -> NameRegistryLib::RegistryPropertyGetSize
++00098  00000000  -> NameRegistryLib::RegistryPropertyGet
++0009C  00000000  -> InterfaceLib::GetDCtlEntry
++000A0  00000000  -> PrivateInterfaceLib::LMGetScrnVBLPtr
++000A4  00000000  -> PrivateInterfaceLib::LMGetJCrsrTask
++000A8  00000000  -> PrivateInterfaceLib::LMGetCrsrDevice
++000AC  00000000  -> InterfaceLib::CallUniversalProc
++000B0  00000000  -> PrivateInterfaceLib::LMGetSlotQDT
++000B4  00000000  -> InterfaceLib::Enqueue
+; full unpacked image:
+00000000  00 00 00 10 00 00 01 4C 00 00 00 58 00 00 00 00  |.......L...X....|
+00000010  00 00 07 10 00 00 00 58 00 00 00 00 00 00 02 A4  |.......X........|
+00000020  00 00 00 58 00 00 00 00 00 00 05 68 00 00 00 58  |...X.......h...X|
+00000030  00 00 00 00 00 00 05 D0 00 00 00 58 00 00 00 00  |...........X....|
+00000040  00 00 05 F8 00 00 00 58 00 00 00 00 00 00 08 98  |.......X........|
+00000050  00 00 00 58 00 00 00 00 00 00 00 00 00 00 00 00  |...X............|
+00000060  ... 30 zero bytes ...
+00000090  00 00 11 68 00 00 00 00 00 00 00 00 00 00 00 00  |...h............|
+000000A0  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |................|
+000000B0  00 00 00 00 00 00 00 00                          |........|
+
+; exports (4):
+;   VSLNewInterruptService                   class tvector section  1 offset 28
+;   VSLDisposeInterruptService               class tvector section  1 offset 34
+;   VSLDoInterruptService                    class tvector section  1 offset 40
+;   VSLPrepareCursorForHardwareCursor        class tvector section  1 offset 4C
+; imports (22):
+;      0 VideoServicesGlobals     gMasterList                              data
+;      1 InterfaceLib             NewPtrSysClear                           tvector
+;      2 InterfaceLib             MemError                                 tvector
+;      3 InterfaceLib             GetZone                                  tvector
+;      4 InterfaceLib             SystemZone                               tvector
+;      5 InterfaceLib             SetZone                                  tvector
+;      6 InterfaceLib             TickCount                                tvector
+;      7 InterfaceLib             NewRoutineDescriptor                     tvector
+;      8 InterfaceLib             DisposeRoutineDescriptor                 tvector
+;      9 InterfaceLib             Dequeue                                  tvector
+;     10 InterfaceLib             VInstall                                 tvector
+;     11 InterfaceLib             DisposePtr                               tvector
+;     12 InterfaceLib             GetDCtlEntry                             tvector
+;     13 InterfaceLib             CallUniversalProc                        tvector
+;     14 InterfaceLib             Enqueue                                  tvector
+;     15 PrivateInterfaceLib      LMGetExpandMem                           tvector
+;     16 PrivateInterfaceLib      LMGetScrnVBLPtr                          tvector
+;     17 PrivateInterfaceLib      LMGetJCrsrTask                           tvector
+;     18 PrivateInterfaceLib      LMGetCrsrDevice                          tvector
+;     19 PrivateInterfaceLib      LMGetSlotQDT                             tvector
+;     20 NameRegistryLib          RegistryPropertyGetSize                  tvector
+;     21 NameRegistryLib          RegistryPropertyGet                      tvector

@@ -17,7 +17,7 @@ Read these first. They are the source of truth and override anything remembered:
 - `docs/PPCMac_stubs.md`: everything the machine stubs, simplifies or leaves out. Keep it current: an entry changes in the same commit as the stub.
 - `docs/DSPPC604_plan.md`: the CPU's rules and its M6 section (the ROM in lockstep, the board).
 - `verilator/ref/README.md`, `verilator/machref/README.md`.
-- `rom7300/README.md` (git-ignored): the 7300's ROM disassembled, and where every address the docs quote moves to; `rom7600/README.md` for the method and the notes for an implementation.
+- `rom7300/README.md`: the 7300's ROM disassembled, and where every address the docs quote moves to; `rom7600/README.md` for the method and the notes for an implementation.
 - `C:\Temp\mistercore\dingusppc\devices\common\scsi\mesh.cpp`, `scsibusctrl.cpp`, `scsibus.cpp`, `sc53c94.cpp`: the reference for milestone E.
 
 ## Where things stand (2026-10-07)

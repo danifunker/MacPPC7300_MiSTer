@@ -1,0 +1,215 @@
+; ============================================================================
+; ConfigInfo (NanoKernel configuration record) at ROM offset 30D000 = FFF0D000
+; ============================================================================
+; Field names from Apple's NanoKernel ConfigInfo layout; offsets in this record.
+; "-> " gives the ROM offset / physical address an offset field resolves to.
+
+000  ROMByteCheckSums         02C6B097 0317A71B 020D1A9E 027C620C 02A0A3BD 037DF94C 0231514D 029E06B3    ; one 32-bit sum per byte lane
+020  ROMCheckSum64            4DB4A42F EA3B53B3    ; 64-bit sum of double words
+028  ROMImageBaseOffset       FFCF3000   -> ROM 000000 = FFC00000    ; offset of the ROM image from this record
+02C  ROMImageSize             00400000
+030  ROMImageVersion          00000000
+034  Mac68KROMOffset          FFCF3000   -> ROM 000000 = FFC00000
+038  Mac68KROMSize            00300000
+03C  ExceptionTableOffset     FFFF3000   -> ROM 300000 = FFF00000
+040  ExceptionTableSize       0000C000
+044  HWInitCodeOffset         00013000   -> ROM 320000 = FFF20000
+048  HWInitCodeSize           00010000
+04C  KernelCodeOffset         00003000   -> ROM 310000 = FFF10000
+050  KernelCodeSize           00010000
+054  EmulatorCodeOffset       00053000   -> ROM 360000 = FFF60000
+058  EmulatorCodeSize         00020000
+05C  OpcodeTableOffset        00073000   -> ROM 380000 = FFF80000
+060  OpcodeTableSize          00080000
+064  BootstrapVersion         'Boot TNT 0.1p\x01\xa0]'
+074  BootVersionOffset        00000F00
+078  ECBOffset                00000100
+07C  IplValueOffset           00000070
+080  EmulatorEntryOffset      0000E660   -> ROM 36E660 = FFF6E660 = EA 6806E660    ; from the emulator code
+084  KernelTrapTableOffset    0000E680   -> ROM 36E680 = FFF6E680 = EA 6806E680    ; from the emulator code
+088  TestIntMaskInit          00200000    ; interrupt controller masks
+08C  ClearIntMaskInit         FF9FFFFF
+090  PostIntMaskInit          00E00000
+094  LA_InterruptCtl          F3000000   (GC_BASE)    ; logical address of the interrupt controller
+098  InterruptHandlerKind     02
+09C  LA_InfoRecord            5FFFE000    ; logical addresses the kernel maps
+0A0  LA_KernelData            68FFE000
+0A4  LA_EmulatorData          68FFF000
+0A8  LA_DispatchTable         68080000
+0AC  LA_EmulatorCode          68060000
+0B0  MacLowMemInitOffset      00000FD4   -> ROM 30DFD4 = FFF0DFD4    ; from this record
+0B4  PageAttributeInit        00000012
+0B8  PageMapInitSize          000001A8
+0BC  PageMapInitOffset        00000E2C   -> ROM 30DE2C = FFF0DE2C    ; from this record
+0C0  PageMapIRPOffset         00000068
+0C4  PageMapKDPOffset         00000088
+0C8  PageMapEDPOffset         00000080
+0CC  SegMap32SupInit          00000008 00000000 00000018 00100000 00000028 00200000 00000038 00300000 00000048 00400000 00000058 00500000 00000080 00600000 000000B8 00700000 000000D0 00800000 000000E8 00900000 00000100 00A00000 00000118 00B00000 00000130 00C00000 00000148 00D00000 00000160 00E00000 00000178 00F00000    ; pairs: page map offset, segment register flags
+14C  SegMap32UsrInit          00000008 00000000 00000018 00100000 00000028 00200000 00000038 00300000 00000048 00400000 00000058 00500000 00000080 00600000 000000B8 00700000 000000D0 00800000 000000E8 00900000 00000100 00A00000 00000118 00B00000 00000130 00C00000 00000148 00D00000 00000160 00E00000 00000178 00F00000
+1CC  SegMap32CPUInit          00000000 00FFFFFF 00000000 00FFFFFF 00000000 00FFFFFF 00000000 00FFFFFF 00000000 00FFFFFF 00000000 00FFFFFF 00000080 00600000 00000000 00FFFFFF 00000000 00FFFFFF 00000000 00FFFFFF 00000000 00FFFFFF 00000000 00FFFFFF 00000000 00FFFFFF 00000000 00FFFFFF 00000000 00FFFFFF 00000000 00FFFFFF
+24C  SegMap32OvlInit          00000008 00000000 00000018 00100000 00000028 00200000 00000038 00300000 00000048 00400000 00000058 00500000 00000080 00600000 000000B8 00700000 000000D0 00800000 000000E8 00900000 00000100 00A00000 00000118 00B00000 00000130 00C00000 00000148 00D00000 00000160 00E00000 00000178 00F00000
+2CC  BATRangeInit             00000000 00000000 FFC0007F FFCF3253 0000007F FFCF3253 6800001F FFFF3213 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000    ; pairs: BAT upper, BAT lower (lower relative to this record)
+34C  BatMap32SupInit          13FF13FF    ; which BATRangeInit pairs each mode uses
+350  BatMap32UsrInit          13FF13FF
+354  BatMap32CPUInit          F3FFF3FF
+358  BatMap32OvlInit          13FF13FF
+35C  SharedMemoryAddr         00000000
+360  PA_RelocatedLowMemInit   00000000
+364  OpenFWBundleOffset       00023000   -> ROM 330000 = FFF30000    ; from this record
+368  OpenFWBundleSize         00020000
+36C  LA_OpenFirmware          FF800000    ; logical address Open Firmware runs at
+370  PA_OpenFirmware          00400000    ; physical RAM address it is loaded to
+374  LA_HardwarePriv          FFF0C000
+
+; BATRangeInit decoded. Upper word: BEPI, BL (size), Vs/Vp. Lower word: BRPN, WIMG, PP;
+; when bit 0x200 is set (inferred from the values) the BRPN part is an offset from this
+; record (FFF0D000), as for the other offsets.
+;   pair  1: FFC0007F FFCF3253  EA FFC00000, 400000 bytes -> PA FFC00000 (relative), WIMG A, PP 3
+;   pair  2: 0000007F FFCF3253  EA 00000000, 400000 bytes -> PA FFC00000 (relative), WIMG A, PP 3
+;   pair  3: 6800001F FFFF3213  EA 68000000, 100000 bytes -> PA FFF00000 (relative), WIMG 2, PP 3
+
+; Page map initialisation (PageMapInitOffset, 1A8 bytes): pairs of words, as the
+; SegMap tables index them. Interpretation (inferred): word 1 = first page within the
+; segment << 16 | (page count - 1); word 2 = physical page | PTE flags (WIMG, PP), with
+; bit 0x200 marking a page offset relative to this record; FFFF/A00/A01-style entries
+; are placeholders the kernel fills in.
+;   +000  0000FFFF 00000A00   pages 0000+10000 -> PA FFF0D000 (rel) flags A00
+;   +008  0000FFFF 00001653   pages 0000+10000 -> PA FFF0E000 (rel) flags 653
+;   +010  0000FFFF 00001653   pages 0000+10000 -> PA FFF0E000 (rel) flags 653
+;   +018  0000FFFF 00001653   pages 0000+10000 -> PA FFF0E000 (rel) flags 653
+;   +020  0000FFFF 00001653   pages 0000+10000 -> PA FFF0E000 (rel) flags 653
+;   +028  0000FFFF 00001653   pages 0000+10000 -> PA FFF0E000 (rel) flags 653
+;   +030  0000FFFF 00001653   pages 0000+10000 -> PA FFF0E000 (rel) flags 653
+;   +038  0000FFFF 00001653   pages 0000+10000 -> PA FFF0E000 (rel) flags 653
+;   +040  0000FFFF 00001653   pages 0000+10000 -> PA FFF0E000 (rel) flags 653
+;   +048  0000FFFF 00001653   pages 0000+10000 -> PA FFF0E000 (rel) flags 653
+;   +050  0000FFFF 00001653   pages 0000+10000 -> PA FFF0E000 (rel) flags 653
+;   +058  0000FFFD 00001653   pages 0000+FFFE  -> PA FFF0E000 (rel) flags 653
+;   +060  0000FFFD 00001653   pages 0000+FFFE  -> PA FFF0E000 (rel) flags 653
+;   +068  FFFE0000 00000012   pages FFFE+1     -> PA 00000000       flags 012
+;   +070  0000FFFF 00001653   pages 0000+10000 -> PA FFF0E000 (rel) flags 653
+;   +078  0000FFFF 00001653   pages 0000+10000 -> PA FFF0E000 (rel) flags 653
+;   +080  8FFF0000 00000010   pages 8FFF+1     -> PA 00000000       flags 010
+;   +088  8FFE0000 00000093   pages 8FFE+1     -> PA 00000000       flags 093
+;   +090  8060001F 00053313   pages 8060+20    -> PA FFF60000 (rel) flags 313
+;   +098  8080007F 00073313   pages 8080+80    -> PA FFF80000 (rel) flags 313
+;   +0A0  0000FFFF 00000A01   pages 0000+10000 -> PA FFF0D000 (rel) flags A01
+;   +0A8  0000FFFF 00000A01   pages 0000+10000 -> PA FFF0D000 (rel) flags A01
+;   +0B0  0000FFFF 00000A00   pages 0000+10000 -> PA FFF0D000 (rel) flags A00
+;   +0B8  0000FFFF 00000A01   pages 0000+10000 -> PA FFF0D000 (rel) flags A01
+;   +0C0  0000FFFF 00000A01   pages 0000+10000 -> PA FFF0D000 (rel) flags A01
+;   +0C8  0000FFFF 00000A00   pages 0000+10000 -> PA FFF0D000 (rel) flags A00
+;   +0D0  0000FFFF 80000022   pages 0000+10000 -> PA 80000000       flags 022
+;   +0D8  0000FFFF 00000A01   pages 0000+10000 -> PA FFF0D000 (rel) flags A01
+;   +0E0  0000FFFF 00000A00   pages 0000+10000 -> PA FFF0D000 (rel) flags A00
+;   +0E8  0000FFFF 90000022   pages 0000+10000 -> PA 90000000       flags 022
+;   +0F0  0000FFFF 00000A01   pages 0000+10000 -> PA FFF0D000 (rel) flags A01
+;   +0F8  0000FFFF 00000A00   pages 0000+10000 -> PA FFF0D000 (rel) flags A00
+;   +100  0000FFFF A0000022   pages 0000+10000 -> PA A0000000       flags 022
+;   +108  0000FFFF 00000A01   pages 0000+10000 -> PA FFF0D000 (rel) flags A01
+;   +110  0000FFFF 00000A00   pages 0000+10000 -> PA FFF0D000 (rel) flags A00
+;   +118  0000FFFF B0000022   pages 0000+10000 -> PA B0000000       flags 022
+;   +120  0000FFFF 00000A01   pages 0000+10000 -> PA FFF0D000 (rel) flags A01
+;   +128  0000FFFF 00000A00   pages 0000+10000 -> PA FFF0D000 (rel) flags A00
+;   +130  0000FFFF C0000022   pages 0000+10000 -> PA C0000000       flags 022
+;   +138  0000FFFF 00000A01   pages 0000+10000 -> PA FFF0D000 (rel) flags A01
+;   +140  0000FFFF 00000A00   pages 0000+10000 -> PA FFF0D000 (rel) flags A00
+;   +148  0000FFFF D0000022   pages 0000+10000 -> PA D0000000       flags 022
+;   +150  0000FFFF 00000A01   pages 0000+10000 -> PA FFF0D000 (rel) flags A01
+;   +158  0000FFFF 00000A00   pages 0000+10000 -> PA FFF0D000 (rel) flags A00
+;   +160  0000FFFF E0000022   pages 0000+10000 -> PA E0000000       flags 022
+;   +168  0000FFFF 00000A01   pages 0000+10000 -> PA FFF0D000 (rel) flags A01
+;   +170  0000FFFF 00000A00   pages 0000+10000 -> PA FFF0D000 (rel) flags A00
+;   +178  F80003FF 00400012   pages F800+400   -> PA 00400000       flags 012
+;   +180  FC0002FF FFCF3353   pages FC00+300   -> PA FFC00000 (rel) flags 353
+;   +188  30000000 F3000020   pages 3000+1     -> PA F3000000       flags 020
+;   +190  0000EFFF F0000022   pages 0000+F000  -> PA F0000000       flags 022
+;   +198  0000FFFF 00000A01   pages 0000+10000 -> PA FFF0D000 (rel) flags A01
+;   +1A0  0000FFFF 00000A00   pages 0000+10000 -> PA FFF0D000 (rel) flags A00
+
+; Hex dump of 30C000-30FFFF (LA_HardwarePriv page, ConfigInfo page, empty page)
+FFF0C000  ... 1000 zero bytes ...
+FFF0D000  02 C6 B0 97 03 17 A7 1B 02 0D 1A 9E 02 7C 62 0C  |.............|b.|
+FFF0D010  02 A0 A3 BD 03 7D F9 4C 02 31 51 4D 02 9E 06 B3  |.....}.L.1QM....|
+FFF0D020  4D B4 A4 2F EA 3B 53 B3 FF CF 30 00 00 40 00 00  |M../.;S...0..@..|
+FFF0D030  00 00 00 00 FF CF 30 00 00 30 00 00 FF FF 30 00  |......0..0....0.|
+FFF0D040  00 00 C0 00 00 01 30 00 00 01 00 00 00 00 30 00  |......0.......0.|
+FFF0D050  00 01 00 00 00 05 30 00 00 02 00 00 00 07 30 00  |......0.......0.|
+FFF0D060  00 08 00 00 42 6F 6F 74 20 54 4E 54 20 30 2E 31  |....Boot TNT 0.1|
+FFF0D070  70 01 A0 5D 00 00 0F 00 00 00 01 00 00 00 00 70  |p..]...........p|
+FFF0D080  00 00 E6 60 00 00 E6 80 00 20 00 00 FF 9F FF FF  |...`..... ......|
+FFF0D090  00 E0 00 00 F3 00 00 00 02 00 00 00 5F FF E0 00  |............_...|
+FFF0D0A0  68 FF E0 00 68 FF F0 00 68 08 00 00 68 06 00 00  |h...h...h...h...|
+FFF0D0B0  00 00 0F D4 00 00 00 12 00 00 01 A8 00 00 0E 2C  |...............,|
+FFF0D0C0  00 00 00 68 00 00 00 88 00 00 00 80 00 00 00 08  |...h............|
+FFF0D0D0  00 00 00 00 00 00 00 18 00 10 00 00 00 00 00 28  |...............(|
+FFF0D0E0  00 20 00 00 00 00 00 38 00 30 00 00 00 00 00 48  |. .....8.0.....H|
+FFF0D0F0  00 40 00 00 00 00 00 58 00 50 00 00 00 00 00 80  |.@.....X.P......|
+FFF0D100  00 60 00 00 00 00 00 B8 00 70 00 00 00 00 00 D0  |.`.......p......|
+FFF0D110  00 80 00 00 00 00 00 E8 00 90 00 00 00 00 01 00  |................|
+FFF0D120  00 A0 00 00 00 00 01 18 00 B0 00 00 00 00 01 30  |...............0|
+FFF0D130  00 C0 00 00 00 00 01 48 00 D0 00 00 00 00 01 60  |.......H.......`|
+FFF0D140  00 E0 00 00 00 00 01 78 00 F0 00 00 00 00 00 08  |.......x........|
+FFF0D150  00 00 00 00 00 00 00 18 00 10 00 00 00 00 00 28  |...............(|
+FFF0D160  00 20 00 00 00 00 00 38 00 30 00 00 00 00 00 48  |. .....8.0.....H|
+FFF0D170  00 40 00 00 00 00 00 58 00 50 00 00 00 00 00 80  |.@.....X.P......|
+FFF0D180  00 60 00 00 00 00 00 B8 00 70 00 00 00 00 00 D0  |.`.......p......|
+FFF0D190  00 80 00 00 00 00 00 E8 00 90 00 00 00 00 01 00  |................|
+FFF0D1A0  00 A0 00 00 00 00 01 18 00 B0 00 00 00 00 01 30  |...............0|
+FFF0D1B0  00 C0 00 00 00 00 01 48 00 D0 00 00 00 00 01 60  |.......H.......`|
+FFF0D1C0  00 E0 00 00 00 00 01 78 00 F0 00 00 00 00 00 00  |.......x........|
+FFF0D1D0  00 FF FF FF 00 00 00 00 00 FF FF FF 00 00 00 00  |................|
+FFF0D1E0  00 FF FF FF 00 00 00 00 00 FF FF FF 00 00 00 00  |................|
+FFF0D1F0  00 FF FF FF 00 00 00 00 00 FF FF FF 00 00 00 80  |................|
+FFF0D200  00 60 00 00 00 00 00 00 00 FF FF FF 00 00 00 00  |.`..............|
+FFF0D210  00 FF FF FF 00 00 00 00 00 FF FF FF 00 00 00 00  |................|
+FFF0D220  00 FF FF FF 00 00 00 00 00 FF FF FF 00 00 00 00  |................|
+FFF0D230  00 FF FF FF 00 00 00 00 00 FF FF FF 00 00 00 00  |................|
+FFF0D240  00 FF FF FF 00 00 00 00 00 FF FF FF 00 00 00 08  |................|
+FFF0D250  00 00 00 00 00 00 00 18 00 10 00 00 00 00 00 28  |...............(|
+FFF0D260  00 20 00 00 00 00 00 38 00 30 00 00 00 00 00 48  |. .....8.0.....H|
+FFF0D270  00 40 00 00 00 00 00 58 00 50 00 00 00 00 00 80  |.@.....X.P......|
+FFF0D280  00 60 00 00 00 00 00 B8 00 70 00 00 00 00 00 D0  |.`.......p......|
+FFF0D290  00 80 00 00 00 00 00 E8 00 90 00 00 00 00 01 00  |................|
+FFF0D2A0  00 A0 00 00 00 00 01 18 00 B0 00 00 00 00 01 30  |...............0|
+FFF0D2B0  00 C0 00 00 00 00 01 48 00 D0 00 00 00 00 01 60  |.......H.......`|
+FFF0D2C0  00 E0 00 00 00 00 01 78 00 F0 00 00 00 00 00 00  |.......x........|
+FFF0D2D0  00 00 00 00 FF C0 00 7F FF CF 32 53 00 00 00 7F  |..........2S....|
+FFF0D2E0  FF CF 32 53 68 00 00 1F FF FF 32 13 00 00 00 00  |..2Sh.....2.....|
+FFF0D2F0  ... 50 zero bytes ...
+FFF0D340  00 00 00 00 00 00 00 00 00 00 00 00 13 FF 13 FF  |................|
+FFF0D350  13 FF 13 FF F3 FF F3 FF 13 FF 13 FF 00 00 00 00  |................|
+FFF0D360  00 00 00 00 00 02 30 00 00 02 00 00 FF 80 00 00  |......0.........|
+FFF0D370  00 40 00 00 FF F0 C0 00 00 00 00 00 00 00 00 00  |.@..............|
+FFF0D380  ... AA0 zero bytes ...
+FFF0DE20  00 00 00 00 00 00 00 00 00 00 00 00 00 00 FF FF  |................|
+FFF0DE30  00 00 0A 00 00 00 FF FF 00 00 16 53 00 00 FF FF  |...........S....|
+FFF0DE40  00 00 16 53 00 00 FF FF 00 00 16 53 00 00 FF FF  |...S.......S....|
+FFF0DE50  00 00 16 53 00 00 FF FF 00 00 16 53 00 00 FF FF  |...S.......S....|
+FFF0DE60  00 00 16 53 00 00 FF FF 00 00 16 53 00 00 FF FF  |...S.......S....|
+FFF0DE70  00 00 16 53 00 00 FF FF 00 00 16 53 00 00 FF FF  |...S.......S....|
+FFF0DE80  00 00 16 53 00 00 FF FD 00 00 16 53 00 00 FF FD  |...S.......S....|
+FFF0DE90  00 00 16 53 FF FE 00 00 00 00 00 12 00 00 FF FF  |...S............|
+FFF0DEA0  00 00 16 53 00 00 FF FF 00 00 16 53 8F FF 00 00  |...S.......S....|
+FFF0DEB0  00 00 00 10 8F FE 00 00 00 00 00 93 80 60 00 1F  |.............`..|
+FFF0DEC0  00 05 33 13 80 80 00 7F 00 07 33 13 00 00 FF FF  |..3.......3.....|
+FFF0DED0  00 00 0A 01 00 00 FF FF 00 00 0A 01 00 00 FF FF  |................|
+FFF0DEE0  00 00 0A 00 00 00 FF FF 00 00 0A 01 00 00 FF FF  |................|
+FFF0DEF0  00 00 0A 01 00 00 FF FF 00 00 0A 00 00 00 FF FF  |................|
+FFF0DF00  80 00 00 22 00 00 FF FF 00 00 0A 01 00 00 FF FF  |..."............|
+FFF0DF10  00 00 0A 00 00 00 FF FF 90 00 00 22 00 00 FF FF  |..........."....|
+FFF0DF20  00 00 0A 01 00 00 FF FF 00 00 0A 00 00 00 FF FF  |................|
+FFF0DF30  A0 00 00 22 00 00 FF FF 00 00 0A 01 00 00 FF FF  |..."............|
+FFF0DF40  00 00 0A 00 00 00 FF FF B0 00 00 22 00 00 FF FF  |..........."....|
+FFF0DF50  00 00 0A 01 00 00 FF FF 00 00 0A 00 00 00 FF FF  |................|
+FFF0DF60  C0 00 00 22 00 00 FF FF 00 00 0A 01 00 00 FF FF  |..."............|
+FFF0DF70  00 00 0A 00 00 00 FF FF D0 00 00 22 00 00 FF FF  |..........."....|
+FFF0DF80  00 00 0A 01 00 00 FF FF 00 00 0A 00 00 00 FF FF  |................|
+FFF0DF90  E0 00 00 22 00 00 FF FF 00 00 0A 01 00 00 FF FF  |..."............|
+FFF0DFA0  00 00 0A 00 F8 00 03 FF 00 40 00 12 FC 00 02 FF  |.........@......|
+FFF0DFB0  FF CF 33 53 30 00 00 00 F3 00 00 20 00 00 EF FF  |..3S0...... ....|
+FFF0DFC0  F0 00 00 22 00 00 FF FF 00 00 0A 01 00 00 FF FF  |..."............|
+FFF0DFD0  00 00 0A 00 00 00 00 04 FF C0 00 2A 00 00 0C 20  |...........*... |
+FFF0DFE0  02 80 01 E0 00 00 01 04 00 00 00 50 00 00 08 24  |...........P...$|
+FFF0DFF0  00 00 00 00 00 00 01 D4 F3 01 60 00 00 00 00 00  |..........`.....|
+FFF0E000  ... 2000 zero bytes ...

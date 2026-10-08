@@ -1,0 +1,7 @@
+; ROM resource 'STR ' -16600 DAV Audio Component at FFECA200
+; data at ROM 2CA200 (20 bytes), entry at 2CA220, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 00000020 000005d4
+
+; string: 'DAV Audio Component'
+FFECA200  13 44 41 56 20 41 75 64 69 6F 20 43 6F 6D 70 6F  |.DAV Audio Compo|
+FFECA210  6E 65 6E 74 6B 63 6B 63 6B 63 6B 63 6B 63 6B 63  |nentkckckckckckc|

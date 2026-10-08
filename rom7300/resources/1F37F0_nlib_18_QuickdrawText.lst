@@ -1,0 +1,1054 @@
+; ============================================================================
+; ROM resource 'nlib' 18 QuickdrawText at FFDF37F0
+; ============================================================================
+; data at ROM 1F37F0 (108C bytes), entry at 1F4870, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 0000108c 00000434
+;
+; Columns: address, flag, raw bytes, instruction, ; comment.
+;   flag '*' executed in the coverage run, ' ' reached by control flow,
+;   '?' decodes as code but neither executed nor reached, 'd' data.
+
+; PEF container: architecture pwpc, format version 1, timestamp AB83CD66, versions 00000000/00000000/00000000
+;   3 sections (2 instantiated)
+;   section 0 code       container +00310 len 00D40 (ROM 1F3B00 = FFDF3B00), unpacked 00D40, total 00D40, share 4, align 4
+;   section 1 pidata     container +01050 len 0002B (ROM 1F4840 = FFDF4840), unpacked 000C8, total 000C8, share 4, align 4
+;   section 2 loader     container +00080 len 00284 (ROM 1F3870 = FFDF3870), unpacked 00000, total 00000, share 4, align 2
+;   imports from PrivateInterfaceLib: 1 symbols
+;   imports from InterfaceLib: 7 symbols
+;
+; ----------------------------------------------------------------------------
+; code section 0: ROM 1F3B00-1F483F = FFDF3B00
+; TOC (r2) = data section + A8; TOC[d] comments name the word at that offset.
+; ----------------------------------------------------------------------------
+
+NQDStdTxMeas:
+FFDF3B00  BEC1FFD8  stmw    r22, -0x28(r1)
+FFDF3B04  3B440000  addi    r26, r4, 0x0
+FFDF3B08  7C0802A6  mfspr   r0, LR
+FFDF3B0C  3B850000  addi    r28, r5, 0x0
+FFDF3B10  90010008  stw     r0, 0x8(r1)
+FFDF3B14  9421FF80  stwu    r1, -0x80(r1)
+FFDF3B18  3BC60000  addi    r30, r6, 0x0
+FFDF3B1C  3BE70000  addi    r31, r7, 0x0
+FFDF3B20  7C7B0734  extsh   r27, r3
+FFDF3B24  3BA00000  li      r29, 0x0
+FFDF3B28  3B000000  li      r24, 0x0
+FFDF3B2C  48000BDD  bl      glue_GetQDGlobals
+FFDF3B30  80410014  lwz     r2, 0x14(r1)
+FFDF3B34  3AE30000  addi    r23, r3, 0x0
+FFDF3B38  82D700CA  lwz     r22, 0xCA(r23)
+FFDF3B3C  38C00001  li      r6, 0x1
+FFDF3B40  A8B60044  lha     r5, 0x44(r22)
+FFDF3B44  30610038  addic   r3, r1, 0x38
+FFDF3B48  B0A10038  sth     r5, 0x38(r1)
+FFDF3B4C  A8B6004A  lha     r5, 0x4A(r22)
+FFDF3B50  B0A1003A  sth     r5, 0x3A(r1)
+FFDF3B54  88B60046  lbz     r5, 0x46(r22)
+FFDF3B58  98C1003D  stb     r6, 0x3D(r1)
+FFDF3B5C  98A1003C  stb     r5, 0x3C(r1)
+FFDF3B60  A8B60000  lha     r5, 0x0(r22)
+FFDF3B64  B0A1003E  sth     r5, 0x3E(r1)
+FFDF3B68  80BC0000  lwz     r5, 0x0(r28)
+FFDF3B6C  90A10040  stw     r5, 0x40(r1)
+FFDF3B70  80BE0000  lwz     r5, 0x0(r30)
+FFDF3B74  90A10044  stw     r5, 0x44(r1)
+FFDF3B78  48000BA9  bl      glue_FMSwapFont
+FFDF3B7C  80410014  lwz     r2, 0x14(r1)
+FFDF3B80  9077001A  stw     r3, 0x1A(r23)
+FFDF3B84  A8D60006  lha     r6, 0x6(r22)
+FFDF3B88  80B7000C  lwz     r5, 0xC(r23)
+FFDF3B8C  2C060000  cmpwi   cr0, r6, 0x0
+FFDF3B90  3B230000  addi    r25, r3, 0x0
+FFDF3B94  80C00B2A  lwz     r6, 0xB2A
+FFDF3B98  A8F6000C  lha     r7, 0xC(r22)
+FFDF3B9C  40800010  bge     loc_FFDF3BAC
+FFDF3BA0  54E72036  slwi    r7, r7, 4
+FFDF3BA4  7C653815  addc.   r3, r5, r7
+FFDF3BA8  4800000C  b       loc_FFDF3BB4
+loc_FFDF3BAC:
+FFDF3BAC  38E00000  li      r7, 0x0
+FFDF3BB0  7C653815  addc.   r3, r5, r7
+loc_FFDF3BB4:
+FFDF3BB4  38A00998  li      r5, 0x998
+FFDF3BB8  41820010  beq     loc_FFDF3BC8
+FFDF3BBC  80860000  lwz     r4, 0x0(r6)
+FFDF3BC0  48000B79  bl      sub_FFDF4738
+FFDF3BC4  4FFFFB82  crmove  crb31, crb31
+loc_FFDF3BC8:
+FFDF3BC8  38BB0000  addi    r5, r27, 0x0
+FFDF3BCC  B3BF0006  sth     r29, 0x6(r31)
+FFDF3BD0  B3BF0000  sth     r29, 0x0(r31)
+FFDF3BD4  B3BF0002  sth     r29, 0x2(r31)
+FFDF3BD8  B3BF0004  sth     r29, 0x4(r31)
+FFDF3BDC  80C00B2A  lwz     r6, 0xB2A
+FFDF3BE0  2F050000  cmpwi   cr6, r5, 0x0
+FFDF3BE4  80C60000  lwz     r6, 0x0(r6)
+FFDF3BE8  2E830000  cmpwi   cr5, r3, 0x0
+FFDF3BEC  88C60436  lbz     r6, 0x436(r6)
+FFDF3BF0  39400000  li      r10, 0x0
+FFDF3BF4  2C060000  cmpwi   cr0, r6, 0x0
+FFDF3BF8  3920FFFF  li      r9, -0x1
+FFDF3BFC  3CE08000  lis     r7, 0x8000
+FFDF3C00  4182007C  beq     loc_FFDF3C7C
+FFDF3C04  80C002B6  lwz     r6, 0x2B6                          ; R low memory BasicGlob ($2B6)
+FFDF3C08  80C60068  lwz     r6, 0x68(r6)
+FFDF3C0C  80C60000  lwz     r6, 0x0(r6)
+FFDF3C10  80C60018  lwz     r6, 0x18(r6)
+FFDF3C14  2C860000  cmpwi   cr1, r6, 0x0
+FFDF3C18  80C60000  lwz     r6, 0x0(r6)
+FFDF3C1C  2C060000  cmpwi   cr0, r6, 0x0
+FFDF3C20  41860080  beq     cr1, loc_FFDF3CA0
+FFDF3C24  4182007C  beq     loc_FFDF3CA0
+FFDF3C28  81060014  lwz     r8, 0x14(r6)
+FFDF3C2C  7D088670  srawi   r8, r8, 0x10
+FFDF3C30  B11F0000  sth     r8, 0x0(r31)
+FFDF3C34  81060018  lwz     r8, 0x18(r6)
+FFDF3C38  7D088670  srawi   r8, r8, 0x10
+FFDF3C3C  B11F0002  sth     r8, 0x2(r31)
+FFDF3C40  8106001C  lwz     r8, 0x1C(r6)
+FFDF3C44  7D088670  srawi   r8, r8, 0x10
+FFDF3C48  B11F0004  sth     r8, 0x4(r31)
+FFDF3C4C  81060020  lwz     r8, 0x20(r6)
+FFDF3C50  7D088670  srawi   r8, r8, 0x10
+FFDF3C54  B11F0006  sth     r8, 0x6(r31)
+FFDF3C58  81060028  lwz     r8, 0x28(r6)
+FFDF3C5C  81460038  lwz     r10, 0x38(r6)
+FFDF3C60  7D088670  srawi   r8, r8, 0x10
+FFDF3C64  7D4A8670  srawi   r10, r10, 0x10
+FFDF3C68  7D085014  addc    r8, r8, r10
+FFDF3C6C  31080003  addic   r8, r8, 0x3
+FFDF3C70  7D0A0734  extsh   r10, r8
+FFDF3C74  8306004C  lwz     r24, 0x4C(r6)
+FFDF3C78  48000028  b       loc_FFDF3CA0
+loc_FFDF3C7C:
+FFDF3C7C  88D9000D  lbz     r6, 0xD(r25)
+FFDF3C80  B0DF0000  sth     r6, 0x0(r31)
+FFDF3C84  88D9000E  lbz     r6, 0xE(r25)
+FFDF3C88  B0DF0002  sth     r6, 0x2(r31)
+FFDF3C8C  88D9000F  lbz     r6, 0xF(r25)
+FFDF3C90  B0DF0004  sth     r6, 0x4(r31)
+FFDF3C94  88D90010  lbz     r6, 0x10(r25)
+FFDF3C98  7CC60774  extsb   r6, r6
+FFDF3C9C  B0DF0006  sth     r6, 0x6(r31)
+loc_FFDF3CA0:
+FFDF3CA0  80D90012  lwz     r6, 0x12(r25)
+FFDF3CA4  2F980000  cmpwi   cr7, r24, 0x0
+FFDF3CA8  90DC0000  stw     r6, 0x0(r28)
+FFDF3CAC  80D90016  lwz     r6, 0x16(r25)
+FFDF3CB0  30E7FFFF  addic   r7, r7, -0x1
+FFDF3CB4  90DE0000  stw     r6, 0x0(r30)
+FFDF3CB8  80C002B6  lwz     r6, 0x2B6                          ; R low memory BasicGlob ($2B6)
+FFDF3CBC  31180100  addic   r8, r24, 0x100
+FFDF3CC0  80C60068  lwz     r6, 0x68(r6)
+FFDF3CC4  3BE00000  li      r31, 0x0
+FFDF3CC8  80C60000  lwz     r6, 0x0(r6)
+FFDF3CCC  A966004C  lha     r11, 0x4C(r6)
+FFDF3CD0  2C0BFFFE  cmpwi   cr0, r11, 0xFFFE
+FFDF3CD4  40820018  bne     loc_FFDF3CEC
+FFDF3CD8  A9760032  lha     r11, 0x32(r22)
+FFDF3CDC  2C8B0000  cmpwi   cr1, r11, 0x0
+FFDF3CE0  7D6B5014  addc    r11, r11, r10
+FFDF3CE4  40850008  ble     cr1, loc_FFDF3CEC
+FFDF3CE8  7D6A0734  extsh   r10, r11
+loc_FFDF3CEC:
+FFDF3CEC  314A0005  addic   r10, r10, 0x5
+FFDF3CF0  7D4A0734  extsh   r10, r10
+FFDF3CF4  555D801E  slwi    r29, r10, 16
+FFDF3CF8  B126004C  sth     r9, 0x4C(r6)
+FFDF3CFC  3B9D0000  addi    r28, r29, 0x0
+FFDF3D00  409903CC  ble     cr6, loc_FFDF40CC
+FFDF3D04  81200B2A  lwz     r9, 0xB2A
+FFDF3D08  81690000  lwz     r11, 0x0(r9)
+FFDF3D0C  48000008  b       loc_FFDF3D14
+loc_FFDF3D10:
+FFDF3D10  408503BC  ble     cr1, loc_FFDF40CC
+loc_FFDF3D14:
+FFDF3D14  30A5FFFF  addic   r5, r5, -0x1
+FFDF3D18  7CBE0735  extsh.  r30, r5
+FFDF3D1C  893A0000  lbz     r9, 0x0(r26)
+FFDF3D20  319A0001  addic   r12, r26, 0x1
+FFDF3D24  409E0040  bne     cr7, loc_FFDF3D64
+FFDF3D28  5525103A  slwi    r5, r9, 2
+FFDF3D2C  7CAB282E  lwzx    r5, r11, r5
+FFDF3D30  2F090020  cmpwi   cr6, r9, 0x20
+FFDF3D34  2C050000  cmpwi   cr0, r5, 0x0
+FFDF3D38  7D3D2814  addc    r9, r29, r5
+FFDF3D3C  7CA53810  subfc   r5, r5, r7
+FFDF3D40  7C9D2800  cmpw    cr1, r29, r5
+FFDF3D44  408100E4  ble     loc_FFDF3E28
+FFDF3D48  3BE00000  li      r31, 0x0
+FFDF3D4C  408500DC  ble     cr1, loc_FFDF3E28
+FFDF3D50  3BE00001  li      r31, 0x1
+FFDF3D54  2C1F0000  cmpwi   cr0, r31, 0x0
+FFDF3D58  30BE0001  addic   r5, r30, 0x1
+FFDF3D5C  334C0001  addic   r26, r12, 0x1
+FFDF3D60  480000D4  b       loc_FFDF3E34
+loc_FFDF3D64:
+FFDF3D64  7CB848AE  lbzx    r5, r24, r9
+FFDF3D68  315EFFFF  addic   r10, r30, -0x1
+FFDF3D6C  2C850000  cmpwi   cr1, r5, 0x0
+FFDF3D70  40860040  bne     cr1, loc_FFDF3DB0
+FFDF3D74  5525103A  slwi    r5, r9, 2
+FFDF3D78  7CAB282E  lwzx    r5, r11, r5
+FFDF3D7C  2F090020  cmpwi   cr6, r9, 0x20
+FFDF3D80  2C050000  cmpwi   cr0, r5, 0x0
+FFDF3D84  7D3D2814  addc    r9, r29, r5
+FFDF3D88  7CA53810  subfc   r5, r5, r7
+FFDF3D8C  7C9D2800  cmpw    cr1, r29, r5
+FFDF3D90  40810098  ble     loc_FFDF3E28
+FFDF3D94  3BE00000  li      r31, 0x0
+FFDF3D98  40850090  ble     cr1, loc_FFDF3E28
+FFDF3D9C  3BE00001  li      r31, 0x1
+FFDF3DA0  2C1F0000  cmpwi   cr0, r31, 0x0
+FFDF3DA4  30BE0001  addic   r5, r30, 0x1
+FFDF3DA8  334C0001  addic   r26, r12, 0x1
+FFDF3DAC  48000088  b       loc_FFDF3E34
+loc_FFDF3DB0:
+FFDF3DB0  88BA0001  lbz     r5, 0x1(r26)
+FFDF3DB4  41810030  bgt     loc_FFDF3DE4
+FFDF3DB8  39200001  li      r9, 0x1
+FFDF3DBC  5525103A  slwi    r5, r9, 2
+FFDF3DC0  7CAB282E  lwzx    r5, r11, r5
+FFDF3DC4  2F090020  cmpwi   cr6, r9, 0x20
+FFDF3DC8  2C050000  cmpwi   cr0, r5, 0x0
+FFDF3DCC  7D3D2814  addc    r9, r29, r5
+FFDF3DD0  7CA53810  subfc   r5, r5, r7
+FFDF3DD4  7C9D2800  cmpw    cr1, r29, r5
+FFDF3DD8  40810050  ble     loc_FFDF3E28
+FFDF3DDC  3BE00000  li      r31, 0x0
+FFDF3DE0  48000040  b       loc_FFDF3E20
+loc_FFDF3DE4:
+FFDF3DE4  7CA828AE  lbzx    r5, r8, r5
+FFDF3DE8  7D5E0734  extsh   r30, r10
+FFDF3DEC  2C050000  cmpwi   cr0, r5, 0x0
+FFDF3DF0  319A0002  addic   r12, r26, 0x2
+FFDF3DF4  40820008  bne     loc_FFDF3DFC
+FFDF3DF8  39200001  li      r9, 0x1
+loc_FFDF3DFC:
+FFDF3DFC  5525103A  slwi    r5, r9, 2
+FFDF3E00  7CAB282E  lwzx    r5, r11, r5
+FFDF3E04  2F090020  cmpwi   cr6, r9, 0x20
+FFDF3E08  2C050000  cmpwi   cr0, r5, 0x0
+FFDF3E0C  7D3D2814  addc    r9, r29, r5
+FFDF3E10  7CA53810  subfc   r5, r5, r7
+FFDF3E14  7C9D2800  cmpw    cr1, r29, r5
+FFDF3E18  40810010  ble     loc_FFDF3E28
+FFDF3E1C  3BE00000  li      r31, 0x0
+loc_FFDF3E20:
+FFDF3E20  40850008  ble     cr1, loc_FFDF3E28
+FFDF3E24  3BE00001  li      r31, 0x1
+loc_FFDF3E28:
+FFDF3E28  2C1F0000  cmpwi   cr0, r31, 0x0
+FFDF3E2C  30BE0001  addic   r5, r30, 0x1
+FFDF3E30  334C0001  addic   r26, r12, 0x1
+loc_FFDF3E34:
+FFDF3E34  41820030  beq     loc_FFDF3E64
+FFDF3E38  7CBE0734  extsh   r30, r5
+FFDF3E3C  7CBED810  subfc   r5, r30, r27
+FFDF3E40  2C9E0000  cmpwi   cr1, r30, 0x0
+FFDF3E44  B0A6004C  sth     r5, 0x4C(r6)
+FFDF3E48  30BEFFFF  addic   r5, r30, -0x1
+FFDF3E4C  7CA50734  extsh   r5, r5
+FFDF3E50  4085027C  ble     cr1, loc_FFDF40CC
+FFDF3E54  2C850000  cmpwi   cr1, r5, 0x0
+FFDF3E58  40820274  bne     loc_FFDF40CC
+FFDF3E5C  892C0000  lbz     r9, 0x0(r12)
+FFDF3E60  48000098  b       loc_FFDF3EF8
+loc_FFDF3E64:
+FFDF3E64  3BA90000  addi    r29, r9, 0x0
+FFDF3E68  409A0034  bne     cr6, loc_FFDF3E9C
+FFDF3E6C  41820070  beq     loc_FFDF3EDC
+FFDF3E70  7CBE0734  extsh   r30, r5
+FFDF3E74  7CBED810  subfc   r5, r30, r27
+FFDF3E78  2C9E0000  cmpwi   cr1, r30, 0x0
+FFDF3E7C  B0A6004C  sth     r5, 0x4C(r6)
+FFDF3E80  30BEFFFF  addic   r5, r30, -0x1
+FFDF3E84  7CA50734  extsh   r5, r5
+FFDF3E88  40850244  ble     cr1, loc_FFDF40CC
+FFDF3E8C  2C850000  cmpwi   cr1, r5, 0x0
+FFDF3E90  4082023C  bne     loc_FFDF40CC
+FFDF3E94  892C0000  lbz     r9, 0x0(r12)
+FFDF3E98  48000060  b       loc_FFDF3EF8
+loc_FFDF3E9C:
+FFDF3E9C  41950010  bgt     cr5, loc_FFDF3EAC
+FFDF3EA0  40820030  bne     loc_FFDF3ED0
+FFDF3EA4  7FA3E814  addc    r29, r3, r29
+FFDF3EA8  48000034  b       loc_FFDF3EDC
+loc_FFDF3EAC:
+FFDF3EAC  7D233810  subfc   r9, r3, r7
+FFDF3EB0  7C9D4800  cmpw    cr1, r29, r9
+FFDF3EB4  3BE00000  li      r31, 0x0
+FFDF3EB8  40850008  ble     cr1, loc_FFDF3EC0
+FFDF3EBC  3BE00001  li      r31, 0x1
+loc_FFDF3EC0:
+FFDF3EC0  2C1F0000  cmpwi   cr0, r31, 0x0
+FFDF3EC4  4082000C  bne     loc_FFDF3ED0
+FFDF3EC8  7FA3E814  addc    r29, r3, r29
+FFDF3ECC  48000010  b       loc_FFDF3EDC
+loc_FFDF3ED0:
+FFDF3ED0  7CBE0734  extsh   r30, r5
+FFDF3ED4  7CBED810  subfc   r5, r30, r27
+FFDF3ED8  B0A6004C  sth     r5, 0x4C(r6)
+loc_FFDF3EDC:
+FFDF3EDC  2C9E0000  cmpwi   cr1, r30, 0x0
+FFDF3EE0  30BEFFFF  addic   r5, r30, -0x1
+FFDF3EE4  7CA50734  extsh   r5, r5
+FFDF3EE8  408501E4  ble     cr1, loc_FFDF40CC
+FFDF3EEC  2C850000  cmpwi   cr1, r5, 0x0
+FFDF3EF0  408201DC  bne     loc_FFDF40CC
+FFDF3EF4  892C0000  lbz     r9, 0x0(r12)
+loc_FFDF3EF8:
+FFDF3EF8  409E003C  bne     cr7, loc_FFDF3F34
+FFDF3EFC  552A103A  slwi    r10, r9, 2
+FFDF3F00  7D4B502E  lwzx    r10, r11, r10
+FFDF3F04  2C890020  cmpwi   cr1, r9, 0x20
+FFDF3F08  2C0A0000  cmpwi   cr0, r10, 0x0
+FFDF3F0C  7D3D5014  addc    r9, r29, r10
+FFDF3F10  7D4A3810  subfc   r10, r10, r7
+FFDF3F14  7F1D5000  cmpw    cr6, r29, r10
+FFDF3F18  408100EC  ble     loc_FFDF4004
+FFDF3F1C  3BE00000  li      r31, 0x0
+FFDF3F20  409900E4  ble     cr6, loc_FFDF4004
+FFDF3F24  3BE00001  li      r31, 0x1
+FFDF3F28  2C1F0000  cmpwi   cr0, r31, 0x0
+FFDF3F2C  31450001  addic   r10, r5, 0x1
+FFDF3F30  480000DC  b       loc_FFDF400C
+loc_FFDF3F34:
+FFDF3F34  7D5848AE  lbzx    r10, r24, r9
+FFDF3F38  33C5FFFF  addic   r30, r5, -0x1
+FFDF3F3C  2C0A0000  cmpwi   cr0, r10, 0x0
+FFDF3F40  4082003C  bne     loc_FFDF3F7C
+FFDF3F44  552A103A  slwi    r10, r9, 2
+FFDF3F48  7D4B502E  lwzx    r10, r11, r10
+FFDF3F4C  2C890020  cmpwi   cr1, r9, 0x20
+FFDF3F50  2C0A0000  cmpwi   cr0, r10, 0x0
+FFDF3F54  7D3D5014  addc    r9, r29, r10
+FFDF3F58  7D4A3810  subfc   r10, r10, r7
+FFDF3F5C  7F1D5000  cmpw    cr6, r29, r10
+FFDF3F60  408100A4  ble     loc_FFDF4004
+FFDF3F64  3BE00000  li      r31, 0x0
+FFDF3F68  4099009C  ble     cr6, loc_FFDF4004
+FFDF3F6C  3BE00001  li      r31, 0x1
+FFDF3F70  2C1F0000  cmpwi   cr0, r31, 0x0
+FFDF3F74  31450001  addic   r10, r5, 0x1
+FFDF3F78  48000094  b       loc_FFDF400C
+loc_FFDF3F7C:
+FFDF3F7C  894C0001  lbz     r10, 0x1(r12)
+FFDF3F80  41850040  bgt     cr1, loc_FFDF3FC0
+FFDF3F84  39200001  li      r9, 0x1
+FFDF3F88  552A103A  slwi    r10, r9, 2
+FFDF3F8C  7D4B502E  lwzx    r10, r11, r10
+FFDF3F90  2C890020  cmpwi   cr1, r9, 0x20
+FFDF3F94  2C0A0000  cmpwi   cr0, r10, 0x0
+FFDF3F98  7D3D5014  addc    r9, r29, r10
+FFDF3F9C  7D4A3810  subfc   r10, r10, r7
+FFDF3FA0  7F1D5000  cmpw    cr6, r29, r10
+FFDF3FA4  40810060  ble     loc_FFDF4004
+FFDF3FA8  3BE00000  li      r31, 0x0
+FFDF3FAC  40990058  ble     cr6, loc_FFDF4004
+FFDF3FB0  3BE00001  li      r31, 0x1
+FFDF3FB4  2C1F0000  cmpwi   cr0, r31, 0x0
+FFDF3FB8  31450001  addic   r10, r5, 0x1
+FFDF3FBC  48000050  b       loc_FFDF400C
+loc_FFDF3FC0:
+FFDF3FC0  7D4850AE  lbzx    r10, r8, r10
+FFDF3FC4  7FC50734  extsh   r5, r30
+FFDF3FC8  2C8A0000  cmpwi   cr1, r10, 0x0
+FFDF3FCC  334C0002  addic   r26, r12, 0x2
+FFDF3FD0  40860008  bne     cr1, loc_FFDF3FD8
+FFDF3FD4  39200001  li      r9, 0x1
+loc_FFDF3FD8:
+FFDF3FD8  552A103A  slwi    r10, r9, 2
+FFDF3FDC  7D4B502E  lwzx    r10, r11, r10
+FFDF3FE0  2C890020  cmpwi   cr1, r9, 0x20
+FFDF3FE4  2C0A0000  cmpwi   cr0, r10, 0x0
+FFDF3FE8  7D3D5014  addc    r9, r29, r10
+FFDF3FEC  7D4A3810  subfc   r10, r10, r7
+FFDF3FF0  7F1D5000  cmpw    cr6, r29, r10
+FFDF3FF4  40810010  ble     loc_FFDF4004
+FFDF3FF8  3BE00000  li      r31, 0x0
+FFDF3FFC  40990008  ble     cr6, loc_FFDF4004
+FFDF4000  3BE00001  li      r31, 0x1
+loc_FFDF4004:
+FFDF4004  2C1F0000  cmpwi   cr0, r31, 0x0
+FFDF4008  31450001  addic   r10, r5, 0x1
+loc_FFDF400C:
+FFDF400C  41820038  beq     loc_FFDF4044
+FFDF4010  7D450734  extsh   r5, r10
+FFDF4014  81810088  lwz     r12, 0x88(r1)
+FFDF4018  7D25D810  subfc   r9, r5, r27
+FFDF401C  B126004C  sth     r9, 0x4C(r6)
+FFDF4020  2C850000  cmpwi   cr1, r5, 0x0
+FFDF4024  7CBCE810  subfc   r5, r28, r29
+FFDF4028  90B7001E  stw     r5, 0x1E(r23)
+FFDF402C  7CA58670  srawi   r5, r5, 0x10
+FFDF4030  7D8803A6  mtspr   LR, r12
+FFDF4034  30210080  addic   r1, r1, 0x80
+FFDF4038  BAC1FFD8  lmw     r22, -0x28(r1)
+FFDF403C  7CA30734  extsh   r3, r5
+FFDF4040  4E800020  blr
+loc_FFDF4044:
+FFDF4044  3BA90000  addi    r29, r9, 0x0
+FFDF4048  4086003C  bne     cr1, loc_FFDF4084
+FFDF404C  41820078  beq     loc_FFDF40C4
+FFDF4050  7D450734  extsh   r5, r10
+FFDF4054  81810088  lwz     r12, 0x88(r1)
+FFDF4058  7D25D810  subfc   r9, r5, r27
+FFDF405C  B126004C  sth     r9, 0x4C(r6)
+FFDF4060  2C850000  cmpwi   cr1, r5, 0x0
+FFDF4064  7CBCE810  subfc   r5, r28, r29
+FFDF4068  90B7001E  stw     r5, 0x1E(r23)
+FFDF406C  7CA58670  srawi   r5, r5, 0x10
+FFDF4070  7D8803A6  mtspr   LR, r12
+FFDF4074  30210080  addic   r1, r1, 0x80
+FFDF4078  BAC1FFD8  lmw     r22, -0x28(r1)
+FFDF407C  7CA30734  extsh   r3, r5
+FFDF4080  4800006C  b       loc_FFDF40EC
+loc_FFDF4084:
+FFDF4084  41950010  bgt     cr5, loc_FFDF4094
+FFDF4088  40820030  bne     loc_FFDF40B8
+FFDF408C  7FA3E814  addc    r29, r3, r29
+FFDF4090  48000034  b       loc_FFDF40C4
+loc_FFDF4094:
+FFDF4094  7D233810  subfc   r9, r3, r7
+FFDF4098  7C9D4800  cmpw    cr1, r29, r9
+FFDF409C  3BE00000  li      r31, 0x0
+FFDF40A0  40850008  ble     cr1, loc_FFDF40A8
+FFDF40A4  3BE00001  li      r31, 0x1
+loc_FFDF40A8:
+FFDF40A8  2C1F0000  cmpwi   cr0, r31, 0x0
+FFDF40AC  4082000C  bne     loc_FFDF40B8
+FFDF40B0  7FA3E814  addc    r29, r3, r29
+FFDF40B4  48000010  b       loc_FFDF40C4
+loc_FFDF40B8:
+FFDF40B8  7D450734  extsh   r5, r10
+FFDF40BC  7D25D810  subfc   r9, r5, r27
+FFDF40C0  B126004C  sth     r9, 0x4C(r6)
+loc_FFDF40C4:
+FFDF40C4  2C850000  cmpwi   cr1, r5, 0x0
+FFDF40C8  4182FC48  beq     loc_FFDF3D10
+loc_FFDF40CC:
+FFDF40CC  81810088  lwz     r12, 0x88(r1)
+FFDF40D0  7CBCE810  subfc   r5, r28, r29
+FFDF40D4  90B7001E  stw     r5, 0x1E(r23)
+FFDF40D8  7CA58670  srawi   r5, r5, 0x10
+FFDF40DC  7D8803A6  mtspr   LR, r12
+FFDF40E0  30210080  addic   r1, r1, 0x80
+FFDF40E4  BAC1FFD8  lmw     r22, -0x28(r1)
+FFDF40E8  7CA30734  extsh   r3, r5
+loc_FFDF40EC:
+FFDF40EC  4E800020  blr
+
+sub_FFDF40F0:
+FFDF40F0  7C0802A6  mfspr   r0, LR
+FFDF40F4  93E1FFFC  stw     r31, -0x4(r1)
+FFDF40F8  90010008  stw     r0, 0x8(r1)
+FFDF40FC  9421FFA0  stwu    r1, -0x60(r1)
+FFDF4100  90610040  stw     r3, 0x40(r1)
+FFDF4104  38600001  li      r3, 0x1
+FFDF4108  7C9F0734  extsh   r31, r4
+FFDF410C  B061003E  sth     r3, 0x3E(r1)
+FFDF4110  B0610038  sth     r3, 0x38(r1)
+FFDF4114  B061003A  sth     r3, 0x3A(r1)
+FFDF4118  B061003C  sth     r3, 0x3C(r1)
+FFDF411C  480005ED  bl      glue_GetQDGlobals
+FFDF4120  80410014  lwz     r2, 0x14(r1)
+FFDF4124  806300CA  lwz     r3, 0xCA(r3)
+FFDF4128  38803F80  li      r4, 0x3F80
+FFDF412C  80630068  lwz     r3, 0x68(r3)
+FFDF4130  38BF0000  addi    r5, r31, 0x0
+FFDF4134  2C030000  cmpwi   cr0, r3, 0x0
+FFDF4138  80630000  lwz     r3, 0x0(r3)
+FFDF413C  80C10040  lwz     r6, 0x40(r1)
+FFDF4140  80E10038  lwz     r7, 0x38(r1)
+FFDF4144  41820014  beq     loc_FFDF4158
+FFDF4148  8101003C  lwz     r8, 0x3C(r1)
+FFDF414C  4800067D  bl      glue_CallUniversalProc
+FFDF4150  80410014  lwz     r2, 0x14(r1)
+FFDF4154  4800001C  b       loc_FFDF4170
+loc_FFDF4158:
+FFDF4158  38860000  addi    r4, r6, 0x0
+FFDF415C  387F0000  addi    r3, r31, 0x0
+FFDF4160  38A70000  addi    r5, r7, 0x0
+FFDF4164  80C1003C  lwz     r6, 0x3C(r1)
+FFDF4168  48000679  bl      glue_StdText
+FFDF416C  80410014  lwz     r2, 0x14(r1)
+loc_FFDF4170:
+FFDF4170  81810068  lwz     r12, 0x68(r1)
+FFDF4174  83E1005C  lwz     r31, 0x5C(r1)
+FFDF4178  7D8803A6  mtspr   LR, r12
+FFDF417C  30210060  addic   r1, r1, 0x60
+FFDF4180  4E800020  blr
+
+NQDDrawChar:
+FFDF4184  9421FFC0  stwu    r1, -0x40(r1)
+FFDF4188  90610058  stw     r3, 0x58(r1)
+FFDF418C  B0610058  sth     r3, 0x58(r1)
+FFDF4190  7C0802A6  mfspr   r0, LR
+FFDF4194  38800001  li      r4, 0x1
+FFDF4198  90010048  stw     r0, 0x48(r1)
+FFDF419C  38010058  addi    r0, r1, 0x58
+FFDF41A0  30600001  addic   r3, r0, 0x1
+FFDF41A4  4BFFFF4D  bl      sub_FFDF40F0
+FFDF41A8  81810048  lwz     r12, 0x48(r1)
+FFDF41AC  30210040  addic   r1, r1, 0x40
+FFDF41B0  7D8803A6  mtspr   LR, r12
+FFDF41B4  4E800020  blr
+
+NQDDrawString:
+FFDF41B8  9421FFC0  stwu    r1, -0x40(r1)
+FFDF41BC  88830000  lbz     r4, 0x0(r3)
+FFDF41C0  30210040  addic   r1, r1, 0x40
+FFDF41C4  30630001  addic   r3, r3, 0x1
+FFDF41C8  4BFFFF28  b       sub_FFDF40F0
+
+NQDDrawText:
+FFDF41CC  7C800734  extsh   r0, r4
+FFDF41D0  9421FFC0  stwu    r1, -0x40(r1)
+FFDF41D4  30210040  addic   r1, r1, 0x40
+FFDF41D8  7C630014  addc    r3, r3, r0
+FFDF41DC  7CA40734  extsh   r4, r5
+FFDF41E0  4BFFFF10  b       sub_FFDF40F0
+
+NQDTextWidth:
+FFDF41E4  BFC1FFF8  stmw    r30, -0x8(r1)
+FFDF41E8  7C0802A6  mfspr   r0, LR
+FFDF41EC  7CBE0735  extsh.  r30, r5
+FFDF41F0  90010008  stw     r0, 0x8(r1)
+FFDF41F4  7C840734  extsh   r4, r4
+FFDF41F8  7FE32014  addc    r31, r3, r4
+FFDF41FC  9421FFA0  stwu    r1, -0x60(r1)
+FFDF4200  38800001  li      r4, 0x1
+FFDF4204  38600000  li      r3, 0x0
+FFDF4208  41810010  bgt     loc_FFDF4218
+FFDF420C  BBC10058  lmw     r30, 0x58(r1)
+FFDF4210  30210060  addic   r1, r1, 0x60
+FFDF4214  4E800020  blr
+loc_FFDF4218:
+FFDF4218  B081003C  sth     r4, 0x3C(r1)
+FFDF421C  B081003A  sth     r4, 0x3A(r1)
+FFDF4220  B0810038  sth     r4, 0x38(r1)
+FFDF4224  B081003E  sth     r4, 0x3E(r1)
+FFDF4228  480004E1  bl      glue_GetQDGlobals
+FFDF422C  80410014  lwz     r2, 0x14(r1)
+FFDF4230  806300CA  lwz     r3, 0xCA(r3)
+FFDF4234  30E10038  addic   r7, r1, 0x38
+FFDF4238  80630068  lwz     r3, 0x68(r3)
+FFDF423C  3101003C  addic   r8, r1, 0x3C
+FFDF4240  2C030000  cmpwi   cr0, r3, 0x0
+FFDF4244  31210040  addic   r9, r1, 0x40
+FFDF4248  3C800001  lis     r4, 0x0001
+FFDF424C  38A70000  addi    r5, r7, 0x0
+FFDF4250  41820024  beq     loc_FFDF4274
+FFDF4254  80630028  lwz     r3, 0x28(r3)
+FFDF4258  3084FFA0  addic   r4, r4, -0x60
+FFDF425C  38BE0000  addi    r5, r30, 0x0
+FFDF4260  38DF0000  addi    r6, r31, 0x0
+FFDF4264  48000565  bl      glue_CallUniversalProc
+FFDF4268  80410014  lwz     r2, 0x14(r1)
+FFDF426C  7C630734  extsh   r3, r3
+FFDF4270  48000020  b       loc_FFDF4290
+loc_FFDF4274:
+FFDF4274  387E0000  addi    r3, r30, 0x0
+FFDF4278  389F0000  addi    r4, r31, 0x0
+FFDF427C  38C80000  addi    r6, r8, 0x0
+FFDF4280  38E90000  addi    r7, r9, 0x0
+FFDF4284  48000575  bl      glue_StdTxMeas
+FFDF4288  80410014  lwz     r2, 0x14(r1)
+FFDF428C  7C630734  extsh   r3, r3
+loc_FFDF4290:
+FFDF4290  A8A1003A  lha     r5, 0x3A(r1)
+FFDF4294  A881003E  lha     r4, 0x3E(r1)
+FFDF4298  7D0519D6  mullw   r8, r5, r3
+FFDF429C  7C052000  cmpw    r5, r4
+FFDF42A0  5484043E  clrlwi  r4, r4, 16
+FFDF42A4  4182000C  beq     loc_FFDF42B0
+FFDF42A8  7C682396  divwu   r3, r8, r4
+FFDF42AC  7C630734  extsh   r3, r3
+loc_FFDF42B0:
+FFDF42B0  81810068  lwz     r12, 0x68(r1)
+FFDF42B4  30210060  addic   r1, r1, 0x60
+FFDF42B8  7D8803A6  mtspr   LR, r12
+FFDF42BC  BBC1FFF8  lmw     r30, -0x8(r1)
+FFDF42C0  4E800020  blr
+
+NQDCharWidth:
+FFDF42C4  9421FFC0  stwu    r1, -0x40(r1)
+FFDF42C8  90610058  stw     r3, 0x58(r1)
+FFDF42CC  B0610058  sth     r3, 0x58(r1)
+FFDF42D0  7C0802A6  mfspr   r0, LR
+FFDF42D4  38800000  li      r4, 0x0
+FFDF42D8  90010048  stw     r0, 0x48(r1)
+FFDF42DC  38010058  addi    r0, r1, 0x58
+FFDF42E0  30600001  addic   r3, r0, 0x1
+FFDF42E4  38A00001  li      r5, 0x1
+FFDF42E8  48000529  bl      glue_TextWidth
+FFDF42EC  80410014  lwz     r2, 0x14(r1)
+FFDF42F0  81810048  lwz     r12, 0x48(r1)
+FFDF42F4  30210040  addic   r1, r1, 0x40
+FFDF42F8  7D8803A6  mtspr   LR, r12
+FFDF42FC  7C630734  extsh   r3, r3
+FFDF4300  4E800020  blr
+
+NQDStringWidth:
+FFDF4304  88A30000  lbz     r5, 0x0(r3)
+FFDF4308  7C0802A6  mfspr   r0, LR
+FFDF430C  9421FFC0  stwu    r1, -0x40(r1)
+FFDF4310  90010048  stw     r0, 0x48(r1)
+FFDF4314  30630001  addic   r3, r3, 0x1
+FFDF4318  38800000  li      r4, 0x0
+FFDF431C  480004F5  bl      glue_TextWidth
+FFDF4320  80410014  lwz     r2, 0x14(r1)
+FFDF4324  81810048  lwz     r12, 0x48(r1)
+FFDF4328  30210040  addic   r1, r1, 0x40
+FFDF432C  7D8803A6  mtspr   LR, r12
+FFDF4330  7C630734  extsh   r3, r3
+FFDF4334  4E800020  blr
+
+NQDGetFontInfo:
+FFDF4338  7C0802A6  mfspr   r0, LR
+FFDF433C  93E1FFFC  stw     r31, -0x4(r1)
+FFDF4340  90010008  stw     r0, 0x8(r1)
+FFDF4344  9421FFB0  stwu    r1, -0x50(r1)
+FFDF4348  3BE30000  addi    r31, r3, 0x0
+FFDF434C  38000001  li      r0, 0x1
+FFDF4350  B001003C  sth     r0, 0x3C(r1)
+FFDF4354  B001003A  sth     r0, 0x3A(r1)
+FFDF4358  B0010038  sth     r0, 0x38(r1)
+FFDF435C  B001003E  sth     r0, 0x3E(r1)
+FFDF4360  480003A9  bl      glue_GetQDGlobals
+FFDF4364  80410014  lwz     r2, 0x14(r1)
+FFDF4368  806300CA  lwz     r3, 0xCA(r3)
+FFDF436C  30E10038  addic   r7, r1, 0x38
+FFDF4370  80630068  lwz     r3, 0x68(r3)
+FFDF4374  3C000001  lis     r0, 0x0001
+FFDF4378  2C030000  cmpwi   cr0, r3, 0x0
+FFDF437C  3080FFA0  addic   r4, r0, -0x60
+FFDF4380  3101003C  addic   r8, r1, 0x3C
+FFDF4384  38A70000  addi    r5, r7, 0x0
+FFDF4388  41820020  beq     loc_FFDF43A8
+FFDF438C  80630028  lwz     r3, 0x28(r3)
+FFDF4390  38A00000  li      r5, 0x0
+FFDF4394  38C00000  li      r6, 0x0
+FFDF4398  393F0000  addi    r9, r31, 0x0
+FFDF439C  4800042D  bl      glue_CallUniversalProc
+FFDF43A0  80410014  lwz     r2, 0x14(r1)
+FFDF43A4  4800001C  b       loc_FFDF43C0
+loc_FFDF43A8:
+FFDF43A8  38600000  li      r3, 0x0
+FFDF43AC  38800000  li      r4, 0x0
+FFDF43B0  38C80000  addi    r6, r8, 0x0
+FFDF43B4  38FF0000  addi    r7, r31, 0x0
+FFDF43B8  48000441  bl      glue_StdTxMeas
+FFDF43BC  80410014  lwz     r2, 0x14(r1)
+loc_FFDF43C0:
+FFDF43C0  48000349  bl      glue_GetQDGlobals
+FFDF43C4  80410014  lwz     r2, 0x14(r1)
+FFDF43C8  8063001A  lwz     r3, 0x1A(r3)
+FFDF43CC  A8BF0004  lha     r5, 0x4(r31)
+FFDF43D0  8803000C  lbz     r0, 0xC(r3)
+FFDF43D4  A89F0000  lha     r4, 0x0(r31)
+FFDF43D8  7C000774  extsb   r0, r0
+FFDF43DC  7C002814  addc    r0, r0, r5
+FFDF43E0  B01F0004  sth     r0, 0x4(r31)
+FFDF43E4  8803000B  lbz     r0, 0xB(r3)
+FFDF43E8  30A40001  addic   r5, r4, 0x1
+FFDF43EC  2C000000  cmpwi   cr0, r0, 0x0
+FFDF43F0  A8FF0006  lha     r7, 0x6(r31)
+FFDF43F4  A89F0004  lha     r4, 0x4(r31)
+FFDF43F8  A81F0002  lha     r0, 0x2(r31)
+FFDF43FC  4082002C  bne     loc_FFDF4428
+FFDF4400  A8C1003A  lha     r6, 0x3A(r1)
+FFDF4404  A801003E  lha     r0, 0x3E(r1)
+FFDF4408  A941003C  lha     r10, 0x3C(r1)
+FFDF440C  7C860000  cmpw    cr1, r6, r0
+FFDF4410  A8610038  lha     r3, 0x38(r1)
+FFDF4414  A8BF0000  lha     r5, 0x0(r31)
+FFDF4418  7C035000  cmpw    r3, r10
+FFDF441C  A91F0002  lha     r8, 0x2(r31)
+FFDF4420  40860080  bne     cr1, loc_FFDF44A0
+FFDF4424  48000038  b       loc_FFDF445C
+loc_FFDF4428:
+FFDF4428  B0BF0000  sth     r5, 0x0(r31)
+FFDF442C  8863000B  lbz     r3, 0xB(r3)
+FFDF4430  A8BF0000  lha     r5, 0x0(r31)
+FFDF4434  7C030014  addc    r0, r3, r0
+FFDF4438  B01F0002  sth     r0, 0x2(r31)
+FFDF443C  A8C1003A  lha     r6, 0x3A(r1)
+FFDF4440  A801003E  lha     r0, 0x3E(r1)
+FFDF4444  A941003C  lha     r10, 0x3C(r1)
+FFDF4448  7C860000  cmpw    cr1, r6, r0
+FFDF444C  A8610038  lha     r3, 0x38(r1)
+FFDF4450  A91F0002  lha     r8, 0x2(r31)
+FFDF4454  7C035000  cmpw    r3, r10
+FFDF4458  40860048  bne     cr1, loc_FFDF44A0
+loc_FFDF445C:
+FFDF445C  40820044  bne     loc_FFDF44A0
+FFDF4460  7C6431D6  mullw   r3, r4, r6
+FFDF4464  7C040E70  srawi   r4, r0, 0x1
+FFDF4468  7C632014  addc    r3, r3, r4
+FFDF446C  7C0303D6  divw    r0, r3, r0
+FFDF4470  B01F0004  sth     r0, 0x4(r31)
+FFDF4474  A8010038  lha     r0, 0x38(r1)
+FFDF4478  A861003C  lha     r3, 0x3C(r1)
+FFDF447C  81810058  lwz     r12, 0x58(r1)
+FFDF4480  7C0039D6  mullw   r0, r0, r7
+FFDF4484  7C640E70  srawi   r4, r3, 0x1
+FFDF4488  7C040014  addc    r0, r4, r0
+FFDF448C  7C001BD6  divw    r0, r0, r3
+FFDF4490  B01F0006  sth     r0, 0x6(r31)
+FFDF4494  83E1004C  lwz     r31, 0x4C(r1)
+FFDF4498  7D8803A6  mtspr   LR, r12
+FFDF449C  48000078  b       loc_FFDF4514
+loc_FFDF44A0:
+FFDF44A0  7C0519D6  mullw   r0, r5, r3
+FFDF44A4  7D430E70  srawi   r3, r10, 0x1
+FFDF44A8  7C001814  addc    r0, r0, r3
+FFDF44AC  7C0053D6  divw    r0, r0, r10
+FFDF44B0  B01F0000  sth     r0, 0x0(r31)
+FFDF44B4  A8010038  lha     r0, 0x38(r1)
+FFDF44B8  A861003C  lha     r3, 0x3C(r1)
+FFDF44BC  7C0801D6  mullw   r0, r8, r0
+FFDF44C0  7C650E70  srawi   r5, r3, 0x1
+FFDF44C4  7C050014  addc    r0, r5, r0
+FFDF44C8  7C001BD6  divw    r0, r0, r3
+FFDF44CC  B01F0002  sth     r0, 0x2(r31)
+FFDF44D0  A8C1003A  lha     r6, 0x3A(r1)
+FFDF44D4  A801003E  lha     r0, 0x3E(r1)
+FFDF44D8  7C6431D6  mullw   r3, r4, r6
+FFDF44DC  7C040E70  srawi   r4, r0, 0x1
+FFDF44E0  7C632014  addc    r3, r3, r4
+FFDF44E4  7C0303D6  divw    r0, r3, r0
+FFDF44E8  B01F0004  sth     r0, 0x4(r31)
+FFDF44EC  A8010038  lha     r0, 0x38(r1)
+FFDF44F0  A861003C  lha     r3, 0x3C(r1)
+FFDF44F4  7C0039D6  mullw   r0, r0, r7
+FFDF44F8  7C640E70  srawi   r4, r3, 0x1
+FFDF44FC  7C040014  addc    r0, r4, r0
+FFDF4500  7C001BD6  divw    r0, r0, r3
+FFDF4504  B01F0006  sth     r0, 0x6(r31)
+FFDF4508  81810058  lwz     r12, 0x58(r1)
+FFDF450C  83E1004C  lwz     r31, 0x4C(r1)
+FFDF4510  7D8803A6  mtspr   LR, r12
+loc_FFDF4514:
+FFDF4514  30210050  addic   r1, r1, 0x50
+FFDF4518  4E800020  blr
+
+NQDTextFont:
+FFDF451C  7C0802A6  mfspr   r0, LR
+FFDF4520  93E1FFFC  stw     r31, -0x4(r1)
+FFDF4524  90010008  stw     r0, 0x8(r1)
+FFDF4528  9421FFB0  stwu    r1, -0x50(r1)
+FFDF452C  3BE30000  addi    r31, r3, 0x0
+FFDF4530  480001D9  bl      glue_GetQDGlobals
+FFDF4534  80410014  lwz     r2, 0x14(r1)
+FFDF4538  806300CA  lwz     r3, 0xCA(r3)
+FFDF453C  81810058  lwz     r12, 0x58(r1)
+FFDF4540  B3E30044  sth     r31, 0x44(r3)
+FFDF4544  83E1004C  lwz     r31, 0x4C(r1)
+FFDF4548  7D8803A6  mtspr   LR, r12
+FFDF454C  30210050  addic   r1, r1, 0x50
+FFDF4550  4E800020  blr
+
+NQDTextMode:
+FFDF4554  7C0802A6  mfspr   r0, LR
+FFDF4558  93E1FFFC  stw     r31, -0x4(r1)
+FFDF455C  90010008  stw     r0, 0x8(r1)
+FFDF4560  9421FFB0  stwu    r1, -0x50(r1)
+FFDF4564  3BE30000  addi    r31, r3, 0x0
+FFDF4568  480001A1  bl      glue_GetQDGlobals
+FFDF456C  80410014  lwz     r2, 0x14(r1)
+FFDF4570  806300CA  lwz     r3, 0xCA(r3)
+FFDF4574  81810058  lwz     r12, 0x58(r1)
+FFDF4578  B3E30048  sth     r31, 0x48(r3)
+FFDF457C  83E1004C  lwz     r31, 0x4C(r1)
+FFDF4580  7D8803A6  mtspr   LR, r12
+FFDF4584  30210050  addic   r1, r1, 0x50
+FFDF4588  4E800020  blr
+
+NQDTextSize:
+FFDF458C  7C0802A6  mfspr   r0, LR
+FFDF4590  93E1FFFC  stw     r31, -0x4(r1)
+FFDF4594  90010008  stw     r0, 0x8(r1)
+FFDF4598  9421FFB0  stwu    r1, -0x50(r1)
+FFDF459C  3BE30000  addi    r31, r3, 0x0
+FFDF45A0  48000169  bl      glue_GetQDGlobals
+FFDF45A4  80410014  lwz     r2, 0x14(r1)
+FFDF45A8  806300CA  lwz     r3, 0xCA(r3)
+FFDF45AC  38A00000  li      r5, 0x0
+FFDF45B0  A8830006  lha     r4, 0x6(r3)
+FFDF45B4  B3E3004A  sth     r31, 0x4A(r3)
+FFDF45B8  2C040000  cmpwi   cr0, r4, 0x0
+FFDF45BC  40800008  bge     loc_FFDF45C4
+FFDF45C0  B0A3000C  sth     r5, 0xC(r3)
+loc_FFDF45C4:
+FFDF45C4  81810058  lwz     r12, 0x58(r1)
+FFDF45C8  83E1004C  lwz     r31, 0x4C(r1)
+FFDF45CC  7D8803A6  mtspr   LR, r12
+FFDF45D0  30210050  addic   r1, r1, 0x50
+FFDF45D4  4E800020  blr
+
+NQDSpaceExtra:
+FFDF45D8  7C0802A6  mfspr   r0, LR
+FFDF45DC  93E1FFFC  stw     r31, -0x4(r1)
+FFDF45E0  90010008  stw     r0, 0x8(r1)
+FFDF45E4  9421FFB0  stwu    r1, -0x50(r1)
+FFDF45E8  3BE30000  addi    r31, r3, 0x0
+FFDF45EC  4800011D  bl      glue_GetQDGlobals
+FFDF45F0  80410014  lwz     r2, 0x14(r1)
+FFDF45F4  806300CA  lwz     r3, 0xCA(r3)
+FFDF45F8  81810058  lwz     r12, 0x58(r1)
+FFDF45FC  93E3004C  stw     r31, 0x4C(r3)
+FFDF4600  83E1004C  lwz     r31, 0x4C(r1)
+FFDF4604  7D8803A6  mtspr   LR, r12
+FFDF4608  30210050  addic   r1, r1, 0x50
+FFDF460C  4E800020  blr
+
+NQDTextFace:
+FFDF4610  7C0802A6  mfspr   r0, LR
+FFDF4614  93E1FFFC  stw     r31, -0x4(r1)
+FFDF4618  90010008  stw     r0, 0x8(r1)
+FFDF461C  9421FFB0  stwu    r1, -0x50(r1)
+FFDF4620  3BE30000  addi    r31, r3, 0x0
+FFDF4624  480000E5  bl      glue_GetQDGlobals
+FFDF4628  80410014  lwz     r2, 0x14(r1)
+FFDF462C  806300CA  lwz     r3, 0xCA(r3)
+FFDF4630  81810058  lwz     r12, 0x58(r1)
+FFDF4634  9BE30046  stb     r31, 0x46(r3)
+FFDF4638  83E1004C  lwz     r31, 0x4C(r1)
+FFDF463C  7D8803A6  mtspr   LR, r12
+FFDF4640  30210050  addic   r1, r1, 0x50
+FFDF4644  4E800020  blr
+
+NQDCharExtra:
+FFDF4648  7C0802A6  mfspr   r0, LR
+FFDF464C  93E1FFFC  stw     r31, -0x4(r1)
+FFDF4650  90010008  stw     r0, 0x8(r1)
+FFDF4654  9421FFB0  stwu    r1, -0x50(r1)
+FFDF4658  90610038  stw     r3, 0x38(r1)
+FFDF465C  480000AD  bl      glue_GetQDGlobals
+FFDF4660  80410014  lwz     r2, 0x14(r1)
+FFDF4664  83E300CA  lwz     r31, 0xCA(r3)
+FFDF4668  80610038  lwz     r3, 0x38(r1)
+FFDF466C  A81F0006  lha     r0, 0x6(r31)
+FFDF4670  2C000000  cmpwi   cr0, r0, 0x0
+FFDF4674  41800018  blt     loc_FFDF468C
+FFDF4678  81810058  lwz     r12, 0x58(r1)
+FFDF467C  83E1004C  lwz     r31, 0x4C(r1)
+FFDF4680  7D8803A6  mtspr   LR, r12
+FFDF4684  30210050  addic   r1, r1, 0x50
+FFDF4688  4E800020  blr
+loc_FFDF468C:
+FFDF468C  A81F004A  lha     r0, 0x4A(r31)
+FFDF4690  2C800000  cmpwi   cr1, r0, 0x0
+FFDF4694  41860014  beq     cr1, loc_FFDF46A8
+FFDF4698  5404801E  slwi    r4, r0, 16
+FFDF469C  4800018D  bl      sub_FFDF4828
+FFDF46A0  80410014  lwz     r2, 0x14(r1)
+FFDF46A4  48000048  b       loc_FFDF46EC
+loc_FFDF46A8:
+FFDF46A8  A89F0044  lha     r4, 0x44(r31)
+FFDF46AC  2C040000  cmpwi   cr0, r4, 0x0
+FFDF46B0  4082000C  bne     loc_FFDF46BC
+FFDF46B4  A8000BA8  lha     r0, 0xBA8
+FFDF46B8  2C800000  cmpwi   cr1, r0, 0x0
+loc_FFDF46BC:
+FFDF46BC  41860014  beq     cr1, loc_FFDF46D0
+FFDF46C0  5404801E  slwi    r4, r0, 16
+FFDF46C4  48000165  bl      sub_FFDF4828
+FFDF46C8  80410014  lwz     r2, 0x14(r1)
+FFDF46CC  48000020  b       loc_FFDF46EC
+loc_FFDF46D0:
+FFDF46D0  88000987  lbz     r0, 0x987                          ; R low memory FMDefaultSize ($987)
+FFDF46D4  2C000000  cmpwi   cr0, r0, 0x0
+FFDF46D8  40820008  bne     loc_FFDF46E0
+FFDF46DC  3800000C  li      r0, 0xC
+loc_FFDF46E0:
+FFDF46E0  5404801E  slwi    r4, r0, 16
+FFDF46E4  48000145  bl      sub_FFDF4828
+FFDF46E8  80410014  lwz     r2, 0x14(r1)
+loc_FFDF46EC:
+FFDF46EC  81810058  lwz     r12, 0x58(r1)
+FFDF46F0  7C602670  srawi   r0, r3, 0x4
+FFDF46F4  B01F000C  sth     r0, 0xC(r31)
+FFDF46F8  83E1004C  lwz     r31, 0x4C(r1)
+FFDF46FC  7D8803A6  mtspr   LR, r12
+FFDF4700  30210050  addic   r1, r1, 0x50
+FFDF4704  4E800020  blr
+
+glue_GetQDGlobals:
+FFDF4708  81820000  lwz     r12, 0x0(r2)                       ; TOC[+0] GetQDGlobals
+FFDF470C  90410014  stw     r2, 0x14(r1)
+FFDF4710  800C0000  lwz     r0, 0x0(r12)
+FFDF4714  804C0004  lwz     r2, 0x4(r12)
+FFDF4718  7C0903A6  mtspr   CTR, r0
+FFDF471C  4E800420  bctr
+
+glue_FMSwapFont:
+FFDF4720  81820004  lwz     r12, 0x4(r2)                       ; TOC[+4] FMSwapFont
+FFDF4724  90410014  stw     r2, 0x14(r1)
+FFDF4728  800C0000  lwz     r0, 0x0(r12)
+FFDF472C  804C0004  lwz     r2, 0x4(r12)
+FFDF4730  7C0903A6  mtspr   CTR, r0
+FFDF4734  4E800420  bctr
+
+sub_FFDF4738:
+FFDF4738  7C0802A6  mfspr   r0, LR
+FFDF473C  2C030000  cmpwi   cr0, r3, 0x0
+FFDF4740  93E1FFFC  stw     r31, -0x4(r1)
+FFDF4744  90010008  stw     r0, 0x8(r1)
+FFDF4748  9421FFB0  stwu    r1, -0x50(r1)
+FFDF474C  3BE50000  addi    r31, r5, 0x0
+FFDF4750  40820010  bne     loc_FFDF4760
+FFDF4754  83E1004C  lwz     r31, 0x4C(r1)
+FFDF4758  30210050  addic   r1, r1, 0x50
+FFDF475C  4E800020  blr
+loc_FFDF4760:
+FFDF4760  A804040E  lha     r0, 0x40E(r4)
+FFDF4764  A8C4041A  lha     r6, 0x41A(r4)
+FFDF4768  A8840416  lha     r4, 0x416(r4)
+FFDF476C  7C6301D6  mullw   r3, r3, r0
+FFDF4770  5480801E  slwi    r0, r4, 16
+FFDF4774  7C8033D6  divw    r4, r0, r6
+FFDF4778  48000039  bl      glue_FixMul
+FFDF477C  80410014  lwz     r2, 0x14(r1)
+FFDF4780  A81F0018  lha     r0, 0x18(r31)
+FFDF4784  A89F0014  lha     r4, 0x14(r31)
+FFDF4788  5400801E  slwi    r0, r0, 16
+FFDF478C  7C8023D6  divw    r4, r0, r4
+FFDF4790  48000021  bl      glue_FixMul
+FFDF4794  80410014  lwz     r2, 0x14(r1)
+FFDF4798  81810058  lwz     r12, 0x58(r1)
+FFDF479C  83E1004C  lwz     r31, 0x4C(r1)
+FFDF47A0  7D8803A6  mtspr   LR, r12
+FFDF47A4  30210050  addic   r1, r1, 0x50
+FFDF47A8  4E800020  blr
+FFDF47ACd 00000000  .long   0x00000000
+
+glue_FixMul:
+FFDF47B0  81820008  lwz     r12, 0x8(r2)                       ; TOC[+8] FixMul
+FFDF47B4  90410014  stw     r2, 0x14(r1)
+FFDF47B8  800C0000  lwz     r0, 0x0(r12)
+FFDF47BC  804C0004  lwz     r2, 0x4(r12)
+FFDF47C0  7C0903A6  mtspr   CTR, r0
+FFDF47C4  4E800420  bctr
+
+glue_CallUniversalProc:
+FFDF47C8  8182000C  lwz     r12, 0xC(r2)                       ; TOC[+12] CallUniversalProc
+FFDF47CC  90410014  stw     r2, 0x14(r1)
+FFDF47D0  800C0000  lwz     r0, 0x0(r12)
+FFDF47D4  804C0004  lwz     r2, 0x4(r12)
+FFDF47D8  7C0903A6  mtspr   CTR, r0
+FFDF47DC  4E800420  bctr
+
+glue_StdText:
+FFDF47E0  81820010  lwz     r12, 0x10(r2)                      ; TOC[+16] StdText
+FFDF47E4  90410014  stw     r2, 0x14(r1)
+FFDF47E8  800C0000  lwz     r0, 0x0(r12)
+FFDF47EC  804C0004  lwz     r2, 0x4(r12)
+FFDF47F0  7C0903A6  mtspr   CTR, r0
+FFDF47F4  4E800420  bctr
+
+glue_StdTxMeas:
+FFDF47F8  81820014  lwz     r12, 0x14(r2)                      ; TOC[+20] StdTxMeas
+FFDF47FC  90410014  stw     r2, 0x14(r1)
+FFDF4800  800C0000  lwz     r0, 0x0(r12)
+FFDF4804  804C0004  lwz     r2, 0x4(r12)
+FFDF4808  7C0903A6  mtspr   CTR, r0
+FFDF480C  4E800420  bctr
+
+glue_TextWidth:
+FFDF4810  81820018  lwz     r12, 0x18(r2)                      ; TOC[+24] TextWidth
+FFDF4814  90410014  stw     r2, 0x14(r1)
+FFDF4818  800C0000  lwz     r0, 0x0(r12)
+FFDF481C  804C0004  lwz     r2, 0x4(r12)
+FFDF4820  7C0903A6  mtspr   CTR, r0
+FFDF4824  4E800420  bctr
+
+sub_FFDF4828:
+FFDF4828  8182001C  lwz     r12, 0x1C(r2)                      ; TOC[+28] FixDiv
+FFDF482C  90410014  stw     r2, 0x14(r1)
+FFDF4830  800C0000  lwz     r0, 0x0(r12)
+FFDF4834  804C0004  lwz     r2, 0x4(r12)
+FFDF4838  7C0903A6  mtspr   CTR, r0
+FFDF483C  4E800420  bctr
+
+; ----------------------------------------------------------------------------
+; data section 1 (pidata), unpacked C8 bytes; addresses are offsets in the section;
+; relocated words are named (imports) or point into a section (code+X / data+X).
+; ----------------------------------------------------------------------------
++00000  00000000  -> code+0 = FFDF3B00 NQDStdTxMeas
++00004  000000A8  -> data+A8
++0000C  00000684  -> code+684 = FFDF4184 NQDDrawChar
++00010  000000A8  -> data+A8
++00018  000006B8  -> code+6B8 = FFDF41B8 NQDDrawString
++0001C  000000A8  -> data+A8
++00024  000006CC  -> code+6CC = FFDF41CC NQDDrawText
++00028  000000A8  -> data+A8
++00030  000006E4  -> code+6E4 = FFDF41E4 NQDTextWidth
++00034  000000A8  -> data+A8
++0003C  000007C4  -> code+7C4 = FFDF42C4 NQDCharWidth
++00040  000000A8  -> data+A8
++00048  00000804  -> code+804 = FFDF4304 NQDStringWidth
++0004C  000000A8  -> data+A8
++00054  00000838  -> code+838 = FFDF4338 NQDGetFontInfo
++00058  000000A8  -> data+A8
++00060  00000A1C  -> code+A1C = FFDF451C NQDTextFont
++00064  000000A8  -> data+A8
++0006C  00000A54  -> code+A54 = FFDF4554 NQDTextMode
++00070  000000A8  -> data+A8
++00078  00000A8C  -> code+A8C = FFDF458C NQDTextSize
++0007C  000000A8  -> data+A8
++00084  00000AD8  -> code+AD8 = FFDF45D8 NQDSpaceExtra
++00088  000000A8  -> data+A8
++00090  00000B10  -> code+B10 = FFDF4610 NQDTextFace
++00094  000000A8  -> data+A8
++0009C  00000B48  -> code+B48 = FFDF4648 NQDCharExtra
++000A0  000000A8  -> data+A8
++000A8  00000000  -> PrivateInterfaceLib::GetQDGlobals
++000AC  00000000  -> InterfaceLib::FMSwapFont
++000B0  00000000  -> InterfaceLib::FixMul
++000B4  00000000  -> InterfaceLib::CallUniversalProc
++000B8  00000000  -> InterfaceLib::StdText
++000BC  00000000  -> InterfaceLib::StdTxMeas
++000C0  00000000  -> InterfaceLib::TextWidth
++000C4  00000000  -> InterfaceLib::FixDiv
+; full unpacked image:
+00000000  00 00 00 00 00 00 00 A8 00 00 00 00 00 00 06 84  |................|
+00000010  00 00 00 A8 00 00 00 00 00 00 06 B8 00 00 00 A8  |................|
+00000020  00 00 00 00 00 00 06 CC 00 00 00 A8 00 00 00 00  |................|
+00000030  00 00 06 E4 00 00 00 A8 00 00 00 00 00 00 07 C4  |................|
+00000040  00 00 00 A8 00 00 00 00 00 00 08 04 00 00 00 A8  |................|
+00000050  00 00 00 00 00 00 08 38 00 00 00 A8 00 00 00 00  |.......8........|
+00000060  00 00 0A 1C 00 00 00 A8 00 00 00 00 00 00 0A 54  |...............T|
+00000070  00 00 00 A8 00 00 00 00 00 00 0A 8C 00 00 00 A8  |................|
+00000080  00 00 00 00 00 00 0A D8 00 00 00 A8 00 00 00 00  |................|
+00000090  00 00 0B 10 00 00 00 A8 00 00 00 00 00 00 0B 48  |...............H|
+000000A0  00 00 00 A8 00 00 00 00 00 00 00 00 00 00 00 00  |................|
+000000B0  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |................|
+000000C0  00 00 00 00 00 00 00 00                          |........|
+
+; exports (14):
+;   NQDStdTxMeas                             class tvector section  1 offset 0
+;   NQDDrawChar                              class tvector section  1 offset C
+;   NQDDrawString                            class tvector section  1 offset 18
+;   NQDDrawText                              class tvector section  1 offset 24
+;   NQDTextWidth                             class tvector section  1 offset 30
+;   NQDCharWidth                             class tvector section  1 offset 3C
+;   NQDStringWidth                           class tvector section  1 offset 48
+;   NQDGetFontInfo                           class tvector section  1 offset 54
+;   NQDTextFont                              class tvector section  1 offset 60
+;   NQDTextMode                              class tvector section  1 offset 6C
+;   NQDTextSize                              class tvector section  1 offset 78
+;   NQDSpaceExtra                            class tvector section  1 offset 84
+;   NQDTextFace                              class tvector section  1 offset 90
+;   NQDCharExtra                             class tvector section  1 offset 9C
+; imports (8):
+;      0 PrivateInterfaceLib      GetQDGlobals                             tvector
+;      1 InterfaceLib             FMSwapFont                               tvector
+;      2 InterfaceLib             FixMul                                   tvector
+;      3 InterfaceLib             CallUniversalProc                        tvector
+;      4 InterfaceLib             StdText                                  tvector
+;      5 InterfaceLib             StdTxMeas                                tvector
+;      6 InterfaceLib             TextWidth                                tvector
+;      7 InterfaceLib             FixDiv                                   tvector

@@ -1,0 +1,4292 @@
+; ============================================================================
+; ROM resource 'ndrv' 99  at FFE76970
+; ============================================================================
+; data at ROM 276970 (41E0 bytes), entry at 1FFF50, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 000041e0 000004ac
+;
+; Columns: address, flag, raw bytes, instruction, ; comment.
+;   flag '*' executed in the coverage run, ' ' reached by control flow,
+;   '?' decodes as code but neither executed nor reached, 'd' data.
+
+; PEF container: architecture pwpc, format version 1, timestamp AE899351, versions 00000000/00000000/00000000
+;   3 sections (2 instantiated)
+;   section 0 code       container +00080 len 0393C (ROM 2769F0 = FFE769F0), unpacked 0393C, total 0393C, share 1, align 2
+;   section 1 pidata     container +039C0 len 0043E (ROM 27A330 = FFE7A330), unpacked 005F0, total 00664, share 1, align 3
+;   section 2 loader     container +03E00 len 003D4 (ROM 27A770 = FFE7A770), unpacked 00000, total 00000, share 1, align 0
+;   main: section 1 offset 130
+;   imports from InterfaceLib: 1 symbols
+;   imports from DriverServicesLib: 9 symbols
+;   imports from VideoServicesLib: 3 symbols
+;   imports from NameRegistryLib: 12 symbols
+;   imports from PCILib: 1 symbols
+;
+; ----------------------------------------------------------------------------
+; code section 0: ROM 2769F0-27A32B = FFE769F0
+; TOC (r2) = data section + 10C; TOC[d] comments name the word at that offset.
+; ----------------------------------------------------------------------------
+
+sub_FFE769F0:
+FFE769F0? 7C0802A6  mfspr   r0, LR
+FFE769F4? BEC1FFD8  stmw    r22, -0x28(r1)
+FFE769F8? 90010008  stw     r0, 0x8(r1)
+FFE769FC? 9421FFA0  stwu    r1, -0x60(r1)
+FFE76A00? 8122FF9C  lwz     r9, -0x64(r2)                      ; TOC[-100] &data+5F0
+FFE76A04? 607F0000  ori     r31, r3, 0x0
+FFE76A08? 88890006  lbz     r4, 0x6(r9)
+FFE76A0C? 82C2FFA0  lwz     r22, -0x60(r2)                     ; TOC[-96] &data+5F8
+FFE76A10? 2F040000  cmpwi   cr6, r4, 0x0
+FFE76A14? 82E2FFA4  lwz     r23, -0x5C(r2)                     ; TOC[-92] &data+5FC
+FFE76A18? A3BF0008  lhz     r29, 0x8(r31)
+FFE76A1C? A37F000A  lhz     r27, 0xA(r31)
+FFE76A20? A35F000C  lhz     r26, 0xC(r31)
+FFE76A24? A39F000E  lhz     r28, 0xE(r31)
+FFE76A28? A33F0010  lhz     r25, 0x10(r31)
+FFE76A2C? A31F0012  lhz     r24, 0x12(r31)
+FFE76A30? 419A000C  beq     cr6, loc_FFE76A3C
+FFE76A34? 307D0001  addic   r3, r29, 0x1
+FFE76A38? 547D043E  clrlwi  r29, r3, 16
+loc_FFE76A3C:
+FFE76A3C? 887F001A  lbz     r3, 0x1A(r31)
+FFE76A40? 2C030000  cmpwi   cr0, r3, 0x0
+FFE76A44? 4182000C  beq     loc_FFE76A50
+FFE76A48? 3BC00004  li      r30, 0x4
+FFE76A4C? 4800002C  b       loc_FFE76A78
+loc_FFE76A50:
+FFE76A50? 419A0020  beq     cr6, loc_FFE76A70
+FFE76A54? 88690007  lbz     r3, 0x7(r9)
+FFE76A58? 2C030000  cmpwi   cr0, r3, 0x0
+FFE76A5C? 4182000C  beq     loc_FFE76A68
+FFE76A60? 3920000C  li      r9, 0xC
+FFE76A64? 48000008  b       loc_FFE76A6C
+loc_FFE76A68:
+FFE76A68? 39200008  li      r9, 0x8
+loc_FFE76A6C:
+FFE76A6C? 48000008  b       loc_FFE76A74
+loc_FFE76A70:
+FFE76A70? 39200000  li      r9, 0x0
+loc_FFE76A74:
+FFE76A74? 553E063E  clrlwi  r30, r9, 24
+loc_FFE76A78:
+FFE76A78? 8062FFA8  lwz     r3, -0x58(r2)                      ; TOC[-88] &data+600
+FFE76A7C? 88830000  lbz     r4, 0x0(r3)
+FFE76A80? 2C040000  cmpwi   cr0, r4, 0x0
+FFE76A84? 4182000C  beq     loc_FFE76A90
+FFE76A88? 39200000  li      r9, 0x0
+FFE76A8C? 48000008  b       loc_FFE76A94
+loc_FFE76A90:
+FFE76A90? 39200040  li      r9, 0x40
+loc_FFE76A94:
+FFE76A94? 8082FFAC  lwz     r4, -0x54(r2)                      ; TOC[-84] &data+601
+FFE76A98? 7FC34B78  or      r3, r30, r9
+FFE76A9C? 88A40000  lbz     r5, 0x0(r4)
+FFE76AA0? 547E063E  clrlwi  r30, r3, 24
+FFE76AA4? 2C050000  cmpwi   cr0, r5, 0x0
+FFE76AA8? 4182000C  beq     loc_FFE76AB4
+FFE76AAC? 39200002  li      r9, 0x2
+FFE76AB0? 48000008  b       loc_FFE76AB8
+loc_FFE76AB4:
+FFE76AB4? 39200000  li      r9, 0x0
+loc_FFE76AB8:
+FFE76AB8? 8082FFB0  lwz     r4, -0x50(r2)                      ; TOC[-80] &data+604
+FFE76ABC? 7FC34B78  or      r3, r30, r9
+FFE76AC0? 81240000  lwz     r9, 0x0(r4)
+FFE76AC4? 547E063E  clrlwi  r30, r3, 24
+FFE76AC8? 28090008  cmplwi  cr0, r9, 0x8
+FFE76ACC? 4082000C  bne     loc_FFE76AD8
+FFE76AD0? 39200000  li      r9, 0x0
+FFE76AD4? 48000028  b       loc_FFE76AFC
+loc_FFE76AD8:
+FFE76AD8? 28090020  cmplwi  cr0, r9, 0x20
+FFE76ADC? 4082000C  bne     loc_FFE76AE8
+FFE76AE0? 39200030  li      r9, 0x30
+FFE76AE4? 48000018  b       loc_FFE76AFC
+loc_FFE76AE8:
+FFE76AE8? 28090010  cmplwi  cr0, r9, 0x10
+FFE76AEC? 4082000C  bne     loc_FFE76AF8
+FFE76AF0? 39200020  li      r9, 0x20
+FFE76AF4? 48000008  b       loc_FFE76AFC
+loc_FFE76AF8:
+FFE76AF8? 39200000  li      r9, 0x0
+loc_FFE76AFC:
+FFE76AFC? 7FC84B78  or      r8, r30, r9
+FFE76B00? 551E063E  clrlwi  r30, r8, 24
+FFE76B04? 63C40000  ori     r4, r30, 0x0
+FFE76B08? 38600097  li      r3, 0x97
+FFE76B0C? 480034B9  bl      sub_FFE79FC4
+FFE76B10? 60000000  nop
+FFE76B14? 80160000  lwz     r0, 0x0(r22)
+FFE76B18? 80770000  lwz     r3, 0x0(r23)
+FFE76B1C? 5404043E  clrlwi  r4, r0, 16
+FFE76B20? 48002A59  bl      sub_FFE79578
+FFE76B24? 60000000  nop
+FFE76B28? 63A30000  ori     r3, r29, 0x0
+FFE76B2C? 63640000  ori     r4, r27, 0x0
+FFE76B30? 63450000  ori     r5, r26, 0x0
+FFE76B34? 63860000  ori     r6, r28, 0x0
+FFE76B38? 48002909  bl      sub_FFE79440
+FFE76B3C? 60000000  nop
+FFE76B40? 63230000  ori     r3, r25, 0x0
+FFE76B44? 63040000  ori     r4, r24, 0x0
+FFE76B48? 480029BD  bl      sub_FFE79504
+FFE76B4C? 60000000  nop
+FFE76B50? 63830000  ori     r3, r28, 0x0
+FFE76B54? 48002B2D  bl      sub_FFE79680
+FFE76B58? 60000000  nop
+FFE76B5C? 80D60000  lwz     r6, 0x0(r22)
+FFE76B60? 38A00000  li      r5, 0x0
+FFE76B64? 54C3F0BE  srwi    r3, r6, 2
+FFE76B68? 80970000  lwz     r4, 0x0(r23)
+FFE76B6C? 2B030000  cmplwi  cr6, r3, 0x0
+FFE76B70? 60A70000  ori     r7, r5, 0x0
+FFE76B74? 39400097  li      r10, 0x97
+FFE76B78? 48000008  b       loc_FFE76B80
+loc_FFE76B7C:
+FFE76B7C? 4080003C  bge     loc_FFE76BB8
+loc_FFE76B80:
+FFE76B80? A11F0006  lhz     r8, 0x6(r31)
+FFE76B84? 7D6831D6  mullw   r11, r8, r6
+FFE76B88? 7D8B2014  addc    r12, r11, r4
+FFE76B8C? 7D2C3814  addc    r9, r12, r7
+FFE76B90? 40990018  ble     cr6, loc_FFE76BA8
+FFE76B94? 7C6903A6  mtspr   CTR, r3
+FFE76B98? 3129FFFC  addic   r9, r9, -0x4
+FFE76B9C? 3900FFFF  li      r8, -0x1
+loc_FFE76BA0:
+FFE76BA0? 95090004  stwu    r8, 0x4(r9)
+FFE76BA4? 4200FFFC  bdnz    loc_FFE76BA0
+loc_FFE76BA8:
+FFE76BA8? 30A50001  addic   r5, r5, 0x1
+FFE76BAC? 7CE73014  addc    r7, r7, r6
+FFE76BB0? 2C050003  cmpwi   cr0, r5, 0x3
+FFE76BB4? 4BFFFFC8  b       loc_FFE76B7C
+loc_FFE76BB8:
+FFE76BB8? 63C40001  ori     r4, r30, 0x1
+FFE76BBC? 61430000  ori     r3, r10, 0x0
+FFE76BC0? 5484063E  clrlwi  r4, r4, 24
+FFE76BC4? 48003401  bl      sub_FFE79FC4
+FFE76BC8? 60000000  nop
+FFE76BCC? 80010068  lwz     r0, 0x68(r1)
+FFE76BD0? 30210060  addic   r1, r1, 0x60
+FFE76BD4? 7C0803A6  mtspr   LR, r0
+FFE76BD8? BAC1FFD8  lmw     r22, -0x28(r1)
+FFE76BDC? 4E800020  blr
+
+sub_FFE76BE0:
+FFE76BE0? 7C0802A6  mfspr   r0, LR
+FFE76BE4? BFA1FFF4  stmw    r29, -0xC(r1)
+FFE76BE8? 90010008  stw     r0, 0x8(r1)
+FFE76BEC? 9421FFB8  stwu    r1, -0x48(r1)
+FFE76BF0? 8082FF6C  lwz     r4, -0x94(r2)                      ; TOC[-148] &data+13C
+FFE76BF4? 607F0000  ori     r31, r3, 0x0
+FFE76BF8? 80A40000  lwz     r5, 0x0(r4)
+FFE76BFC? 38600088  li      r3, 0x88
+FFE76C00? 38800061  li      r4, 0x61
+FFE76C04? 3BC00088  li      r30, 0x88
+FFE76C08? 3BA00061  li      r29, 0x61
+FFE76C0C? 480033DD  bl      sub_FFE79FE8
+FFE76C10? 60000000  nop
+FFE76C14? 8182FFA8  lwz     r12, -0x58(r2)                     ; TOC[-88] &data+600
+FFE76C18? 880C0000  lbz     r0, 0x0(r12)
+FFE76C1C? 2C000000  cmpwi   cr0, r0, 0x0
+FFE76C20? 4182000C  beq     loc_FFE76C2C
+FFE76C24? 39200000  li      r9, 0x0
+FFE76C28? 48000008  b       loc_FFE76C30
+loc_FFE76C2C:
+FFE76C2C? 39200040  li      r9, 0x40
+loc_FFE76C30:
+FFE76C30? 5524063E  clrlwi  r4, r9, 24
+FFE76C34? 38600097  li      r3, 0x97
+FFE76C38? 4800338D  bl      sub_FFE79FC4
+FFE76C3C? 60000000  nop
+FFE76C40? 881F0018  lbz     r0, 0x18(r31)
+FFE76C44? 2C000000  cmpwi   cr0, r0, 0x0
+FFE76C48? 4182000C  beq     loc_FFE76C54
+FFE76C4C? 39200002  li      r9, 0x2
+FFE76C50? 48000008  b       loc_FFE76C58
+loc_FFE76C54:
+FFE76C54? 39200000  li      r9, 0x0
+loc_FFE76C58:
+FFE76C58? 5524063E  clrlwi  r4, r9, 24
+FFE76C5C? 38600098  li      r3, 0x98
+FFE76C60? 48003365  bl      sub_FFE79FC4
+FFE76C64? 60000000  nop
+FFE76C68? 30BF001B  addic   r5, r31, 0x1B
+FFE76C6C? 63C30000  ori     r3, r30, 0x0
+FFE76C70? 3880005A  li      r4, 0x5A
+FFE76C74? 48003375  bl      sub_FFE79FE8
+FFE76C78? 60000000  nop
+FFE76C7C? 30BF001D  addic   r5, r31, 0x1D
+FFE76C80? 63C30000  ori     r3, r30, 0x0
+FFE76C84? 3880005B  li      r4, 0x5B
+FFE76C88? 48003361  bl      sub_FFE79FE8
+FFE76C8C? 60000000  nop
+FFE76C90? 30BF0024  addic   r5, r31, 0x24
+FFE76C94? 63C30000  ori     r3, r30, 0x0
+FFE76C98? 38800062  li      r4, 0x62
+FFE76C9C? 4800334D  bl      sub_FFE79FE8
+FFE76CA0? 60000000  nop
+FFE76CA4? 30BF002A  addic   r5, r31, 0x2A
+FFE76CA8? 63C30000  ori     r3, r30, 0x0
+FFE76CAC? 38800071  li      r4, 0x71
+FFE76CB0? 48003339  bl      sub_FFE79FE8
+FFE76CB4? 60000000  nop
+FFE76CB8? 30BF002E  addic   r5, r31, 0x2E
+FFE76CBC? 63C30000  ori     r3, r30, 0x0
+FFE76CC0? 38800070  li      r4, 0x70
+FFE76CC4? 48003325  bl      sub_FFE79FE8
+FFE76CC8? 60000000  nop
+FFE76CCC? 30BF0030  addic   r5, r31, 0x30
+FFE76CD0? 63C30000  ori     r3, r30, 0x0
+FFE76CD4? 3880007A  li      r4, 0x7A
+FFE76CD8? 48003311  bl      sub_FFE79FE8
+FFE76CDC? 60000000  nop
+FFE76CE0? 63E30000  ori     r3, r31, 0x0
+FFE76CE4? 4BFFFD0D  bl      sub_FFE769F0
+FFE76CE8? 30BF0022  addic   r5, r31, 0x22
+FFE76CEC? 63C30000  ori     r3, r30, 0x0
+FFE76CF0? 63A40000  ori     r4, r29, 0x0
+FFE76CF4? 480032F5  bl      sub_FFE79FE8
+FFE76CF8? 60000000  nop
+FFE76CFC? 80010050  lwz     r0, 0x50(r1)
+FFE76D00? 30210048  addic   r1, r1, 0x48
+FFE76D04? 7C0803A6  mtspr   LR, r0
+FFE76D08? BBA1FFF4  lmw     r29, -0xC(r1)
+FFE76D0C? 4E800020  blr
+
+sub_FFE76D10:
+FFE76D10? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE76D14? 9421FFA8  stwu    r1, -0x58(r1)
+FFE76D18? 7CE70734  extsh   r7, r7
+FFE76D1C? 2C070008  cmpwi   cr0, r7, 0x8
+FFE76D20? 33E10038  addic   r31, r1, 0x38
+FFE76D24? 31210040  addic   r9, r1, 0x40
+FFE76D28? 31610048  addic   r11, r1, 0x48
+FFE76D2C? 7C840734  extsh   r4, r4
+FFE76D30? 7CA50734  extsh   r5, r5
+FFE76D34? 7CC60734  extsh   r6, r6
+FFE76D38? 39000008  li      r8, 0x8
+FFE76D3C? 40820034  bne     loc_FFE76D70
+FFE76D40? 3940FFFF  li      r10, -0x1
+FFE76D44? 3D80FF00  lis     r12, 0xFF00
+FFE76D48? 618CFF00  ori     r12, r12, 0xFF00
+FFE76D4C? 3C0000FF  lis     r0, 0x00FF
+FFE76D50? 600000FF  ori     r0, r0, 0xFF
+FFE76D54? 914B0000  stw     r10, 0x0(r11)
+FFE76D58? 914B0004  stw     r10, 0x4(r11)
+FFE76D5C? 91890000  stw     r12, 0x0(r9)
+FFE76D60? 91890004  stw     r12, 0x4(r9)
+FFE76D64? 901F0000  stw     r0, 0x0(r31)
+FFE76D68? 901F0004  stw     r0, 0x4(r31)
+FFE76D6C? 48000060  b       loc_FFE76DCC
+loc_FFE76D70:
+FFE76D70? 2C070010  cmpwi   cr0, r7, 0x10
+FFE76D74? 4082002C  bne     loc_FFE76DA0
+FFE76D78? 39400000  li      r10, 0x0
+FFE76D7C? 39807FFF  li      r12, 0x7FFF
+FFE76D80? 3C007FFF  lis     r0, 0x7FFF
+FFE76D84? 914B0000  stw     r10, 0x0(r11)
+FFE76D88? 914B0004  stw     r10, 0x4(r11)
+FFE76D8C? 91890000  stw     r12, 0x0(r9)
+FFE76D90? 91890004  stw     r12, 0x4(r9)
+FFE76D94? 901F0000  stw     r0, 0x0(r31)
+FFE76D98? 901F0004  stw     r0, 0x4(r31)
+FFE76D9C? 48000030  b       loc_FFE76DCC
+loc_FFE76DA0:
+FFE76DA0? 2C070020  cmpwi   cr0, r7, 0x20
+FFE76DA4? 408200DC  bne     loc_FFE76E80
+FFE76DA8? 3D8000FF  lis     r12, 0x00FF
+FFE76DAC? 39400000  li      r10, 0x0
+FFE76DB0? 618CFFFF  ori     r12, r12, 0xFFFF
+FFE76DB4? 914B0000  stw     r10, 0x0(r11)
+FFE76DB8? 914B0004  stw     r10, 0x4(r11)
+FFE76DBC? 91490000  stw     r10, 0x0(r9)
+FFE76DC0? 915F0004  stw     r10, 0x4(r31)
+FFE76DC4? 91890004  stw     r12, 0x4(r9)
+FFE76DC8? 919F0000  stw     r12, 0x0(r31)
+loc_FFE76DCC:
+FFE76DCC? 549EE8FE  srwi    r30, r4, 3
+FFE76DD0? 7C06F1D6  mullw   r0, r6, r30
+FFE76DD4? 57C41838  slwi    r4, r30, 3
+FFE76DD8? 54001838  slwi    r0, r0, 3
+FFE76DDC? 7D841810  subfc   r12, r4, r3
+FFE76DE0? 7D430014  addc    r10, r3, r0
+FFE76DE4? 7CE01E70  srawi   r0, r7, 0x3
+FFE76DE8? 7C000194  addze   r0, r0
+FFE76DEC? 7C0501D6  mullw   r0, r5, r0
+FFE76DF0? 5408E13E  srwi    r8, r0, 4
+FFE76DF4? 2F080000  cmpwi   cr6, r8, 0x0
+FFE76DF8? C80B0000  lfd     f0, 0x0(r11)
+FFE76DFC? 419A0028  beq     cr6, loc_FFE76E24
+FFE76E00? 316AFFF8  addic   r11, r10, -0x8
+FFE76E04? 7D0903A6  mtspr   CTR, r8
+FFE76E08? 318CFFF0  addic   r12, r12, -0x10
+FFE76E0C? 314AFFF0  addic   r10, r10, -0x10
+loc_FFE76E10:
+FFE76E10? DC0C0010  stfdu   f0, 0x10(r12)
+FFE76E14? D80C0008  stfd    f0, 0x8(r12)
+FFE76E18? DC0A0010  stfdu   f0, 0x10(r10)
+FFE76E1C? DC0B0010  stfdu   f0, 0x10(r11)
+FFE76E20? 4200FFF0  bdnz    loc_FFE76E10
+loc_FFE76E24:
+FFE76E24? C8090000  lfd     f0, 0x0(r9)
+FFE76E28? 7CC50E70  srawi   r5, r6, 0x1
+FFE76E2C? 7D250194  addze   r9, r5
+FFE76E30? C83F0000  lfd     f1, 0x0(r31)
+FFE76E34? 2C090000  cmpwi   cr0, r9, 0x0
+FFE76E38? 57C72036  slwi    r7, r30, 4
+loc_FFE76E3C:
+FFE76E3C? 41820044  beq     loc_FFE76E80
+FFE76E40? 606C0000  ori     r12, r3, 0x0
+FFE76E44? 7D4C2014  addc    r10, r12, r4
+FFE76E48? 419A0028  beq     cr6, loc_FFE76E70
+FFE76E4C? 316AFFF8  addic   r11, r10, -0x8
+FFE76E50? 7D0903A6  mtspr   CTR, r8
+FFE76E54? 318CFFF0  addic   r12, r12, -0x10
+FFE76E58? 314AFFF0  addic   r10, r10, -0x10
+loc_FFE76E5C:
+FFE76E5C? DC0C0010  stfdu   f0, 0x10(r12)
+FFE76E60? D80C0008  stfd    f0, 0x8(r12)
+FFE76E64? DC2A0010  stfdu   f1, 0x10(r10)
+FFE76E68? DC2B0010  stfdu   f1, 0x10(r11)
+FFE76E6C? 4200FFF0  bdnz    loc_FFE76E5C
+loc_FFE76E70:
+FFE76E70? 3129FFFF  addic   r9, r9, -0x1
+FFE76E74? 7C633814  addc    r3, r3, r7
+FFE76E78? 2C090000  cmpwi   cr0, r9, 0x0
+FFE76E7C? 4BFFFFC0  b       loc_FFE76E3C
+loc_FFE76E80:
+FFE76E80? 30210058  addic   r1, r1, 0x58
+FFE76E84? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE76E88? 4E800020  blr
+
+sub_FFE76E8C:
+FFE76E8C? 7C0802A6  mfspr   r0, LR
+FFE76E90? BF41FFE8  stmw    r26, -0x18(r1)
+FFE76E94? 90010008  stw     r0, 0x8(r1)
+FFE76E98? 9421FF90  stwu    r1, -0x70(r1)
+FFE76E9C? 83E2FFB4  lwz     r31, -0x4C(r2)                     ; TOC[-76] &data+608
+FFE76EA0? 8362FFB8  lwz     r27, -0x48(r2)                     ; TOC[-72] &data+620
+FFE76EA4? 33810050  addic   r28, r1, 0x50
+FFE76EA8? 3BA00000  li      r29, 0x0
+FFE76EAC? 38000018  li      r0, 0x18
+FFE76EB0? 9BBF0011  stb     r29, 0x11(r31)
+FFE76EB4? 33410038  addic   r26, r1, 0x38
+FFE76EB8? 901C0000  stw     r0, 0x0(r28)
+FFE76EBC? 8082FF68  lwz     r4, -0x98(r2)                      ; TOC[-152] &data+540
+FFE76EC0? 83C2FFBC  lwz     r30, -0x44(r2)                     ; TOC[-68] &data+630
+FFE76EC4? 30840058  addic   r4, r4, 0x58
+FFE76EC8? 63630000  ori     r3, r27, 0x0
+FFE76ECC? 63450000  ori     r5, r26, 0x0
+FFE76ED0? 63860000  ori     r6, r28, 0x0
+FFE76ED4? 48003295  bl      glue_RegistryPropertyGet
+FFE76ED8? 80410014  lwz     r2, 0x14(r1)
+FFE76EDC? 2C030000  cmpwi   cr0, r3, 0x0
+FFE76EE0? 40820010  bne     loc_FFE76EF0
+FFE76EE4? 807C0000  lwz     r3, 0x0(r28)
+FFE76EE8? 28030018  cmplwi  cr0, r3, 0x18
+FFE76EEC? 4182001C  beq     loc_FFE76F08
+loc_FFE76EF0:
+FFE76EF0? 63A30000  ori     r3, r29, 0x0
+FFE76EF4? 80010078  lwz     r0, 0x78(r1)
+FFE76EF8? 30210070  addic   r1, r1, 0x70
+FFE76EFC? 7C0803A6  mtspr   LR, r0
+FFE76F00? BB41FFE8  lmw     r26, -0x18(r1)
+FFE76F04? 4E800020  blr
+loc_FFE76F08:
+FFE76F08? 7C9A44AA  lswi    r4, r26, 0x8
+FFE76F0C? 7C9E45AA  stswi   r4, r30, 0x8
+FFE76F10? 807E0000  lwz     r3, 0x0(r30)
+FFE76F14? 809E0004  lwz     r4, 0x4(r30)
+FFE76F18? 30DF0004  addic   r6, r31, 0x4
+FFE76F1C? 30FF0008  addic   r7, r31, 0x8
+FFE76F20? 311F000C  addic   r8, r31, 0xC
+FFE76F24? 63E50000  ori     r5, r31, 0x0
+FFE76F28? 48003211  bl      glue_GetInterruptFunctions
+FFE76F2C? 80410014  lwz     r2, 0x14(r1)
+FFE76F30? 2C030000  cmpwi   cr0, r3, 0x0
+FFE76F34? 4182001C  beq     loc_FFE76F50
+FFE76F38? 63A30000  ori     r3, r29, 0x0
+FFE76F3C? 80010078  lwz     r0, 0x78(r1)
+FFE76F40? 30210070  addic   r1, r1, 0x70
+FFE76F44? 7C0803A6  mtspr   LR, r0
+FFE76F48? BB41FFE8  lmw     r26, -0x18(r1)
+FFE76F4C? 4E800020  blr
+loc_FFE76F50:
+FFE76F50? 819F000C  lwz     r12, 0xC(r31)
+FFE76F54? 807E0000  lwz     r3, 0x0(r30)
+FFE76F58? 809E0004  lwz     r4, 0x4(r30)
+FFE76F5C? 80BF0000  lwz     r5, 0x0(r31)
+FFE76F60? 480033B9  bl      sub_FFE7A318
+FFE76F64? 80410014  lwz     r2, 0x14(r1)
+FFE76F68? 987F0010  stb     r3, 0x10(r31)
+FFE76F6C? 807E0000  lwz     r3, 0x0(r30)
+FFE76F70? 809E0004  lwz     r4, 0x4(r30)
+FFE76F74? 80C2FF70  lwz     r6, -0x90(r2)                      ; TOC[-144] &data+118
+FFE76F78? 80E2FF74  lwz     r7, -0x8C(r2)                      ; TOC[-140] &data+10C
+FFE76F7C? 8102FF78  lwz     r8, -0x88(r2)                      ; TOC[-136] &data+124
+FFE76F80? 38A00000  li      r5, 0x0
+FFE76F84? 4800319D  bl      glue_InstallInterruptFunctions
+FFE76F88? 80410014  lwz     r2, 0x14(r1)
+FFE76F8C? 2C030000  cmpwi   cr0, r3, 0x0
+FFE76F90? 4182001C  beq     loc_FFE76FAC
+FFE76F94? 63A30000  ori     r3, r29, 0x0
+FFE76F98? 80010078  lwz     r0, 0x78(r1)
+FFE76F9C? 30210070  addic   r1, r1, 0x70
+FFE76FA0? 7C0803A6  mtspr   LR, r0
+FFE76FA4? BB41FFE8  lmw     r26, -0x18(r1)
+FFE76FA8? 4E800020  blr
+loc_FFE76FAC:
+FFE76FAC? 3C807662  lis     r4, 0x7662
+FFE76FB0? 80A2FFC0  lwz     r5, -0x40(r2)                      ; TOC[-64] &data+638
+FFE76FB4? 63630000  ori     r3, r27, 0x0
+FFE76FB8? 60846C20  ori     r4, r4, 0x6C20
+FFE76FBC? 48003195  bl      glue_VSLNewInterruptService
+FFE76FC0? 80410014  lwz     r2, 0x14(r1)
+FFE76FC4? 2C030000  cmpwi   cr0, r3, 0x0
+FFE76FC8? 4182001C  beq     loc_FFE76FE4
+FFE76FCC? 63A30000  ori     r3, r29, 0x0
+FFE76FD0? 80010078  lwz     r0, 0x78(r1)
+FFE76FD4? 30210070  addic   r1, r1, 0x70
+FFE76FD8? 7C0803A6  mtspr   LR, r0
+FFE76FDC? BB41FFE8  lmw     r26, -0x18(r1)
+FFE76FE0? 4E800020  blr
+loc_FFE76FE4:
+FFE76FE4? 38600001  li      r3, 0x1
+FFE76FE8? 987F0011  stb     r3, 0x11(r31)
+FFE76FEC? 80010078  lwz     r0, 0x78(r1)
+FFE76FF0? 30210070  addic   r1, r1, 0x70
+FFE76FF4? 7C0803A6  mtspr   LR, r0
+FFE76FF8? BB41FFE8  lmw     r26, -0x18(r1)
+FFE76FFC? 4E800020  blr
+
+sub_FFE77000:
+FFE77000? 7C0802A6  mfspr   r0, LR
+FFE77004? BFA1FFF4  stmw    r29, -0xC(r1)
+FFE77008? 90010008  stw     r0, 0x8(r1)
+FFE7700C? 9421FFB8  stwu    r1, -0x48(r1)
+FFE77010? 90610060  stw     r3, 0x60(r1)
+FFE77014? 90810064  stw     r4, 0x64(r1)
+FFE77018? 33E10038  addic   r31, r1, 0x38
+FFE7701C? 83C2FFB4  lwz     r30, -0x4C(r2)                     ; TOC[-76] &data+608
+FFE77020? 63E40000  ori     r4, r31, 0x0
+FFE77024? 38600097  li      r3, 0x97
+FFE77028? 33A10060  addic   r29, r1, 0x60
+FFE7702C? 480026A1  bl      sub_FFE796CC
+FFE77030? 60000000  nop
+FFE77034? 889F0000  lbz     r4, 0x0(r31)
+FFE77038? 38600097  li      r3, 0x97
+FFE7703C? 5484066E  rlwinm  r4, r4, 0, 25, 23
+FFE77040? 5484063E  clrlwi  r4, r4, 24
+FFE77044? 989F0000  stb     r4, 0x0(r31)
+FFE77048? 48002F7D  bl      sub_FFE79FC4
+FFE7704C? 60000000  nop
+FFE77050? 819E0008  lwz     r12, 0x8(r30)
+FFE77054? 809D0004  lwz     r4, 0x4(r29)
+FFE77058? 80BE0000  lwz     r5, 0x0(r30)
+FFE7705C? 80610060  lwz     r3, 0x60(r1)
+FFE77060? 480032B9  bl      sub_FFE7A318
+FFE77064? 80410014  lwz     r2, 0x14(r1)
+FFE77068? 80010050  lwz     r0, 0x50(r1)
+FFE7706C? 30210048  addic   r1, r1, 0x48
+FFE77070? 7C0803A6  mtspr   LR, r0
+FFE77074? BBA1FFF4  lmw     r29, -0xC(r1)
+FFE77078? 4E800020  blr
+
+sub_FFE7707C:
+FFE7707C? 80A2FFC4  lwz     r5, -0x3C(r2)                      ; TOC[-60] &data+63C
+FFE77080? 5484043E  clrlwi  r4, r4, 16
+FFE77084? 81650000  lwz     r11, 0x0(r5)
+FFE77088? 2C0B0000  cmpwi   cr0, r11, 0x0
+FFE7708C? 418200BC  beq     loc_FFE77148
+FFE77090? A8AB0004  lha     r5, 0x4(r11)
+FFE77094? A8EB0006  lha     r7, 0x6(r11)
+FFE77098? 7CCB2814  addc    r6, r11, r5
+FFE7709C? 2C070001  cmpwi   cr0, r7, 0x1
+FFE770A0? 3186000C  addic   r12, r6, 0xC
+FFE770A4? 40820010  bne     loc_FFE770B4
+FFE770A8? 618B0000  ori     r11, r12, 0x0
+FFE770AC? 616A0000  ori     r10, r11, 0x0
+FFE770B0? 48000024  b       loc_FFE770D4
+loc_FFE770B4:
+FFE770B4? A8AB000A  lha     r5, 0xA(r11)
+FFE770B8? A8CB0008  lha     r6, 0x8(r11)
+FFE770BC? 30A50007  addic   r5, r5, 0x7
+FFE770C0? 7CE629D6  mullw   r7, r6, r5
+FFE770C4? 7CE71E70  srawi   r7, r7, 0x3
+FFE770C8? 7CE70194  addze   r7, r7
+FFE770CC? 7D676014  addc    r11, r7, r12
+FFE770D0? 7D4B3814  addc    r10, r11, r7
+loc_FFE770D4:
+FFE770D4? 2C040000  cmpwi   cr0, r4, 0x0
+FFE770D8? 41820070  beq     loc_FFE77148
+FFE770DC? 7C8903A6  mtspr   CTR, r4
+loc_FFE770E0:
+FFE770E0? A0830002  lhz     r4, 0x2(r3)
+FFE770E4? 7C844670  srawi   r4, r4, 0x8
+FFE770E8? 7CAC20AE  lbzx    r5, r12, r4
+FFE770EC? 54A6402E  slwi    r6, r5, 8
+FFE770F0? 7CA73378  or      r7, r5, r6
+FFE770F4? 7CE70734  extsh   r7, r7
+FFE770F8? 54E7043E  clrlwi  r7, r7, 16
+FFE770FC? B0E30002  sth     r7, 0x2(r3)
+FFE77100? A1030004  lhz     r8, 0x4(r3)
+FFE77104? 7D084670  srawi   r8, r8, 0x8
+FFE77108? 7D2B40AE  lbzx    r9, r11, r8
+FFE7710C? 5520402E  slwi    r0, r9, 8
+FFE77110? 7D200378  or      r0, r9, r0
+FFE77114? 7C000734  extsh   r0, r0
+FFE77118? 5400043E  clrlwi  r0, r0, 16
+FFE7711C? B0030004  sth     r0, 0x4(r3)
+FFE77120? A0030006  lhz     r0, 0x6(r3)
+FFE77124? 7C004670  srawi   r0, r0, 0x8
+FFE77128? 7C0A00AE  lbzx    r0, r10, r0
+FFE7712C? 5409402E  slwi    r9, r0, 8
+FFE77130? 7C004B78  or      r0, r0, r9
+FFE77134? 7C000734  extsh   r0, r0
+FFE77138? 5400043E  clrlwi  r0, r0, 16
+FFE7713C? B0030006  sth     r0, 0x6(r3)
+FFE77140? 30630008  addic   r3, r3, 0x8
+FFE77144? 4200FF9C  bdnz    loc_FFE770E0
+loc_FFE77148:
+FFE77148? 4E800020  blr
+
+sub_FFE7714C:
+FFE7714C? 7C0802A6  mfspr   r0, LR
+FFE77150? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE77154? 90010008  stw     r0, 0x8(r1)
+FFE77158? 9421FFC0  stwu    r1, -0x40(r1)
+FFE7715C? 5484043F  clrlwi. r4, r4, 16
+FFE77160? 39200020  li      r9, 0x20
+FFE77164? 7C044810  subfc   r0, r4, r9
+FFE77168? 7D292110  subfe   r9, r9, r4
+FFE7716C? 7D290114  adde    r9, r9, r0
+FFE77170? 5529063E  clrlwi  r9, r9, 24
+FFE77174? 39000000  li      r8, 0x0
+FFE77178? 4081007C  ble     loc_FFE771F4
+FFE7717C? 2F090000  cmpwi   cr6, r9, 0x0
+FFE77180? 38C00000  li      r6, 0x0
+FFE77184? 60C50000  ori     r5, r6, 0x0
+FFE77188? 3123FFF8  addic   r9, r3, -0x8
+FFE7718C? 60A30000  ori     r3, r5, 0x0
+FFE77190? 7C8903A6  mtspr   CTR, r4
+FFE77194? 606A0000  ori     r10, r3, 0x0
+FFE77198? 3BE00000  li      r31, 0x0
+FFE7719C? 3BC00008  li      r30, 0x8
+loc_FFE771A0:
+FFE771A0? 419A001C  beq     cr6, loc_FFE771BC
+FFE771A4? 7CCB2B78  or      r11, r6, r5
+FFE771A8? 7D6C1B78  or      r12, r11, r3
+FFE771AC? 7D002670  srawi   r0, r8, 0x4
+FFE771B0? 7D800378  or      r0, r12, r0
+FFE771B4? 7C070734  extsh   r7, r0
+FFE771B8? 4800000C  b       loc_FFE771C4
+loc_FFE771BC:
+FFE771BC? 7D0B5378  or      r11, r8, r10
+FFE771C0? 7D670734  extsh   r7, r11
+loc_FFE771C4:
+FFE771C4? B7E90008  sthu    r31, 0x8(r9)
+FFE771C8? 54EB043E  clrlwi  r11, r7, 16
+FFE771CC? B1690002  sth     r11, 0x2(r9)
+FFE771D0? B1690004  sth     r11, 0x4(r9)
+FFE771D4? B1690006  sth     r11, 0x6(r9)
+FFE771D8? 31080001  addic   r8, r8, 0x1
+FFE771DC? 314A0100  addic   r10, r10, 0x100
+FFE771E0? 30630002  addic   r3, r3, 0x2
+FFE771E4? 30A50040  addic   r5, r5, 0x40
+FFE771E8? 30C60800  addic   r6, r6, 0x800
+FFE771EC? 4200FFB4  bdnz    loc_FFE771A0
+FFE771F0? 7C69F014  addc    r3, r9, r30
+loc_FFE771F4:
+FFE771F4? 54851838  slwi    r5, r4, 3
+FFE771F8? 7C651810  subfc   r3, r5, r3
+FFE771FC? 4BFFFE81  bl      sub_FFE7707C
+FFE77200? 80010048  lwz     r0, 0x48(r1)
+FFE77204? 30210040  addic   r1, r1, 0x40
+FFE77208? 7C0803A6  mtspr   LR, r0
+FFE7720C? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE77210? 4E800020  blr
+
+sub_FFE77214:
+FFE77214? 7C0802A6  mfspr   r0, LR
+FFE77218? BF21FFE4  stmw    r25, -0x1C(r1)
+FFE7721C? 90010008  stw     r0, 0x8(r1)
+FFE77220? 9421F7A8  stwu    r1, -0x858(r1)
+FFE77224? 8342FFC4  lwz     r26, -0x3C(r2)                     ; TOC[-60] &data+63C
+FFE77228? 33210038  addic   r25, r1, 0x38
+FFE7722C? 83FA0000  lwz     r31, 0x0(r26)
+FFE77230? 83C30000  lwz     r30, 0x0(r3)
+FFE77234? 2C1F0000  cmpwi   cr0, r31, 0x0
+FFE77238? 40820064  bne     loc_FFE7729C
+FFE7723C? 3860010E  li      r3, 0x10E
+FFE77240? 38800001  li      r4, 0x1
+FFE77244? 4800305D  bl      glue_PoolAllocateResident
+FFE77248? 80410014  lwz     r2, 0x14(r1)
+FFE7724C? 607F0000  ori     r31, r3, 0x0
+FFE77250? 2C1F0000  cmpwi   cr0, r31, 0x0
+FFE77254? 4082001C  bne     loc_FFE77270
+FFE77258? 3860FFEF  li      r3, -0x11
+FFE7725C? 80010860  lwz     r0, 0x860(r1)
+FFE77260? 30210858  addic   r1, r1, 0x858
+FFE77264? 7C0803A6  mtspr   LR, r0
+FFE77268? BB21FFE4  lmw     r25, -0x1C(r1)
+FFE7726C? 4E800020  blr
+loc_FFE77270:
+FFE77270? 38800000  li      r4, 0x0
+FFE77274? B09F0000  sth     r4, 0x0(r31)
+FFE77278? B09F0002  sth     r4, 0x2(r31)
+FFE7727C? B09F0004  sth     r4, 0x4(r31)
+FFE77280? 38A00001  li      r5, 0x1
+FFE77284? B0BF0006  sth     r5, 0x6(r31)
+FFE77288? 38C00100  li      r6, 0x100
+FFE7728C? B0DF0008  sth     r6, 0x8(r31)
+FFE77290? 38E00008  li      r7, 0x8
+FFE77294? B0FF000A  sth     r7, 0xA(r31)
+FFE77298? 93FA0000  stw     r31, 0x0(r26)
+loc_FFE7729C:
+FFE7729C? 2C1E0000  cmpwi   cr0, r30, 0x0
+FFE772A0? 408200E8  bne     loc_FFE77388
+FFE772A4? A8BF0006  lha     r5, 0x6(r31)
+FFE772A8? A87F0004  lha     r3, 0x4(r31)
+FFE772AC? 2C050000  cmpwi   cr0, r5, 0x0
+FFE772B0? 7C9F1814  addc    r4, r31, r3
+FFE772B4? 3124000C  addic   r9, r4, 0xC
+FFE772B8? 3B800000  li      r28, 0x0
+FFE772BC? 418201C8  beq     loc_FFE77484
+FFE772C0? 38600033  li      r3, 0x33
+FFE772C4? 38E00100  li      r7, 0x100
+loc_FFE772C8:
+FFE772C8? 41820220  beq     loc_FFE774E8
+FFE772CC? 38C00000  li      r6, 0x0
+FFE772D0? 7C6903A6  mtspr   CTR, r3
+FFE772D4? 3129FFFB  addic   r9, r9, -0x5
+FFE772D8? 60C80000  ori     r8, r6, 0x0
+FFE772DC? 38800005  li      r4, 0x5
+loc_FFE772E0:
+FFE772E0? 7D0A4670  srawi   r10, r8, 0x8
+FFE772E4? 7D4A0194  addze   r10, r10
+FFE772E8? 316800DC  addic   r11, r8, 0xDC
+FFE772EC? 314A0010  addic   r10, r10, 0x10
+FFE772F0? 7D6B4670  srawi   r11, r11, 0x8
+FFE772F4? 7D6B0194  addze   r11, r11
+FFE772F8? 318801B8  addic   r12, r8, 0x1B8
+FFE772FC? 316B0010  addic   r11, r11, 0x10
+FFE77300? 7D8C4670  srawi   r12, r12, 0x8
+FFE77304? 7D8C0194  addze   r12, r12
+FFE77308? 33E80294  addic   r31, r8, 0x294
+FFE7730C? 318C0010  addic   r12, r12, 0x10
+FFE77310? 7FFF4670  srawi   r31, r31, 0x8
+FFE77314? 7FFF0194  addze   r31, r31
+FFE77318? 9D490005  stbu    r10, 0x5(r9)
+FFE7731C? 33C80370  addic   r30, r8, 0x370
+FFE77320? 99690001  stb     r11, 0x1(r9)
+FFE77324? 33FF0010  addic   r31, r31, 0x10
+FFE77328? 7FDE4670  srawi   r30, r30, 0x8
+FFE7732C? 7FDE0194  addze   r30, r30
+FFE77330? 99890002  stb     r12, 0x2(r9)
+FFE77334? 9BE90003  stb     r31, 0x3(r9)
+FFE77338? 33DE0010  addic   r30, r30, 0x10
+FFE7733C? 9BC90004  stb     r30, 0x4(r9)
+FFE77340? 3108044C  addic   r8, r8, 0x44C
+FFE77344? 30C60005  addic   r6, r6, 0x5
+FFE77348? 4200FF98  bdnz    loc_FFE772E0
+FFE7734C? 21460100  subfic  r10, r6, 0x100
+FFE77350? 7D644814  addc    r11, r4, r9
+FFE77354? 7D4903A6  mtspr   CTR, r10
+FFE77358? 312BFFFF  addic   r9, r11, -0x1
+FFE7735C? 38C00001  li      r6, 0x1
+loc_FFE77360:
+FFE77360? 7D044670  srawi   r4, r8, 0x8
+FFE77364? 7C840194  addze   r4, r4
+FFE77368? 30840010  addic   r4, r4, 0x10
+FFE7736C? 9C890001  stbu    r4, 0x1(r9)
+FFE77370? 310800DC  addic   r8, r8, 0xDC
+FFE77374? 4200FFEC  bdnz    loc_FFE77360
+FFE77378? 30A5FFFF  addic   r5, r5, -0x1
+FFE7737C? 7D293014  addc    r9, r9, r6
+FFE77380? 2C050000  cmpwi   cr0, r5, 0x0
+FFE77384? 4BFFFF44  b       loc_FFE772C8
+loc_FFE77388:
+FFE77388? A89E0000  lha     r4, 0x0(r30)
+FFE7738C? 2C040000  cmpwi   cr0, r4, 0x0
+FFE77390? 40820028  bne     loc_FFE773B8
+FFE77394? A89E0002  lha     r4, 0x2(r30)
+FFE77398? 2C040000  cmpwi   cr0, r4, 0x0
+FFE7739C? 4082001C  bne     loc_FFE773B8
+FFE773A0? A89E000A  lha     r4, 0xA(r30)
+FFE773A4? 2C040008  cmpwi   cr0, r4, 0x8
+FFE773A8? 40820010  bne     loc_FFE773B8
+FFE773AC? A89E0008  lha     r4, 0x8(r30)
+FFE773B0? 2C040100  cmpwi   cr0, r4, 0x100
+FFE773B4? 4182001C  beq     loc_FFE773D0
+loc_FFE773B8:
+FFE773B8? 3860FFCE  li      r3, -0x32
+FFE773BC? 80010860  lwz     r0, 0x860(r1)
+FFE773C0? 30210858  addic   r1, r1, 0x858
+FFE773C4? 7C0803A6  mtspr   LR, r0
+FFE773C8? BB21FFE4  lmw     r25, -0x1C(r1)
+FFE773CC? 4E800020  blr
+loc_FFE773D0:
+FFE773D0? A89E0006  lha     r4, 0x6(r30)
+FFE773D4? A8FF0006  lha     r7, 0x6(r31)
+FFE773D8? 5484402E  slwi    r4, r4, 8
+FFE773DC? A8BE0004  lha     r5, 0x4(r30)
+FFE773E0? 54E7402E  slwi    r7, r7, 8
+FFE773E4? 7CC52014  addc    r6, r5, r4
+FFE773E8? A91F0004  lha     r8, 0x4(r31)
+FFE773EC? 3366000E  addic   r27, r6, 0xE
+FFE773F0? 7D283814  addc    r9, r8, r7
+FFE773F4? 3129000E  addic   r9, r9, 0xE
+FFE773F8? 7F1B4800  cmpw    cr6, r27, r9
+FFE773FC? 409A0010  bne     cr6, loc_FFE7740C
+FFE77400? 63FD0000  ori     r29, r31, 0x0
+FFE77404? 3B800000  li      r28, 0x0
+FFE77408? 48000068  b       loc_FFE77470
+loc_FFE7740C:
+FFE7740C? 40980014  bge     cr6, loc_FFE77420
+FFE77410? 63E30000  ori     r3, r31, 0x0
+FFE77414? 3BE00000  li      r31, 0x0
+FFE77418? 48002DB1  bl      glue_PoolDeallocate
+FFE7741C? 80410014  lwz     r2, 0x14(r1)
+loc_FFE77420:
+FFE77420? 63630000  ori     r3, r27, 0x0
+FFE77424? 38800000  li      r4, 0x0
+FFE77428? 48002E79  bl      glue_PoolAllocateResident
+FFE7742C? 80410014  lwz     r2, 0x14(r1)
+FFE77430? 607D0000  ori     r29, r3, 0x0
+FFE77434? 2C1D0000  cmpwi   cr0, r29, 0x0
+FFE77438? 4082001C  bne     loc_FFE77454
+FFE7743C? 3860FFEF  li      r3, -0x11
+FFE77440? 80010860  lwz     r0, 0x860(r1)
+FFE77444? 30210858  addic   r1, r1, 0x858
+FFE77448? 7C0803A6  mtspr   LR, r0
+FFE7744C? BB21FFE4  lmw     r25, -0x1C(r1)
+FFE77450? 4E800020  blr
+loc_FFE77454:
+FFE77454? 2C1F0000  cmpwi   cr0, r31, 0x0
+FFE77458? 3B800000  li      r28, 0x0
+FFE7745C? 41820010  beq     loc_FFE7746C
+FFE77460? 63E30000  ori     r3, r31, 0x0
+FFE77464? 48002D65  bl      glue_PoolDeallocate
+FFE77468? 80410014  lwz     r2, 0x14(r1)
+loc_FFE7746C:
+FFE7746C? 93BA0000  stw     r29, 0x0(r26)
+loc_FFE77470:
+FFE77470? 63C30000  ori     r3, r30, 0x0
+FFE77474? 63A40000  ori     r4, r29, 0x0
+FFE77478? 63650000  ori     r5, r27, 0x0
+FFE7747C? 48002D05  bl      glue_BlockCopy
+FFE77480? 80410014  lwz     r2, 0x14(r1)
+loc_FFE77484:
+FFE77484? 8062FFB0  lwz     r3, -0x50(r2)                      ; TOC[-80] &data+604
+FFE77488? 81230000  lwz     r9, 0x0(r3)
+FFE7748C? 28090008  cmplwi  cr0, r9, 0x8
+FFE77490? 41820040  beq     loc_FFE774D0
+FFE77494? 28090010  cmplwi  cr0, r9, 0x10
+FFE77498? 4082000C  bne     loc_FFE774A4
+FFE7749C? 39200020  li      r9, 0x20
+FFE774A0? 48000008  b       loc_FFE774A8
+loc_FFE774A4:
+FFE774A4? 39200100  li      r9, 0x100
+loc_FFE774A8:
+FFE774A8? 5524043E  clrlwi  r4, r9, 16
+FFE774AC? 609F0000  ori     r31, r4, 0x0
+FFE774B0? 63230000  ori     r3, r25, 0x0
+FFE774B4? 4BFFFC99  bl      sub_FFE7714C
+FFE774B8? 309FFFFF  addic   r4, r31, -0x1
+FFE774BC? 5484043E  clrlwi  r4, r4, 16
+FFE774C0? 63250000  ori     r5, r25, 0x0
+FFE774C4? 38600000  li      r3, 0x0
+FFE774C8? 480023E5  bl      sub_FFE798AC
+FFE774CC? 60000000  nop
+loc_FFE774D0:
+FFE774D0? 63830000  ori     r3, r28, 0x0
+FFE774D4? 80010860  lwz     r0, 0x860(r1)
+FFE774D8? 30210858  addic   r1, r1, 0x858
+FFE774DC? 7C0803A6  mtspr   LR, r0
+FFE774E0? BB21FFE4  lmw     r25, -0x1C(r1)
+FFE774E4? 4E800020  blr
+loc_FFE774E8:
+FFE774E8? 4BFFFF9C  b       loc_FFE77484
+FFE774EC? 80010860  lwz     r0, 0x860(r1)
+FFE774F0? 30210858  addic   r1, r1, 0x858
+FFE774F4? 7C0803A6  mtspr   LR, r0
+FFE774F8? BB21FFE4  lmw     r25, -0x1C(r1)
+FFE774FC? 4E800020  blr
+
+sub_FFE77500:
+FFE77500? 7C0802A6  mfspr   r0, LR
+FFE77504? BEA1FFD4  stmw    r21, -0x2C(r1)
+FFE77508? 90010008  stw     r0, 0x8(r1)
+FFE7750C? 9421FF88  stwu    r1, -0x78(r1)
+FFE77510? 80A2FF7C  lwz     r5, -0x84(r2)                      ; TOC[-132] &data+140
+FFE77514? 38E0FFFF  li      r7, -0x1
+FFE77518? 60A90000  ori     r9, r5, 0x0
+FFE7751C? 81090000  lwz     r8, 0x0(r9)
+FFE77520? 32E10038  addic   r23, r1, 0x38
+FFE77524? 7C083840  cmplw   r8, r7
+FFE77528? 8302FFB4  lwz     r24, -0x4C(r2)                     ; TOC[-76] &data+608
+FFE7752C? 33210040  addic   r25, r1, 0x40
+FFE77530? 8342FFA0  lwz     r26, -0x60(r2)                     ; TOC[-96] &data+5F8
+FFE77534? 8362FFB0  lwz     r27, -0x50(r2)                     ; TOC[-80] &data+604
+FFE77538? 8382FFC8  lwz     r28, -0x38(r2)                     ; TOC[-56] &data+640
+FFE7753C? 83A2FFCC  lwz     r29, -0x34(r2)                     ; TOC[-52] &data+644
+FFE77540? 33C10048  addic   r30, r1, 0x48
+FFE77544? 80C2FF9C  lwz     r6, -0x64(r2)                      ; TOC[-100] &data+5F0
+FFE77548? 41820044  beq     loc_FFE7758C
+FFE7754C? 88E60004  lbz     r7, 0x4(r6)
+FFE77550? 7C083840  cmplw   r8, r7
+FFE77554? 41820028  beq     loc_FFE7757C
+FFE77558? 38800000  li      r4, 0x0
+loc_FFE7755C:
+FFE7755C? 4182001C  beq     loc_FFE77578
+FFE77560? 85090038  lwzu    r8, 0x38(r9)
+FFE77564? 3960FFFF  li      r11, -0x1
+FFE77568? 7C085840  cmplw   r8, r11
+FFE7756C? 4182020C  beq     loc_FFE77778
+FFE77570? 7C083840  cmplw   r8, r7
+FFE77574? 4BFFFFE8  b       loc_FFE7755C
+loc_FFE77578:
+FFE77578? 7D292014  addc    r9, r9, r4
+loc_FFE7757C:
+FFE7757C? 80890000  lwz     r4, 0x0(r9)
+FFE77580? 38E0FFFF  li      r7, -0x1
+FFE77584? 7C043840  cmplw   r4, r7
+FFE77588? 40820048  bne     loc_FFE775D0
+loc_FFE7758C:
+FFE7758C? 39000001  li      r8, 0x1
+FFE77590? 60A90000  ori     r9, r5, 0x0
+FFE77594? 80E90000  lwz     r7, 0x0(r9)
+FFE77598? 99060004  stb     r8, 0x4(r6)
+FFE7759C? 28070001  cmplwi  cr0, r7, 0x1
+FFE775A0? 4182001C  beq     loc_FFE775BC
+FFE775A4? 38E00000  li      r7, 0x0
+loc_FFE775A8:
+FFE775A8? 41820010  beq     loc_FFE775B8
+FFE775AC? 84890038  lwzu    r4, 0x38(r9)
+FFE775B0? 7C044040  cmplw   r4, r8
+FFE775B4? 4BFFFFF4  b       loc_FFE775A8
+loc_FFE775B8:
+FFE775B8? 7D293814  addc    r9, r9, r7
+loc_FFE775BC:
+FFE775BC? 38800080  li      r4, 0x80
+FFE775C0? 38A00000  li      r5, 0x0
+FFE775C4? 98860005  stb     r4, 0x5(r6)
+FFE775C8? 99060006  stb     r8, 0x6(r6)
+FFE775CC? 98A60007  stb     r5, 0x7(r6)
+loc_FFE775D0:
+FFE775D0? 89060005  lbz     r8, 0x5(r6)
+FFE775D4? 3BE00000  li      r31, 0x0
+FFE775D8? 2C080080  cmpwi   cr0, r8, 0x80
+FFE775DC? 4182001C  beq     loc_FFE775F8
+FFE775E0? 2C080081  cmpwi   cr0, r8, 0x81
+FFE775E4? 41820014  beq     loc_FFE775F8
+FFE775E8? 2C080082  cmpwi   cr0, r8, 0x82
+FFE775EC? 4182000C  beq     loc_FFE775F8
+FFE775F0? 39000080  li      r8, 0x80
+FFE775F4? 99060005  stb     r8, 0x5(r6)
+loc_FFE775F8:
+FFE775F8? 8082FFD0  lwz     r4, -0x30(r2)                      ; TOC[-48] &data+648
+FFE775FC? 30E8FF80  addic   r7, r8, -0x80
+FFE77600? 91240000  stw     r9, 0x0(r4)
+FFE77604? A0A90004  lhz     r5, 0x4(r9)
+FFE77608? 39400008  li      r10, 0x8
+FFE7760C? 7D4B3830  slw     r11, r10, r7
+FFE77610? 90BD0000  stw     r5, 0x0(r29)
+FFE77614? 917B0000  stw     r11, 0x0(r27)
+FFE77618? 7D6B0734  extsh   r11, r11
+FFE7761C? 7CA50734  extsh   r5, r5
+FFE77620? 7D8559D6  mullw   r12, r5, r11
+FFE77624? 7D8C1E70  srawi   r12, r12, 0x3
+FFE77628? 7D8C0194  addze   r12, r12
+FFE7762C? A0C90006  lhz     r6, 0x6(r9)
+FFE77630? 318C0020  addic   r12, r12, 0x20
+FFE77634? 7D8C0734  extsh   r12, r12
+FFE77638? 90DC0000  stw     r6, 0x0(r28)
+FFE7763C? 919A0000  stw     r12, 0x0(r26)
+FFE77640? 8182FFAC  lwz     r12, -0x54(r2)                     ; TOC[-84] &data+601
+FFE77644? 3AC00000  li      r22, 0x0
+FFE77648? 9BEC0000  stb     r31, 0x0(r12)
+FFE7764C? 8182FFD4  lwz     r12, -0x2C(r2)                     ; TOC[-44] &data+64C
+FFE77650? 61230000  ori     r3, r9, 0x0
+FFE77654? 9BEC0000  stb     r31, 0x0(r12)
+FFE77658? 8182FFD8  lwz     r12, -0x28(r2)                     ; TOC[-40] &data+64D
+FFE7765C? 9BEC0000  stb     r31, 0x0(r12)
+FFE77660? 8182FFDC  lwz     r12, -0x24(r2)                     ; TOC[-36] &data+64E
+FFE77664? 9BEC0000  stb     r31, 0x0(r12)
+FFE77668? 8182FFE0  lwz     r12, -0x20(r2)                     ; TOC[-32] &data+64F
+FFE7766C? 9BEC0000  stb     r31, 0x0(r12)
+FFE77670? 8182FFE4  lwz     r12, -0x1C(r2)                     ; TOC[-28] &data+650
+FFE77674? 9BEC0000  stb     r31, 0x0(r12)
+FFE77678? 8182FFE8  lwz     r12, -0x18(r2)                     ; TOC[-24] &data+654
+FFE7767C? 92CC0000  stw     r22, 0x0(r12)
+FFE77680? 8182FFEC  lwz     r12, -0x14(r2)                     ; TOC[-20] &data+658
+FFE77684? 92CC0000  stw     r22, 0x0(r12)
+FFE77688? 8182FFF0  lwz     r12, -0x10(r2)                     ; TOC[-16] &data+65C
+FFE7768C? 9BEC0000  stb     r31, 0x0(r12)
+FFE77690? 8082FFF4  lwz     r4, -0xC(r2)                       ; TOC[-12] &data+65D
+FFE77694? 9BE40000  stb     r31, 0x0(r4)
+FFE77698? 4BFFF549  bl      sub_FFE76BE0
+FFE7769C? 82A2FFA4  lwz     r21, -0x5C(r2)                     ; TOC[-92] &data+5FC
+FFE776A0? 80BD0000  lwz     r5, 0x0(r29)
+FFE776A4? 809A0000  lwz     r4, 0x0(r26)
+FFE776A8? 80DC0000  lwz     r6, 0x0(r28)
+FFE776AC? 80FB0000  lwz     r7, 0x0(r27)
+FFE776B0? 80750000  lwz     r3, 0x0(r21)
+FFE776B4? 7C840734  extsh   r4, r4
+FFE776B8? 7CA50734  extsh   r5, r5
+FFE776BC? 7CC60734  extsh   r6, r6
+FFE776C0? 7CE70734  extsh   r7, r7
+FFE776C4? 62DD0000  ori     r29, r22, 0x0
+FFE776C8? 4BFFF649  bl      sub_FFE76D10
+FFE776CC? 4BFFF7C1  bl      sub_FFE76E8C
+FFE776D0? 2C030001  cmpwi   cr0, r3, 0x1
+FFE776D4? 4182001C  beq     loc_FFE776F0
+FFE776D8? 3860FFE6  li      r3, -0x1A
+FFE776DC? 80010080  lwz     r0, 0x80(r1)
+FFE776E0? 30210078  addic   r1, r1, 0x78
+FFE776E4? 7C0803A6  mtspr   LR, r0
+FFE776E8? BAA1FFD4  lmw     r21, -0x2C(r1)
+FFE776EC? 4E800020  blr
+loc_FFE776F0:
+FFE776F0? 8062FFF8  lwz     r3, -0x8(r2)                       ; TOC[-8] &data+65E
+FFE776F4? 9BE30000  stb     r31, 0x0(r3)
+FFE776F8? 80A2FFBC  lwz     r5, -0x44(r2)                      ; TOC[-68] &data+630
+FFE776FC? 7C6544AA  lswi    r3, r5, 0x8
+FFE77700? 7C7945AA  stswi   r3, r25, 0x8
+FFE77704? 63C40000  ori     r4, r30, 0x0
+FFE77708? 38600097  li      r3, 0x97
+FFE7770C? 48001FC1  bl      sub_FFE796CC
+FFE77710? 60000000  nop
+FFE77714? 889E0000  lbz     r4, 0x0(r30)
+FFE77718? 38600097  li      r3, 0x97
+FFE7771C? 5484066E  rlwinm  r4, r4, 0, 25, 23
+FFE77720? 5484063E  clrlwi  r4, r4, 24
+FFE77724? 989E0000  stb     r4, 0x0(r30)
+FFE77728? 4800289D  bl      sub_FFE79FC4
+FFE7772C? 60000000  nop
+FFE77730? 81980008  lwz     r12, 0x8(r24)
+FFE77734? 80790000  lwz     r3, 0x0(r25)
+FFE77738? 80990004  lwz     r4, 0x4(r25)
+FFE7773C? 80B80000  lwz     r5, 0x0(r24)
+FFE77740? 48002BD9  bl      sub_FFE7A318
+FFE77744? 80410014  lwz     r2, 0x14(r1)
+FFE77748? 8382FFC4  lwz     r28, -0x3C(r2)                     ; TOC[-60] &data+63C
+FFE7774C? 62E30000  ori     r3, r23, 0x0
+FFE77750? 93BC0000  stw     r29, 0x0(r28)
+FFE77754? 8362FF80  lwz     r27, -0x80(r2)                     ; TOC[-128] &data+338
+FFE77758? 337B0020  addic   r27, r27, 0x20
+FFE7775C? 93770000  stw     r27, 0x0(r23)
+FFE77760? 4BFFFAB5  bl      sub_FFE77214
+FFE77764? 80010080  lwz     r0, 0x80(r1)
+FFE77768? 30210078  addic   r1, r1, 0x78
+FFE7776C? 7C0803A6  mtspr   LR, r0
+FFE77770? BAA1FFD4  lmw     r21, -0x2C(r1)
+FFE77774? 4E800020  blr
+loc_FFE77778:
+FFE77778? 4BFFFE14  b       loc_FFE7758C
+FFE7777C? 80010080  lwz     r0, 0x80(r1)
+FFE77780? 30210078  addic   r1, r1, 0x78
+FFE77784? 7C0803A6  mtspr   LR, r0
+FFE77788? BAA1FFD4  lmw     r21, -0x2C(r1)
+FFE7778C? 4E800020  blr
+
+sub_FFE77790:
+FFE77790? 7C0802A6  mfspr   r0, LR
+FFE77794? 90010008  stw     r0, 0x8(r1)
+FFE77798? 9421FFC8  stwu    r1, -0x38(r1)
+FFE7779C? 5484043F  clrlwi. r4, r4, 16
+FFE777A0? 39200020  li      r9, 0x20
+FFE777A4? 7C044810  subfc   r0, r4, r9
+FFE777A8? 7D292110  subfe   r9, r9, r4
+FFE777AC? 7D290114  adde    r9, r9, r0
+FFE777B0? 5529063E  clrlwi  r9, r9, 24
+FFE777B4? 40810058  ble     loc_FFE7780C
+FFE777B8? 2F090000  cmpwi   cr6, r9, 0x0
+FFE777BC? 3CC00000  lis     r6, 0x0000
+FFE777C0? 3CA00000  lis     r5, 0x0000
+FFE777C4? 3123FFF8  addic   r9, r3, -0x8
+FFE777C8? 7C8903A6  mtspr   CTR, r4
+FFE777CC? 60C68080  ori     r6, r6, 0x8080
+FFE777D0? 60A58421  ori     r5, r5, 0x8421
+FFE777D4? 38E00000  li      r7, 0x0
+FFE777D8? 38600008  li      r3, 0x8
+loc_FFE777DC:
+FFE777DC? 419A000C  beq     cr6, loc_FFE777E8
+FFE777E0? 60A80000  ori     r8, r5, 0x0
+FFE777E4? 48000008  b       loc_FFE777EC
+loc_FFE777E8:
+FFE777E8? 60C80000  ori     r8, r6, 0x0
+loc_FFE777EC:
+FFE777EC? 7D0A0734  extsh   r10, r8
+FFE777F0? B4E90008  sthu    r7, 0x8(r9)
+FFE777F4? 554A043E  clrlwi  r10, r10, 16
+FFE777F8? B1490002  sth     r10, 0x2(r9)
+FFE777FC? B1490004  sth     r10, 0x4(r9)
+FFE77800? B1490006  sth     r10, 0x6(r9)
+FFE77804? 4200FFD8  bdnz    loc_FFE777DC
+FFE77808? 7C634814  addc    r3, r3, r9
+loc_FFE7780C:
+FFE7780C? 54851838  slwi    r5, r4, 3
+FFE77810? 7C651810  subfc   r3, r5, r3
+FFE77814? 4BFFF869  bl      sub_FFE7707C
+FFE77818? 80010040  lwz     r0, 0x40(r1)
+FFE7781C? 30210038  addic   r1, r1, 0x38
+FFE77820? 7C0803A6  mtspr   LR, r0
+FFE77824? 4E800020  blr
+
+sub_FFE77828:
+FFE77828? 7C0802A6  mfspr   r0, LR
+FFE7782C? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE77830? 90010008  stw     r0, 0x8(r1)
+FFE77834? 9421F7C0  stwu    r1, -0x840(r1)
+FFE77838? 607F0000  ori     r31, r3, 0x0
+FFE7783C? A89F0006  lha     r4, 0x6(r31)
+FFE77840? 33C10038  addic   r30, r1, 0x38
+FFE77844? 2C040000  cmpwi   cr0, r4, 0x0
+FFE77848? 8102FFB0  lwz     r8, -0x50(r2)                      ; TOC[-80] &data+604
+FFE7784C? 418200B8  beq     loc_FFE77904
+FFE77850? 3860FFCE  li      r3, -0x32
+FFE77854? 80010848  lwz     r0, 0x848(r1)
+FFE77858? 30210840  addic   r1, r1, 0x840
+FFE7785C? 7C0803A6  mtspr   LR, r0
+FFE77860? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE77864? 4E800020  blr
+loc_FFE77868:
+FFE77868? 39200008  li      r9, 0x8
+FFE7786C? 91280000  stw     r9, 0x0(r8)
+loc_FFE77870:
+FFE77870? 8062FFCC  lwz     r3, -0x34(r2)                      ; TOC[-52] &data+644
+FFE77874? 7D250734  extsh   r5, r9
+FFE77878? 80830000  lwz     r4, 0x0(r3)
+FFE7787C? 80E2FFA0  lwz     r7, -0x60(r2)                      ; TOC[-96] &data+5F8
+FFE77880? 7C840734  extsh   r4, r4
+FFE77884? 7CC429D6  mullw   r6, r4, r5
+FFE77888? 7CC61E70  srawi   r6, r6, 0x3
+FFE7788C? 7CC60194  addze   r6, r6
+FFE77890? 30C60020  addic   r6, r6, 0x20
+FFE77894? 7CC60734  extsh   r6, r6
+FFE77898? 90C70000  stw     r6, 0x0(r7)
+FFE7789C? 63C30000  ori     r3, r30, 0x0
+FFE778A0? 38800100  li      r4, 0x100
+FFE778A4? 4BFFFEED  bl      sub_FFE77790
+FFE778A8? 63C50000  ori     r5, r30, 0x0
+FFE778AC? 38600000  li      r3, 0x0
+FFE778B0? 388000FF  li      r4, 0xFF
+FFE778B4? 48001FF9  bl      sub_FFE798AC
+FFE778B8? 60000000  nop
+FFE778BC? 8182FFD0  lwz     r12, -0x30(r2)                     ; TOC[-48] &data+648
+FFE778C0? 806C0000  lwz     r3, 0x0(r12)
+FFE778C4? 4BFFF12D  bl      sub_FFE769F0
+FFE778C8? 8182FFA4  lwz     r12, -0x5C(r2)                     ; TOC[-92] &data+5FC
+FFE778CC? 38600000  li      r3, 0x0
+FFE778D0? 800C0000  lwz     r0, 0x0(r12)
+FFE778D4? 901F0008  stw     r0, 0x8(r31)
+FFE778D8? 80010848  lwz     r0, 0x848(r1)
+FFE778DC? 30210840  addic   r1, r1, 0x840
+FFE778E0? 7C0803A6  mtspr   LR, r0
+FFE778E4? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE778E8? 4E800020  blr
+loc_FFE778EC:
+FFE778EC? 39200010  li      r9, 0x10
+FFE778F0? 91280000  stw     r9, 0x0(r8)
+FFE778F4? 4BFFFF7C  b       loc_FFE77870
+loc_FFE778F8:
+FFE778F8? 39200020  li      r9, 0x20
+FFE778FC? 91280000  stw     r9, 0x0(r8)
+FFE77900? 4BFFFF70  b       loc_FFE77870
+loc_FFE77904:
+FFE77904? A93F0000  lha     r9, 0x0(r31)
+FFE77908? 2C090080  cmpwi   cr0, r9, 0x80
+FFE7790C? 4182FF5C  beq     loc_FFE77868
+FFE77910? 2C090081  cmpwi   cr0, r9, 0x81
+FFE77914? 4182FFD8  beq     loc_FFE778EC
+FFE77918? 2C090082  cmpwi   cr0, r9, 0x82
+FFE7791C? 4182FFDC  beq     loc_FFE778F8
+FFE77920? 3860FFCE  li      r3, -0x32
+FFE77924? 80010848  lwz     r0, 0x848(r1)
+FFE77928? 30210840  addic   r1, r1, 0x840
+FFE7792C? 7C0803A6  mtspr   LR, r0
+FFE77930? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE77934? 4E800020  blr
+FFE77938? 7C0802A6  mfspr   r0, LR
+FFE7793C? 90010008  stw     r0, 0x8(r1)
+FFE77940? 9421FFC8  stwu    r1, -0x38(r1)
+FFE77944? 90610050  stw     r3, 0x50(r1)
+FFE77948? 90810054  stw     r4, 0x54(r1)
+FFE7794C? 8122FFB4  lwz     r9, -0x4C(r2)                      ; TOC[-76] &data+608
+FFE77950? 30C10050  addic   r6, r1, 0x50
+FFE77954? 8189000C  lwz     r12, 0xC(r9)
+FFE77958? 80860004  lwz     r4, 0x4(r6)
+FFE7795C? 80A90000  lwz     r5, 0x0(r9)
+FFE77960? 80610050  lwz     r3, 0x50(r1)
+FFE77964? 480029B5  bl      sub_FFE7A318
+FFE77968? 80410014  lwz     r2, 0x14(r1)
+FFE7796C? 80010040  lwz     r0, 0x40(r1)
+FFE77970? 30210038  addic   r1, r1, 0x38
+FFE77974? 7C0803A6  mtspr   LR, r0
+FFE77978? 4E800020  blr
+
+sub_FFE7797C:
+FFE7797C? 7C0802A6  mfspr   r0, LR
+FFE77980? BFA1FFF4  stmw    r29, -0xC(r1)
+FFE77984? 90010008  stw     r0, 0x8(r1)
+FFE77988? 9421FFA8  stwu    r1, -0x58(r1)
+FFE7798C? 80E2FFF8  lwz     r7, -0x8(r2)                       ; TOC[-8] &data+65E
+FFE77990? 88830000  lbz     r4, 0x0(r3)
+FFE77994? 89070000  lbz     r8, 0x0(r7)
+FFE77998? 548407FE  clrlwi  r4, r4, 31
+FFE7799C? 5489063E  clrlwi  r9, r4, 24
+FFE779A0? 7C084800  cmpw    r8, r9
+FFE779A4? 30A10038  addic   r5, r1, 0x38
+FFE779A8? 33A10040  addic   r29, r1, 0x40
+FFE779AC? 80C2FFBC  lwz     r6, -0x44(r2)                      ; TOC[-68] &data+630
+FFE779B0? 33C10048  addic   r30, r1, 0x48
+FFE779B4? 83E2FFB4  lwz     r31, -0x4C(r2)                     ; TOC[-76] &data+608
+FFE779B8? 4182000C  beq     loc_FFE779C4
+FFE779BC? 99270000  stb     r9, 0x0(r7)
+FFE779C0? 61280000  ori     r8, r9, 0x0
+loc_FFE779C4:
+FFE779C4? 2C080000  cmpwi   cr0, r8, 0x0
+FFE779C8? 40820054  bne     loc_FFE77A1C
+FFE779CC? 7C6644AA  lswi    r3, r6, 0x8
+FFE779D0? 7C7D45AA  stswi   r3, r29, 0x8
+FFE779D4? 63C40000  ori     r4, r30, 0x0
+FFE779D8? 38600097  li      r3, 0x97
+FFE779DC? 48001CF1  bl      sub_FFE796CC
+FFE779E0? 60000000  nop
+FFE779E4? 889E0000  lbz     r4, 0x0(r30)
+FFE779E8? 38600097  li      r3, 0x97
+FFE779EC? 5484066E  rlwinm  r4, r4, 0, 25, 23
+FFE779F0? 5484063E  clrlwi  r4, r4, 24
+FFE779F4? 989E0000  stb     r4, 0x0(r30)
+FFE779F8? 480025CD  bl      sub_FFE79FC4
+FFE779FC? 60000000  nop
+FFE77A00? 819F0008  lwz     r12, 0x8(r31)
+FFE77A04? 807D0000  lwz     r3, 0x0(r29)
+FFE77A08? 809D0004  lwz     r4, 0x4(r29)
+FFE77A0C? 80BF0000  lwz     r5, 0x0(r31)
+FFE77A10? 48002909  bl      sub_FFE7A318
+FFE77A14? 80410014  lwz     r2, 0x14(r1)
+FFE77A18? 48000024  b       loc_FFE77A3C
+loc_FFE77A1C:
+FFE77A1C? 7C6644AA  lswi    r3, r6, 0x8
+FFE77A20? 7C6545AA  stswi   r3, r5, 0x8
+FFE77A24? 80650000  lwz     r3, 0x0(r5)
+FFE77A28? 80850004  lwz     r4, 0x4(r5)
+FFE77A2C? 819F000C  lwz     r12, 0xC(r31)
+FFE77A30? 80BF0000  lwz     r5, 0x0(r31)
+FFE77A34? 480028E5  bl      sub_FFE7A318
+FFE77A38? 80410014  lwz     r2, 0x14(r1)
+loc_FFE77A3C:
+FFE77A3C? 38600000  li      r3, 0x0
+FFE77A40? 80010060  lwz     r0, 0x60(r1)
+FFE77A44? 30210058  addic   r1, r1, 0x58
+FFE77A48? 7C0803A6  mtspr   LR, r0
+FFE77A4C? BBA1FFF4  lmw     r29, -0xC(r1)
+FFE77A50? 4E800020  blr
+
+sub_FFE77A54:
+FFE77A54? 8102FF7C  lwz     r8, -0x84(r2)                      ; TOC[-132] &data+140
+FFE77A58? 8082FFD0  lwz     r4, -0x30(r2)                      ; TOC[-48] &data+648
+FFE77A5C? 61090000  ori     r9, r8, 0x0
+FFE77A60? 80E40000  lwz     r7, 0x0(r4)
+FFE77A64? 80A90000  lwz     r5, 0x0(r9)
+FFE77A68? 3940FFFF  li      r10, -0x1
+FFE77A6C? 7C055040  cmplw   r5, r10
+FFE77A70? 80C70014  lwz     r6, 0x14(r7)
+FFE77A74? 4082000C  bne     loc_FFE77A80
+FFE77A78? 3860FFCE  li      r3, -0x32
+FFE77A7C? 4E800020  blr
+loc_FFE77A80:
+FFE77A80? 7C0802A6  mfspr   r0, LR
+FFE77A84? BFE1FFFC  stmw    r31, -0x4(r1)
+FFE77A88? 90010008  stw     r0, 0x8(r1)
+FFE77A8C? 9421FFC0  stwu    r1, -0x40(r1)
+FFE77A90? 80E30002  lwz     r7, 0x2(r3)
+FFE77A94? 80A80000  lwz     r5, 0x0(r8)
+FFE77A98? 7C053840  cmplw   r5, r7
+FFE77A9C? 41820028  beq     loc_FFE77AC4
+FFE77AA0? 38A00000  li      r5, 0x0
+loc_FFE77AA4:
+FFE77AA4? 4182001C  beq     loc_FFE77AC0
+FFE77AA8? 85090038  lwzu    r8, 0x38(r9)
+FFE77AAC? 3960FFFF  li      r11, -0x1
+FFE77AB0? 7C085840  cmplw   r8, r11
+FFE77AB4? 418200E0  beq     loc_FFE77B94
+FFE77AB8? 7C083840  cmplw   r8, r7
+FFE77ABC? 4BFFFFE8  b       loc_FFE77AA4
+loc_FFE77AC0:
+FFE77AC0? 7D292814  addc    r9, r9, r5
+loc_FFE77AC4:
+FFE77AC4? 80A90000  lwz     r5, 0x0(r9)
+FFE77AC8? 38E0FFFF  li      r7, -0x1
+FFE77ACC? 7C053840  cmplw   r5, r7
+FFE77AD0? 4082001C  bne     loc_FFE77AEC
+loc_FFE77AD4:
+FFE77AD4? 3860FFCE  li      r3, -0x32
+FFE77AD8? 80010048  lwz     r0, 0x48(r1)
+FFE77ADC? 30210040  addic   r1, r1, 0x40
+FFE77AE0? 7C0803A6  mtspr   LR, r0
+FFE77AE4? BBE1FFFC  lmw     r31, -0x4(r1)
+FFE77AE8? 4E800020  blr
+loc_FFE77AEC:
+FFE77AEC? 91240000  stw     r9, 0x0(r4)
+FFE77AF0? A0A90004  lhz     r5, 0x4(r9)
+FFE77AF4? 80E2FFCC  lwz     r7, -0x34(r2)                      ; TOC[-52] &data+644
+FFE77AF8? 39800008  li      r12, 0x8
+FFE77AFC? 90A70000  stw     r5, 0x0(r7)
+FFE77B00? A1090006  lhz     r8, 0x6(r9)
+FFE77B04? 8142FFC8  lwz     r10, -0x38(r2)                     ; TOC[-56] &data+640
+FFE77B08? 7CA50734  extsh   r5, r5
+FFE77B0C? 910A0000  stw     r8, 0x0(r10)
+FFE77B10? A1630000  lhz     r11, 0x0(r3)
+FFE77B14? 8142FFB0  lwz     r10, -0x50(r2)                     ; TOC[-80] &data+604
+FFE77B18? 316BFF80  addic   r11, r11, -0x80
+FFE77B1C? 7D805830  slw     r0, r12, r11
+FFE77B20? 900A0000  stw     r0, 0x0(r10)
+FFE77B24? 7C000734  extsh   r0, r0
+FFE77B28? 7C0501D6  mullw   r0, r5, r0
+FFE77B2C? 7C001E70  srawi   r0, r0, 0x3
+FFE77B30? 7C000194  addze   r0, r0
+FFE77B34? 30000020  addic   r0, r0, 0x20
+FFE77B38? 8182FFA0  lwz     r12, -0x60(r2)                     ; TOC[-96] &data+5F8
+FFE77B3C? 7C000734  extsh   r0, r0
+FFE77B40? 900C0000  stw     r0, 0x0(r12)
+FFE77B44? 80090014  lwz     r0, 0x14(r9)
+FFE77B48? 3BE00000  li      r31, 0x0
+FFE77B4C? 7C060000  cmpw    r6, r0
+FFE77B50? 40820024  bne     loc_FFE77B74
+FFE77B54? 61230000  ori     r3, r9, 0x0
+FFE77B58? 4BFFEE99  bl      sub_FFE769F0
+FFE77B5C? 38600000  li      r3, 0x0
+FFE77B60? 80010048  lwz     r0, 0x48(r1)
+FFE77B64? 30210040  addic   r1, r1, 0x40
+FFE77B68? 7C0803A6  mtspr   LR, r0
+FFE77B6C? BBE1FFFC  lmw     r31, -0x4(r1)
+FFE77B70? 4E800020  blr
+loc_FFE77B74:
+FFE77B74? 61230000  ori     r3, r9, 0x0
+FFE77B78? 4BFFF069  bl      sub_FFE76BE0
+FFE77B7C? 63E30000  ori     r3, r31, 0x0
+FFE77B80? 80010048  lwz     r0, 0x48(r1)
+FFE77B84? 30210040  addic   r1, r1, 0x40
+FFE77B88? 7C0803A6  mtspr   LR, r0
+FFE77B8C? BBE1FFFC  lmw     r31, -0x4(r1)
+FFE77B90? 4E800020  blr
+loc_FFE77B94:
+FFE77B94? 4BFFFF40  b       loc_FFE77AD4
+FFE77B98? 80010048  lwz     r0, 0x48(r1)
+FFE77B9C? 30210040  addic   r1, r1, 0x40
+FFE77BA0? 7C0803A6  mtspr   LR, r0
+FFE77BA4? BBE1FFFC  lmw     r31, -0x4(r1)
+FFE77BA8? 4E800020  blr
+
+sub_FFE77BAC:
+FFE77BAC? 7C0802A6  mfspr   r0, LR
+FFE77BB0? BFA1FFF4  stmw    r29, -0xC(r1)
+FFE77BB4? 90010008  stw     r0, 0x8(r1)
+FFE77BB8? 9421FFB8  stwu    r1, -0x48(r1)
+FFE77BBC? 607E0000  ori     r30, r3, 0x0
+FFE77BC0? 893E0000  lbz     r9, 0x0(r30)
+FFE77BC4? 80E2FFF0  lwz     r7, -0x10(r2)                      ; TOC[-16] &data+65C
+FFE77BC8? 2C090000  cmpwi   cr0, r9, 0x0
+FFE77BCC? 33E10038  addic   r31, r1, 0x38
+FFE77BD0? 891E0001  lbz     r8, 0x1(r30)
+FFE77BD4? 40820014  bne     loc_FFE77BE8
+FFE77BD8? 2C080000  cmpwi   cr0, r8, 0x0
+FFE77BDC? 4082000C  bne     loc_FFE77BE8
+FFE77BE0? 39200000  li      r9, 0x0
+FFE77BE4? 39000007  li      r8, 0x7
+loc_FFE77BE8:
+FFE77BE8? 2C0900FF  cmpwi   cr0, r9, 0xFF
+FFE77BEC? 40820010  bne     loc_FFE77BFC
+FFE77BF0? 2C0800FF  cmpwi   cr0, r8, 0xFF
+FFE77BF4? 40820008  bne     loc_FFE77BFC
+FFE77BF8? 39200007  li      r9, 0x7
+loc_FFE77BFC:
+FFE77BFC? 552306B9  rlwinm. r3, r9, 0, 26, 28
+FFE77C00? 4182001C  beq     loc_FFE77C1C
+FFE77C04? 3860FFCE  li      r3, -0x32
+FFE77C08? 80010050  lwz     r0, 0x50(r1)
+FFE77C0C? 30210048  addic   r1, r1, 0x48
+FFE77C10? 7C0803A6  mtspr   LR, r0
+FFE77C14? BBA1FFF4  lmw     r29, -0xC(r1)
+FFE77C18? 4E800020  blr
+loc_FFE77C1C:
+FFE77C1C? 5523077F  clrlwi. r3, r9, 29
+FFE77C20? 4F000000  mcrf    cr6, cr0
+FFE77C24? 2C830007  cmpwi   cr1, r3, 0x7
+FFE77C28? 41860020  beq     cr1, loc_FFE77C48
+FFE77C2C? 419A0074  beq     cr6, loc_FFE77CA0
+FFE77C30? 3860FFCE  li      r3, -0x32
+FFE77C34? 80010050  lwz     r0, 0x50(r1)
+FFE77C38? 30210048  addic   r1, r1, 0x48
+FFE77C3C? 7C0803A6  mtspr   LR, r0
+FFE77C40? BBA1FFF4  lmw     r29, -0xC(r1)
+FFE77C44? 4E800020  blr
+loc_FFE77C48:
+FFE77C48? 419A0058  beq     cr6, loc_FFE77CA0
+FFE77C4C? 38600001  li      r3, 0x1
+FFE77C50? 98670000  stb     r3, 0x0(r7)
+FFE77C54? 80A2FF68  lwz     r5, -0x98(r2)                      ; TOC[-152] &data+540
+FFE77C58? 38600088  li      r3, 0x88
+FFE77C5C? 30A50064  addic   r5, r5, 0x64
+FFE77C60? 38800061  li      r4, 0x61
+FFE77C64? 48002385  bl      sub_FFE79FE8
+FFE77C68? 60000000  nop
+FFE77C6C? 63E40000  ori     r4, r31, 0x0
+FFE77C70? 38600097  li      r3, 0x97
+FFE77C74? 48001A59  bl      sub_FFE796CC
+FFE77C78? 60000000  nop
+FFE77C7C? 889F0000  lbz     r4, 0x0(r31)
+FFE77C80? 38600097  li      r3, 0x97
+FFE77C84? 5484003C  clrrwi  r4, r4, 1
+FFE77C88? 5484063E  clrlwi  r4, r4, 24
+FFE77C8C? 989F0000  stb     r4, 0x0(r31)
+FFE77C90? 48002335  bl      sub_FFE79FC4
+FFE77C94? 60000000  nop
+FFE77C98? 39200000  li      r9, 0x0
+FFE77C9C? 48000058  b       loc_FFE77CF4
+loc_FFE77CA0:
+FFE77CA0? 3BA00000  li      r29, 0x0
+FFE77CA4? 9BA70000  stb     r29, 0x0(r7)
+FFE77CA8? 63E40000  ori     r4, r31, 0x0
+FFE77CAC? 38600097  li      r3, 0x97
+FFE77CB0? 48001A1D  bl      sub_FFE796CC
+FFE77CB4? 60000000  nop
+FFE77CB8? 889F0000  lbz     r4, 0x0(r31)
+FFE77CBC? 38600097  li      r3, 0x97
+FFE77CC0? 60840001  ori     r4, r4, 0x1
+FFE77CC4? 5484063E  clrlwi  r4, r4, 24
+FFE77CC8? 989F0000  stb     r4, 0x0(r31)
+FFE77CCC? 480022F9  bl      sub_FFE79FC4
+FFE77CD0? 60000000  nop
+FFE77CD4? 8182FFD0  lwz     r12, -0x30(r2)                     ; TOC[-48] &data+648
+FFE77CD8? 38600088  li      r3, 0x88
+FFE77CDC? 80AC0000  lwz     r5, 0x0(r12)
+FFE77CE0? 38800061  li      r4, 0x61
+FFE77CE4? 30A50022  addic   r5, r5, 0x22
+FFE77CE8? 48002301  bl      sub_FFE79FE8
+FFE77CEC? 60000000  nop
+FFE77CF0? 63A90000  ori     r9, r29, 0x0
+loc_FFE77CF4:
+FFE77CF4? 993E0001  stb     r9, 0x1(r30)
+FFE77CF8? 38600000  li      r3, 0x0
+FFE77CFC? 80010050  lwz     r0, 0x50(r1)
+FFE77D00? 30210048  addic   r1, r1, 0x48
+FFE77D04? 7C0803A6  mtspr   LR, r0
+FFE77D08? BBA1FFF4  lmw     r29, -0xC(r1)
+FFE77D0C? 4E800020  blr
+
+sub_FFE77D10:
+FFE77D10? 7C0802A6  mfspr   r0, LR
+FFE77D14? BF81FFF0  stmw    r28, -0x10(r1)
+FFE77D18? 90010008  stw     r0, 0x8(r1)
+FFE77D1C? 9421FFB0  stwu    r1, -0x50(r1)
+FFE77D20? 83C2FF84  lwz     r30, -0x7C(r2)                     ; TOC[-124] &data+468
+FFE77D24? 83E2FFB8  lwz     r31, -0x48(r2)                     ; TOC[-72] &data+620
+FFE77D28? 809E0000  lwz     r4, 0x0(r30)
+FFE77D2C? 607D0000  ori     r29, r3, 0x0
+FFE77D30? 33810038  addic   r28, r1, 0x38
+FFE77D34? 63E30000  ori     r3, r31, 0x0
+FFE77D38? 63850000  ori     r5, r28, 0x0
+FFE77D3C? 480025AD  bl      glue_RegistryPropertyGetSize
+FFE77D40? 80410014  lwz     r2, 0x14(r1)
+FFE77D44? 2F030000  cmpwi   cr6, r3, 0x0
+FFE77D48? 409A0048  bne     cr6, loc_FFE77D90
+FFE77D4C? 809C0000  lwz     r4, 0x0(r28)
+FFE77D50? 28040008  cmplwi  cr0, r4, 0x8
+FFE77D54? 418200A0  beq     loc_FFE77DF4
+FFE77D58? 409A0038  bne     cr6, loc_FFE77D90
+FFE77D5C? 809E0000  lwz     r4, 0x0(r30)
+FFE77D60? 63E30000  ori     r3, r31, 0x0
+FFE77D64? 48002345  bl      glue_RegistryPropertyDelete
+FFE77D68? 80410014  lwz     r2, 0x14(r1)
+FFE77D6C? 60690000  ori     r9, r3, 0x0
+FFE77D70? 2C090000  cmpwi   cr0, r9, 0x0
+FFE77D74? 4182001C  beq     loc_FFE77D90
+FFE77D78? 61230000  ori     r3, r9, 0x0
+FFE77D7C? 80010058  lwz     r0, 0x58(r1)
+FFE77D80? 30210050  addic   r1, r1, 0x50
+FFE77D84? 7C0803A6  mtspr   LR, r0
+FFE77D88? BB81FFF0  lmw     r28, -0x10(r1)
+FFE77D8C? 4E800020  blr
+loc_FFE77D90:
+FFE77D90? 809E0000  lwz     r4, 0x0(r30)
+FFE77D94? 63A50000  ori     r5, r29, 0x0
+FFE77D98? 63E30000  ori     r3, r31, 0x0
+FFE77D9C? 38C00008  li      r6, 0x8
+FFE77DA0? 48002561  bl      glue_RegistryPropertyCreate
+FFE77DA4? 80410014  lwz     r2, 0x14(r1)
+FFE77DA8? 60690000  ori     r9, r3, 0x0
+FFE77DAC? 2C090000  cmpwi   cr0, r9, 0x0
+FFE77DB0? 4182001C  beq     loc_FFE77DCC
+FFE77DB4? 61230000  ori     r3, r9, 0x0
+FFE77DB8? 80010058  lwz     r0, 0x58(r1)
+FFE77DBC? 30210050  addic   r1, r1, 0x50
+FFE77DC0? 7C0803A6  mtspr   LR, r0
+FFE77DC4? BB81FFF0  lmw     r28, -0x10(r1)
+FFE77DC8? 4E800020  blr
+loc_FFE77DCC:
+FFE77DCC? 809E0000  lwz     r4, 0x0(r30)
+FFE77DD0? 63E30000  ori     r3, r31, 0x0
+FFE77DD4? 38A00020  li      r5, 0x20
+FFE77DD8? 48002409  bl      glue_RegistryPropertySetMod
+FFE77DDC? 80410014  lwz     r2, 0x14(r1)
+FFE77DE0? 80010058  lwz     r0, 0x58(r1)
+FFE77DE4? 30210050  addic   r1, r1, 0x50
+FFE77DE8? 7C0803A6  mtspr   LR, r0
+FFE77DEC? BB81FFF0  lmw     r28, -0x10(r1)
+FFE77DF0? 4E800020  blr
+loc_FFE77DF4:
+FFE77DF4? 809E0000  lwz     r4, 0x0(r30)
+FFE77DF8? 63A50000  ori     r5, r29, 0x0
+FFE77DFC? 63E30000  ori     r3, r31, 0x0
+FFE77E00? 38C00008  li      r6, 0x8
+FFE77E04? 480023F5  bl      glue_RegistryPropertySet
+FFE77E08? 80410014  lwz     r2, 0x14(r1)
+FFE77E0C? 80010058  lwz     r0, 0x58(r1)
+FFE77E10? 30210050  addic   r1, r1, 0x50
+FFE77E14? 7C0803A6  mtspr   LR, r0
+FFE77E18? BB81FFF0  lmw     r28, -0x10(r1)
+FFE77E1C? 4E800020  blr
+
+sub_FFE77E20:
+FFE77E20? 8082FFD0  lwz     r4, -0x30(r2)                      ; TOC[-48] &data+648
+FFE77E24? 80C30000  lwz     r6, 0x0(r3)
+FFE77E28? 81040000  lwz     r8, 0x0(r4)
+FFE77E2C? 80A80000  lwz     r5, 0x0(r8)
+FFE77E30? 7C062840  cmplw   r6, r5
+FFE77E34? 4182000C  beq     loc_FFE77E40
+FFE77E38? 3860FFCE  li      r3, -0x32
+FFE77E3C? 4E800020  blr
+loc_FFE77E40:
+FFE77E40? 7C0802A6  mfspr   r0, LR
+FFE77E44? BFE1FFFC  stmw    r31, -0x4(r1)
+FFE77E48? 90010008  stw     r0, 0x8(r1)
+FFE77E4C? 9421FFC0  stwu    r1, -0x40(r1)
+FFE77E50? 80A2FFB0  lwz     r5, -0x50(r2)                      ; TOC[-80] &data+604
+FFE77E54? A0E30004  lhz     r7, 0x4(r3)
+FFE77E58? 80C50000  lwz     r6, 0x0(r5)
+FFE77E5C? 8122FF9C  lwz     r9, -0x64(r2)                      ; TOC[-100] &data+5F0
+FFE77E60? 54C6E13E  srwi    r6, r6, 4
+FFE77E64? 30C60080  addic   r6, r6, 0x80
+FFE77E68? 7C073040  cmplw   r7, r6
+FFE77E6C? 609F0000  ori     r31, r4, 0x0
+FFE77E70? 4182001C  beq     loc_FFE77E8C
+FFE77E74? 3860FFCE  li      r3, -0x32
+FFE77E78? 80010048  lwz     r0, 0x48(r1)
+FFE77E7C? 30210040  addic   r1, r1, 0x40
+FFE77E80? 7C0803A6  mtspr   LR, r0
+FFE77E84? BBE1FFFC  lmw     r31, -0x4(r1)
+FFE77E88? 4E800020  blr
+loc_FFE77E8C:
+FFE77E8C? 80830006  lwz     r4, 0x6(r3)
+FFE77E90? 28040000  cmplwi  cr0, r4, 0x0
+FFE77E94? 4182001C  beq     loc_FFE77EB0
+FFE77E98? 3860FFCE  li      r3, -0x32
+FFE77E9C? 80010048  lwz     r0, 0x48(r1)
+FFE77EA0? 30210040  addic   r1, r1, 0x40
+FFE77EA4? 7C0803A6  mtspr   LR, r0
+FFE77EA8? BBE1FFFC  lmw     r31, -0x4(r1)
+FFE77EAC? 4E800020  blr
+loc_FFE77EB0:
+FFE77EB0? 8888001A  lbz     r4, 0x1A(r8)
+FFE77EB4? 2C040000  cmpwi   cr0, r4, 0x0
+FFE77EB8? 4182001C  beq     loc_FFE77ED4
+FFE77EBC? 3860FFCE  li      r3, -0x32
+FFE77EC0? 80010048  lwz     r0, 0x48(r1)
+FFE77EC4? 30210040  addic   r1, r1, 0x40
+FFE77EC8? 7C0803A6  mtspr   LR, r0
+FFE77ECC? BBE1FFFC  lmw     r31, -0x4(r1)
+FFE77ED0? 4E800020  blr
+loc_FFE77ED4:
+FFE77ED4? 8083000A  lwz     r4, 0xA(r3)
+FFE77ED8? 89490006  lbz     r10, 0x6(r9)
+FFE77EDC? 548507FE  clrlwi  r5, r4, 31
+FFE77EE0? 30C5FFFF  addic   r6, r5, -0x1
+FFE77EE4? 7CC62910  subfe   r6, r6, r5
+FFE77EE8? 54C7063E  clrlwi  r7, r6, 24
+FFE77EEC? 7C0A3800  cmpw    r10, r7
+FFE77EF0? 548407BC  rlwinm  r4, r4, 0, 30, 30
+FFE77EF4? 3104FFFF  addic   r8, r4, -0x1
+FFE77EF8? 7D082110  subfe   r8, r8, r4
+FFE77EFC? 5508063E  clrlwi  r8, r8, 24
+FFE77F00? 40820010  bne     loc_FFE77F10
+FFE77F04? 88690007  lbz     r3, 0x7(r9)
+FFE77F08? 7C034000  cmpw    r3, r8
+FFE77F0C? 41820034  beq     loc_FFE77F40
+loc_FFE77F10:
+FFE77F10? 98E90006  stb     r7, 0x6(r9)
+FFE77F14? 99090007  stb     r8, 0x7(r9)
+FFE77F18? 61230000  ori     r3, r9, 0x0
+FFE77F1C? 4BFFFDF5  bl      sub_FFE77D10
+FFE77F20? 807F0000  lwz     r3, 0x0(r31)
+FFE77F24? 4BFFEACD  bl      sub_FFE769F0
+FFE77F28? 38600000  li      r3, 0x0
+FFE77F2C? 80010048  lwz     r0, 0x48(r1)
+FFE77F30? 30210040  addic   r1, r1, 0x40
+FFE77F34? 7C0803A6  mtspr   LR, r0
+FFE77F38? BBE1FFFC  lmw     r31, -0x4(r1)
+FFE77F3C? 4E800020  blr
+loc_FFE77F40:
+FFE77F40? 38600000  li      r3, 0x0
+FFE77F44? 80010048  lwz     r0, 0x48(r1)
+FFE77F48? 30210040  addic   r1, r1, 0x40
+FFE77F4C? 7C0803A6  mtspr   LR, r0
+FFE77F50? BBE1FFFC  lmw     r31, -0x4(r1)
+FFE77F54? 4E800020  blr
+
+sub_FFE77F58:
+FFE77F58? 7C0802A6  mfspr   r0, LR
+FFE77F5C? BF81FFF0  stmw    r28, -0x10(r1)
+FFE77F60? 90010008  stw     r0, 0x8(r1)
+FFE77F64? 9421F7B0  stwu    r1, -0x850(r1)
+FFE77F68? A964001A  lha     r11, 0x1A(r4)
+FFE77F6C? 8142FFB4  lwz     r10, -0x4C(r2)                     ; TOC[-76] &data+608
+FFE77F70? 280B0018  cmplwi  cr0, r11, 0x18
+FFE77F74? 30A10038  addic   r5, r1, 0x38
+FFE77F78? 80C2FFBC  lwz     r6, -0x44(r2)                      ; TOC[-68] &data+630
+FFE77F7C? 80E2FFF8  lwz     r7, -0x8(r2)                       ; TOC[-8] &data+65E
+FFE77F80? 8102FFF4  lwz     r8, -0xC(r2)                       ; TOC[-12] &data+65D
+FFE77F84? 33C10040  addic   r30, r1, 0x40
+FFE77F88? 8122FF9C  lwz     r9, -0x64(r2)                      ; TOC[-100] &data+5F0
+FFE77F8C? 83E2FFB0  lwz     r31, -0x50(r2)                     ; TOC[-80] &data+604
+FFE77F90? 8064001C  lwz     r3, 0x1C(r4)
+FFE77F94? 8182FF5C  lwz     r12, -0xA4(r2)                     ; TOC[-164] &code+17A4
+FFE77F98? 418101E4  bgt     loc_FFE7817C
+FFE77F9C? 557C103A  slwi    r28, r11, 2
+FFE77FA0? 7F8CE02E  lwzx    r28, r12, r28
+FFE77FA4? 7F8CE014  addc    r28, r12, r28
+FFE77FA8? 7F8803A6  mtspr   LR, r28
+FFE77FAC? 4E800020  blr
+FFE77FB0? 38600000  li      r3, 0x0
+FFE77FB4? 480001CC  b       loc_FFE78180
+FFE77FB8? 4BFFF871  bl      sub_FFE77828
+FFE77FBC? 480001C4  b       loc_FFE78180
+FFE77FC0? 809F0000  lwz     r4, 0x0(r31)
+FFE77FC4? 28040008  cmplwi  cr0, r4, 0x8
+FFE77FC8? 40820010  bne     loc_FFE77FD8
+FFE77FCC? 48001271  bl      sub_FFE7923C
+FFE77FD0? 38600000  li      r3, 0x0
+FFE77FD4? 48000008  b       loc_FFE77FDC
+loc_FFE77FD8:
+FFE77FD8? 3860FFCE  li      r3, -0x32
+loc_FFE77FDC:
+FFE77FDC? 480001A4  b       loc_FFE78180
+FFE77FE0? 4BFFF235  bl      sub_FFE77214
+FFE77FE4? 4800019C  b       loc_FFE78180
+FFE77FE8? A8830006  lha     r4, 0x6(r3)
+FFE77FEC? 2C040000  cmpwi   cr0, r4, 0x0
+FFE77FF0? 4182000C  beq     loc_FFE77FFC
+FFE77FF4? 3860FFCE  li      r3, -0x32
+FFE77FF8? 48000088  b       loc_FFE78080
+loc_FFE77FFC:
+FFE77FFC? 8062FFA0  lwz     r3, -0x60(r2)                      ; TOC[-96] &data+5F8
+FFE78000? 80C2FFCC  lwz     r6, -0x34(r2)                      ; TOC[-52] &data+644
+FFE78004? 80E2FFC8  lwz     r7, -0x38(r2)                      ; TOC[-56] &data+640
+FFE78008? 80A60000  lwz     r5, 0x0(r6)
+FFE7800C? 80C70000  lwz     r6, 0x0(r7)
+FFE78010? 80830000  lwz     r4, 0x0(r3)
+FFE78014? 8102FFA4  lwz     r8, -0x5C(r2)                      ; TOC[-92] &data+5FC
+FFE78018? 80FF0000  lwz     r7, 0x0(r31)
+FFE7801C? 80680000  lwz     r3, 0x0(r8)
+FFE78020? 7C840734  extsh   r4, r4
+FFE78024? 7CA50734  extsh   r5, r5
+FFE78028? 7CC60734  extsh   r6, r6
+FFE7802C? 7CE70734  extsh   r7, r7
+FFE78030? 4BFFECE1  bl      sub_FFE76D10
+FFE78034? 813F0000  lwz     r9, 0x0(r31)
+FFE78038? 28890008  cmplwi  cr1, r9, 0x8
+FFE7803C? 41860040  beq     cr1, loc_FFE7807C
+FFE78040? 28090010  cmplwi  cr0, r9, 0x10
+FFE78044? 4082000C  bne     loc_FFE78050
+FFE78048? 39200020  li      r9, 0x20
+FFE7804C? 48000008  b       loc_FFE78054
+loc_FFE78050:
+FFE78050? 39200100  li      r9, 0x100
+loc_FFE78054:
+FFE78054? 5524043E  clrlwi  r4, r9, 16
+FFE78058? 609F0000  ori     r31, r4, 0x0
+FFE7805C? 63C30000  ori     r3, r30, 0x0
+FFE78060? 4BFFF0ED  bl      sub_FFE7714C
+FFE78064? 309FFFFF  addic   r4, r31, -0x1
+FFE78068? 5484043E  clrlwi  r4, r4, 16
+FFE7806C? 63C50000  ori     r5, r30, 0x0
+FFE78070? 38600000  li      r3, 0x0
+FFE78074? 48001839  bl      sub_FFE798AC
+FFE78078? 60000000  nop
+loc_FFE7807C:
+FFE7807C? 38600000  li      r3, 0x0
+loc_FFE78080:
+FFE78080? 48000100  b       loc_FFE78180
+FFE78084? 88830000  lbz     r4, 0x0(r3)
+FFE78088? 88A80000  lbz     r5, 0x0(r8)
+FFE7808C? 548407FE  clrlwi  r4, r4, 31
+FFE78090? 5489063E  clrlwi  r9, r4, 24
+FFE78094? 7C054800  cmpw    r5, r9
+FFE78098? 41820008  beq     loc_FFE780A0
+FFE7809C? 99280000  stb     r9, 0x0(r8)
+loc_FFE780A0:
+FFE780A0? 38600000  li      r3, 0x0
+FFE780A4? 480000DC  b       loc_FFE78180
+FFE780A8? 88830000  lbz     r4, 0x0(r3)
+FFE780AC? 89070000  lbz     r8, 0x0(r7)
+FFE780B0? 548407FE  clrlwi  r4, r4, 31
+FFE780B4? 5489063E  clrlwi  r9, r4, 24
+FFE780B8? 7C084800  cmpw    r8, r9
+FFE780BC? 4182000C  beq     loc_FFE780C8
+FFE780C0? 99270000  stb     r9, 0x0(r7)
+FFE780C4? 61280000  ori     r8, r9, 0x0
+loc_FFE780C8:
+FFE780C8? 2C080000  cmpwi   cr0, r8, 0x0
+FFE780CC? 41820028  beq     loc_FFE780F4
+FFE780D0? 7C6644AA  lswi    r3, r6, 0x8
+FFE780D4? 7C6545AA  stswi   r3, r5, 0x8
+FFE780D8? 80650000  lwz     r3, 0x0(r5)
+FFE780DC? 80850004  lwz     r4, 0x4(r5)
+FFE780E0? 818A000C  lwz     r12, 0xC(r10)
+FFE780E4? 80AA0000  lwz     r5, 0x0(r10)
+FFE780E8? 48002231  bl      sub_FFE7A318
+FFE780EC? 80410014  lwz     r2, 0x14(r1)
+FFE780F0? 48000014  b       loc_FFE78104
+loc_FFE780F4:
+FFE780F4? 80660000  lwz     r3, 0x0(r6)
+FFE780F8? 80860004  lwz     r4, 0x4(r6)
+FFE780FC? 38A00000  li      r5, 0x0
+FFE78100? 4BFFEF01  bl      sub_FFE77000
+loc_FFE78104:
+FFE78104? 38600000  li      r3, 0x0
+FFE78108? 48000078  b       loc_FFE78180
+FFE7810C? 809F0000  lwz     r4, 0x0(r31)
+FFE78110? 28040008  cmplwi  cr0, r4, 0x8
+FFE78114? 41820010  beq     loc_FFE78124
+FFE78118? 48001125  bl      sub_FFE7923C
+FFE7811C? 38600000  li      r3, 0x0
+FFE78120? 48000008  b       loc_FFE78128
+loc_FFE78124:
+FFE78124? 3860FFCE  li      r3, -0x32
+loc_FFE78128:
+FFE78128? 48000058  b       loc_FFE78180
+FFE7812C? 3860FFEF  li      r3, -0x11
+FFE78130? 48000050  b       loc_FFE78180
+FFE78134? 4BFFF921  bl      sub_FFE77A54
+FFE78138? 48000048  b       loc_FFE78180
+FFE7813C? 4BFFFA71  bl      sub_FFE77BAC
+FFE78140? 48000040  b       loc_FFE78180
+FFE78144? 80830002  lwz     r4, 0x2(r3)
+FFE78148? 98890004  stb     r4, 0x4(r9)
+FFE7814C? A0A30000  lhz     r5, 0x0(r3)
+FFE78150? 61230000  ori     r3, r9, 0x0
+FFE78154? 98A90005  stb     r5, 0x5(r9)
+FFE78158? 4BFFFBB9  bl      sub_FFE77D10
+FFE7815C? 38600000  li      r3, 0x0
+FFE78160? 48000020  b       loc_FFE78180
+FFE78164? 4BFFFCBD  bl      sub_FFE77E20
+FFE78168? 48000018  b       loc_FFE78180
+FFE7816C? 3860FFEF  li      r3, -0x11
+FFE78170? 48000010  b       loc_FFE78180
+FFE78174? 3860FFEF  li      r3, -0x11
+FFE78178? 48000008  b       loc_FFE78180
+loc_FFE7817C:
+FFE7817C? 3860FFEF  li      r3, -0x11
+loc_FFE78180:
+FFE78180? 80010858  lwz     r0, 0x858(r1)
+FFE78184? 30210850  addic   r1, r1, 0x850
+FFE78188? 7C0803A6  mtspr   LR, r0
+FFE7818C? BB81FFF0  lmw     r28, -0x10(r1)
+FFE78190? 4E800020  blr
+FFE78194d FFFFFE1C  .long   0xFFFFFE1C                         ; -> 68k emulator opcode dispatch table
+FFE78198d FFFFFFE8  .long   0xFFFFFFE8                         ; -> 68k emulator opcode dispatch table
+FFE7819Cd FFFFFE24  .long   0xFFFFFE24                         ; -> 68k emulator opcode dispatch table
+FFE781A0d FFFFFE2C  .long   0xFFFFFE2C                         ; -> 68k emulator opcode dispatch table
+FFE781A4d FFFFFE4C  .long   0xFFFFFE4C                         ; -> 68k emulator opcode dispatch table
+FFE781A8d FFFFFE54  .long   0xFFFFFE54                         ; -> 68k emulator opcode dispatch table
+FFE781ACd FFFFFEF0  .long   0xFFFFFEF0                         ; -> 68k emulator opcode dispatch table
+FFE781B0d FFFFFF14  .long   0xFFFFFF14                         ; -> 68k emulator opcode dispatch table
+FFE781B4d FFFFFF78  .long   0xFFFFFF78                         ; -> 68k emulator opcode dispatch table
+FFE781B8d FFFFFF98  .long   0xFFFFFF98                         ; -> 68k emulator opcode dispatch table
+FFE781BCd FFFFFFA0  .long   0xFFFFFFA0                         ; -> 68k emulator opcode dispatch table
+FFE781C0d FFFFFFA8  .long   0xFFFFFFA8                         ; -> 68k emulator opcode dispatch table
+FFE781C4d FFFFFFE8  .long   0xFFFFFFE8                         ; -> 68k emulator opcode dispatch table
+FFE781C8d FFFFFFE8  .long   0xFFFFFFE8                         ; -> 68k emulator opcode dispatch table
+FFE781CCd FFFFFFE8  .long   0xFFFFFFE8                         ; -> 68k emulator opcode dispatch table
+FFE781D0d FFFFFFE8  .long   0xFFFFFFE8                         ; -> 68k emulator opcode dispatch table
+FFE781D4d FFFFFFB0  .long   0xFFFFFFB0                         ; -> 68k emulator opcode dispatch table
+FFE781D8d FFFFFFE8  .long   0xFFFFFFE8                         ; -> 68k emulator opcode dispatch table
+FFE781DCd FFFFFFE8  .long   0xFFFFFFE8                         ; -> 68k emulator opcode dispatch table
+FFE781E0d FFFFFFE8  .long   0xFFFFFFE8                         ; -> 68k emulator opcode dispatch table
+FFE781E4d FFFFFFE8  .long   0xFFFFFFE8                         ; -> 68k emulator opcode dispatch table
+FFE781E8d FFFFFFE8  .long   0xFFFFFFE8                         ; -> 68k emulator opcode dispatch table
+FFE781ECd FFFFFFD8  .long   0xFFFFFFD8                         ; -> 68k emulator opcode dispatch table
+FFE781F0d FFFFFFE0  .long   0xFFFFFFE0                         ; -> 68k emulator opcode dispatch table
+FFE781F4d FFFFFFD0  .long   0xFFFFFFD0                         ; -> 68k emulator opcode dispatch table
+FFE781F8d FFFFFFE8  .long   0xFFFFFFE8                         ; -> 68k emulator opcode dispatch table
+
+sub_FFE781FC:
+FFE781FC? 8082FFF8  lwz     r4, -0x8(r2)                       ; TOC[-8] &data+65E
+FFE78200? 88A40000  lbz     r5, 0x0(r4)
+FFE78204? 98A30000  stb     r5, 0x0(r3)
+FFE78208? 38600000  li      r3, 0x0
+FFE7820C? 4E800020  blr
+
+sub_FFE78210:
+FFE78210? 38800040  li      r4, 0x40
+FFE78214? 80A2FFD0  lwz     r5, -0x30(r2)                      ; TOC[-48] &data+648
+FFE78218? 90830004  stw     r4, 0x4(r3)
+FFE7821C? 80C50000  lwz     r6, 0x0(r5)
+FFE78220? 88E60018  lbz     r7, 0x18(r6)
+FFE78224? 2C070000  cmpwi   cr0, r7, 0x0
+FFE78228? 4182000C  beq     loc_FFE78234
+FFE7822C? 3980000B  li      r12, 0xB
+FFE78230? 48000008  b       loc_FFE78238
+loc_FFE78234:
+FFE78234? 3980000C  li      r12, 0xC
+loc_FFE78238:
+FFE78238? B1830000  sth     r12, 0x0(r3)
+FFE7823C? 38600000  li      r3, 0x0
+FFE78240? 4E800020  blr
+
+sub_FFE78244:
+FFE78244? 7D800026  mfcr    r12
+FFE78248? BF21FFE4  stmw    r25, -0x1C(r1)
+FFE7824C? 91810004  stw     r12, 0x4(r1)
+FFE78250? 9421FF68  stwu    r1, -0x98(r1)
+FFE78254? 8082FF88  lwz     r4, -0x78(r2)                      ; TOC[-120] &data+470
+FFE78258? 31210038  addic   r9, r1, 0x38
+FFE7825C? 7F2404AA  lswi    r25, r4, 0x20
+FFE78260? 7F2905AA  stswi   r25, r9, 0x20
+FFE78264? 8162FF7C  lwz     r11, -0x84(r2)                     ; TOC[-132] &data+140
+FFE78268? 30840020  addic   r4, r4, 0x20
+FFE7826C? 7F2404AA  lswi    r25, r4, 0x20
+FFE78270? 30890020  addic   r4, r9, 0x20
+FFE78274? 7F2405AA  stswi   r25, r4, 0x20
+FFE78278? 616C0000  ori     r12, r11, 0x0
+FFE7827C? 816C0000  lwz     r11, 0x0(r12)
+FFE78280? 38A0FFFF  li      r5, -0x1
+FFE78284? 7C0B2840  cmplw   r11, r5
+FFE78288? 81430000  lwz     r10, 0x0(r3)
+FFE7828C? 41820040  beq     loc_FFE782CC
+FFE78290? 7C0B5040  cmplw   r11, r10
+FFE78294? 41820028  beq     loc_FFE782BC
+FFE78298? 39000000  li      r8, 0x0
+loc_FFE7829C:
+FFE7829C? 4182001C  beq     loc_FFE782B8
+FFE782A0? 856C0038  lwzu    r11, 0x38(r12)
+FFE782A4? 38A0FFFF  li      r5, -0x1
+FFE782A8? 7C0B2840  cmplw   r11, r5
+FFE782AC? 418200E4  beq     loc_FFE78390
+FFE782B0? 7C0B5040  cmplw   r11, r10
+FFE782B4? 4BFFFFE8  b       loc_FFE7829C
+loc_FFE782B8:
+FFE782B8? 7D8C4014  addc    r12, r12, r8
+loc_FFE782BC:
+FFE782BC? 808C0000  lwz     r4, 0x0(r12)
+FFE782C0? 38A0FFFF  li      r5, -0x1
+FFE782C4? 7C042840  cmplw   r4, r5
+FFE782C8? 4082002C  bne     loc_FFE782F4
+loc_FFE782CC:
+FFE782CC? 38800000  li      r4, 0x0
+FFE782D0? 90830008  stw     r4, 0x8(r3)
+FFE782D4? 9083000C  stw     r4, 0xC(r3)
+FFE782D8? 90830010  stw     r4, 0x10(r3)
+FFE782DC? 3860FFCE  li      r3, -0x32
+FFE782E0? 8181009C  lwz     r12, 0x9C(r1)
+FFE782E4? 30210098  addic   r1, r1, 0x98
+FFE782E8? BB21FFE4  lmw     r25, -0x1C(r1)
+FFE782EC? 7D838120  mtcrf   0x38, r12
+FFE782F0? 4E800020  blr
+loc_FFE782F4:
+FFE782F4? 38800008  li      r4, 0x8
+FFE782F8? 7C8903A6  mtspr   CTR, r4
+FFE782FC? 3169FFF8  addic   r11, r9, -0x8
+FFE78300? 48000008  b       loc_FFE78308
+loc_FFE78304:
+FFE78304? 41820074  beq     loc_FFE78378
+loc_FFE78308:
+FFE78308? 848B0008  lwzu    r4, 0x8(r11)
+FFE7830C? 7C0A2040  cmplw   r10, r4
+FFE78310? 4200FFF4  bdnz    loc_FFE78304
+FFE78314? 41820064  beq     loc_FFE78378
+loc_FFE78318:
+FFE78318? 3C806465  lis     r4, 0x6465
+FFE7831C? 6084636C  ori     r4, r4, 0x636C
+FFE78320? 90830008  stw     r4, 0x8(r3)
+FFE78324? 38A00001  li      r5, 0x1
+FFE78328? 80C2FFD0  lwz     r6, -0x30(r2)                      ; TOC[-48] &data+648
+FFE7832C? 90A30010  stw     r5, 0x10(r3)
+FFE78330? 80E60000  lwz     r7, 0x0(r6)
+FFE78334? 812C0014  lwz     r9, 0x14(r12)
+FFE78338? 81070014  lwz     r8, 0x14(r7)
+FFE7833C? 7C094000  cmpw    r9, r8
+FFE78340? 40820020  bne     loc_FFE78360
+FFE78344? 38800003  li      r4, 0x3
+FFE78348? 90830010  stw     r4, 0x10(r3)
+FFE7834C? 88AC0019  lbz     r5, 0x19(r12)
+FFE78350? 2C050000  cmpwi   cr0, r5, 0x0
+FFE78354? 4182000C  beq     loc_FFE78360
+FFE78358? 38800007  li      r4, 0x7
+FFE7835C? 90830010  stw     r4, 0x10(r3)
+loc_FFE78360:
+FFE78360? 38600000  li      r3, 0x0
+FFE78364? 8181009C  lwz     r12, 0x9C(r1)
+FFE78368? 30210098  addic   r1, r1, 0x98
+FFE7836C? BB21FFE4  lmw     r25, -0x1C(r1)
+FFE78370? 7D838120  mtcrf   0x38, r12
+FFE78374? 4E800020  blr
+loc_FFE78378:
+FFE78378? 7C8902A6  mfspr   r4, CTR
+FFE7837C? 54841838  slwi    r4, r4, 3
+FFE78380? 7CA44810  subfc   r5, r4, r9
+FFE78384? 80C5003C  lwz     r6, 0x3C(r5)
+FFE78388? 90C3000C  stw     r6, 0xC(r3)
+FFE7838C? 4BFFFF8C  b       loc_FFE78318
+loc_FFE78390:
+FFE78390? 4BFFFF3C  b       loc_FFE782CC
+FFE78394? 8181009C  lwz     r12, 0x9C(r1)
+FFE78398? 30210098  addic   r1, r1, 0x98
+FFE7839C? BB21FFE4  lmw     r25, -0x1C(r1)
+FFE783A0? 7D838120  mtcrf   0x38, r12
+FFE783A4? 4E800020  blr
+
+sub_FFE783A8:
+FFE783A8? 8182FF9C  lwz     r12, -0x64(r2)                     ; TOC[-100] &data+5F0
+FFE783AC? 888C0004  lbz     r4, 0x4(r12)
+FFE783B0? 90830002  stw     r4, 0x2(r3)
+FFE783B4? 88AC0005  lbz     r5, 0x5(r12)
+FFE783B8? B0A30000  sth     r5, 0x0(r3)
+FFE783BC? 38600000  li      r3, 0x0
+FFE783C0? 4E800020  blr
+
+sub_FFE783C4:
+FFE783C4? 81430000  lwz     r10, 0x0(r3)
+FFE783C8? 8162FF7C  lwz     r11, -0x84(r2)                     ; TOC[-132] &data+140
+FFE783CC? 280A0000  cmplwi  cr0, r10, 0x0
+FFE783D0? 40820038  bne     loc_FFE78408
+FFE783D4? 8082FFD0  lwz     r4, -0x30(r2)                      ; TOC[-48] &data+648
+FFE783D8? 39400082  li      r10, 0x82
+FFE783DC? 80A40000  lwz     r5, 0x0(r4)
+FFE783E0? 80C50000  lwz     r6, 0x0(r5)
+FFE783E4? 90C30004  stw     r6, 0x4(r3)
+FFE783E8? A0E50004  lhz     r7, 0x4(r5)
+FFE783EC? 90E30008  stw     r7, 0x8(r3)
+FFE783F0? A1050006  lhz     r8, 0x6(r5)
+FFE783F4? 9103000C  stw     r8, 0xC(r3)
+FFE783F8? 81250014  lwz     r9, 0x14(r5)
+FFE783FC? 91230010  stw     r9, 0x10(r3)
+FFE78400? B1430014  sth     r10, 0x14(r3)
+FFE78404? 480000AC  b       loc_FFE784B0
+loc_FFE78408:
+FFE78408? 3880FFFE  li      r4, -0x2
+FFE7840C? 7C0A2040  cmplw   r10, r4
+FFE78410? 616C0000  ori     r12, r11, 0x0
+FFE78414? 4182005C  beq     loc_FFE78470
+FFE78418? 816B0000  lwz     r11, 0x0(r11)
+FFE7841C? 3880FFFF  li      r4, -0x1
+FFE78420? 7C0B2040  cmplw   r11, r4
+FFE78424? 41820040  beq     loc_FFE78464
+FFE78428? 7C0B5040  cmplw   r11, r10
+FFE7842C? 41820028  beq     loc_FFE78454
+FFE78430? 39200000  li      r9, 0x0
+loc_FFE78434:
+FFE78434? 4182001C  beq     loc_FFE78450
+FFE78438? 856C0038  lwzu    r11, 0x38(r12)
+FFE7843C? 38A0FFFF  li      r5, -0x1
+FFE78440? 7C0B2840  cmplw   r11, r5
+FFE78444? 41820074  beq     loc_FFE784B8
+FFE78448? 7C0B5040  cmplw   r11, r10
+FFE7844C? 4BFFFFE8  b       loc_FFE78434
+loc_FFE78450:
+FFE78450? 7D8C4814  addc    r12, r12, r9
+loc_FFE78454:
+FFE78454? 808C0000  lwz     r4, 0x0(r12)
+FFE78458? 38A0FFFF  li      r5, -0x1
+FFE7845C? 7C042840  cmplw   r4, r5
+FFE78460? 4082000C  bne     loc_FFE7846C
+loc_FFE78464:
+FFE78464? 3860FFCE  li      r3, -0x32
+FFE78468? 4E800020  blr
+loc_FFE7846C:
+FFE7846C? 318C0038  addic   r12, r12, 0x38
+loc_FFE78470:
+FFE78470? 816C0000  lwz     r11, 0x0(r12)
+FFE78474? 3880FFFF  li      r4, -0x1
+FFE78478? 7C0B2040  cmplw   r11, r4
+FFE7847C? 4182002C  beq     loc_FFE784A8
+FFE78480? 91630004  stw     r11, 0x4(r3)
+FFE78484? A08C0004  lhz     r4, 0x4(r12)
+FFE78488? 38E00082  li      r7, 0x82
+FFE7848C? 90830008  stw     r4, 0x8(r3)
+FFE78490? A0AC0006  lhz     r5, 0x6(r12)
+FFE78494? 90A3000C  stw     r5, 0xC(r3)
+FFE78498? 80CC0014  lwz     r6, 0x14(r12)
+FFE7849C? 90C30010  stw     r6, 0x10(r3)
+FFE784A0? B0E30014  sth     r7, 0x14(r3)
+FFE784A4? 4800000C  b       loc_FFE784B0
+loc_FFE784A8:
+FFE784A8? 3880FFFD  li      r4, -0x3
+FFE784AC? 90830004  stw     r4, 0x4(r3)
+loc_FFE784B0:
+FFE784B0? 38600000  li      r3, 0x0
+FFE784B4? 4E800020  blr
+loc_FFE784B8:
+FFE784B8? 4BFFFFAC  b       loc_FFE78464
+FFE784BC? 4E800020  blr
+
+sub_FFE784C0:
+FFE784C0? 8142FF7C  lwz     r10, -0x84(r2)                     ; TOC[-132] &data+140
+FFE784C4? 3880FFFF  li      r4, -0x1
+FFE784C8? 614C0000  ori     r12, r10, 0x0
+FFE784CC? 814C0000  lwz     r10, 0x0(r12)
+FFE784D0? 81630006  lwz     r11, 0x6(r3)
+FFE784D4? 7C0A2040  cmplw   r10, r4
+FFE784D8? 41820044  beq     loc_FFE7851C
+FFE784DC? 81230000  lwz     r9, 0x0(r3)
+FFE784E0? 7C0A4840  cmplw   r10, r9
+FFE784E4? 41820028  beq     loc_FFE7850C
+FFE784E8? 39000000  li      r8, 0x0
+loc_FFE784EC:
+FFE784EC? 4182001C  beq     loc_FFE78508
+FFE784F0? 854C0038  lwzu    r10, 0x38(r12)
+FFE784F4? 38A0FFFF  li      r5, -0x1
+FFE784F8? 7C0A2840  cmplw   r10, r5
+FFE784FC? 41820170  beq     loc_FFE7866C
+FFE78500? 7C0A4840  cmplw   r10, r9
+FFE78504? 4BFFFFE8  b       loc_FFE784EC
+loc_FFE78508:
+FFE78508? 7D886014  addc    r12, r8, r12
+loc_FFE7850C:
+FFE7850C? 808C0000  lwz     r4, 0x0(r12)
+FFE78510? 38A0FFFF  li      r5, -0x1
+FFE78514? 7C042840  cmplw   r4, r5
+FFE78518? 408200DC  bne     loc_FFE785F4
+loc_FFE7851C:
+FFE7851C? 3860FFCE  li      r3, -0x32
+FFE78520? 4E800020  blr
+loc_FFE78524:
+FFE78524? A08C0004  lhz     r4, 0x4(r12)
+FFE78528? 38A00008  li      r5, 0x8
+FFE7852C? 7C840734  extsh   r4, r4
+FFE78530? 54841838  slwi    r4, r4, 3
+FFE78534? 7C841E70  srawi   r4, r4, 0x3
+FFE78538? 7C840194  addze   r4, r4
+FFE7853C? 30840020  addic   r4, r4, 0x20
+FFE78540? B08B0004  sth     r4, 0x4(r11)
+FFE78544? B12B001E  sth     r9, 0x1E(r11)
+FFE78548? B0AB0020  sth     r5, 0x20(r11)
+FFE7854C? 38C00001  li      r6, 0x1
+FFE78550? B0CB0022  sth     r6, 0x22(r11)
+FFE78554? B0AB0024  sth     r5, 0x24(r11)
+FFE78558? 38E00000  li      r7, 0x0
+FFE7855C? 90E3000E  stw     r7, 0xE(r3)
+loc_FFE78560:
+FFE78560? 61230000  ori     r3, r9, 0x0
+FFE78564? 4E800020  blr
+loc_FFE78568:
+FFE78568? A08C0004  lhz     r4, 0x4(r12)
+FFE7856C? 38A00010  li      r5, 0x10
+FFE78570? 7C840734  extsh   r4, r4
+FFE78574? 54842036  slwi    r4, r4, 4
+FFE78578? 7C841E70  srawi   r4, r4, 0x3
+FFE7857C? 7C840194  addze   r4, r4
+FFE78580? 30840020  addic   r4, r4, 0x20
+FFE78584? B08B0004  sth     r4, 0x4(r11)
+FFE78588? B0AB001E  sth     r5, 0x1E(r11)
+FFE7858C? B0AB0020  sth     r5, 0x20(r11)
+FFE78590? 38C00003  li      r6, 0x3
+FFE78594? B0CB0022  sth     r6, 0x22(r11)
+FFE78598? 38E00005  li      r7, 0x5
+FFE7859C? B0EB0024  sth     r7, 0x24(r11)
+FFE785A0? 39000002  li      r8, 0x2
+FFE785A4? 9103000E  stw     r8, 0xE(r3)
+FFE785A8? 4BFFFFB8  b       loc_FFE78560
+loc_FFE785AC:
+FFE785AC? A08C0004  lhz     r4, 0x4(r12)
+FFE785B0? 38A00010  li      r5, 0x10
+FFE785B4? 7C840734  extsh   r4, r4
+FFE785B8? 54842834  slwi    r4, r4, 5
+FFE785BC? 7C841E70  srawi   r4, r4, 0x3
+FFE785C0? 7C840194  addze   r4, r4
+FFE785C4? 30840020  addic   r4, r4, 0x20
+FFE785C8? B08B0004  sth     r4, 0x4(r11)
+FFE785CC? B0AB001E  sth     r5, 0x1E(r11)
+FFE785D0? 38C00020  li      r6, 0x20
+FFE785D4? B0CB0020  sth     r6, 0x20(r11)
+FFE785D8? 38E00003  li      r7, 0x3
+FFE785DC? B0EB0022  sth     r7, 0x22(r11)
+FFE785E0? 39000008  li      r8, 0x8
+FFE785E4? B10B0024  sth     r8, 0x24(r11)
+FFE785E8? 38000002  li      r0, 0x2
+FFE785EC? 9003000E  stw     r0, 0xE(r3)
+FFE785F0? 4BFFFF70  b       loc_FFE78560
+loc_FFE785F4:
+FFE785F4? 38800001  li      r4, 0x1
+FFE785F8? 38A00000  li      r5, 0x0
+FFE785FC? 9083000A  stw     r4, 0xA(r3)
+FFE78600? 39200000  li      r9, 0x0
+FFE78604? 90AB0000  stw     r5, 0x0(r11)
+FFE78608? B12B0006  sth     r9, 0x6(r11)
+FFE7860C? B12B0008  sth     r9, 0x8(r11)
+FFE78610? A0EC0006  lhz     r7, 0x6(r12)
+FFE78614? 3C000048  lis     r0, 0x0048
+FFE78618? 7CE70734  extsh   r7, r7
+FFE7861C? B0EB000A  sth     r7, 0xA(r11)
+FFE78620? A10C0004  lhz     r8, 0x4(r12)
+FFE78624? 39400008  li      r10, 0x8
+FFE78628? 7D080734  extsh   r8, r8
+FFE7862C? B10B000C  sth     r8, 0xC(r11)
+FFE78630? B12B000E  sth     r9, 0xE(r11)
+FFE78634? B12B0010  sth     r9, 0x10(r11)
+FFE78638? 90AB0012  stw     r5, 0x12(r11)
+FFE7863C? 900B0016  stw     r0, 0x16(r11)
+FFE78640? 900B001A  stw     r0, 0x1A(r11)
+FFE78644? 90AB0026  stw     r5, 0x26(r11)
+FFE78648? A1030004  lhz     r8, 0x4(r3)
+FFE7864C? 2C080080  cmpwi   cr0, r8, 0x80
+FFE78650? 4182FED4  beq     loc_FFE78524
+FFE78654? 2C080081  cmpwi   cr0, r8, 0x81
+FFE78658? 4182FF10  beq     loc_FFE78568
+FFE7865C? 2C080082  cmpwi   cr0, r8, 0x82
+FFE78660? 4182FF4C  beq     loc_FFE785AC
+FFE78664? 3860FFCE  li      r3, -0x32
+FFE78668? 4E800020  blr
+loc_FFE7866C:
+FFE7866C? 4BFFFEB0  b       loc_FFE7851C
+FFE78670? 4E800020  blr
+
+sub_FFE78674:
+FFE78674? 7C0802A6  mfspr   r0, LR
+FFE78678? 90010008  stw     r0, 0x8(r1)
+FFE7867C? 9421FFC8  stwu    r1, -0x38(r1)
+FFE78680? 81230000  lwz     r9, 0x0(r3)
+FFE78684? 80E2FF80  lwz     r7, -0x80(r2)                      ; TOC[-128] &data+338
+FFE78688? 28090000  cmplwi  cr0, r9, 0x0
+FFE7868C? 390007D5  li      r8, 0x7D5
+FFE78690? 40820054  bne     loc_FFE786E4
+FFE78694? 80830004  lwz     r4, 0x4(r3)
+FFE78698? 280407D5  cmplwi  cr0, r4, 0x7D5
+FFE7869C? 40820034  bne     loc_FFE786D0
+FFE786A0? 3880010E  li      r4, 0x10E
+FFE786A4? 90830008  stw     r4, 0x8(r3)
+FFE786A8? 606C0000  ori     r12, r3, 0x0
+FFE786AC? 806C000C  lwz     r3, 0xC(r12)
+FFE786B0? 60E40000  ori     r4, r7, 0x0
+FFE786B4? 48001B5D  bl      glue_CStrCopy
+FFE786B8? 80410014  lwz     r2, 0x14(r1)
+loc_FFE786BC:
+FFE786BC? 38600000  li      r3, 0x0
+FFE786C0? 80010040  lwz     r0, 0x40(r1)
+FFE786C4? 30210038  addic   r1, r1, 0x38
+FFE786C8? 7C0803A6  mtspr   LR, r0
+FFE786CC? 4E800020  blr
+loc_FFE786D0:
+FFE786D0? 3860FFCE  li      r3, -0x32
+FFE786D4? 80010040  lwz     r0, 0x40(r1)
+FFE786D8? 30210038  addic   r1, r1, 0x38
+FFE786DC? 7C0803A6  mtspr   LR, r0
+FFE786E0? 4E800020  blr
+loc_FFE786E4:
+FFE786E4? 3880FFFE  li      r4, -0x2
+FFE786E8? 7C092040  cmplw   r9, r4
+FFE786EC? 40820028  bne     loc_FFE78714
+FFE786F0? 91030004  stw     r8, 0x4(r3)
+FFE786F4? 3880010E  li      r4, 0x10E
+FFE786F8? 90830008  stw     r4, 0x8(r3)
+FFE786FC? 606C0000  ori     r12, r3, 0x0
+FFE78700? 806C000C  lwz     r3, 0xC(r12)
+FFE78704? 60E40000  ori     r4, r7, 0x0
+FFE78708? 48001B09  bl      glue_CStrCopy
+FFE7870C? 80410014  lwz     r2, 0x14(r1)
+FFE78710? 4BFFFFAC  b       loc_FFE786BC
+loc_FFE78714:
+FFE78714? 280907D5  cmplwi  cr0, r9, 0x7D5
+FFE78718? 40820010  bne     loc_FFE78728
+FFE7871C? 3880FFFD  li      r4, -0x3
+FFE78720? 90830004  stw     r4, 0x4(r3)
+FFE78724? 4BFFFF98  b       loc_FFE786BC
+loc_FFE78728:
+FFE78728? 3860FFCE  li      r3, -0x32
+FFE7872C? 80010040  lwz     r0, 0x40(r1)
+FFE78730? 30210038  addic   r1, r1, 0x38
+FFE78734? 7C0803A6  mtspr   LR, r0
+FFE78738? 4E800020  blr
+
+sub_FFE7873C:
+FFE7873C? 80830000  lwz     r4, 0x0(r3)
+FFE78740? 280407D5  cmplwi  cr0, r4, 0x7D5
+FFE78744? 4182000C  beq     loc_FFE78750
+FFE78748? 3860FFCE  li      r3, -0x32
+FFE7874C? 4E800020  blr
+loc_FFE78750:
+FFE78750? 7C0802A6  mfspr   r0, LR
+FFE78754? 90010008  stw     r0, 0x8(r1)
+FFE78758? 9421FFC8  stwu    r1, -0x38(r1)
+FFE7875C? 80830004  lwz     r4, 0x4(r3)
+FFE78760? 2C040000  cmpwi   cr0, r4, 0x0
+FFE78764? 41820018  beq     loc_FFE7877C
+FFE78768? 8062FF80  lwz     r3, -0x80(r2)                      ; TOC[-128] &data+338
+FFE7876C? 38A0010E  li      r5, 0x10E
+FFE78770? 30630020  addic   r3, r3, 0x20
+FFE78774? 48001A0D  bl      glue_BlockCopy
+FFE78778? 80410014  lwz     r2, 0x14(r1)
+loc_FFE7877C:
+FFE7877C? 38600000  li      r3, 0x0
+FFE78780? 80010040  lwz     r0, 0x40(r1)
+FFE78784? 30210038  addic   r1, r1, 0x38
+FFE78788? 7C0803A6  mtspr   LR, r0
+FFE7878C? 4E800020  blr
+
+sub_FFE78790:
+FFE78790? 80830006  lwz     r4, 0x6(r3)
+FFE78794? 80E2FFB0  lwz     r7, -0x50(r2)                      ; TOC[-80] &data+604
+FFE78798? 28040000  cmplwi  cr0, r4, 0x0
+FFE7879C? 8102FF9C  lwz     r8, -0x64(r2)                      ; TOC[-100] &data+5F0
+FFE787A0? 8162FF7C  lwz     r11, -0x84(r2)                     ; TOC[-132] &data+140
+FFE787A4? 39200000  li      r9, 0x0
+FFE787A8? 4182000C  beq     loc_FFE787B4
+FFE787AC? 3860FFCE  li      r3, -0x32
+FFE787B0? 4E800020  blr
+loc_FFE787B4:
+FFE787B4? 81430000  lwz     r10, 0x0(r3)
+FFE787B8? 3880FFFF  li      r4, -0x1
+FFE787BC? 7C0A2040  cmplw   r10, r4
+FFE787C0? 40820070  bne     loc_FFE78830
+FFE787C4? 8082FFD0  lwz     r4, -0x30(r2)                      ; TOC[-48] &data+648
+FFE787C8? 39800000  li      r12, 0x0
+FFE787CC? 81640000  lwz     r11, 0x0(r4)
+FFE787D0? 88AB001A  lbz     r5, 0x1A(r11)
+FFE787D4? 2C050000  cmpwi   cr0, r5, 0x0
+FFE787D8? 4182000C  beq     loc_FFE787E4
+FFE787DC? 9123000A  stw     r9, 0xA(r3)
+FFE787E0? 48000030  b       loc_FFE78810
+loc_FFE787E4:
+FFE787E4? 88880006  lbz     r4, 0x6(r8)
+FFE787E8? 2C040000  cmpwi   cr0, r4, 0x0
+FFE787EC? 41820008  beq     loc_FFE787F4
+FFE787F0? 39800001  li      r12, 0x1
+loc_FFE787F4:
+FFE787F4? 88880007  lbz     r4, 0x7(r8)
+FFE787F8? 2C040000  cmpwi   cr0, r4, 0x0
+FFE787FC? 41820014  beq     loc_FFE78810
+FFE78800? 80870000  lwz     r4, 0x0(r7)
+FFE78804? 28040008  cmplwi  cr0, r4, 0x8
+FFE78808? 41820008  beq     loc_FFE78810
+FFE7880C? 618C0002  ori     r12, r12, 0x2
+loc_FFE78810:
+FFE78810? 808B0000  lwz     r4, 0x0(r11)
+FFE78814? 90830000  stw     r4, 0x0(r3)
+FFE78818? 80A70000  lwz     r5, 0x0(r7)
+FFE7881C? 54A5E13E  srwi    r5, r5, 4
+FFE78820? 30A50080  addic   r5, r5, 0x80
+FFE78824? B0A30004  sth     r5, 0x4(r3)
+FFE78828? 9183000A  stw     r12, 0xA(r3)
+FFE7882C? 480000B8  b       loc_FFE788E4
+loc_FFE78830:
+FFE78830? 616C0000  ori     r12, r11, 0x0
+FFE78834? 816C0000  lwz     r11, 0x0(r12)
+FFE78838? 3880FFFF  li      r4, -0x1
+FFE7883C? 7C0B2040  cmplw   r11, r4
+FFE78840? 41820040  beq     loc_FFE78880
+FFE78844? 7C0B5040  cmplw   r11, r10
+FFE78848? 41820028  beq     loc_FFE78870
+FFE7884C? 39000000  li      r8, 0x0
+loc_FFE78850:
+FFE78850? 4182001C  beq     loc_FFE7886C
+FFE78854? 856C0038  lwzu    r11, 0x38(r12)
+FFE78858? 38A0FFFF  li      r5, -0x1
+FFE7885C? 7C0B2840  cmplw   r11, r5
+FFE78860? 4182008C  beq     loc_FFE788EC
+FFE78864? 7C0B5040  cmplw   r11, r10
+FFE78868? 4BFFFFE8  b       loc_FFE78850
+loc_FFE7886C:
+FFE7886C? 7D8C4014  addc    r12, r12, r8
+loc_FFE78870:
+FFE78870? 808C0000  lwz     r4, 0x0(r12)
+FFE78874? 38A0FFFF  li      r5, -0x1
+FFE78878? 7C042840  cmplw   r4, r5
+FFE7887C? 4082000C  bne     loc_FFE78888
+loc_FFE78880:
+FFE78880? 3860FFCE  li      r3, -0x32
+FFE78884? 4E800020  blr
+loc_FFE78888:
+FFE78888? A1630004  lhz     r11, 0x4(r3)
+FFE7888C? 2F0B0080  cmpwi   cr6, r11, 0x80
+FFE78890? 4198000C  blt     cr6, loc_FFE7889C
+FFE78894? 2F8B0082  cmpwi   cr7, r11, 0x82
+FFE78898? 409D000C  ble     cr7, loc_FFE788A4
+loc_FFE7889C:
+FFE7889C? 3860FFCE  li      r3, -0x32
+FFE788A0? 4E800020  blr
+loc_FFE788A4:
+FFE788A4? 888C001A  lbz     r4, 0x1A(r12)
+FFE788A8? 2C040000  cmpwi   cr0, r4, 0x0
+FFE788AC? 41820018  beq     loc_FFE788C4
+FFE788B0? 9123000A  stw     r9, 0xA(r3)
+FFE788B4? 48000030  b       loc_FFE788E4
+loc_FFE788B8:
+FFE788B8? 38800003  li      r4, 0x3
+FFE788BC? 9083000A  stw     r4, 0xA(r3)
+FFE788C0? 48000024  b       loc_FFE788E4
+loc_FFE788C4:
+FFE788C4? 419A0018  beq     cr6, loc_FFE788DC
+FFE788C8? 2C0B0081  cmpwi   cr0, r11, 0x81
+FFE788CC? 4182FFEC  beq     loc_FFE788B8
+FFE788D0? 419EFFE8  beq     cr7, loc_FFE788B8
+FFE788D4? 3860FFCE  li      r3, -0x32
+FFE788D8? 4E800020  blr
+loc_FFE788DC:
+FFE788DC? 38800001  li      r4, 0x1
+FFE788E0? 9083000A  stw     r4, 0xA(r3)
+loc_FFE788E4:
+FFE788E4? 38600000  li      r3, 0x0
+FFE788E8? 4E800020  blr
+loc_FFE788EC:
+FFE788EC? 4BFFFF94  b       loc_FFE78880
+FFE788F0? 4E800020  blr
+
+sub_FFE788F4:
+FFE788F4? 7C0802A6  mfspr   r0, LR
+FFE788F8? 90010008  stw     r0, 0x8(r1)
+FFE788FC? 9421FFC8  stwu    r1, -0x38(r1)
+FFE78900? A8A4001A  lha     r5, 0x1A(r4)
+FFE78904? 8102FFB0  lwz     r8, -0x50(r2)                      ; TOC[-80] &data+604
+FFE78908? 30A5FFFE  addic   r5, r5, -0x2
+FFE7890C? 28050016  cmplwi  cr0, r5, 0x16
+FFE78910? 8122FFA4  lwz     r9, -0x5C(r2)                      ; TOC[-92] &data+5FC
+FFE78914? 8064001C  lwz     r3, 0x1C(r4)
+FFE78918? 8142FF60  lwz     r10, -0xA0(r2)                     ; TOC[-160] &code+2184
+FFE7891C? 41810244  bgt     loc_FFE78B60
+FFE78920? 54AB103A  slwi    r11, r5, 2
+FFE78924? 7D6A582E  lwzx    r11, r10, r11
+FFE78928? 7D6A5814  addc    r11, r10, r11
+FFE7892C? 7D6803A6  mtspr   LR, r11
+FFE78930? 4E800020  blr
+FFE78934? 80880000  lwz     r4, 0x0(r8)
+FFE78938? 38A00000  li      r5, 0x0
+FFE7893C? 5484E13E  srwi    r4, r4, 4
+FFE78940? 30840080  addic   r4, r4, 0x80
+FFE78944? B0830000  sth     r4, 0x0(r3)
+FFE78948? B0A30006  sth     r5, 0x6(r3)
+FFE7894C? 80C90000  lwz     r6, 0x0(r9)
+FFE78950? 90C30008  stw     r6, 0x8(r3)
+FFE78954? 60A30000  ori     r3, r5, 0x0
+FFE78958? 4800020C  b       loc_FFE78B64
+FFE7895C? 606C0000  ori     r12, r3, 0x0
+FFE78960? A86C0004  lha     r3, 0x4(r12)
+FFE78964? A88C0006  lha     r4, 0x6(r12)
+FFE78968? 80AC0000  lwz     r5, 0x0(r12)
+FFE7896C? 5463043E  clrlwi  r3, r3, 16
+FFE78970? 5484043E  clrlwi  r4, r4, 16
+FFE78974? 4800127D  bl      sub_FFE79BF0
+FFE78978? 60000000  nop
+FFE7897C? 38600000  li      r3, 0x0
+FFE78980? 480001E4  b       loc_FFE78B64
+FFE78984? 38800001  li      r4, 0x1
+FFE78988? B0830006  sth     r4, 0x6(r3)
+FFE7898C? 38600000  li      r3, 0x0
+FFE78990? 480001D4  b       loc_FFE78B64
+FFE78994? A8830006  lha     r4, 0x6(r3)
+FFE78998? 2C040000  cmpwi   cr0, r4, 0x0
+FFE7899C? 40820014  bne     loc_FFE789B0
+FFE789A0? 80890000  lwz     r4, 0x0(r9)
+FFE789A4? 90830008  stw     r4, 0x8(r3)
+FFE789A8? 38600000  li      r3, 0x0
+FFE789AC? 48000008  b       loc_FFE789B4
+loc_FFE789B0:
+FFE789B0? 3860FFCE  li      r3, -0x32
+loc_FFE789B4:
+FFE789B4? 480001B0  b       loc_FFE78B64
+FFE789B8? 8082FFF4  lwz     r4, -0xC(r2)                       ; TOC[-12] &data+65D
+FFE789BC? 88A40000  lbz     r5, 0x0(r4)
+FFE789C0? 98A30000  stb     r5, 0x0(r3)
+FFE789C4? 38600000  li      r3, 0x0
+FFE789C8? 4800019C  b       loc_FFE78B64
+FFE789CC? 8082FFF8  lwz     r4, -0x8(r2)                       ; TOC[-8] &data+65E
+FFE789D0? 88A40000  lbz     r5, 0x0(r4)
+FFE789D4? 98A30000  stb     r5, 0x0(r3)
+FFE789D8? 38600000  li      r3, 0x0
+FFE789DC? 48000188  b       loc_FFE78B64
+FFE789E0? 8082FFC4  lwz     r4, -0x3C(r2)                      ; TOC[-60] &data+63C
+FFE789E4? 80A40000  lwz     r5, 0x0(r4)
+FFE789E8? 90A30000  stw     r5, 0x0(r3)
+FFE789EC? 38600000  li      r3, 0x0
+FFE789F0? 48000174  b       loc_FFE78B64
+FFE789F4? 3860FFEE  li      r3, -0x12
+FFE789F8? 4800016C  b       loc_FFE78B64
+FFE789FC? 80880000  lwz     r4, 0x0(r8)
+FFE78A00? 80A2FFD0  lwz     r5, -0x30(r2)                      ; TOC[-48] &data+648
+FFE78A04? 5484E13E  srwi    r4, r4, 4
+FFE78A08? 30840080  addic   r4, r4, 0x80
+FFE78A0C? B0830000  sth     r4, 0x0(r3)
+FFE78A10? 80C50000  lwz     r6, 0x0(r5)
+FFE78A14? 39400000  li      r10, 0x0
+FFE78A18? 80E60000  lwz     r7, 0x0(r6)
+FFE78A1C? 39800000  li      r12, 0x0
+FFE78A20? 90E30002  stw     r7, 0x2(r3)
+FFE78A24? B1430006  sth     r10, 0x6(r3)
+FFE78A28? 81690000  lwz     r11, 0x0(r9)
+FFE78A2C? 91630008  stw     r11, 0x8(r3)
+FFE78A30? 9183000C  stw     r12, 0xC(r3)
+FFE78A34? 38600000  li      r3, 0x0
+FFE78A38? 4800012C  b       loc_FFE78B64
+loc_FFE78A3C:
+FFE78A3C? 39000000  li      r8, 0x0
+FFE78A40? 61090000  ori     r9, r8, 0x0
+FFE78A44? 48000028  b       loc_FFE78A6C
+FFE78A48? 89230000  lbz     r9, 0x0(r3)
+FFE78A4C? 2C0900FF  cmpwi   cr0, r9, 0xFF
+FFE78A50? 41820014  beq     loc_FFE78A64
+FFE78A54? 2C090000  cmpwi   cr0, r9, 0x0
+FFE78A58? 4182FFE4  beq     loc_FFE78A3C
+FFE78A5C? 3860FFCE  li      r3, -0x32
+FFE78A60? 48000044  b       loc_FFE78AA4
+loc_FFE78A64:
+FFE78A64? 39000001  li      r8, 0x1
+FFE78A68? 39200000  li      r9, 0x0
+loc_FFE78A6C:
+FFE78A6C? 99230001  stb     r9, 0x1(r3)
+FFE78A70? 2C080000  cmpwi   cr0, r8, 0x0
+FFE78A74? 41820010  beq     loc_FFE78A84
+FFE78A78? 38800047  li      r4, 0x47
+FFE78A7C? 98830000  stb     r4, 0x0(r3)
+FFE78A80? 48000020  b       loc_FFE78AA0
+loc_FFE78A84:
+FFE78A84? 8082FFF0  lwz     r4, -0x10(r2)                      ; TOC[-16] &data+65C
+FFE78A88? 99230000  stb     r9, 0x0(r3)
+FFE78A8C? 88A40000  lbz     r5, 0x0(r4)
+FFE78A90? 2C050000  cmpwi   cr0, r5, 0x0
+FFE78A94? 4182000C  beq     loc_FFE78AA0
+FFE78A98? 38800007  li      r4, 0x7
+FFE78A9C? 98830000  stb     r4, 0x0(r3)
+loc_FFE78AA0:
+FFE78AA0? 38600000  li      r3, 0x0
+loc_FFE78AA4:
+FFE78AA4? 480000C0  b       loc_FFE78B64
+FFE78AA8? 4BFFF769  bl      sub_FFE78210
+FFE78AAC? 80010040  lwz     r0, 0x40(r1)
+FFE78AB0? 30210038  addic   r1, r1, 0x38
+FFE78AB4? 7C0803A6  mtspr   LR, r0
+FFE78AB8? 4E800020  blr
+FFE78ABC? 4BFFF789  bl      sub_FFE78244
+FFE78AC0? 80010040  lwz     r0, 0x40(r1)
+FFE78AC4? 30210038  addic   r1, r1, 0x38
+FFE78AC8? 7C0803A6  mtspr   LR, r0
+FFE78ACC? 4E800020  blr
+FFE78AD0? 4BFFF8D9  bl      sub_FFE783A8
+FFE78AD4? 80010040  lwz     r0, 0x40(r1)
+FFE78AD8? 30210038  addic   r1, r1, 0x38
+FFE78ADC? 7C0803A6  mtspr   LR, r0
+FFE78AE0? 4E800020  blr
+FFE78AE4? 4BFFF8E1  bl      sub_FFE783C4
+FFE78AE8? 80010040  lwz     r0, 0x40(r1)
+FFE78AEC? 30210038  addic   r1, r1, 0x38
+FFE78AF0? 7C0803A6  mtspr   LR, r0
+FFE78AF4? 4E800020  blr
+FFE78AF8? 4BFFF9C9  bl      sub_FFE784C0
+FFE78AFC? 80010040  lwz     r0, 0x40(r1)
+FFE78B00? 30210038  addic   r1, r1, 0x38
+FFE78B04? 7C0803A6  mtspr   LR, r0
+FFE78B08? 4E800020  blr
+FFE78B0C? 4BFFFB69  bl      sub_FFE78674
+FFE78B10? 80010040  lwz     r0, 0x40(r1)
+FFE78B14? 30210038  addic   r1, r1, 0x38
+FFE78B18? 7C0803A6  mtspr   LR, r0
+FFE78B1C? 4E800020  blr
+FFE78B20? 4BFFFC1D  bl      sub_FFE7873C
+FFE78B24? 80010040  lwz     r0, 0x40(r1)
+FFE78B28? 30210038  addic   r1, r1, 0x38
+FFE78B2C? 7C0803A6  mtspr   LR, r0
+FFE78B30? 4E800020  blr
+FFE78B34? 38800000  li      r4, 0x0
+FFE78B38? 90830000  stw     r4, 0x0(r3)
+FFE78B3C? 38600000  li      r3, 0x0
+FFE78B40? 48000024  b       loc_FFE78B64
+FFE78B44? 3860FFEE  li      r3, -0x12
+FFE78B48? 4800001C  b       loc_FFE78B64
+FFE78B4C? 4BFFFC45  bl      sub_FFE78790
+FFE78B50? 80010040  lwz     r0, 0x40(r1)
+FFE78B54? 30210038  addic   r1, r1, 0x38
+FFE78B58? 7C0803A6  mtspr   LR, r0
+FFE78B5C? 4E800020  blr
+loc_FFE78B60:
+FFE78B60? 3860FFEE  li      r3, -0x12
+loc_FFE78B64:
+FFE78B64? 80010040  lwz     r0, 0x40(r1)
+FFE78B68? 30210038  addic   r1, r1, 0x38
+FFE78B6C? 7C0803A6  mtspr   LR, r0
+FFE78B70? 4E800020  blr
+FFE78B74d FFFFFDC0  .long   0xFFFFFDC0                         ; -> 68k emulator opcode dispatch table
+FFE78B78d FFFFFDE8  .long   0xFFFFFDE8                         ; -> 68k emulator opcode dispatch table
+FFE78B7Cd FFFFFE10  .long   0xFFFFFE10                         ; -> 68k emulator opcode dispatch table
+FFE78B80d FFFFFE20  .long   0xFFFFFE20                         ; -> 68k emulator opcode dispatch table
+FFE78B84d FFFFFE44  .long   0xFFFFFE44                         ; -> 68k emulator opcode dispatch table
+FFE78B88d FFFFFE58  .long   0xFFFFFE58                         ; -> 68k emulator opcode dispatch table
+FFE78B8Cd FFFFFE6C  .long   0xFFFFFE6C                         ; -> 68k emulator opcode dispatch table
+FFE78B90d FFFFFE80  .long   0xFFFFFE80                         ; -> 68k emulator opcode dispatch table
+FFE78B94d FFFFFE88  .long   0xFFFFFE88                         ; -> 68k emulator opcode dispatch table
+FFE78B98d FFFFFED4  .long   0xFFFFFED4                         ; -> 68k emulator opcode dispatch table
+FFE78B9Cd FFFFFF34  .long   0xFFFFFF34                         ; -> 68k emulator opcode dispatch table
+FFE78BA0d FFFFFF48  .long   0xFFFFFF48                         ; -> 68k emulator opcode dispatch table
+FFE78BA4d FFFFFFEC  .long   0xFFFFFFEC                         ; -> 68k emulator opcode dispatch table
+FFE78BA8d FFFFFFEC  .long   0xFFFFFFEC                         ; -> 68k emulator opcode dispatch table
+FFE78BACd FFFFFF5C  .long   0xFFFFFF5C                         ; -> 68k emulator opcode dispatch table
+FFE78BB0d FFFFFF70  .long   0xFFFFFF70                         ; -> 68k emulator opcode dispatch table
+FFE78BB4d FFFFFF84  .long   0xFFFFFF84                         ; -> 68k emulator opcode dispatch table
+FFE78BB8d FFFFFFEC  .long   0xFFFFFFEC                         ; -> 68k emulator opcode dispatch table
+FFE78BBCd FFFFFF98  .long   0xFFFFFF98                         ; -> 68k emulator opcode dispatch table
+FFE78BC0d FFFFFFAC  .long   0xFFFFFFAC                         ; -> 68k emulator opcode dispatch table
+FFE78BC4d FFFFFFC0  .long   0xFFFFFFC0                         ; -> 68k emulator opcode dispatch table
+FFE78BC8d FFFFFFD0  .long   0xFFFFFFD0                         ; -> 68k emulator opcode dispatch table
+FFE78BCCd FFFFFFD8  .long   0xFFFFFFD8                         ; -> 68k emulator opcode dispatch table
+FFE78BD0d FFFFFFEC  .long   0xFFFFFFEC                         ; -> 68k emulator opcode dispatch table
+
+sub_FFE78BD4:
+FFE78BD4? 7C0802A6  mfspr   r0, LR
+FFE78BD8? BEE1FFDC  stmw    r23, -0x24(r1)
+FFE78BDC? 90010008  stw     r0, 0x8(r1)
+FFE78BE0? 9421FF50  stwu    r1, -0xB0(r1)
+FFE78BE4? 607C0000  ori     r28, r3, 0x0
+FFE78BE8? 3321004C  addic   r25, r1, 0x4C
+FFE78BEC? 609E0000  ori     r30, r4, 0x0
+FFE78BF0? 63230000  ori     r3, r25, 0x0
+FFE78BF4? 32E10038  addic   r23, r1, 0x38
+FFE78BF8? 3301003C  addic   r24, r1, 0x3C
+FFE78BFC? 33410054  addic   r26, r1, 0x54
+FFE78C00? 33A10084  addic   r29, r1, 0x84
+FFE78C04? 3B600000  li      r27, 0x0
+FFE78C08? 48001621  bl      glue_RegistryEntryIterateCreate
+FFE78C0C? 80410014  lwz     r2, 0x14(r1)
+FFE78C10? 607F0000  ori     r31, r3, 0x0
+FFE78C14? 2F1F0000  cmpwi   cr6, r31, 0x0
+loc_FFE78C18:
+FFE78C18? 409A00AC  bne     cr6, loc_FFE78CC4
+FFE78C1C? 9B7D0000  stb     r27, 0x0(r29)
+FFE78C20? 63C50000  ori     r5, r30, 0x0
+FFE78C24? 63230000  ori     r3, r25, 0x0
+FFE78C28? 63A60000  ori     r6, r29, 0x0
+FFE78C2C? 38800001  li      r4, 0x1
+FFE78C30? 48001611  bl      glue_RegistryEntryIterate
+FFE78C34? 80410014  lwz     r2, 0x14(r1)
+FFE78C38? 881D0000  lbz     r0, 0x0(r29)
+FFE78C3C? 607F0000  ori     r31, r3, 0x0
+FFE78C40? 2C000000  cmpwi   cr0, r0, 0x0
+FFE78C44? 40820084  bne     loc_FFE78CC8
+FFE78C48? 38C00000  li      r6, 0x0
+FFE78C4C? 98DA0000  stb     r6, 0x0(r26)
+FFE78C50? 63C30000  ori     r3, r30, 0x0
+FFE78C54? 63040000  ori     r4, r24, 0x0
+FFE78C58? 63450000  ori     r5, r26, 0x0
+FFE78C5C? 62E60000  ori     r6, r23, 0x0
+FFE78C60? 480015F9  bl      glue_RegistryCStrEntryToName
+FFE78C64? 80410014  lwz     r2, 0x14(r1)
+FFE78C68? 607F0000  ori     r31, r3, 0x0
+FFE78C6C? 2C1F0000  cmpwi   cr0, r31, 0x0
+FFE78C70? 4082001C  bne     loc_FFE78C8C
+FFE78C74? 63840000  ori     r4, r28, 0x0
+FFE78C78? 63430000  ori     r3, r26, 0x0
+FFE78C7C? 480015F5  bl      glue_CStrCmp
+FFE78C80? 80410014  lwz     r2, 0x14(r1)
+FFE78C84? 2C030000  cmpwi   cr0, r3, 0x0
+FFE78C88? 41820044  beq     loc_FFE78CCC
+loc_FFE78C8C:
+FFE78C8C? 88DD0000  lbz     r6, 0x0(r29)
+FFE78C90? 2C060000  cmpwi   cr0, r6, 0x0
+FFE78C94? 4082000C  bne     loc_FFE78CA0
+FFE78C98? 2F1F0000  cmpwi   cr6, r31, 0x0
+FFE78C9C? 4BFFFF7C  b       loc_FFE78C18
+loc_FFE78CA0:
+FFE78CA0? 63230000  ori     r3, r25, 0x0
+FFE78CA4? 480015E5  bl      glue_RegistryEntryIterateDispose
+FFE78CA8? 80410014  lwz     r2, 0x14(r1)
+FFE78CAC? 63E30000  ori     r3, r31, 0x0
+FFE78CB0? 800100B8  lwz     r0, 0xB8(r1)
+FFE78CB4? 302100B0  addic   r1, r1, 0xB0
+FFE78CB8? 7C0803A6  mtspr   LR, r0
+FFE78CBC? BAE1FFDC  lmw     r23, -0x24(r1)
+FFE78CC0? 4E800020  blr
+loc_FFE78CC4:
+FFE78CC4? 4BFFFFDC  b       loc_FFE78CA0
+loc_FFE78CC8:
+FFE78CC8? 4BFFFFD8  b       loc_FFE78CA0
+loc_FFE78CCC:
+FFE78CCC? 4BFFFFD4  b       loc_FFE78CA0
+FFE78CD0? 800100B8  lwz     r0, 0xB8(r1)
+FFE78CD4? 302100B0  addic   r1, r1, 0xB0
+FFE78CD8? 7C0803A6  mtspr   LR, r0
+FFE78CDC? BAE1FFDC  lmw     r23, -0x24(r1)
+FFE78CE0? 4E800020  blr
+
+sub_FFE78CE4:
+FFE78CE4? 7C0802A6  mfspr   r0, LR
+FFE78CE8? BE81FFD0  stmw    r20, -0x30(r1)
+FFE78CEC? 90010008  stw     r0, 0x8(r1)
+FFE78CF0? 9421F758  stwu    r1, -0x8A8(r1)
+FFE78CF4? 83E2FFB8  lwz     r31, -0x48(r2)                     ; TOC[-72] &data+620
+FFE78CF8? 30640002  addic   r3, r4, 0x2
+FFE78CFC? 8342FF84  lwz     r26, -0x7C(r2)                     ; TOC[-124] &data+468
+FFE78D00? 82C2FFA8  lwz     r22, -0x58(r2)                     ; TOC[-88] &data+600
+FFE78D04? 33C1086C  addic   r30, r1, 0x86C
+FFE78D08? 33210840  addic   r25, r1, 0x840
+FFE78D0C? 63E40000  ori     r4, r31, 0x0
+FFE78D10? 3A800008  li      r20, 0x8
+FFE78D14? 32A10038  addic   r21, r1, 0x38
+FFE78D18? 32E10838  addic   r23, r1, 0x838
+FFE78D1C? 3301083C  addic   r24, r1, 0x83C
+FFE78D20? 33610848  addic   r27, r1, 0x848
+FFE78D24? 3381084C  addic   r28, r1, 0x84C
+FFE78D28? 33A1085C  addic   r29, r1, 0x85C
+FFE78D2C? 48001395  bl      glue_RegistryEntryIDCopy
+FFE78D30? 80410014  lwz     r2, 0x14(r1)
+FFE78D34? 929E0000  stw     r20, 0x0(r30)
+FFE78D38? 809A0000  lwz     r4, 0x0(r26)
+FFE78D3C? 63E30000  ori     r3, r31, 0x0
+FFE78D40? 63250000  ori     r5, r25, 0x0
+FFE78D44? 63C60000  ori     r6, r30, 0x0
+FFE78D48? 48001421  bl      glue_RegistryPropertyGet
+FFE78D4C? 80410014  lwz     r2, 0x14(r1)
+FFE78D50? 60690000  ori     r9, r3, 0x0
+FFE78D54? 2C090000  cmpwi   cr0, r9, 0x0
+FFE78D58? 40820038  bne     loc_FFE78D90
+FFE78D5C? 807E0000  lwz     r3, 0x0(r30)
+FFE78D60? 28030008  cmplwi  cr0, r3, 0x8
+FFE78D64? 40820014  bne     loc_FFE78D78
+FFE78D68? 7C7944AA  lswi    r3, r25, 0x8
+FFE78D6C? 80A2FF9C  lwz     r5, -0x64(r2)                      ; TOC[-100] &data+5F0
+FFE78D70? 7C6545AA  stswi   r3, r5, 0x8
+FFE78D74? 4800001C  b       loc_FFE78D90
+loc_FFE78D78:
+FFE78D78? 2C090000  cmpwi   cr0, r9, 0x0
+FFE78D7C? 40820014  bne     loc_FFE78D90
+FFE78D80? 809A0000  lwz     r4, 0x0(r26)
+FFE78D84? 63E30000  ori     r3, r31, 0x0
+FFE78D88? 48001321  bl      glue_RegistryPropertyDelete
+FFE78D8C? 80410014  lwz     r2, 0x14(r1)
+loc_FFE78D90:
+FFE78D90? 38800004  li      r4, 0x4
+FFE78D94? 90980000  stw     r4, 0x0(r24)
+FFE78D98? 83C2FF68  lwz     r30, -0x98(r2)                     ; TOC[-152] &data+540
+FFE78D9C? 63A40000  ori     r4, r29, 0x0
+FFE78DA0? 307E0068  addic   r3, r30, 0x68
+FFE78DA4? 4BFFFE31  bl      sub_FFE78BD4
+FFE78DA8? 63A30000  ori     r3, r29, 0x0
+FFE78DAC? 309E006C  addic   r4, r30, 0x6C
+FFE78DB0? 62E50000  ori     r5, r23, 0x0
+FFE78DB4? 63060000  ori     r6, r24, 0x0
+FFE78DB8? 480013B1  bl      glue_RegistryPropertyGet
+FFE78DBC? 80410014  lwz     r2, 0x14(r1)
+FFE78DC0? 63A30000  ori     r3, r29, 0x0
+FFE78DC4? 4800132D  bl      glue_RegistryEntryIDDispose
+FFE78DC8? 80410014  lwz     r2, 0x14(r1)
+FFE78DCC? 3C000001  lis     r0, 0x0001
+FFE78DD0? 81970000  lwz     r12, 0x0(r23)
+FFE78DD4? 8162FFFC  lwz     r11, -0x4(r2)                      ; TOC[-4] &data+660
+FFE78DD8? 6000C000  ori     r0, r0, 0xC000
+FFE78DDC? 7C0C0014  addc    r0, r12, r0
+FFE78DE0? 900B0000  stw     r0, 0x0(r11)
+FFE78DE4? 307E007C  addic   r3, r30, 0x7C
+FFE78DE8? 63840000  ori     r4, r28, 0x0
+FFE78DEC? 4BFFFDE9  bl      sub_FFE78BD4
+FFE78DF0? 63830000  ori     r3, r28, 0x0
+FFE78DF4? 63650000  ori     r5, r27, 0x0
+FFE78DF8? 38800018  li      r4, 0x18
+FFE78DFC? 480013B5  bl      glue_ExpMgrConfigReadLong
+FFE78E00? 80410014  lwz     r2, 0x14(r1)
+FFE78E04? 607E0000  ori     r30, r3, 0x0
+FFE78E08? 63830000  ori     r3, r28, 0x0
+FFE78E0C? 480012E5  bl      glue_RegistryEntryIDDispose
+FFE78E10? 80410014  lwz     r2, 0x14(r1)
+FFE78E14? 2C1E0000  cmpwi   cr0, r30, 0x0
+FFE78E18? 4182001C  beq     loc_FFE78E34
+FFE78E1C? 63C30000  ori     r3, r30, 0x0
+FFE78E20? 800108B0  lwz     r0, 0x8B0(r1)
+FFE78E24? 302108A8  addic   r1, r1, 0x8A8
+FFE78E28? 7C0803A6  mtspr   LR, r0
+FFE78E2C? BA81FFD0  lmw     r20, -0x30(r1)
+FFE78E30? 4E800020  blr
+loc_FFE78E34:
+FFE78E34? 809B0000  lwz     r4, 0x0(r27)
+FFE78E38? 8142FF8C  lwz     r10, -0x74(r2)                     ; TOC[-116] &data+4B0
+FFE78E3C? 648400C0  oris    r4, r4, 0xC0
+FFE78E40? 30A40C20  addic   r5, r4, 0xC20
+FFE78E44? 90BB0000  stw     r5, 0x0(r27)
+FFE78E48? 80C2FFA4  lwz     r6, -0x5C(r2)                      ; TOC[-92] &data+5FC
+FFE78E4C? 30840C20  addic   r4, r4, 0xC20
+FFE78E50? 90860000  stw     r4, 0x0(r6)
+FFE78E54? 38800000  li      r4, 0x0
+FFE78E58? 98960000  stb     r4, 0x0(r22)
+FFE78E5C? 80E2FFF8  lwz     r7, -0x8(r2)                       ; TOC[-8] &data+65E
+FFE78E60? 39000001  li      r8, 0x1
+FFE78E64? 99070000  stb     r8, 0x0(r7)
+FFE78E68? 80AA0000  lwz     r5, 0x0(r10)
+FFE78E6C? 38600088  li      r3, 0x88
+FFE78E70? 38800061  li      r4, 0x61
+FFE78E74? 3BC00000  li      r30, 0x0
+FFE78E78? 48001171  bl      sub_FFE79FE8
+FFE78E7C? 60000000  nop
+FFE78E80? 38600097  li      r3, 0x97
+FFE78E84? 38800000  li      r4, 0x0
+FFE78E88? 4800113D  bl      sub_FFE79FC4
+FFE78E8C? 60000000  nop
+FFE78E90? 38600000  li      r3, 0x0
+FFE78E94? 60640000  ori     r4, r3, 0x0
+FFE78E98? 9BD60000  stb     r30, 0x0(r22)
+FFE78E9C? 48000771  bl      sub_FFE7960C
+FFE78EA0? 60000000  nop
+FFE78EA4? 38600000  li      r3, 0x0
+FFE78EA8? 480007D9  bl      sub_FFE79680
+FFE78EAC? 60000000  nop
+FFE78EB0? 83A2FF90  lwz     r29, -0x70(r2)                     ; TOC[-112] &data+4B4
+FFE78EB4? 38600088  li      r3, 0x88
+FFE78EB8? 80BD0000  lwz     r5, 0x0(r29)
+FFE78EBC? 3880003A  li      r4, 0x3A
+FFE78EC0? 48001129  bl      sub_FFE79FE8
+FFE78EC4? 60000000  nop
+FFE78EC8? 8382FF94  lwz     r28, -0x6C(r2)                     ; TOC[-108] &data+4B8
+FFE78ECC? 38600088  li      r3, 0x88
+FFE78ED0? 80BC0000  lwz     r5, 0x0(r28)
+FFE78ED4? 38800042  li      r4, 0x42
+FFE78ED8? 48001111  bl      sub_FFE79FE8
+FFE78EDC? 60000000  nop
+FFE78EE0? 8342FF98  lwz     r26, -0x68(r2)                     ; TOC[-104] &data+4BC
+FFE78EE4? 38600088  li      r3, 0x88
+FFE78EE8? 80BA0000  lwz     r5, 0x0(r26)
+FFE78EEC? 3880005A  li      r4, 0x5A
+FFE78EF0? 480010F9  bl      sub_FFE79FE8
+FFE78EF4? 60000000  nop
+FFE78EF8? 62A30000  ori     r3, r21, 0x0
+FFE78EFC? 38800100  li      r4, 0x100
+FFE78F00? 4BFFE891  bl      sub_FFE77790
+FFE78F04? 62A50000  ori     r5, r21, 0x0
+FFE78F08? 38600000  li      r3, 0x0
+FFE78F0C? 388000FF  li      r4, 0xFF
+FFE78F10? 4800099D  bl      sub_FFE798AC
+FFE78F14? 60000000  nop
+FFE78F18? 8082FF68  lwz     r4, -0x98(r2)                      ; TOC[-152] &data+540
+FFE78F1C? 63E30000  ori     r3, r31, 0x0
+FFE78F20? 30840084  addic   r4, r4, 0x84
+FFE78F24? 30A10870  addic   r5, r1, 0x870
+FFE78F28? 30C10874  addic   r6, r1, 0x874
+FFE78F2C? 4800123D  bl      glue_RegistryPropertyGet
+FFE78F30? 80410014  lwz     r2, 0x14(r1)
+FFE78F34? 60690000  ori     r9, r3, 0x0
+FFE78F38? 2C090000  cmpwi   cr0, r9, 0x0
+FFE78F3C? 41820020  beq     loc_FFE78F5C
+FFE78F40? 61230000  ori     r3, r9, 0x0
+FFE78F44? 7C630734  extsh   r3, r3
+FFE78F48? 800108B0  lwz     r0, 0x8B0(r1)
+FFE78F4C? 302108A8  addic   r1, r1, 0x8A8
+FFE78F50? 7C0803A6  mtspr   LR, r0
+FFE78F54? BA81FFD0  lmw     r20, -0x30(r1)
+FFE78F58? 4E800020  blr
+loc_FFE78F5C:
+FFE78F5C? 38600000  li      r3, 0x0
+FFE78F60? 800108B0  lwz     r0, 0x8B0(r1)
+FFE78F64? 302108A8  addic   r1, r1, 0x8A8
+FFE78F68? 7C0803A6  mtspr   LR, r0
+FFE78F6C? BA81FFD0  lmw     r20, -0x30(r1)
+FFE78F70? 4E800020  blr
+
+__main:
+FFE78F74  7C0802A6  mfspr   r0, LR
+FFE78F78  BF61FFEC  stmw    r27, -0x14(r1)
+FFE78F7C  90010008  stw     r0, 0x8(r1)
+FFE78F80  9421F7A8  stwu    r1, -0x858(r1)
+FFE78F84  90A10878  stw     r5, 0x878(r1)
+FFE78F88  2806000A  cmplwi  cr0, r6, 0xA
+FFE78F8C  60FD0000  ori     r29, r7, 0x0
+FFE78F90  609E0000  ori     r30, r4, 0x0
+FFE78F94  33610038  addic   r27, r1, 0x38
+FFE78F98  31010838  addic   r8, r1, 0x838
+FFE78F9C  8382FFBC  lwz     r28, -0x44(r2)                     ; TOC[-68] &data+630
+FFE78FA0  31210878  addic   r9, r1, 0x878
+FFE78FA4  83E2FFB4  lwz     r31, -0x4C(r2)                     ; TOC[-76] &data+608
+FFE78FA8  8062FF64  lwz     r3, -0x9C(r2)                      ; TOC[-156] &code+281C
+FFE78FAC  41810208  bgt     loc_FFE791B4
+FFE78FB0  54C5103A  slwi    r5, r6, 2
+FFE78FB4  7CA3282E  lwzx    r5, r3, r5
+FFE78FB8  7CA32814  addc    r5, r3, r5
+FFE78FBC  7CA803A6  mtspr   LR, r5
+FFE78FC0  4E800020  blr
+FFE78FC4? 80890000  lwz     r4, 0x0(r9)
+FFE78FC8? 63C30000  ori     r3, r30, 0x0
+FFE78FCC? 4BFFE535  bl      sub_FFE77500
+FFE78FD0? 60690000  ori     r9, r3, 0x0
+FFE78FD4? 480001E4  b       loc_FFE791B8
+FFE78FD8? 887F0011  lbz     r3, 0x11(r31)
+FFE78FDC? 2C030000  cmpwi   cr0, r3, 0x0
+FFE78FE0? 41820054  beq     loc_FFE79034
+FFE78FE4? 7C7C44AA  lswi    r3, r28, 0x8
+FFE78FE8? 7C6845AA  stswi   r3, r8, 0x8
+FFE78FEC? 80680000  lwz     r3, 0x0(r8)
+FFE78FF0? 80880004  lwz     r4, 0x4(r8)
+FFE78FF4? 819F000C  lwz     r12, 0xC(r31)
+FFE78FF8? 80BF0000  lwz     r5, 0x0(r31)
+FFE78FFC? 4800131D  bl      sub_FFE7A318
+FFE79000? 80410014  lwz     r2, 0x14(r1)
+FFE79004? 8162FFC0  lwz     r11, -0x40(r2)                     ; TOC[-64] &data+638
+FFE79008? 806B0000  lwz     r3, 0x0(r11)
+FFE7900C? 4800118D  bl      glue_VSLDisposeInterruptService
+FFE79010? 80410014  lwz     r2, 0x14(r1)
+FFE79014? 807C0000  lwz     r3, 0x0(r28)
+FFE79018? 809C0004  lwz     r4, 0x4(r28)
+FFE7901C? 80BF0000  lwz     r5, 0x0(r31)
+FFE79020? 80DF0004  lwz     r6, 0x4(r31)
+FFE79024? 80FF0008  lwz     r7, 0x8(r31)
+FFE79028? 811F000C  lwz     r8, 0xC(r31)
+FFE7902C? 480010F5  bl      glue_InstallInterruptFunctions
+FFE79030? 80410014  lwz     r2, 0x14(r1)
+loc_FFE79034:
+FFE79034? 8082FFC4  lwz     r4, -0x3C(r2)                      ; TOC[-60] &data+63C
+FFE79038? 80640000  lwz     r3, 0x0(r4)
+FFE7903C? 2C030000  cmpwi   cr0, r3, 0x0
+FFE79040? 4182000C  beq     loc_FFE7904C
+FFE79044? 48001185  bl      glue_PoolDeallocate
+FFE79048? 80410014  lwz     r2, 0x14(r1)
+loc_FFE7904C:
+FFE7904C? 80A2FF68  lwz     r5, -0x98(r2)                      ; TOC[-152] &data+540
+FFE79050? 38600088  li      r3, 0x88
+FFE79054? 30A5008C  addic   r5, r5, 0x8C
+FFE79058? 38800061  li      r4, 0x61
+FFE7905C? 48000F8D  bl      sub_FFE79FE8
+FFE79060? 60000000  nop
+FFE79064? 38600097  li      r3, 0x97
+FFE79068? 38800000  li      r4, 0x0
+FFE7906C? 48000F59  bl      sub_FFE79FC4
+FFE79070? 60000000  nop
+FFE79074? 39200000  li      r9, 0x0
+FFE79078? 48000140  b       loc_FFE791B8
+FFE7907C? 3920FFED  li      r9, -0x13
+FFE79080? 48000138  b       loc_FFE791B8
+FFE79084? 3920FFEC  li      r9, -0x14
+FFE79088? 48000130  b       loc_FFE791B8
+FFE7908C? 80890000  lwz     r4, 0x0(r9)
+FFE79090? 63C30000  ori     r3, r30, 0x0
+FFE79094? 63A50000  ori     r5, r29, 0x0
+FFE79098? 4BFFEEC1  bl      sub_FFE77F58
+FFE7909C? 60690000  ori     r9, r3, 0x0
+FFE790A0? 48000118  b       loc_FFE791B8
+FFE790A4? 80890000  lwz     r4, 0x0(r9)
+FFE790A8? 63C30000  ori     r3, r30, 0x0
+FFE790AC? 63A50000  ori     r5, r29, 0x0
+FFE790B0? 4BFFF845  bl      sub_FFE788F4
+FFE790B4? 60690000  ori     r9, r3, 0x0
+FFE790B8? 48000100  b       loc_FFE791B8
+FFE790BC? 39200000  li      r9, 0x0
+FFE790C0? 480000F8  b       loc_FFE791B8
+FFE790C4? 80890000  lwz     r4, 0x0(r9)
+FFE790C8? 63C30000  ori     r3, r30, 0x0
+FFE790CC? 4BFFFC19  bl      sub_FFE78CE4
+FFE790D0? 60690000  ori     r9, r3, 0x0
+FFE790D4? 480000E4  b       loc_FFE791B8
+FFE790D8? 8062FF8C  lwz     r3, -0x74(r2)                      ; TOC[-116] &data+4B0
+FFE790DC? 38800061  li      r4, 0x61
+FFE790E0? 80A30000  lwz     r5, 0x0(r3)
+FFE790E4? 38600088  li      r3, 0x88
+FFE790E8? 3BE00000  li      r31, 0x0
+FFE790EC? 48000EFD  bl      sub_FFE79FE8
+FFE790F0? 60000000  nop
+FFE790F4? 38600097  li      r3, 0x97
+FFE790F8? 38800000  li      r4, 0x0
+FFE790FC? 48000EC9  bl      sub_FFE79FC4
+FFE79100? 60000000  nop
+FFE79104? 8182FFA8  lwz     r12, -0x58(r2)                     ; TOC[-88] &data+600
+FFE79108? 38600000  li      r3, 0x0
+FFE7910C? 60640000  ori     r4, r3, 0x0
+FFE79110? 9BEC0000  stb     r31, 0x0(r12)
+FFE79114? 480004F9  bl      sub_FFE7960C
+FFE79118? 60000000  nop
+FFE7911C? 38600000  li      r3, 0x0
+FFE79120? 48000561  bl      sub_FFE79680
+FFE79124? 60000000  nop
+FFE79128? 8182FF90  lwz     r12, -0x70(r2)                     ; TOC[-112] &data+4B4
+FFE7912C? 38600088  li      r3, 0x88
+FFE79130? 80AC0000  lwz     r5, 0x0(r12)
+FFE79134? 3880003A  li      r4, 0x3A
+FFE79138? 48000EB1  bl      sub_FFE79FE8
+FFE7913C? 60000000  nop
+FFE79140? 8182FF94  lwz     r12, -0x6C(r2)                     ; TOC[-108] &data+4B8
+FFE79144? 38600088  li      r3, 0x88
+FFE79148? 80AC0000  lwz     r5, 0x0(r12)
+FFE7914C? 38800042  li      r4, 0x42
+FFE79150? 48000E99  bl      sub_FFE79FE8
+FFE79154? 60000000  nop
+FFE79158? 8182FF98  lwz     r12, -0x68(r2)                     ; TOC[-104] &data+4BC
+FFE7915C? 38600088  li      r3, 0x88
+FFE79160? 80AC0000  lwz     r5, 0x0(r12)
+FFE79164? 3880005A  li      r4, 0x5A
+FFE79168? 48000E81  bl      sub_FFE79FE8
+FFE7916C? 60000000  nop
+FFE79170? 63630000  ori     r3, r27, 0x0
+FFE79174? 38800100  li      r4, 0x100
+FFE79178? 4BFFE619  bl      sub_FFE77790
+FFE7917C? 63650000  ori     r5, r27, 0x0
+FFE79180? 38600000  li      r3, 0x0
+FFE79184? 388000FF  li      r4, 0xFF
+FFE79188? 48000725  bl      sub_FFE798AC
+FFE7918C? 60000000  nop
+FFE79190? 8062FFB8  lwz     r3, -0x48(r2)                      ; TOC[-72] &data+620
+FFE79194? 48000F5D  bl      glue_RegistryEntryIDDispose
+FFE79198? 80410014  lwz     r2, 0x14(r1)
+FFE7919C? 39200000  li      r9, 0x0
+FFE791A0? 48000018  b       loc_FFE791B8
+FFE791A4? 39200000  li      r9, 0x0
+FFE791A8? 48000010  b       loc_FFE791B8
+FFE791AC? 39200000  li      r9, 0x0
+FFE791B0? 48000008  b       loc_FFE791B8
+loc_FFE791B4:
+FFE791B4  39200000  li      r9, 0x0
+loc_FFE791B8:
+FFE791B8  281D0004  cmplwi  cr0, r29, 0x4
+FFE791BC  2F090000  cmpwi   cr6, r9, 0x0
+FFE791C0  4182002C  beq     loc_FFE791EC
+FFE791C4  4199002C  bgt     cr6, loc_FFE791F0
+FFE791C8  61240000  ori     r4, r9, 0x0
+FFE791CC  63C30000  ori     r3, r30, 0x0
+FFE791D0  48000F39  bl      glue_IOCommandIsComplete
+FFE791D4  80410014  lwz     r2, 0x14(r1)
+FFE791D8  80010860  lwz     r0, 0x860(r1)
+FFE791DC  30210858  addic   r1, r1, 0x858
+FFE791E0  7C0803A6  mtspr   LR, r0
+FFE791E4  BB61FFEC  lmw     r27, -0x14(r1)
+FFE791E8  4E800020  blr
+loc_FFE791EC:
+FFE791EC  40990008  ble     cr6, loc_FFE791F4
+loc_FFE791F0:
+FFE791F0  39200000  li      r9, 0x0
+loc_FFE791F4:
+FFE791F4  61230000  ori     r3, r9, 0x0
+FFE791F8  80010860  lwz     r0, 0x860(r1)
+FFE791FC  30210858  addic   r1, r1, 0x858
+FFE79200  7C0803A6  mtspr   LR, r0
+FFE79204  BB61FFEC  lmw     r27, -0x14(r1)
+FFE79208  4E800020  blr
+FFE7920Cd FFFFFDB8  .long   0xFFFFFDB8                         ; -> 68k emulator opcode dispatch table
+FFE79210d FFFFFDCC  .long   0xFFFFFDCC                         ; -> 68k emulator opcode dispatch table
+FFE79214d FFFFFE70  .long   0xFFFFFE70                         ; -> 68k emulator opcode dispatch table
+FFE79218d FFFFFE78  .long   0xFFFFFE78                         ; -> 68k emulator opcode dispatch table
+FFE7921Cd FFFFFE80  .long   0xFFFFFE80                         ; -> 68k emulator opcode dispatch table
+FFE79220d FFFFFE98  .long   0xFFFFFE98                         ; -> 68k emulator opcode dispatch table
+FFE79224d FFFFFEB0  .long   0xFFFFFEB0                         ; -> 68k emulator opcode dispatch table
+FFE79228d FFFFFEB8  .long   0xFFFFFEB8                         ; -> 68k emulator opcode dispatch table
+FFE7922Cd FFFFFECC  .long   0xFFFFFECC                         ; -> 68k emulator opcode dispatch table
+FFE79230d FFFFFF98  .long   0xFFFFFF98                         ; -> 68k emulator opcode dispatch table
+FFE79234d FFFFFFA0  .long   0xFFFFFFA0                         ; -> 68k emulator opcode dispatch table
+FFE79238d FFFFFFA8  .long   0xFFFFFFA8                         ; -> 68k emulator opcode dispatch table
+
+sub_FFE7923C:
+FFE7923C? 7C0802A6  mfspr   r0, LR
+FFE79240? BFA1FFF4  stmw    r29, -0xC(r1)
+FFE79244? 90010008  stw     r0, 0x8(r1)
+FFE79248? 9421F798  stwu    r1, -0x868(r1)
+FFE7924C? ABC30004  lha     r30, 0x4(r3)
+FFE79250? ABE30006  lha     r31, 0x6(r3)
+FFE79254? 2C1EFFFF  cmpwi   cr0, r30, 0xFFFF
+FFE79258? 33A10038  addic   r29, r1, 0x38
+FFE7925C? 33FF0001  addic   r31, r31, 0x1
+FFE79260? 63E70000  ori     r7, r31, 0x0
+FFE79264? 81030000  lwz     r8, 0x0(r3)
+FFE79268? 63A90000  ori     r9, r29, 0x0
+FFE7926C? 4182000C  beq     loc_FFE79278
+FFE79270? 57C31838  slwi    r3, r30, 3
+FFE79274? 7D23E814  addc    r9, r3, r29
+loc_FFE79278:
+FFE79278? 8062FFF4  lwz     r3, -0xC(r2)                       ; TOC[-12] &data+65D
+FFE7927C? 2C070000  cmpwi   cr0, r7, 0x0
+FFE79280? 88830000  lbz     r4, 0x0(r3)
+FFE79284? 2C840000  cmpwi   cr1, r4, 0x0
+FFE79288? 418600C0  beq     cr1, loc_FFE79348
+FFE7928C? 418200E0  beq     loc_FFE7936C
+FFE79290? 8062FF68  lwz     r3, -0x98(r2)                      ; TOC[-152] &data+540
+FFE79294? 3108FFF8  addic   r8, r8, -0x8
+FFE79298? 3129FFF8  addic   r9, r9, -0x8
+FFE7929C? C8030090  lfd     f0, 0x90(r3)
+FFE792A0? C8230098  lfd     f1, 0x98(r3)
+FFE792A4? C84300A0  lfd     f2, 0xA0(r3)
+FFE792A8? 38C00008  li      r6, 0x8
+loc_FFE792AC:
+FFE792AC? 418200BC  beq     loc_FFE79368
+FFE792B0? A068000E  lhz     r3, 0xE(r8)
+FFE792B4? A088000C  lhz     r4, 0xC(r8)
+FFE792B8? A0A8000A  lhz     r5, 0xA(r8)
+FFE792BC? AD480008  lhau    r10, 0x8(r8)
+FFE792C0? 3D604330  lis     r11, 0x4330
+FFE792C4? B5490008  sthu    r10, 0x8(r9)
+FFE792C8? 3D804330  lis     r12, 0x4330
+FFE792CC? 91810848  stw     r12, 0x848(r1)
+FFE792D0? 8182FF68  lwz     r12, -0x98(r2)                     ; TOC[-152] &data+540
+FFE792D4? 91610838  stw     r11, 0x838(r1)
+FFE792D8? 9081084C  stw     r4, 0x84C(r1)
+FFE792DC? 3C004330  lis     r0, 0x4330
+FFE792E0? C9AC00A8  lfd     f13, 0xA8(r12)
+FFE792E4? 9061083C  stw     r3, 0x83C(r1)
+FFE792E8? 90010840  stw     r0, 0x840(r1)
+FFE792EC? C8E10848  lfd     f7, 0x848(r1)
+FFE792F0? 90A10844  stw     r5, 0x844(r1)
+FFE792F4? FD076828  fsub    f8, f7, f13
+FFE792F8? C8610838  lfd     f3, 0x838(r1)
+FFE792FC? FD004018  frsp    f8, f8
+FFE79300? C8A10840  lfd     f5, 0x840(r1)
+FFE79304? FCC56828  fsub    f6, f5, f13
+FFE79308? 30E7FFFF  addic   r7, r7, -0x1
+FFE7930C? FD210232  fmul    f9, f1, f8
+FFE79310? 2C070000  cmpwi   cr0, r7, 0x0
+FFE79314? FC836828  fsub    f4, f3, f13
+FFE79318? FCC03018  frsp    f6, f6
+FFE7931C? FC802018  frsp    f4, f4
+FFE79320? FD4049BA  fmadd   f10, f0, f6, f9
+FFE79324? FD62513A  fmadd   f11, f2, f4, f10
+FFE79328? FD605818  frsp    f11, f11
+FFE7932C? FD60581E  fctiwz  f11, f11
+FFE79330? D9610850  stfd    f11, 0x850(r1)
+FFE79334? A0010856  lhz     r0, 0x856(r1)
+FFE79338? B0090002  sth     r0, 0x2(r9)
+FFE7933C? B0090004  sth     r0, 0x4(r9)
+FFE79340? B0090006  sth     r0, 0x6(r9)
+FFE79344? 4BFFFF68  b       loc_FFE792AC
+loc_FFE79348:
+FFE79348? 41820060  beq     loc_FFE793A8
+FFE7934C? 7C6844AA  lswi    r3, r8, 0x8
+FFE79350? 7C6945AA  stswi   r3, r9, 0x8
+FFE79354? 30E7FFFF  addic   r7, r7, -0x1
+FFE79358? 31080008  addic   r8, r8, 0x8
+FFE7935C? 31290008  addic   r9, r9, 0x8
+FFE79360? 2C070000  cmpwi   cr0, r7, 0x0
+FFE79364? 4BFFFFE4  b       loc_FFE79348
+loc_FFE79368:
+FFE79368? 7D293014  addc    r9, r9, r6
+loc_FFE7936C:
+FFE7936C? 57E31838  slwi    r3, r31, 3
+FFE79370? 7C634810  subfc   r3, r3, r9
+FFE79374? 57E4043E  clrlwi  r4, r31, 16
+FFE79378? 4BFFDD05  bl      sub_FFE7707C
+FFE7937C? 309FFFFF  addic   r4, r31, -0x1
+FFE79380? 5484043E  clrlwi  r4, r4, 16
+FFE79384? 57C3043E  clrlwi  r3, r30, 16
+FFE79388? 63A50000  ori     r5, r29, 0x0
+FFE7938C? 48000521  bl      sub_FFE798AC
+FFE79390? 60000000  nop
+FFE79394? 80010870  lwz     r0, 0x870(r1)
+FFE79398? 30210868  addic   r1, r1, 0x868
+FFE7939C? 7C0803A6  mtspr   LR, r0
+FFE793A0? BBA1FFF4  lmw     r29, -0xC(r1)
+FFE793A4? 4E800020  blr
+loc_FFE793A8:
+FFE793A8? 4BFFFFC4  b       loc_FFE7936C
+FFE793AC? 80010870  lwz     r0, 0x870(r1)
+FFE793B0? 30210868  addic   r1, r1, 0x868
+FFE793B4? 7C0803A6  mtspr   LR, r0
+FFE793B8? BBA1FFF4  lmw     r29, -0xC(r1)
+FFE793BC? 4E800020  blr
+FFE793C0? 7C0802A6  mfspr   r0, LR
+FFE793C4? BF81FFF0  stmw    r28, -0x10(r1)
+FFE793C8? 90010008  stw     r0, 0x8(r1)
+FFE793CC? 9421FFB0  stwu    r1, -0x50(r1)
+FFE793D0? 33E10038  addic   r31, r1, 0x38
+FFE793D4? 8062FFFC  lwz     r3, -0x4(r2)                       ; TOC[-4] &data+660
+FFE793D8? 63E40000  ori     r4, r31, 0x0
+FFE793DC? 83C30000  lwz     r30, 0x0(r3)
+FFE793E0? 38600097  li      r3, 0x97
+FFE793E4? 8BBE0030  lbz     r29, 0x30(r30)
+FFE793E8? 8B9E0070  lbz     r28, 0x70(r30)
+FFE793EC? 480002E1  bl      sub_FFE796CC
+FFE793F0? 60000000  nop
+FFE793F4? 889F0000  lbz     r4, 0x0(r31)
+FFE793F8? 38600097  li      r3, 0x97
+FFE793FC? 5484066E  rlwinm  r4, r4, 0, 25, 23
+FFE79400? 5484063E  clrlwi  r4, r4, 24
+FFE79404? 989F0000  stb     r4, 0x0(r31)
+FFE79408? 48000BBD  bl      sub_FFE79FC4
+FFE7940C? 60000000  nop
+FFE79410? 9B9E0070  stb     r28, 0x70(r30)
+FFE79414? 9BBE0030  stb     r29, 0x30(r30)
+FFE79418? 8182FFC0  lwz     r12, -0x40(r2)                     ; TOC[-64] &data+638
+FFE7941C? 806C0000  lwz     r3, 0x0(r12)
+FFE79420? 48000E99  bl      glue_VSLDoInterruptService
+FFE79424? 80410014  lwz     r2, 0x14(r1)
+FFE79428? 38600000  li      r3, 0x0
+FFE7942C? 80010058  lwz     r0, 0x58(r1)
+FFE79430? 30210050  addic   r1, r1, 0x50
+FFE79434? 7C0803A6  mtspr   LR, r0
+FFE79438? BB81FFF0  lmw     r28, -0x10(r1)
+FFE7943C? 4E800020  blr
+
+sub_FFE79440:
+FFE79440? 7C0802A6  mfspr   r0, LR
+FFE79444? BF81FFF0  stmw    r28, -0x10(r1)
+FFE79448? 90010008  stw     r0, 0x8(r1)
+FFE7944C? 9421FFB8  stwu    r1, -0x48(r1)
+FFE79450? 547C043E  clrlwi  r28, r3, 16
+FFE79454? 549D043E  clrlwi  r29, r4, 16
+FFE79458? 54DF043E  clrlwi  r31, r6, 16
+FFE7945C? 54BE043E  clrlwi  r30, r5, 16
+FFE79460? 5784063E  clrlwi  r4, r28, 24
+FFE79464? 38600080  li      r3, 0x80
+FFE79468? 48000B5D  bl      sub_FFE79FC4
+FFE7946C? 60000000  nop
+FFE79470? 7F844670  srawi   r4, r28, 0x8
+FFE79474? 5484063E  clrlwi  r4, r4, 24
+FFE79478? 38600081  li      r3, 0x81
+FFE7947C? 48000B49  bl      sub_FFE79FC4
+FFE79480? 60000000  nop
+FFE79484? 57A4063E  clrlwi  r4, r29, 24
+FFE79488? 38600082  li      r3, 0x82
+FFE7948C? 48000B39  bl      sub_FFE79FC4
+FFE79490? 60000000  nop
+FFE79494? 7FA44670  srawi   r4, r29, 0x8
+FFE79498? 5484063E  clrlwi  r4, r4, 24
+FFE7949C? 38600083  li      r3, 0x83
+FFE794A0? 48000B25  bl      sub_FFE79FC4
+FFE794A4? 60000000  nop
+FFE794A8? 57C4063E  clrlwi  r4, r30, 24
+FFE794AC? 38600084  li      r3, 0x84
+FFE794B0? 48000B15  bl      sub_FFE79FC4
+FFE794B4? 60000000  nop
+FFE794B8? 7FC44670  srawi   r4, r30, 0x8
+FFE794BC? 5484063E  clrlwi  r4, r4, 24
+FFE794C0? 38600085  li      r3, 0x85
+FFE794C4? 48000B01  bl      sub_FFE79FC4
+FFE794C8? 60000000  nop
+FFE794CC? 57E4063E  clrlwi  r4, r31, 24
+FFE794D0? 38600086  li      r3, 0x86
+FFE794D4? 48000AF1  bl      sub_FFE79FC4
+FFE794D8? 60000000  nop
+FFE794DC? 7FE44670  srawi   r4, r31, 0x8
+FFE794E0? 5484063E  clrlwi  r4, r4, 24
+FFE794E4? 38600087  li      r3, 0x87
+FFE794E8? 48000ADD  bl      sub_FFE79FC4
+FFE794EC? 60000000  nop
+FFE794F0? 80010050  lwz     r0, 0x50(r1)
+FFE794F4? 30210048  addic   r1, r1, 0x48
+FFE794F8? 7C0803A6  mtspr   LR, r0
+FFE794FC? BB81FFF0  lmw     r28, -0x10(r1)
+FFE79500? 4E800020  blr
+
+sub_FFE79504:
+FFE79504? 7C0802A6  mfspr   r0, LR
+FFE79508? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE7950C? 90010008  stw     r0, 0x8(r1)
+FFE79510? 9421FFC0  stwu    r1, -0x40(r1)
+FFE79514? 547E043E  clrlwi  r30, r3, 16
+FFE79518? 549F043E  clrlwi  r31, r4, 16
+FFE7951C? 57C4063E  clrlwi  r4, r30, 24
+FFE79520? 38600088  li      r3, 0x88
+FFE79524? 48000AA1  bl      sub_FFE79FC4
+FFE79528? 60000000  nop
+FFE7952C? 7FC44670  srawi   r4, r30, 0x8
+FFE79530? 5484063E  clrlwi  r4, r4, 24
+FFE79534? 38600089  li      r3, 0x89
+FFE79538? 48000A8D  bl      sub_FFE79FC4
+FFE7953C? 60000000  nop
+FFE79540? 57E4063E  clrlwi  r4, r31, 24
+FFE79544? 3860008A  li      r3, 0x8A
+FFE79548? 48000A7D  bl      sub_FFE79FC4
+FFE7954C? 60000000  nop
+FFE79550? 7FE44670  srawi   r4, r31, 0x8
+FFE79554? 5484063E  clrlwi  r4, r4, 24
+FFE79558? 3860008B  li      r3, 0x8B
+FFE7955C? 48000A69  bl      sub_FFE79FC4
+FFE79560? 60000000  nop
+FFE79564? 80010048  lwz     r0, 0x48(r1)
+FFE79568? 30210040  addic   r1, r1, 0x40
+FFE7956C? 7C0803A6  mtspr   LR, r0
+FFE79570? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE79574? 4E800020  blr
+
+sub_FFE79578:
+FFE79578? 7C0802A6  mfspr   r0, LR
+FFE7957C? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE79580? 90010008  stw     r0, 0x8(r1)
+FFE79584? 9421FFC0  stwu    r1, -0x40(r1)
+FFE79588? 607F0000  ori     r31, r3, 0x0
+FFE7958C? 549E043E  clrlwi  r30, r4, 16
+FFE79590? 57E5E8FE  srwi    r5, r31, 3
+FFE79594? 54A4063E  clrlwi  r4, r5, 24
+FFE79598? 3860008C  li      r3, 0x8C
+FFE7959C? 7FC01E70  srawi   r0, r30, 0x3
+FFE795A0? 541E043E  clrlwi  r30, r0, 16
+FFE795A4? 48000A21  bl      sub_FFE79FC4
+FFE795A8? 60000000  nop
+FFE795AC? 57E4AAFE  srwi    r4, r31, 11
+FFE795B0? 5484063E  clrlwi  r4, r4, 24
+FFE795B4? 3860008D  li      r3, 0x8D
+FFE795B8? 48000A0D  bl      sub_FFE79FC4
+FFE795BC? 60000000  nop
+FFE795C0? 57E46CFE  srwi    r4, r31, 19
+FFE795C4? 5484063E  clrlwi  r4, r4, 24
+FFE795C8? 3860008E  li      r3, 0x8E
+FFE795CC? 480009F9  bl      sub_FFE79FC4
+FFE795D0? 60000000  nop
+FFE795D4? 57C4063E  clrlwi  r4, r30, 24
+FFE795D8? 3860008F  li      r3, 0x8F
+FFE795DC? 480009E9  bl      sub_FFE79FC4
+FFE795E0? 60000000  nop
+FFE795E4? 7FC44670  srawi   r4, r30, 0x8
+FFE795E8? 5484063E  clrlwi  r4, r4, 24
+FFE795EC? 38600090  li      r3, 0x90
+FFE795F0? 480009D5  bl      sub_FFE79FC4
+FFE795F4? 60000000  nop
+FFE795F8? 80010048  lwz     r0, 0x48(r1)
+FFE795FC? 30210040  addic   r1, r1, 0x40
+FFE79600? 7C0803A6  mtspr   LR, r0
+FFE79604? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE79608? 4E800020  blr
+
+sub_FFE7960C:
+FFE7960C? 7C0802A6  mfspr   r0, LR
+FFE79610? BFA1FFF4  stmw    r29, -0xC(r1)
+FFE79614? 90010008  stw     r0, 0x8(r1)
+FFE79618? 9421FFB8  stwu    r1, -0x48(r1)
+FFE7961C? 549F043E  clrlwi  r31, r4, 16
+FFE79620? 547E043E  clrlwi  r30, r3, 16
+FFE79624? 7FC54670  srawi   r5, r30, 0x8
+FFE79628? 54A4063E  clrlwi  r4, r5, 24
+FFE7962C? 38600092  li      r3, 0x92
+FFE79630? 7FFD4670  srawi   r29, r31, 0x8
+FFE79634? 48000991  bl      sub_FFE79FC4
+FFE79638? 60000000  nop
+FFE7963C? 57C4063E  clrlwi  r4, r30, 24
+FFE79640? 38600091  li      r3, 0x91
+FFE79644? 48000981  bl      sub_FFE79FC4
+FFE79648? 60000000  nop
+FFE7964C? 57A4063E  clrlwi  r4, r29, 24
+FFE79650? 38600094  li      r3, 0x94
+FFE79654? 48000971  bl      sub_FFE79FC4
+FFE79658? 60000000  nop
+FFE7965C? 57E4063E  clrlwi  r4, r31, 24
+FFE79660? 38600093  li      r3, 0x93
+FFE79664? 48000961  bl      sub_FFE79FC4
+FFE79668? 60000000  nop
+FFE7966C? 80010050  lwz     r0, 0x50(r1)
+FFE79670? 30210048  addic   r1, r1, 0x48
+FFE79674? 7C0803A6  mtspr   LR, r0
+FFE79678? BBA1FFF4  lmw     r29, -0xC(r1)
+FFE7967C? 4E800020  blr
+
+sub_FFE79680:
+FFE79680? 7C0802A6  mfspr   r0, LR
+FFE79684? BFE1FFFC  stmw    r31, -0x4(r1)
+FFE79688? 90010008  stw     r0, 0x8(r1)
+FFE7968C? 9421FFC0  stwu    r1, -0x40(r1)
+FFE79690? 547F043E  clrlwi  r31, r3, 16
+FFE79694? 57E4063E  clrlwi  r4, r31, 24
+FFE79698? 38600095  li      r3, 0x95
+FFE7969C? 48000929  bl      sub_FFE79FC4
+FFE796A0? 60000000  nop
+FFE796A4? 7FE44670  srawi   r4, r31, 0x8
+FFE796A8? 5484063E  clrlwi  r4, r4, 24
+FFE796AC? 38600096  li      r3, 0x96
+FFE796B0? 48000915  bl      sub_FFE79FC4
+FFE796B4? 60000000  nop
+FFE796B8? 80010048  lwz     r0, 0x48(r1)
+FFE796BC? 30210040  addic   r1, r1, 0x40
+FFE796C0? 7C0803A6  mtspr   LR, r0
+FFE796C4? BBE1FFFC  lmw     r31, -0x4(r1)
+FFE796C8? 4E800020  blr
+
+sub_FFE796CC:
+FFE796CC? 7C0802A6  mfspr   r0, LR
+FFE796D0? BFC1FFF8  stmw    r30, -0x8(r1)
+FFE796D4? 90010008  stw     r0, 0x8(r1)
+FFE796D8? 9421FFC0  stwu    r1, -0x40(r1)
+FFE796DC? 80A2FFFC  lwz     r5, -0x4(r2)                       ; TOC[-4] &data+660
+FFE796E0? 609F0000  ori     r31, r4, 0x0
+FFE796E4? 83C50000  lwz     r30, 0x0(r5)
+FFE796E8? 5463063E  clrlwi  r3, r3, 24
+FFE796EC? 987E0070  stb     r3, 0x70(r30)
+FFE796F0? 480009E9  bl      glue_SynchronizeIO
+FFE796F4? 80410014  lwz     r2, 0x14(r1)
+FFE796F8? 881E0060  lbz     r0, 0x60(r30)
+FFE796FC? 981F0000  stb     r0, 0x0(r31)
+FFE79700? 80010048  lwz     r0, 0x48(r1)
+FFE79704? 30210040  addic   r1, r1, 0x40
+FFE79708? 7C0803A6  mtspr   LR, r0
+FFE7970C? BBC1FFF8  lmw     r30, -0x8(r1)
+FFE79710? 4E800020  blr
+
+sub_FFE79714:
+FFE79714? 7C0802A6  mfspr   r0, LR
+FFE79718? BF41FFE8  stmw    r26, -0x18(r1)
+FFE7971C? 90010008  stw     r0, 0x8(r1)
+FFE79720? 9421FFA8  stwu    r1, -0x58(r1)
+FFE79724? 83A2FFFC  lwz     r29, -0x4(r2)                      ; TOC[-4] &data+660
+FFE79728? 33610038  addic   r27, r1, 0x38
+FFE7972C? 835D0000  lwz     r26, 0x0(r29)
+FFE79730? 3BE00097  li      r31, 0x97
+FFE79734? 9BFA0070  stb     r31, 0x70(r26)
+FFE79738? 33C1003A  addic   r30, r1, 0x3A
+FFE7973C? 33810039  addic   r28, r1, 0x39
+FFE79740? 48000999  bl      glue_SynchronizeIO
+FFE79744? 80410014  lwz     r2, 0x14(r1)
+FFE79748? 881A0060  lbz     r0, 0x60(r26)
+FFE7974C? 981B0000  stb     r0, 0x0(r27)
+FFE79750? 981E0000  stb     r0, 0x0(r30)
+FFE79754? 540007FF  clrlwi. r0, r0, 31
+FFE79758? 41820068  beq     loc_FFE797C0
+FFE7975C? 889B0000  lbz     r4, 0x0(r27)
+FFE79760? 38600097  li      r3, 0x97
+FFE79764? 5484066E  rlwinm  r4, r4, 0, 25, 23
+FFE79768? 5484063E  clrlwi  r4, r4, 24
+FFE7976C? 989E0000  stb     r4, 0x0(r30)
+FFE79770? 48000855  bl      sub_FFE79FC4
+FFE79774? 60000000  nop
+FFE79778? 48000008  b       loc_FFE79780
+loc_FFE7977C:
+FFE7977C? 40820028  bne     loc_FFE797A4
+loc_FFE79780:
+FFE79780? 837D0000  lwz     r27, 0x0(r29)
+FFE79784? 9BFB0070  stb     r31, 0x70(r27)
+FFE79788? 48000951  bl      glue_SynchronizeIO
+FFE7978C? 80410014  lwz     r2, 0x14(r1)
+FFE79790? 881B0060  lbz     r0, 0x60(r27)
+FFE79794? 981C0000  stb     r0, 0x0(r28)
+FFE79798? 981E0000  stb     r0, 0x0(r30)
+FFE7979C? 54000631  rlwinm. r0, r0, 0, 24, 24
+FFE797A0? 4BFFFFDC  b       loc_FFE7977C
+loc_FFE797A4:
+FFE797A4? 889C0000  lbz     r4, 0x0(r28)
+FFE797A8? 63E30000  ori     r3, r31, 0x0
+FFE797AC? 5484066E  rlwinm  r4, r4, 0, 25, 23
+FFE797B0? 5484063E  clrlwi  r4, r4, 24
+FFE797B4? 989E0000  stb     r4, 0x0(r30)
+FFE797B8? 4800080D  bl      sub_FFE79FC4
+FFE797BC? 60000000  nop
+loc_FFE797C0:
+FFE797C0? 80010060  lwz     r0, 0x60(r1)
+FFE797C4? 30210058  addic   r1, r1, 0x58
+FFE797C8? 7C0803A6  mtspr   LR, r0
+FFE797CC? BB41FFE8  lmw     r26, -0x18(r1)
+FFE797D0? 4E800020  blr
+
+sub_FFE797D4:
+FFE797D4? 28040000  cmplwi  cr0, r4, 0x0
+FFE797D8? 4C810020  blelr
+FFE797DC? 7C0802A6  mfspr   r0, LR
+FFE797E0? 7D800026  mfcr    r12
+FFE797E4? BF81FFF0  stmw    r28, -0x10(r1)
+FFE797E8? 90010008  stw     r0, 0x8(r1)
+FFE797EC? 91810004  stw     r12, 0x4(r1)
+FFE797F0? 9421FFB8  stwu    r1, -0x48(r1)
+FFE797F4? 80C2FFFC  lwz     r6, -0x4(r2)                       ; TOC[-4] &data+660
+FFE797F8? 607F0000  ori     r31, r3, 0x0
+FFE797FC? 83C60000  lwz     r30, 0x0(r6)
+FFE79800? 54A5063E  clrlwi  r5, r5, 24
+FFE79804? 339E0010  addic   r28, r30, 0x10
+FFE79808? 609D0000  ori     r29, r4, 0x0
+FFE7980C? 2D050000  cmpwi   cr2, r5, 0x0
+FFE79810? 48000008  b       loc_FFE79818
+loc_FFE79814:
+FFE79814? 4081007C  ble     loc_FFE79890
+loc_FFE79818:
+FFE79818? 418A0018  beq     cr2, loc_FFE79830
+FFE7981C? 807F0000  lwz     r3, 0x0(r31)
+FFE79820? A8830000  lha     r4, 0x0(r3)
+FFE79824? 989C0000  stb     r4, 0x0(r28)
+FFE79828? 480008B1  bl      glue_SynchronizeIO
+FFE7982C? 80410014  lwz     r2, 0x14(r1)
+loc_FFE79830:
+FFE79830? 807F0000  lwz     r3, 0x0(r31)
+FFE79834? 33BDFFFF  addic   r29, r29, -0x1
+FFE79838? A0830002  lhz     r4, 0x2(r3)
+FFE7983C? 7C844670  srawi   r4, r4, 0x8
+FFE79840? 989E0000  stb     r4, 0x0(r30)
+FFE79844? 48000895  bl      glue_SynchronizeIO
+FFE79848? 80410014  lwz     r2, 0x14(r1)
+FFE7984C? 819F0000  lwz     r12, 0x0(r31)
+FFE79850? A00C0004  lhz     r0, 0x4(r12)
+FFE79854? 7C004670  srawi   r0, r0, 0x8
+FFE79858? 981E0000  stb     r0, 0x0(r30)
+FFE7985C? 4800087D  bl      glue_SynchronizeIO
+FFE79860? 80410014  lwz     r2, 0x14(r1)
+FFE79864? 819F0000  lwz     r12, 0x0(r31)
+FFE79868? A00C0006  lhz     r0, 0x6(r12)
+FFE7986C? 7C004670  srawi   r0, r0, 0x8
+FFE79870? 981E0000  stb     r0, 0x0(r30)
+FFE79874? 48000865  bl      glue_SynchronizeIO
+FFE79878? 80410014  lwz     r2, 0x14(r1)
+FFE7987C? 801F0000  lwz     r0, 0x0(r31)
+FFE79880? 281D0000  cmplwi  cr0, r29, 0x0
+FFE79884? 30000008  addic   r0, r0, 0x8
+FFE79888? 901F0000  stw     r0, 0x0(r31)
+FFE7988C? 4BFFFF88  b       loc_FFE79814
+loc_FFE79890:
+FFE79890? 80010050  lwz     r0, 0x50(r1)
+FFE79894? 8181004C  lwz     r12, 0x4C(r1)
+FFE79898? 30210048  addic   r1, r1, 0x48
+FFE7989C? 7C0803A6  mtspr   LR, r0
+FFE798A0? BB81FFF0  lmw     r28, -0x10(r1)
+FFE798A4? 7D838120  mtcrf   0x38, r12
+FFE798A8? 4E800020  blr
+
+sub_FFE798AC:
+FFE798AC? 7C0802A6  mfspr   r0, LR
+FFE798B0? 7D800026  mfcr    r12
+FFE798B4? BE21FFC4  stmw    r17, -0x3C(r1)
+FFE798B8? 90010008  stw     r0, 0x8(r1)
+FFE798BC? 91810004  stw     r12, 0x4(r1)
+FFE798C0? 9421FF80  stwu    r1, -0x80(r1)
+FFE798C4? 90A100A0  stw     r5, 0xA0(r1)
+FFE798C8? 5484043E  clrlwi  r4, r4, 16
+FFE798CC? 83E2FFFC  lwz     r31, -0x4(r2)                      ; TOC[-4] &data+660
+FFE798D0? 33040001  addic   r24, r4, 0x1
+FFE798D4? 28180040  cmplwi  cr0, r24, 0x40
+FFE798D8? 3B200000  li      r25, 0x0
+FFE798DC? 633B0000  ori     r27, r25, 0x0
+FFE798E0? 829F0000  lwz     r20, 0x0(r31)
+FFE798E4? 5476043E  clrlwi  r22, r3, 16
+FFE798E8? 32210038  addic   r17, r1, 0x38
+FFE798EC? 32410039  addic   r18, r1, 0x39
+FFE798F0? 3261003A  addic   r19, r1, 0x3A
+FFE798F4? 32A1003B  addic   r21, r1, 0x3B
+FFE798F8? 3341003C  addic   r26, r1, 0x3C
+FFE798FC? 3381003D  addic   r28, r1, 0x3D
+FFE79900? 33A1003E  addic   r29, r1, 0x3E
+FFE79904? 33C100A0  addic   r30, r1, 0xA0
+FFE79908? 32940010  addic   r20, r20, 0x10
+FFE7990C? 63770000  ori     r23, r27, 0x0
+FFE79910? 4081002C  ble     loc_FFE7993C
+FFE79914? 3338FFC0  addic   r25, r24, -0x40
+FFE79918? 28190040  cmplwi  cr0, r25, 0x40
+FFE7991C? 3B000040  li      r24, 0x40
+FFE79920? 4081001C  ble     loc_FFE7993C
+FFE79924? 3379FFC0  addic   r27, r25, -0x40
+FFE79928? 281B0040  cmplwi  cr0, r27, 0x40
+FFE7992C? 3B200040  li      r25, 0x40
+FFE79930? 4081000C  ble     loc_FFE7993C
+FFE79934? 32FBFFC0  addic   r23, r27, -0x40
+FFE79938? 3B600040  li      r27, 0x40
+loc_FFE7993C:
+FFE7993C? 62A30000  ori     r3, r21, 0x0
+FFE79940? 4BFFE8BD  bl      sub_FFE781FC
+FFE79944? 60000000  nop
+FFE79948? 88150000  lbz     r0, 0x0(r21)
+FFE7994C? 2C000000  cmpwi   cr0, r0, 0x0
+FFE79950? 40820018  bne     loc_FFE79968
+FFE79954? 38000001  li      r0, 0x1
+FFE79958? 62630000  ori     r3, r19, 0x0
+FFE7995C? 98130000  stb     r0, 0x0(r19)
+FFE79960? 4BFFE01D  bl      sub_FFE7797C
+FFE79964? 60000000  nop
+loc_FFE79968:
+FFE79968? 827F0000  lwz     r19, 0x0(r31)
+FFE7996C? 3BE00097  li      r31, 0x97
+FFE79970? 9BF30070  stb     r31, 0x70(r19)
+FFE79974? 48000765  bl      glue_SynchronizeIO
+FFE79978? 80410014  lwz     r2, 0x14(r1)
+FFE7997C? 88130060  lbz     r0, 0x60(r19)
+FFE79980? 98120000  stb     r0, 0x0(r18)
+FFE79984? 981A0000  stb     r0, 0x0(r26)
+FFE79988? 540007FF  clrlwi. r0, r0, 31
+FFE7998C? 4182005C  beq     loc_FFE799E8
+FFE79990? 88720000  lbz     r3, 0x0(r18)
+FFE79994? 5463066E  rlwinm  r3, r3, 0, 25, 23
+FFE79998? 5464063E  clrlwi  r4, r3, 24
+FFE7999C? 989A0000  stb     r4, 0x0(r26)
+FFE799A0? 38600097  li      r3, 0x97
+FFE799A4? 48000621  bl      sub_FFE79FC4
+FFE799A8? 60000000  nop
+FFE799AC? 48000008  b       loc_FFE799B4
+loc_FFE799B0:
+FFE799B0? 40820020  bne     loc_FFE799D0
+loc_FFE799B4:
+FFE799B4? 63E30000  ori     r3, r31, 0x0
+FFE799B8? 63440000  ori     r4, r26, 0x0
+FFE799BC? 4BFFFD11  bl      sub_FFE796CC
+FFE799C0? 60000000  nop
+FFE799C4? 893A0000  lbz     r9, 0x0(r26)
+FFE799C8? 55330631  rlwinm. r19, r9, 0, 24, 24
+FFE799CC? 4BFFFFE4  b       loc_FFE799B0
+loc_FFE799D0:
+FFE799D0? 5523066E  rlwinm  r3, r9, 0, 25, 23
+FFE799D4? 5464063E  clrlwi  r4, r3, 24
+FFE799D8? 989A0000  stb     r4, 0x0(r26)
+FFE799DC? 63E30000  ori     r3, r31, 0x0
+FFE799E0? 480005E5  bl      sub_FFE79FC4
+FFE799E4? 60000000  nop
+loc_FFE799E8:
+FFE799E8? 2C16FFFF  cmpwi   cr0, r22, 0xFFFF
+FFE799EC? 29190000  cmplwi  cr2, r25, 0x0
+FFE799F0? 41820160  beq     loc_FFE79B50
+FFE799F4? 807E0000  lwz     r3, 0x0(r30)
+FFE799F8? 56C51838  slwi    r5, r22, 3
+FFE799FC? 7CC32814  addc    r6, r3, r5
+FFE79A00? 90DE0000  stw     r6, 0x0(r30)
+FFE79A04? 9AD40000  stb     r22, 0x0(r20)
+FFE79A08? 3B400000  li      r26, 0x0
+FFE79A0C? 480006CD  bl      glue_SynchronizeIO
+FFE79A10? 80410014  lwz     r2, 0x14(r1)
+FFE79A14? 63040000  ori     r4, r24, 0x0
+FFE79A18? 63C30000  ori     r3, r30, 0x0
+FFE79A1C? 38A00000  li      r5, 0x0
+FFE79A20? 4BFFFDB5  bl      sub_FFE797D4
+FFE79A24? 418A0190  beq     cr2, loc_FFE79BB4
+FFE79A28? 63E30000  ori     r3, r31, 0x0
+FFE79A2C? 63A40000  ori     r4, r29, 0x0
+FFE79A30? 4BFFFC9D  bl      sub_FFE796CC
+FFE79A34? 60000000  nop
+FFE79A38? 893D0000  lbz     r9, 0x0(r29)
+FFE79A3C? 553807FF  clrlwi. r24, r9, 31
+FFE79A40? 41820058  beq     loc_FFE79A98
+FFE79A44? 5523066E  rlwinm  r3, r9, 0, 25, 23
+FFE79A48? 5464063E  clrlwi  r4, r3, 24
+FFE79A4C? 989D0000  stb     r4, 0x0(r29)
+FFE79A50? 63E30000  ori     r3, r31, 0x0
+FFE79A54? 48000571  bl      sub_FFE79FC4
+FFE79A58? 60000000  nop
+FFE79A5C? 48000008  b       loc_FFE79A64
+loc_FFE79A60:
+FFE79A60? 40820020  bne     loc_FFE79A80
+loc_FFE79A64:
+FFE79A64? 63E30000  ori     r3, r31, 0x0
+FFE79A68? 63A40000  ori     r4, r29, 0x0
+FFE79A6C? 4BFFFC61  bl      sub_FFE796CC
+FFE79A70? 60000000  nop
+FFE79A74? 893D0000  lbz     r9, 0x0(r29)
+FFE79A78? 55380631  rlwinm. r24, r9, 0, 24, 24
+FFE79A7C? 4BFFFFE4  b       loc_FFE79A60
+loc_FFE79A80:
+FFE79A80? 5523066E  rlwinm  r3, r9, 0, 25, 23
+FFE79A84? 5464063E  clrlwi  r4, r3, 24
+FFE79A88? 989D0000  stb     r4, 0x0(r29)
+FFE79A8C? 63E30000  ori     r3, r31, 0x0
+FFE79A90? 48000535  bl      sub_FFE79FC4
+FFE79A94? 60000000  nop
+loc_FFE79A98:
+FFE79A98? 63240000  ori     r4, r25, 0x0
+FFE79A9C? 63C30000  ori     r3, r30, 0x0
+FFE79AA0? 63450000  ori     r5, r26, 0x0
+FFE79AA4? 4BFFFD31  bl      sub_FFE797D4
+FFE79AA8? 281B0000  cmplwi  cr0, r27, 0x0
+FFE79AAC? 41820108  beq     loc_FFE79BB4
+FFE79AB0? 63E30000  ori     r3, r31, 0x0
+FFE79AB4? 63840000  ori     r4, r28, 0x0
+FFE79AB8? 4BFFFC15  bl      sub_FFE796CC
+FFE79ABC? 60000000  nop
+FFE79AC0? 893C0000  lbz     r9, 0x0(r28)
+FFE79AC4? 553D07FF  clrlwi. r29, r9, 31
+FFE79AC8? 41820058  beq     loc_FFE79B20
+FFE79ACC? 5523066E  rlwinm  r3, r9, 0, 25, 23
+FFE79AD0? 5464063E  clrlwi  r4, r3, 24
+FFE79AD4? 989C0000  stb     r4, 0x0(r28)
+FFE79AD8? 63E30000  ori     r3, r31, 0x0
+FFE79ADC? 480004E9  bl      sub_FFE79FC4
+FFE79AE0? 60000000  nop
+FFE79AE4? 48000008  b       loc_FFE79AEC
+loc_FFE79AE8:
+FFE79AE8? 40820020  bne     loc_FFE79B08
+loc_FFE79AEC:
+FFE79AEC? 63E30000  ori     r3, r31, 0x0
+FFE79AF0? 63840000  ori     r4, r28, 0x0
+FFE79AF4? 4BFFFBD9  bl      sub_FFE796CC
+FFE79AF8? 60000000  nop
+FFE79AFC? 893C0000  lbz     r9, 0x0(r28)
+FFE79B00? 553D0631  rlwinm. r29, r9, 0, 24, 24
+FFE79B04? 4BFFFFE4  b       loc_FFE79AE8
+loc_FFE79B08:
+FFE79B08? 5523066E  rlwinm  r3, r9, 0, 25, 23
+FFE79B0C? 5464063E  clrlwi  r4, r3, 24
+FFE79B10? 989C0000  stb     r4, 0x0(r28)
+FFE79B14? 63E30000  ori     r3, r31, 0x0
+FFE79B18? 480004AD  bl      sub_FFE79FC4
+FFE79B1C? 60000000  nop
+loc_FFE79B20:
+FFE79B20? 63640000  ori     r4, r27, 0x0
+FFE79B24? 63C30000  ori     r3, r30, 0x0
+FFE79B28? 63450000  ori     r5, r26, 0x0
+FFE79B2C? 4BFFFCA9  bl      sub_FFE797D4
+FFE79B30? 28170000  cmplwi  cr0, r23, 0x0
+FFE79B34? 41820080  beq     loc_FFE79BB4
+FFE79B38? 4BFFFBDD  bl      sub_FFE79714
+FFE79B3C? 62E40000  ori     r4, r23, 0x0
+FFE79B40? 63C30000  ori     r3, r30, 0x0
+FFE79B44? 63450000  ori     r5, r26, 0x0
+FFE79B48? 4BFFFC8D  bl      sub_FFE797D4
+FFE79B4C? 48000068  b       loc_FFE79BB4
+loc_FFE79B50:
+FFE79B50? 63040000  ori     r4, r24, 0x0
+FFE79B54? 63C30000  ori     r3, r30, 0x0
+FFE79B58? 38A00001  li      r5, 0x1
+FFE79B5C? 3BE00001  li      r31, 0x1
+FFE79B60? 4BFFFC75  bl      sub_FFE797D4
+FFE79B64? 418A0050  beq     cr2, loc_FFE79BB4
+FFE79B68? 4BFFFBAD  bl      sub_FFE79714
+FFE79B6C? 63240000  ori     r4, r25, 0x0
+FFE79B70? 63C30000  ori     r3, r30, 0x0
+FFE79B74? 38A00001  li      r5, 0x1
+FFE79B78? 4BFFFC5D  bl      sub_FFE797D4
+FFE79B7C? 281B0000  cmplwi  cr0, r27, 0x0
+FFE79B80? 41820034  beq     loc_FFE79BB4
+FFE79B84? 4BFFFB91  bl      sub_FFE79714
+FFE79B88? 63640000  ori     r4, r27, 0x0
+FFE79B8C? 63C30000  ori     r3, r30, 0x0
+FFE79B90? 38A00001  li      r5, 0x1
+FFE79B94? 4BFFFC41  bl      sub_FFE797D4
+FFE79B98? 28170000  cmplwi  cr0, r23, 0x0
+FFE79B9C? 41820018  beq     loc_FFE79BB4
+FFE79BA0? 4BFFFB75  bl      sub_FFE79714
+FFE79BA4? 62E40000  ori     r4, r23, 0x0
+FFE79BA8? 63C30000  ori     r3, r30, 0x0
+FFE79BAC? 38A00001  li      r5, 0x1
+FFE79BB0? 4BFFFC25  bl      sub_FFE797D4
+loc_FFE79BB4:
+FFE79BB4? 88750000  lbz     r3, 0x0(r21)
+FFE79BB8? 2C030000  cmpwi   cr0, r3, 0x0
+FFE79BBC? 40820018  bne     loc_FFE79BD4
+FFE79BC0? 38600000  li      r3, 0x0
+FFE79BC4? 98710000  stb     r3, 0x0(r17)
+FFE79BC8? 62230000  ori     r3, r17, 0x0
+FFE79BCC? 4BFFDDB1  bl      sub_FFE7797C
+FFE79BD0? 60000000  nop
+loc_FFE79BD4:
+FFE79BD4? 80010088  lwz     r0, 0x88(r1)
+FFE79BD8? 81810084  lwz     r12, 0x84(r1)
+FFE79BDC? 30210080  addic   r1, r1, 0x80
+FFE79BE0? 7C0803A6  mtspr   LR, r0
+FFE79BE4? BA21FFC4  lmw     r17, -0x3C(r1)
+FFE79BE8? 7D838120  mtcrf   0x38, r12
+FFE79BEC? 4E800020  blr
+
+sub_FFE79BF0:
+FFE79BF0? 7C0802A6  mfspr   r0, LR
+FFE79BF4? 7D800026  mfcr    r12
+FFE79BF8? BE61FFCC  stmw    r19, -0x34(r1)
+FFE79BFC? 90010008  stw     r0, 0x8(r1)
+FFE79C00? 91810004  stw     r12, 0x4(r1)
+FFE79C04? 9421FF88  stwu    r1, -0x78(r1)
+FFE79C08? 8322FFFC  lwz     r25, -0x4(r2)                      ; TOC[-4] &data+660
+FFE79C0C? 32C1003B  addic   r22, r1, 0x3B
+FFE79C10? 80D90000  lwz     r6, 0x0(r25)
+FFE79C14? 5478043E  clrlwi  r24, r3, 16
+FFE79C18? 60BF0000  ori     r31, r5, 0x0
+FFE79C1C? 549D043E  clrlwi  r29, r4, 16
+FFE79C20? 33860050  addic   r28, r6, 0x50
+FFE79C24? 33C60040  addic   r30, r6, 0x40
+FFE79C28? 62C30000  ori     r3, r22, 0x0
+FFE79C2C? 32810038  addic   r20, r1, 0x38
+FFE79C30? 32A10039  addic   r21, r1, 0x39
+FFE79C34? 3361003A  addic   r27, r1, 0x3A
+FFE79C38? 32E1003C  addic   r23, r1, 0x3C
+FFE79C3C? 3341003D  addic   r26, r1, 0x3D
+FFE79C40? 4BFFE5BD  bl      sub_FFE781FC
+FFE79C44? 60000000  nop
+FFE79C48? 88160000  lbz     r0, 0x0(r22)
+FFE79C4C? 2C000000  cmpwi   cr0, r0, 0x0
+FFE79C50? 40820018  bne     loc_FFE79C68
+FFE79C54? 38600001  li      r3, 0x1
+FFE79C58? 987B0000  stb     r3, 0x0(r27)
+FFE79C5C? 63630000  ori     r3, r27, 0x0
+FFE79C60? 4BFFDD1D  bl      sub_FFE7797C
+FFE79C64? 60000000  nop
+loc_FFE79C68:
+FFE79C68? 82790000  lwz     r19, 0x0(r25)
+FFE79C6C? 3B600097  li      r27, 0x97
+FFE79C70? 9B730070  stb     r27, 0x70(r19)
+FFE79C74? 48000465  bl      glue_SynchronizeIO
+FFE79C78? 80410014  lwz     r2, 0x14(r1)
+FFE79C7C? 88130060  lbz     r0, 0x60(r19)
+FFE79C80? 98150000  stb     r0, 0x0(r21)
+FFE79C84? 981A0000  stb     r0, 0x0(r26)
+FFE79C88? 540007FF  clrlwi. r0, r0, 31
+FFE79C8C? 41820068  beq     loc_FFE79CF4
+FFE79C90? 88950000  lbz     r4, 0x0(r21)
+FFE79C94? 38600097  li      r3, 0x97
+FFE79C98? 5484066E  rlwinm  r4, r4, 0, 25, 23
+FFE79C9C? 5484063E  clrlwi  r4, r4, 24
+FFE79CA0? 989A0000  stb     r4, 0x0(r26)
+FFE79CA4? 48000321  bl      sub_FFE79FC4
+FFE79CA8? 60000000  nop
+FFE79CAC? 48000008  b       loc_FFE79CB4
+loc_FFE79CB0:
+FFE79CB0? 40820028  bne     loc_FFE79CD8
+loc_FFE79CB4:
+FFE79CB4? 82B90000  lwz     r21, 0x0(r25)
+FFE79CB8? 9B750070  stb     r27, 0x70(r21)
+FFE79CBC? 4800041D  bl      glue_SynchronizeIO
+FFE79CC0? 80410014  lwz     r2, 0x14(r1)
+FFE79CC4? 88150060  lbz     r0, 0x60(r21)
+FFE79CC8? 98170000  stb     r0, 0x0(r23)
+FFE79CCC? 981A0000  stb     r0, 0x0(r26)
+FFE79CD0? 54000631  rlwinm. r0, r0, 0, 24, 24
+FFE79CD4? 4BFFFFDC  b       loc_FFE79CB0
+loc_FFE79CD8:
+FFE79CD8? 88970000  lbz     r4, 0x0(r23)
+FFE79CDC? 63630000  ori     r3, r27, 0x0
+FFE79CE0? 5484066E  rlwinm  r4, r4, 0, 25, 23
+FFE79CE4? 5484063E  clrlwi  r4, r4, 24
+FFE79CE8? 989A0000  stb     r4, 0x0(r26)
+FFE79CEC? 480002D9  bl      sub_FFE79FC4
+FFE79CF0? 60000000  nop
+loc_FFE79CF4:
+FFE79CF4? 2C18FFFF  cmpwi   cr0, r24, 0xFFFF
+FFE79CF8? 2D1D0000  cmpwi   cr2, r29, 0x0
+FFE79CFC? 4182013C  beq     loc_FFE79E38
+FFE79D00? 57031838  slwi    r3, r24, 3
+FFE79D04? 7FFF1814  addc    r31, r31, r3
+FFE79D08? 9B1C0000  stb     r24, 0x0(r28)
+FFE79D0C? 480003CD  bl      glue_SynchronizeIO
+FFE79D10? 80410014  lwz     r2, 0x14(r1)
+FFE79D14? 41880274  blt     cr2, loc_FFE79F88
+FFE79D18? 347DFFFF  addic.  r3, r29, -0x1
+FFE79D1C? 418000C4  blt     loc_FFE79DE0
+FFE79D20? 33FFFFF2  addic   r31, r31, -0xE
+FFE79D24? 3B80000E  li      r28, 0xE
+loc_FFE79D28:
+FFE79D28? 418000AC  blt     loc_FFE79DD4
+FFE79D2C? 887E0000  lbz     r3, 0x0(r30)
+FFE79D30? 881E0000  lbz     r0, 0x0(r30)
+FFE79D34? 899E0000  lbz     r12, 0x0(r30)
+FFE79D38d 5464402E  .ascii  "Td@.|e#x"
+FFE79D40? 540B402E  slwi    r11, r0, 8
+FFE79D44? B4BF0010  sthu    r5, 0x10(r31)
+FFE79D48? 7C1B5B78  or      r27, r0, r11
+FFE79D4C? 5580402E  slwi    r0, r12, 8
+FFE79D50? 7D9A0378  or      r26, r12, r0
+FFE79D54? 33BDFFFE  addic   r29, r29, -0x2
+FFE79D58? 48000381  bl      glue_SynchronizeIO
+FFE79D5C? 80410014  lwz     r2, 0x14(r1)
+FFE79D60? B37F0002  sth     r27, 0x2(r31)
+FFE79D64? 48000375  bl      glue_SynchronizeIO
+FFE79D68? 80410014  lwz     r2, 0x14(r1)
+FFE79D6C? B35F0004  sth     r26, 0x4(r31)
+FFE79D70? 48000369  bl      glue_SynchronizeIO
+FFE79D74? 80410014  lwz     r2, 0x14(r1)
+FFE79D78? 881E0000  lbz     r0, 0x0(r30)
+FFE79D7C? 899E0000  lbz     r12, 0x0(r30)
+FFE79D80? 897E0000  lbz     r11, 0x0(r30)
+FFE79D84? 8B7E0000  lbz     r27, 0x0(r30)
+FFE79D88? 8B5E0000  lbz     r26, 0x0(r30)
+FFE79D8C? 8B3E0000  lbz     r25, 0x0(r30)
+FFE79D90? 540A402E  slwi    r10, r0, 8
+FFE79D94? 7C005378  or      r0, r0, r10
+FFE79D98? 558A402E  slwi    r10, r12, 8
+FFE79D9C? B01F0008  sth     r0, 0x8(r31)
+FFE79DA0? 5560402E  slwi    r0, r11, 8
+FFE79DA4? 7D985378  or      r24, r12, r10
+FFE79DA8? 7D770378  or      r23, r11, r0
+FFE79DAC? 4800032D  bl      glue_SynchronizeIO
+FFE79DB0? 80410014  lwz     r2, 0x14(r1)
+FFE79DB4? B31F000A  sth     r24, 0xA(r31)
+FFE79DB8? 48000321  bl      glue_SynchronizeIO
+FFE79DBC? 80410014  lwz     r2, 0x14(r1)
+FFE79DC0? B2FF000C  sth     r23, 0xC(r31)
+FFE79DC4? 48000315  bl      glue_SynchronizeIO
+FFE79DC8? 80410014  lwz     r2, 0x14(r1)
+FFE79DCC? 2C1D0001  cmpwi   cr0, r29, 0x1
+FFE79DD0? 4BFFFF58  b       loc_FFE79D28
+loc_FFE79DD4:
+FFE79DD4? 2C1D0000  cmpwi   cr0, r29, 0x0
+FFE79DD8? 7FFFE014  addc    r31, r31, r28
+FFE79DDC? 418001AC  blt     loc_FFE79F88
+loc_FFE79DE0:
+FFE79DE0? 887E0000  lbz     r3, 0x0(r30)
+FFE79DE4? 8BBE0000  lbz     r29, 0x0(r30)
+FFE79DE8? 8B9E0000  lbz     r28, 0x0(r30)
+FFE79DEC? 5467402E  slwi    r7, r3, 8
+FFE79DF0? 889E0000  lbz     r4, 0x0(r30)
+FFE79DF4? 88BE0000  lbz     r5, 0x0(r30)
+FFE79DF8? 88DE0000  lbz     r6, 0x0(r30)
+FFE79DFC? 7C683B78  or      r8, r3, r7
+FFE79E00? 57BB402E  slwi    r27, r29, 8
+FFE79E04? B11F0002  sth     r8, 0x2(r31)
+FFE79E08? 5799402E  slwi    r25, r28, 8
+FFE79E0C? 7FBADB78  or      r26, r29, r27
+FFE79E10? 7F98CB78  or      r24, r28, r25
+FFE79E14? 480002C5  bl      glue_SynchronizeIO
+FFE79E18? 80410014  lwz     r2, 0x14(r1)
+FFE79E1C? B35F0004  sth     r26, 0x4(r31)
+FFE79E20? 480002B9  bl      glue_SynchronizeIO
+FFE79E24? 80410014  lwz     r2, 0x14(r1)
+FFE79E28? B31F0006  sth     r24, 0x6(r31)
+FFE79E2C? 480002AD  bl      glue_SynchronizeIO
+FFE79E30? 80410014  lwz     r2, 0x14(r1)
+FFE79E34? 48000154  b       loc_FFE79F88
+loc_FFE79E38:
+FFE79E38? 41880150  blt     cr2, loc_FFE79F88
+FFE79E3C? 347DFFFF  addic.  r3, r29, -0x1
+FFE79E40? 418000E4  blt     loc_FFE79F24
+FFE79E44? 33FFFFF2  addic   r31, r31, -0xE
+FFE79E48? 3B60000E  li      r27, 0xE
+loc_FFE79E4C:
+FFE79E4C? 418000CC  blt     loc_FFE79F18
+FFE79E50? A87F000E  lha     r3, 0xE(r31)
+FFE79E54? 33BDFFFE  addic   r29, r29, -0x2
+FFE79E58? 987C0000  stb     r3, 0x0(r28)
+FFE79E5C? 4800027D  bl      glue_SynchronizeIO
+FFE79E60? 80410014  lwz     r2, 0x14(r1)
+FFE79E64? 881E0000  lbz     r0, 0x0(r30)
+FFE79E68? 899E0000  lbz     r12, 0x0(r30)
+FFE79E6C? 897E0000  lbz     r11, 0x0(r30)
+FFE79E70? 540A402E  slwi    r10, r0, 8
+FFE79E74? 7C005378  or      r0, r0, r10
+FFE79E78? 558A402E  slwi    r10, r12, 8
+FFE79E7C? B41F0010  sthu    r0, 0x10(r31)
+FFE79E80? 7D9A5378  or      r26, r12, r10
+FFE79E84? 5560402E  slwi    r0, r11, 8
+FFE79E88? 7D790378  or      r25, r11, r0
+FFE79E8C? 4800024D  bl      glue_SynchronizeIO
+FFE79E90? 80410014  lwz     r2, 0x14(r1)
+FFE79E94? B35F0002  sth     r26, 0x2(r31)
+FFE79E98? 48000241  bl      glue_SynchronizeIO
+FFE79E9C? 80410014  lwz     r2, 0x14(r1)
+FFE79EA0? B33F0004  sth     r25, 0x4(r31)
+FFE79EA4? 48000235  bl      glue_SynchronizeIO
+FFE79EA8? 80410014  lwz     r2, 0x14(r1)
+FFE79EAC? A81F0006  lha     r0, 0x6(r31)
+FFE79EB0? 981C0000  stb     r0, 0x0(r28)
+FFE79EB4? 48000225  bl      glue_SynchronizeIO
+FFE79EB8? 80410014  lwz     r2, 0x14(r1)
+FFE79EBC? 881E0000  lbz     r0, 0x0(r30)
+FFE79EC0? 899E0000  lbz     r12, 0x0(r30)
+FFE79EC4? 897E0000  lbz     r11, 0x0(r30)
+FFE79EC8? 8B5E0000  lbz     r26, 0x0(r30)
+FFE79ECC? 8B3E0000  lbz     r25, 0x0(r30)
+FFE79ED0? 8B1E0000  lbz     r24, 0x0(r30)
+FFE79ED4? 540A402E  slwi    r10, r0, 8
+FFE79ED8? 7C005378  or      r0, r0, r10
+FFE79EDC? 558A402E  slwi    r10, r12, 8
+FFE79EE0? B01F0008  sth     r0, 0x8(r31)
+FFE79EE4? 5560402E  slwi    r0, r11, 8
+FFE79EE8? 7D975378  or      r23, r12, r10
+FFE79EEC? 7D750378  or      r21, r11, r0
+FFE79EF0? 480001E9  bl      glue_SynchronizeIO
+FFE79EF4? 80410014  lwz     r2, 0x14(r1)
+FFE79EF8? B2FF000A  sth     r23, 0xA(r31)
+FFE79EFC? 480001DD  bl      glue_SynchronizeIO
+FFE79F00? 80410014  lwz     r2, 0x14(r1)
+FFE79F04? B2BF000C  sth     r21, 0xC(r31)
+FFE79F08? 480001D1  bl      glue_SynchronizeIO
+FFE79F0C? 80410014  lwz     r2, 0x14(r1)
+FFE79F10? 2C1D0001  cmpwi   cr0, r29, 0x1
+FFE79F14? 4BFFFF38  b       loc_FFE79E4C
+loc_FFE79F18:
+FFE79F18? 2C1D0000  cmpwi   cr0, r29, 0x0
+FFE79F1C? 7FFFD814  addc    r31, r31, r27
+FFE79F20? 41800068  blt     loc_FFE79F88
+loc_FFE79F24:
+FFE79F24? A87F0000  lha     r3, 0x0(r31)
+FFE79F28? 987C0000  stb     r3, 0x0(r28)
+FFE79F2C? 480001AD  bl      glue_SynchronizeIO
+FFE79F30? 80410014  lwz     r2, 0x14(r1)
+FFE79F34? 881E0000  lbz     r0, 0x0(r30)
+FFE79F38? 899E0000  lbz     r12, 0x0(r30)
+FFE79F3C? 897E0000  lbz     r11, 0x0(r30)
+FFE79F40? 8BBE0000  lbz     r29, 0x0(r30)
+FFE79F44? 8B9E0000  lbz     r28, 0x0(r30)
+FFE79F48? 8BDE0000  lbz     r30, 0x0(r30)
+FFE79F4C? 540A402E  slwi    r10, r0, 8
+FFE79F50? 7C005378  or      r0, r0, r10
+FFE79F54? B01F0002  sth     r0, 0x2(r31)
+FFE79F58? 5580402E  slwi    r0, r12, 8
+FFE79F5C? 556A402E  slwi    r10, r11, 8
+FFE79F60? 7D9B0378  or      r27, r12, r0
+FFE79F64? 7D7A5378  or      r26, r11, r10
+FFE79F68? 48000171  bl      glue_SynchronizeIO
+FFE79F6C? 80410014  lwz     r2, 0x14(r1)
+FFE79F70? B37F0004  sth     r27, 0x4(r31)
+FFE79F74? 48000165  bl      glue_SynchronizeIO
+FFE79F78? 80410014  lwz     r2, 0x14(r1)
+FFE79F7C? B35F0006  sth     r26, 0x6(r31)
+FFE79F80? 48000159  bl      glue_SynchronizeIO
+FFE79F84? 80410014  lwz     r2, 0x14(r1)
+loc_FFE79F88:
+FFE79F88? 88760000  lbz     r3, 0x0(r22)
+FFE79F8C? 2C030000  cmpwi   cr0, r3, 0x0
+FFE79F90? 40820018  bne     loc_FFE79FA8
+FFE79F94? 38600000  li      r3, 0x0
+FFE79F98? 98740000  stb     r3, 0x0(r20)
+FFE79F9C? 62830000  ori     r3, r20, 0x0
+FFE79FA0? 4BFFD9DD  bl      sub_FFE7797C
+FFE79FA4? 60000000  nop
+loc_FFE79FA8:
+FFE79FA8? 80010080  lwz     r0, 0x80(r1)
+FFE79FAC? 8181007C  lwz     r12, 0x7C(r1)
+FFE79FB0? 30210078  addic   r1, r1, 0x78
+FFE79FB4? 7C0803A6  mtspr   LR, r0
+FFE79FB8? BA61FFCC  lmw     r19, -0x34(r1)
+FFE79FBC? 7D838120  mtcrf   0x38, r12
+FFE79FC0? 4E800020  blr
+
+sub_FFE79FC4:
+FFE79FC4? 80A2FFFC  lwz     r5, -0x4(r2)                       ; TOC[-4] &data+660
+FFE79FC8? 80C50000  lwz     r6, 0x0(r5)
+FFE79FCC? 5463C00E  slwi    r3, r3, 24
+FFE79FD0? 90660030  stw     r3, 0x30(r6)
+FFE79FD4? 7C0006AC  eieio
+FFE79FD8? 5484C00E  slwi    r4, r4, 24
+FFE79FDC? 90860020  stw     r4, 0x20(r6)
+FFE79FE0? 7C0006AC  eieio
+FFE79FE4? 4E800020  blr
+
+sub_FFE79FE8:
+FFE79FE8? 7C0802A6  mfspr   r0, LR
+FFE79FEC? 90010008  stw     r0, 0x8(r1)
+FFE79FF0? 9421FFB0  stwu    r1, -0x50(r1)
+FFE79FF4? 5463063E  clrlwi  r3, r3, 24
+FFE79FF8? 31210038  addic   r9, r1, 0x38
+FFE79FFC? 39400000  li      r10, 0x0
+FFE7A000? 5468003C  clrrwi  r8, r3, 1
+FFE7A004? 5484063E  clrlwi  r4, r4, 24
+FFE7A008? 38C00001  li      r6, 0x1
+FFE7A00C? 38E00022  li      r7, 0x22
+FFE7A010? 39600002  li      r11, 0x2
+FFE7A014? 98C90000  stb     r6, 0x0(r9)
+FFE7A018? 98E90001  stb     r7, 0x1(r9)
+FFE7A01C? 99090002  stb     r8, 0x2(r9)
+FFE7A020? 98890003  stb     r4, 0x3(r9)
+FFE7A024? 99490004  stb     r10, 0x4(r9)
+FFE7A028? 99490005  stb     r10, 0x5(r9)
+FFE7A02C? B1690006  sth     r11, 0x6(r9)
+FFE7A030? 90A90008  stw     r5, 0x8(r9)
+FFE7A034? 39800000  li      r12, 0x0
+FFE7A038? 91890010  stw     r12, 0x10(r9)
+FFE7A03C? 61230000  ori     r3, r9, 0x0
+FFE7A040? 48000019  bl      sub_FFE7A058
+FFE7A044? 60000000  nop
+FFE7A048? 80010058  lwz     r0, 0x58(r1)
+FFE7A04C? 30210050  addic   r1, r1, 0x50
+FFE7A050? 7C0803A6  mtspr   LR, r0
+FFE7A054? 4E800020  blr
+
+sub_FFE7A058:
+FFE7A058? 7C0802A6  mfspr   r0, LR
+FFE7A05C? BFE1FFFC  stmw    r31, -0x4(r1)
+FFE7A060? 90010008  stw     r0, 0x8(r1)
+FFE7A064? 9421FFC0  stwu    r1, -0x40(r1)
+FFE7A068? 60660000  ori     r6, r3, 0x0
+FFE7A06C? 80600648  lwz     r3, 0x648
+FFE7A070? 3C800013  lis     r4, 0x0013
+FFE7A074? 3CA00000  lis     r5, 0x0000
+FFE7A078? 33E10038  addic   r31, r1, 0x38
+FFE7A07C? 60843822  ori     r4, r4, 0x3822
+FFE7A080? 60A5A092  ori     r5, r5, 0xA092
+FFE7A084? 4800024D  bl      glue_CallOSTrapUniversalProc
+FFE7A088? 80410014  lwz     r2, 0x14(r1)
+FFE7A08C? 907F0000  stw     r3, 0x0(r31)
+FFE7A090? A87F0002  lha     r3, 0x2(r31)
+FFE7A094? 80010048  lwz     r0, 0x48(r1)
+FFE7A098? 30210040  addic   r1, r1, 0x40
+FFE7A09C? 7C0803A6  mtspr   LR, r0
+FFE7A0A0? BBE1FFFC  lmw     r31, -0x4(r1)
+FFE7A0A4? 4E800020  blr
+
+glue_RegistryPropertyDelete:
+FFE7A0A8  8182FF44  lwz     r12, -0xBC(r2)                     ; TOC[-188] RegistryPropertyDelete
+FFE7A0AC  90410014  stw     r2, 0x14(r1)
+FFE7A0B0  800C0000  lwz     r0, 0x0(r12)
+FFE7A0B4  804C0004  lwz     r2, 0x4(r12)
+FFE7A0B8  7C0903A6  mtspr   CTR, r0
+FFE7A0BC  4E800420  bctr
+
+glue_RegistryEntryIDCopy:
+FFE7A0C0  8182FF28  lwz     r12, -0xD8(r2)                     ; TOC[-216] RegistryEntryIDCopy
+FFE7A0C4  90410014  stw     r2, 0x14(r1)
+FFE7A0C8  800C0000  lwz     r0, 0x0(r12)
+FFE7A0CC  804C0004  lwz     r2, 0x4(r12)
+FFE7A0D0  7C0903A6  mtspr   CTR, r0
+FFE7A0D4  4E800420  bctr
+
+glue_SynchronizeIO:
+FFE7A0D8  8182FF04  lwz     r12, -0xFC(r2)                     ; TOC[-252] SynchronizeIO
+FFE7A0DC  90410014  stw     r2, 0x14(r1)
+FFE7A0E0  800C0000  lwz     r0, 0x0(r12)
+FFE7A0E4  804C0004  lwz     r2, 0x4(r12)
+FFE7A0E8  7C0903A6  mtspr   CTR, r0
+FFE7A0EC  4E800420  bctr
+
+glue_RegistryEntryIDDispose:
+FFE7A0F0  8182FF2C  lwz     r12, -0xD4(r2)                     ; TOC[-212] RegistryEntryIDDispose
+FFE7A0F4  90410014  stw     r2, 0x14(r1)
+FFE7A0F8  800C0000  lwz     r0, 0x0(r12)
+FFE7A0FC  804C0004  lwz     r2, 0x4(r12)
+FFE7A100  7C0903A6  mtspr   CTR, r0
+FFE7A104  4E800420  bctr
+
+glue_IOCommandIsComplete:
+FFE7A108  8182FF00  lwz     r12, -0x100(r2)                    ; TOC[-256] IOCommandIsComplete
+FFE7A10C  90410014  stw     r2, 0x14(r1)
+FFE7A110  800C0000  lwz     r0, 0x0(r12)
+FFE7A114  804C0004  lwz     r2, 0x4(r12)
+FFE7A118  7C0903A6  mtspr   CTR, r0
+FFE7A11C  4E800420  bctr
+
+glue_InstallInterruptFunctions:
+FFE7A120  8182FEF8  lwz     r12, -0x108(r2)                    ; TOC[-264] InstallInterruptFunctions
+FFE7A124  90410014  stw     r2, 0x14(r1)
+FFE7A128  800C0000  lwz     r0, 0x0(r12)
+FFE7A12C  804C0004  lwz     r2, 0x4(r12)
+FFE7A130  7C0903A6  mtspr   CTR, r0
+FFE7A134  4E800420  bctr
+
+glue_GetInterruptFunctions:
+FFE7A138  8182FEFC  lwz     r12, -0x104(r2)                    ; TOC[-260] GetInterruptFunctions
+FFE7A13C  90410014  stw     r2, 0x14(r1)
+FFE7A140  800C0000  lwz     r0, 0x0(r12)
+FFE7A144  804C0004  lwz     r2, 0x4(r12)
+FFE7A148  7C0903A6  mtspr   CTR, r0
+FFE7A14C  4E800420  bctr
+
+glue_VSLNewInterruptService:
+FFE7A150  8182FF1C  lwz     r12, -0xE4(r2)                     ; TOC[-228] VSLNewInterruptService
+FFE7A154  90410014  stw     r2, 0x14(r1)
+FFE7A158  800C0000  lwz     r0, 0x0(r12)
+FFE7A15C  804C0004  lwz     r2, 0x4(r12)
+FFE7A160  7C0903A6  mtspr   CTR, r0
+FFE7A164  4E800420  bctr
+
+glue_RegistryPropertyGet:
+FFE7A168  8182FF4C  lwz     r12, -0xB4(r2)                     ; TOC[-180] RegistryPropertyGet
+FFE7A16C  90410014  stw     r2, 0x14(r1)
+FFE7A170  800C0000  lwz     r0, 0x0(r12)
+FFE7A174  804C0004  lwz     r2, 0x4(r12)
+FFE7A178  7C0903A6  mtspr   CTR, r0
+FFE7A17C  4E800420  bctr
+
+glue_BlockCopy:
+FFE7A180  8182FF18  lwz     r12, -0xE8(r2)                     ; TOC[-232] BlockCopy
+FFE7A184  90410014  stw     r2, 0x14(r1)
+FFE7A188  800C0000  lwz     r0, 0x0(r12)
+FFE7A18C  804C0004  lwz     r2, 0x4(r12)
+FFE7A190  7C0903A6  mtspr   CTR, r0
+FFE7A194  4E800420  bctr
+
+glue_VSLDisposeInterruptService:
+FFE7A198  8182FF20  lwz     r12, -0xE0(r2)                     ; TOC[-224] VSLDisposeInterruptService
+FFE7A19C  90410014  stw     r2, 0x14(r1)
+FFE7A1A0  800C0000  lwz     r0, 0x0(r12)
+FFE7A1A4  804C0004  lwz     r2, 0x4(r12)
+FFE7A1A8  7C0903A6  mtspr   CTR, r0
+FFE7A1AC  4E800420  bctr
+
+glue_ExpMgrConfigReadLong:
+FFE7A1B0  8182FF58  lwz     r12, -0xA8(r2)                     ; TOC[-168] ExpMgrConfigReadLong
+FFE7A1B4  90410014  stw     r2, 0x14(r1)
+FFE7A1B8  800C0000  lwz     r0, 0x0(r12)
+FFE7A1BC  804C0004  lwz     r2, 0x4(r12)
+FFE7A1C0  7C0903A6  mtspr   CTR, r0
+FFE7A1C4  4E800420  bctr
+
+glue_PoolDeallocate:
+FFE7A1C8  8182FF14  lwz     r12, -0xEC(r2)                     ; TOC[-236] PoolDeallocate
+FFE7A1CC  90410014  stw     r2, 0x14(r1)
+FFE7A1D0  800C0000  lwz     r0, 0x0(r12)
+FFE7A1D4  804C0004  lwz     r2, 0x4(r12)
+FFE7A1D8  7C0903A6  mtspr   CTR, r0
+FFE7A1DC  4E800420  bctr
+
+glue_RegistryPropertySetMod:
+FFE7A1E0  8182FF54  lwz     r12, -0xAC(r2)                     ; TOC[-172] RegistryPropertySetMod
+FFE7A1E4  90410014  stw     r2, 0x14(r1)
+FFE7A1E8  800C0000  lwz     r0, 0x0(r12)
+FFE7A1EC  804C0004  lwz     r2, 0x4(r12)
+FFE7A1F0  7C0903A6  mtspr   CTR, r0
+FFE7A1F4  4E800420  bctr
+
+glue_RegistryPropertySet:
+FFE7A1F8  8182FF50  lwz     r12, -0xB0(r2)                     ; TOC[-176] RegistryPropertySet
+FFE7A1FC  90410014  stw     r2, 0x14(r1)
+FFE7A200  800C0000  lwz     r0, 0x0(r12)
+FFE7A204  804C0004  lwz     r2, 0x4(r12)
+FFE7A208  7C0903A6  mtspr   CTR, r0
+FFE7A20C  4E800420  bctr
+
+glue_CStrCopy:
+FFE7A210  8182FF08  lwz     r12, -0xF8(r2)                     ; TOC[-248] CStrCopy
+FFE7A214  90410014  stw     r2, 0x14(r1)
+FFE7A218  800C0000  lwz     r0, 0x0(r12)
+FFE7A21C  804C0004  lwz     r2, 0x4(r12)
+FFE7A220  7C0903A6  mtspr   CTR, r0
+FFE7A224  4E800420  bctr
+
+glue_RegistryEntryIterateCreate:
+FFE7A228  8182FF30  lwz     r12, -0xD0(r2)                     ; TOC[-208] RegistryEntryIterateCreate
+FFE7A22C  90410014  stw     r2, 0x14(r1)
+FFE7A230  800C0000  lwz     r0, 0x0(r12)
+FFE7A234  804C0004  lwz     r2, 0x4(r12)
+FFE7A238  7C0903A6  mtspr   CTR, r0
+FFE7A23C  4E800420  bctr
+
+glue_RegistryEntryIterate:
+FFE7A240  8182FF38  lwz     r12, -0xC8(r2)                     ; TOC[-200] RegistryEntryIterate
+FFE7A244  90410014  stw     r2, 0x14(r1)
+FFE7A248  800C0000  lwz     r0, 0x0(r12)
+FFE7A24C  804C0004  lwz     r2, 0x4(r12)
+FFE7A250  7C0903A6  mtspr   CTR, r0
+FFE7A254  4E800420  bctr
+
+glue_RegistryCStrEntryToName:
+FFE7A258  8182FF3C  lwz     r12, -0xC4(r2)                     ; TOC[-196] RegistryCStrEntryToName
+FFE7A25C  90410014  stw     r2, 0x14(r1)
+FFE7A260  800C0000  lwz     r0, 0x0(r12)
+FFE7A264  804C0004  lwz     r2, 0x4(r12)
+FFE7A268  7C0903A6  mtspr   CTR, r0
+FFE7A26C  4E800420  bctr
+
+glue_CStrCmp:
+FFE7A270  8182FF0C  lwz     r12, -0xF4(r2)                     ; TOC[-244] CStrCmp
+FFE7A274  90410014  stw     r2, 0x14(r1)
+FFE7A278  800C0000  lwz     r0, 0x0(r12)
+FFE7A27C  804C0004  lwz     r2, 0x4(r12)
+FFE7A280  7C0903A6  mtspr   CTR, r0
+FFE7A284  4E800420  bctr
+
+glue_RegistryEntryIterateDispose:
+FFE7A288  8182FF34  lwz     r12, -0xCC(r2)                     ; TOC[-204] RegistryEntryIterateDispose
+FFE7A28C  90410014  stw     r2, 0x14(r1)
+FFE7A290  800C0000  lwz     r0, 0x0(r12)
+FFE7A294  804C0004  lwz     r2, 0x4(r12)
+FFE7A298  7C0903A6  mtspr   CTR, r0
+FFE7A29C  4E800420  bctr
+
+glue_PoolAllocateResident:
+FFE7A2A0  8182FF10  lwz     r12, -0xF0(r2)                     ; TOC[-240] PoolAllocateResident
+FFE7A2A4  90410014  stw     r2, 0x14(r1)
+FFE7A2A8  800C0000  lwz     r0, 0x0(r12)
+FFE7A2AC  804C0004  lwz     r2, 0x4(r12)
+FFE7A2B0  7C0903A6  mtspr   CTR, r0
+FFE7A2B4  4E800420  bctr
+
+glue_VSLDoInterruptService:
+FFE7A2B8  8182FF24  lwz     r12, -0xDC(r2)                     ; TOC[-220] VSLDoInterruptService
+FFE7A2BC  90410014  stw     r2, 0x14(r1)
+FFE7A2C0  800C0000  lwz     r0, 0x0(r12)
+FFE7A2C4  804C0004  lwz     r2, 0x4(r12)
+FFE7A2C8  7C0903A6  mtspr   CTR, r0
+FFE7A2CC  4E800420  bctr
+
+glue_CallOSTrapUniversalProc:
+FFE7A2D0  8182FEF4  lwz     r12, -0x10C(r2)                    ; TOC[-268] CallOSTrapUniversalProc
+FFE7A2D4  90410014  stw     r2, 0x14(r1)
+FFE7A2D8  800C0000  lwz     r0, 0x0(r12)
+FFE7A2DC  804C0004  lwz     r2, 0x4(r12)
+FFE7A2E0  7C0903A6  mtspr   CTR, r0
+FFE7A2E4  4E800420  bctr
+
+glue_RegistryPropertyGetSize:
+FFE7A2E8  8182FF48  lwz     r12, -0xB8(r2)                     ; TOC[-184] RegistryPropertyGetSize
+FFE7A2EC  90410014  stw     r2, 0x14(r1)
+FFE7A2F0  800C0000  lwz     r0, 0x0(r12)
+FFE7A2F4  804C0004  lwz     r2, 0x4(r12)
+FFE7A2F8  7C0903A6  mtspr   CTR, r0
+FFE7A2FC  4E800420  bctr
+
+glue_RegistryPropertyCreate:
+FFE7A300  8182FF40  lwz     r12, -0xC0(r2)                     ; TOC[-192] RegistryPropertyCreate
+FFE7A304  90410014  stw     r2, 0x14(r1)
+FFE7A308  800C0000  lwz     r0, 0x0(r12)
+FFE7A30C  804C0004  lwz     r2, 0x4(r12)
+FFE7A310  7C0903A6  mtspr   CTR, r0
+FFE7A314  4E800420  bctr
+
+sub_FFE7A318:
+FFE7A318? 800C0000  lwz     r0, 0x0(r12)
+FFE7A31C? 90410014  stw     r2, 0x14(r1)
+FFE7A320? 7C0903A6  mtspr   CTR, r0
+FFE7A324? 804C0004  lwz     r2, 0x4(r12)
+FFE7A328? 4E800420  bctr
+
+; ----------------------------------------------------------------------------
+; data section 1 (pidata), unpacked 5F0 bytes; addresses are offsets in the section;
+; relocated words are named (imports) or point into a section (code+X / data+X).
+; ----------------------------------------------------------------------------
++00000  00000000  -> InterfaceLib::CallOSTrapUniversalProc
++00004  00000000  -> DriverServicesLib::InstallInterruptFunctions
++00008  00000000  -> DriverServicesLib::GetInterruptFunctions
++0000C  00000000  -> DriverServicesLib::IOCommandIsComplete
++00010  00000000  -> DriverServicesLib::SynchronizeIO
++00014  00000000  -> DriverServicesLib::CStrCopy
++00018  00000000  -> DriverServicesLib::CStrCmp
++0001C  00000000  -> DriverServicesLib::PoolAllocateResident
++00020  00000000  -> DriverServicesLib::PoolDeallocate
++00024  00000000  -> DriverServicesLib::BlockCopy
++00028  00000000  -> VideoServicesLib::VSLNewInterruptService
++0002C  00000000  -> VideoServicesLib::VSLDisposeInterruptService
++00030  00000000  -> VideoServicesLib::VSLDoInterruptService
++00034  00000000  -> NameRegistryLib::RegistryEntryIDCopy
++00038  00000000  -> NameRegistryLib::RegistryEntryIDDispose
++0003C  00000000  -> NameRegistryLib::RegistryEntryIterateCreate
++00040  00000000  -> NameRegistryLib::RegistryEntryIterateDispose
++00044  00000000  -> NameRegistryLib::RegistryEntryIterate
++00048  00000000  -> NameRegistryLib::RegistryCStrEntryToName
++0004C  00000000  -> NameRegistryLib::RegistryPropertyCreate
++00050  00000000  -> NameRegistryLib::RegistryPropertyDelete
++00054  00000000  -> NameRegistryLib::RegistryPropertyGetSize
++00058  00000000  -> NameRegistryLib::RegistryPropertyGet
++0005C  00000000  -> NameRegistryLib::RegistryPropertySet
++00060  00000000  -> NameRegistryLib::RegistryPropertySetMod
++00064  00000000  -> PCILib::ExpMgrConfigReadLong
++00068  000017A4  -> code+17A4 = FFE78194
++0006C  00002184  -> code+2184 = FFE78B74
++00070  0000281C  -> code+281C = FFE7920C
++00074  00000540  -> data+540
++00078  0000013C  -> data+13C
++0007C  00000118  -> data+118
++00080  0000010C  -> data+10C
++00084  00000124  -> data+124
++00088  00000140  -> data+140
++0008C  00000338  -> data+338
++00090  00000468  -> data+468
++00094  00000470  -> data+470
++00098  000004B0  -> data+4B0
++0009C  000004B4  -> data+4B4
++000A0  000004B8  -> data+4B8
++000A4  000004BC  -> data+4BC
++000A8  000005F0  -> data+5F0
++000AC  000005F8  -> data+5F8
++000B0  000005FC  -> data+5FC
++000B4  00000600  -> data+600
++000B8  00000601  -> data+601
++000BC  00000604  -> data+604
++000C0  00000608  -> data+608
++000C4  00000620  -> data+620
++000C8  00000630  -> data+630
++000CC  00000638  -> data+638
++000D0  0000063C  -> data+63C
++000D4  00000640  -> data+640
++000D8  00000644  -> data+644
++000DC  00000648  -> data+648
++000E0  0000064C  -> data+64C
++000E4  0000064D  -> data+64D
++000E8  0000064E  -> data+64E
++000EC  0000064F  -> data+64F
++000F0  00000650  -> data+650
++000F4  00000654  -> data+654
++000F8  00000658  -> data+658
++000FC  0000065C  -> data+65C
++00100  0000065D  -> data+65D
++00104  0000065E  -> data+65E
++00108  00000660  -> data+660
++0010C  00000610  -> code+610 = FFE77000
++00110  0000010C  -> data+10C
++00118  000029D0  -> code+29D0 = FFE793C0
++0011C  0000010C  -> data+10C
++00124  00000F48  -> code+F48 = FFE77938
++00128  0000010C  -> data+10C
++00130  00002584  -> code+2584 = FFE78F74 __main
++00134  0000010C  -> data+10C
++0013C  00000594  -> data+594
++00468  00000540  -> data+540
++004B0  00000548  -> data+548
++004B4  0000054C  -> data+54C
++004B8  00000550  -> data+550
++004BC  0000056C  -> data+56C
+; full unpacked image:
+00000000  ... 60 zero bytes ...
+00000060  00 00 00 00 00 00 00 00 00 00 17 A4 00 00 21 84  |..............!.|
+00000070  00 00 28 1C 00 00 05 40 00 00 01 3C 00 00 01 18  |..(....@...<....|
+00000080  00 00 01 0C 00 00 01 24 00 00 01 40 00 00 03 38  |.......$...@...8|
+00000090  00 00 04 68 00 00 04 70 00 00 04 B0 00 00 04 B4  |...h...p........|
+000000A0  00 00 04 B8 00 00 04 BC 00 00 05 F0 00 00 05 F8  |................|
+000000B0  00 00 05 FC 00 00 06 00 00 00 06 01 00 00 06 04  |................|
+000000C0  00 00 06 08 00 00 06 20 00 00 06 30 00 00 06 38  |....... ...0...8|
+000000D0  00 00 06 3C 00 00 06 40 00 00 06 44 00 00 06 48  |...<...@...D...H|
+000000E0  00 00 06 4C 00 00 06 4D 00 00 06 4E 00 00 06 4F  |...L...M...N...O|
+000000F0  00 00 06 50 00 00 06 54 00 00 06 58 00 00 06 5C  |...P...T...X...\|
+00000100  00 00 06 5D 00 00 06 5E 00 00 06 60 00 00 06 10  |...]...^...`....|
+00000110  00 00 01 0C 00 00 00 00 00 00 29 D0 00 00 01 0C  |..........).....|
+00000120  00 00 00 00 00 00 0F 48 00 00 01 0C 00 00 00 00  |.......H........|
+00000130  00 00 25 84 00 00 01 0C 00 00 00 00 00 00 05 94  |..%.............|
+00000140  00 00 00 04 02 80 01 E0 00 0F 00 FF 00 10 01 00  |................|
+00000150  00 8A 03 0A 00 3C 00 00 01 00 00 01 3D 04 89 C0  |.....<......=...|
+00000160  37 37 01 15 05 6A 55 55 55 25 03 DD ED 54 01 C0  |77...jUUU%...T..|
+00000170  04 0C 12 03 22 00 00 00 00 00 00 01 02 00 01 80  |...."...........|
+00000180  00 27 00 E7 00 28 00 E8 00 CA 02 CA 00 3C 00 00  |.'...(.......<..|
+00000190  01 01 00 01 3D 04 89 C0 37 37 01 15 05 6A 55 55  |....=...77...jUU|
+000001A0  55 25 03 DD ED 54 01 C0 04 0C 12 03 22 00 00 00  |U%...T......"...|
+000001B0  00 00 00 17 01 40 00 F0 00 0F 00 FF 00 10 01 00  |.....@..........|
+000001C0  00 8A 03 0A 00 3C 00 00 01 00 01 01 3D 04 89 C0  |.....<......=...|
+000001D0  37 37 01 15 05 6A 55 55 55 25 03 DD ED 54 01 C0  |77...jUUU%...T..|
+000001E0  04 0C 12 03 22 00 00 00 00 00 00 15 01 00 00 C0  |...."...........|
+000001F0  00 27 00 E7 00 28 00 E8 00 CA 02 CA 00 3C 00 00  |.'...(.......<..|
+00000200  01 01 01 01 3D 04 89 C0 37 37 01 15 05 6A 55 55  |....=...77...jUU|
+00000210  55 25 03 DD ED 54 01 C0 04 0C 12 03 22 00 00 00  |U%...T......"...|
+00000220  00 00 00 08 03 00 02 40 00 12 01 32 00 13 01 33  |.......@...2...3|
+00000230  00 AE 03 AE 00 32 00 00 00 00 00 01 1C 04 A4 E0  |.....2..........|
+00000240  2A 3A 01 06 05 55 0C 8C 79 26 03 D7 2F 75 01 80  |*:...U..y&../u..|
+00000250  04 70 12 35 22 00 00 00 00 00 00 03 02 80 01 E0  |.p.5"...........|
+00000260  00 2A 01 1A 00 2B 01 1B 00 EE 03 6E 00 32 00 00  |.*...+.....n.2..|
+00000270  00 01 00 01 1C 04 A4 E0 2A 3A 01 06 05 55 0C 8C  |........*:...U..|
+00000280  79 26 03 D7 2F 75 01 80 04 70 12 35 22 00 00 00  |y&../u...p.5"...|
+00000290  00 00 00 18 01 80 01 20 00 12 01 32 00 13 01 33  |....... ...2...3|
+000002A0  00 AE 03 AE 00 32 00 00 00 00 01 01 1C 04 A4 E0  |.....2..........|
+000002B0  2A 3A 01 06 05 55 0C 8C 79 26 03 D7 2F 75 01 80  |*:...U..y&../u..|
+000002C0  04 70 12 35 22 00 00 00 00 00 00 16 01 40 00 F0  |.p.5"........@..|
+000002D0  00 2A 01 1A 00 2B 01 1B 00 EE 03 6E 00 32 00 00  |.*...+.....n.2..|
+000002E0  00 01 01 01 1C 04 A4 E0 2A 3A 01 06 05 55 0C 8C  |........*:...U..|
+000002F0  79 26 03 D7 2F 75 01 80 04 70 12 35 22 00 00 00  |y&../u...p.5"...|
+00000300  FF FF FF FF 00 00 00 00 00 00 00 00 00 00 00 00  |................|
+00000310  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |................|
+00000320  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |................|
+00000330  00 00 00 00 00 00 00 00 4E 54 53 43 2F 50 41 4C  |........NTSC/PAL|
+00000340  20 47 61 6D 6D 61 00 00 00 00 00 00 00 00 00 00  | Gamma..........|
+00000350  00 00 00 00 00 00 00 00 00 00 00 00 00 02 00 01  |................|
+00000360  01 00 00 08 00 00 10 14 17 19 1B 1D 1F 21 22 24  |.............!"$|
+00000370  26 27 29 2A 2C 2D 2E 30 31 32 34 35 36 37 38 3A  |&')*,-.01245678:|
+00000380  3B 3C 3D 3E 3F 41 42 43 44 45 46 47 48 49 4A 4B  |;<=>?ABCDEFGHIJK|
+00000390  4C 4D 4E 4F 50 51 52 53 54 55 56 57 58 59 5A 5B  |LMNOPQRSTUVWXYZ[|
+000003A0  5C 5D 5E 5F 60 61 62 62 63 64 65 66 67 68 69 6A  |\]^_`abbcdefghij|
+000003B0  6B 6B 6C 6D 6E 6F 70 71 71 72 73 74 75 76 76 77  |kklmnopqqrstuvvw|
+000003C0  78 79 7A 7B 7B 7C 7D 7E 7F 7F 80 81 82 83 83 84  |xyz{{|}~........|
+000003D0  85 86 87 87 88 89 8A 8A 8B 8C 8D 8E 8E 8F 90 91  |................|
+000003E0  91 92 93 94 94 95 96 97 97 98 99 9A 9A 9B 9C 9D  |................|
+000003F0  9D 9E 9F 9F A0 A1 A2 A2 A3 A4 A4 A5 A6 A7 A7 A8  |................|
+00000400  A9 A9 AA AB AC AC AD AE AE AF B0 B0 B1 B2 B3 B3  |................|
+00000410  B4 B5 B5 B6 B7 B7 B8 B9 B9 BA BB BB BC BD BD BE  |................|
+00000420  BF BF C0 C1 C1 C2 C3 C3 C4 C5 C5 C6 C7 C7 C8 C9  |................|
+00000430  C9 CA CB CB CC CD CD CE CF CF D0 D1 D1 D2 D3 D3  |................|
+00000440  D4 D4 D5 D6 D6 D7 D8 D8 D9 DA DA DB DB DC DD DD  |................|
+00000450  DE DF DF E0 E0 E1 E2 E2 E3 E4 E4 E5 E5 E6 E7 E7  |................|
+00000460  E8 E9 E9 EA EA EB 00 00 00 00 05 40 00 00 00 00  |...........@....|
+00000470  00 00 00 01 00 00 00 E6 00 00 00 15 00 00 00 E6  |................|
+00000480  00 00 00 04 00 00 00 E8 00 00 00 17 00 00 00 E8  |................|
+00000490  00 00 00 03 00 00 00 EE 00 00 00 16 00 00 00 EE  |................|
+000004A0  00 00 00 08 00 00 00 F0 00 00 00 18 00 00 00 F0  |................|
+000004B0  00 00 05 48 00 00 05 4C 00 00 05 50 00 00 05 6C  |...H...L...P...l|
+000004C0  6D 74 65 6A 00 00 00 00 06 73 69 78 74 79 36 00  |mtej.....sixty6.|
+000004D0  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |................|
+000004E0  00 00 00 00 00 00 00 00 01 00 80 01 00 00 00 06  |................|
+000004F0  1B 2E 44 69 73 70 6C 61 79 5F 56 69 64 65 6F 5F  |..Display_Video_|
+00000500  41 70 70 6C 65 5F 53 69 78 74 79 36 00 00 00 00  |Apple_Sixty6....|
+00000510  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |................|
+00000520  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |................|
+00000530  00 00 00 01 6E 64 72 76 76 69 64 6F 01 00 00 00  |....ndrvvido....|
+00000540  67 70 72 66 00 00 00 00 01 55 00 00 01 0C 00 00  |gprf.....U......|
+00000550  18 6B 00 00 22 AC 0E 03 1D AC F0 C8 B9 D4 38 47  |.k..".........8G|
+00000560  C1 E3 54 A3 54 F2 90 00 00 00 00 00 24 00 7D AF  |..T.T.......$.}.|
+00000570  2D 3F 00 00 55 00 00 00 00 00 00 00 00 00 00 C0  |-?..U...........|
+00000580  00 00 00 C0 00 00 00 00 00 00 00 00 00 00 00 00  |................|
+00000590  00 00 00 00 01 55 00 00 64 72 69 76 65 72 2D 69  |.....U..driver-i|
+000005A0  73 74 00 00 01 55 00 00 67 63 00 00 41 41 50 4C  |st...U..gc..AAPL|
+000005B0  2C 61 64 64 72 65 73 73 00 00 00 00 63 6F 6E 74  |,address....cont|
+000005C0  72 6F 6C 00 63 61 6E 52 75 6E 00 00 01 55 00 00  |rol.canRun...U..|
+000005D0  3F D3 22 D0 E5 60 41 89 3F E2 C8 B4 39 58 10 62  |?."..`A.?...9X.b|
+000005E0  3F BD 2F 1A 9F BE 76 C9 43 30 00 00 00 00 00 00  |?./...v.C0......|
+
+; exports (2):
+;   DoDriverIO                               class tvector section  1 offset 130
+;   TheDriverDescription                     class data    section  1 offset 4C0
+; imports (26):
+;      0 InterfaceLib             CallOSTrapUniversalProc                  tvector
+;      1 DriverServicesLib        InstallInterruptFunctions                tvector
+;      2 DriverServicesLib        GetInterruptFunctions                    tvector
+;      3 DriverServicesLib        IOCommandIsComplete                      tvector
+;      4 DriverServicesLib        SynchronizeIO                            tvector
+;      5 DriverServicesLib        CStrCopy                                 tvector
+;      6 DriverServicesLib        CStrCmp                                  tvector
+;      7 DriverServicesLib        PoolAllocateResident                     tvector
+;      8 DriverServicesLib        PoolDeallocate                           tvector
+;      9 DriverServicesLib        BlockCopy                                tvector
+;     10 VideoServicesLib         VSLNewInterruptService                   tvector
+;     11 VideoServicesLib         VSLDisposeInterruptService               tvector
+;     12 VideoServicesLib         VSLDoInterruptService                    tvector
+;     13 NameRegistryLib          RegistryEntryIDCopy                      tvector
+;     14 NameRegistryLib          RegistryEntryIDDispose                   tvector
+;     15 NameRegistryLib          RegistryEntryIterateCreate               tvector
+;     16 NameRegistryLib          RegistryEntryIterateDispose              tvector
+;     17 NameRegistryLib          RegistryEntryIterate                     tvector
+;     18 NameRegistryLib          RegistryCStrEntryToName                  tvector
+;     19 NameRegistryLib          RegistryPropertyCreate                   tvector
+;     20 NameRegistryLib          RegistryPropertyDelete                   tvector
+;     21 NameRegistryLib          RegistryPropertyGetSize                  tvector
+;     22 NameRegistryLib          RegistryPropertyGet                      tvector
+;     23 NameRegistryLib          RegistryPropertySet                      tvector
+;     24 NameRegistryLib          RegistryPropertySetMod                   tvector
+;     25 PCILib                   ExpMgrConfigReadLong                     tvector

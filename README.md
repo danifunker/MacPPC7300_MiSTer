@@ -141,7 +141,7 @@ not by drift.
   (`run_machine.py`, `--rom7600` for the other), `machref` (`pm7300`) and
   the board's `boot.rom` use the 7300's ROM. The two share Open Firmware
   1.0.5 and the 68k emulator byte for byte; `rom7300/README.md`
-  (git-ignored) says where the rest differs.
+  (with the disassembly) says where the rest differs.
 - The machine's own plan, with its milestones and rules, is
   [docs/PPCMac_plan.md](docs/PPCMac_plan.md).
 - Long-term goal: the Apple/Bandai Pippin (a PowerPC 603).

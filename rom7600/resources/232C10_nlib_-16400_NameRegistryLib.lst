@@ -1,0 +1,2652 @@
+; ============================================================================
+; ROM resource 'nlib' -16400 NameRegistryLib at FFE32C10
+; ============================================================================
+; data at ROM 232C10 (290C bytes), entry at 1FF620, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 0000290c 0000044c
+;
+; Columns: address, flag, raw bytes, instruction, ; comment.
+;   flag '*' executed in the coverage run, ' ' reached by control flow,
+;   '?' decodes as code but neither executed nor reached, 'd' data.
+
+; PEF container: architecture pwpc, format version 1, timestamp ABBB5F58, versions 00000000/00000000/00000000
+;   3 sections (2 instantiated)
+;   section 0 code       container +00670 len 021F6 (ROM 233280 = FFE33280), unpacked 021F6, total 021F6, share 4, align 4
+;   section 1 pidata     container +02868 len 00093 (ROM 235478 = FFE35478), unpacked 00218, total 00218, share 4, align 4
+;   section 2 loader     container +00080 len 005E6 (ROM 232C90 = FFE32C90), unpacked 00000, total 00000, share 4, align 2
+;   init: section 1 offset 1C8
+;   imports from StdCLib: 4 symbols
+;   imports from InterfaceLib: 8 symbols
+;
+; ----------------------------------------------------------------------------
+; code section 0: ROM 233280-235475 = FFE33280
+; TOC (r2) = data section + 1D4; TOC[d] comments name the word at that offset.
+; ----------------------------------------------------------------------------
+
+sub_FFE33280:
+FFE33280* 88030000  lbz     r0, 0x0(r3)
+FFE33284* 38800000  li      r4, 0x0
+FFE33288* 7C000775  extsb.  r0, r0
+FFE3328C* 41820014  beq     loc_FFE332A0
+loc_FFE33290:
+FFE33290* 8C030001  lbzu    r0, 0x1(r3)
+FFE33294* 30840001  addic   r4, r4, 0x1
+FFE33298* 7C000775  extsb.  r0, r0
+FFE3329C* 4082FFF4  bne     loc_FFE33290
+loc_FFE332A0:
+FFE332A0* 38640000  addi    r3, r4, 0x0
+FFE332A4* 4E800020  blr
+
+sub_FFE332A8:
+FFE332A8  3405FFFF  addic.  r0, r5, -0x1
+FFE332AC  41820048  beq     loc_FFE332F4
+FFE332B0  88C30000  lbz     r6, 0x0(r3)
+FFE332B4  30A5FFFE  addic   r5, r5, -0x2
+FFE332B8  7CC00775  extsb.  r0, r6
+FFE332BC  2C850000  cmpwi   cr1, r5, 0x0
+FFE332C0  98C40000  stb     r6, 0x0(r4)
+FFE332C4  41820030  beq     loc_FFE332F4
+FFE332C8  30A5FFFF  addic   r5, r5, -0x1
+FFE332CC  3005FFFF  addic   r0, r5, -0x1
+FFE332D0  41860024  beq     cr1, loc_FFE332F4
+loc_FFE332D4:
+FFE332D4  8CC30001  lbzu    r6, 0x1(r3)
+FFE332D8  2C850000  cmpwi   cr1, r5, 0x0
+FFE332DC  7CC50775  extsb.  r5, r6
+FFE332E0  30A00000  addic   r5, r0, 0x0
+FFE332E4  9CC40001  stbu    r6, 0x1(r4)
+FFE332E8  3000FFFF  addic   r0, r0, -0x1
+FFE332EC  41820008  beq     loc_FFE332F4
+FFE332F0  4086FFE4  bne     cr1, loc_FFE332D4
+loc_FFE332F4:
+FFE332F4  4E800020  blr
+
+sub_FFE332F8:
+FFE332F8* 38A30000  addi    r5, r3, 0x0
+FFE332FC* 88050000  lbz     r0, 0x0(r5)
+FFE33300* 38E40000  addi    r7, r4, 0x0
+FFE33304* 7C060775  extsb.  r6, r0
+FFE33308* 98070000  stb     r0, 0x0(r7)
+FFE3330C* 30E70001  addic   r7, r7, 0x1
+FFE33310* 30A50001  addic   r5, r5, 0x1
+FFE33314* 38060000  addi    r0, r6, 0x0
+FFE33318* 41820028  beq     loc_FFE33340
+loc_FFE3331C:
+FFE3331C  2C80003A  cmpwi   cr1, r0, 0x3A
+FFE33320  41860028  beq     cr1, loc_FFE33348
+FFE33324  8C030001  lbzu    r0, 0x1(r3)
+FFE33328  30E70001  addic   r7, r7, 0x1
+FFE3332C  7C060775  extsb.  r6, r0
+FFE33330  9C040001  stbu    r0, 0x1(r4)
+FFE33334  30A50001  addic   r5, r5, 0x1
+FFE33338  38060000  addi    r0, r6, 0x0
+FFE3333C  4082FFE0  bne     loc_FFE3331C
+loc_FFE33340:
+FFE33340* 3065FFFF  addic   r3, r5, -0x1
+loc_FFE33344:
+FFE33344* 4E800020  blr
+loc_FFE33348:
+FFE33348  38800000  li      r4, 0x0
+FFE3334C  38650000  addi    r3, r5, 0x0
+FFE33350  9C87FFFF  stbu    r4, -0x1(r7)
+FFE33354  4BFFFFF0  b       loc_FFE33344
+
+sub_FFE33358:
+FFE33358* 88E30000  lbz     r7, 0x0(r3)
+FFE3335C* 38000000  li      r0, 0x0
+FFE33360* 7CE60775  extsb.  r6, r7
+FFE33364* 39000000  li      r8, 0x0
+FFE33368* 98E40000  stb     r7, 0x0(r4)
+FFE3336C* 38C00000  li      r6, 0x0
+FFE33370* 7CE70774  extsb   r7, r7
+FFE33374* 41820054  beq     loc_FFE333C8
+FFE33378* 39430000  addi    r10, r3, 0x0
+FFE3337C* 8D6A0001  lbzu    r11, 0x1(r10)
+FFE33380* 39840000  addi    r12, r4, 0x0
+FFE33384* 2C87003A  cmpwi   cr1, r7, 0x3A
+FFE33388* 7D670775  extsb.  r7, r11
+FFE3338C* 39200001  li      r9, 0x1
+FFE33390* 40860014  bne     cr1, loc_FFE333A4
+loc_FFE33394:
+FFE33394* 31080001  addic   r8, r8, 0x1
+FFE33398* 38C90000  addi    r6, r9, 0x0
+FFE3339C* 2C87003A  cmpwi   cr1, r7, 0x3A
+FFE333A0* 4800000C  b       loc_FFE333AC
+loc_FFE333A4:
+FFE333A4* 31080001  addic   r8, r8, 0x1
+FFE333A8* 2C87003A  cmpwi   cr1, r7, 0x3A
+loc_FFE333AC:
+FFE333AC* 9D6C0001  stbu    r11, 0x1(r12)
+FFE333B0* 31290001  addic   r9, r9, 0x1
+FFE333B4* 41820014  beq     loc_FFE333C8
+FFE333B8* 8D6A0001  lbzu    r11, 0x1(r10)
+FFE333BC* 7D670775  extsb.  r7, r11
+FFE333C0* 4086FFE4  bne     cr1, loc_FFE333A4
+FFE333C4  4BFFFFD0  b       loc_FFE33394
+loc_FFE333C8:
+FFE333C8* 7CE330AE  lbzx    r7, r3, r6
+FFE333CC* 2C860000  cmpwi   cr1, r6, 0x0
+FFE333D0* 98E50000  stb     r7, 0x0(r5)
+FFE333D4* 3126FFFF  addic   r9, r6, -0x1
+FFE333D8* 7CE80775  extsb.  r8, r7
+FFE333DC* 7CC33014  addc    r6, r3, r6
+FFE333E0* 41820014  beq     loc_FFE333F4
+loc_FFE333E4:
+FFE333E4* 8CE60001  lbzu    r7, 0x1(r6)
+FFE333E8* 7CE80775  extsb.  r8, r7
+FFE333EC* 9CE50001  stbu    r7, 0x1(r5)
+FFE333F0* 4082FFF4  bne     loc_FFE333E4
+loc_FFE333F4:
+FFE333F4* 40860008  bne     cr1, loc_FFE333FC
+FFE333F8  39200000  li      r9, 0x0
+loc_FFE333FC:
+FFE333FC* 7C0449AE  stbx    r0, r4, r9
+FFE33400* 4E800020  blr
+
+sub_FFE33404:
+FFE33404  88030000  lbz     r0, 0x0(r3)
+FFE33408  38800000  li      r4, 0x0
+FFE3340C  7C000775  extsb.  r0, r0
+FFE33410  41820014  beq     loc_FFE33424
+loc_FFE33414:
+FFE33414  8C030001  lbzu    r0, 0x1(r3)
+FFE33418  30840001  addic   r4, r4, 0x1
+FFE3341C  7C000775  extsb.  r0, r0
+FFE33420  4082FFF4  bne     loc_FFE33414
+loc_FFE33424:
+FFE33424  38640000  addi    r3, r4, 0x0
+FFE33428  4E800020  blr
+
+sub_FFE3342C:
+FFE3342C  88030000  lbz     r0, 0x0(r3)
+FFE33430  7C050775  extsb.  r5, r0
+FFE33434  98040000  stb     r0, 0x0(r4)
+FFE33438  41820014  beq     loc_FFE3344C
+loc_FFE3343C:
+FFE3343C  8C030001  lbzu    r0, 0x1(r3)
+FFE33440  7C050775  extsb.  r5, r0
+FFE33444  9C040001  stbu    r0, 0x1(r4)
+FFE33448  4082FFF4  bne     loc_FFE3343C
+loc_FFE3344C:
+FFE3344C  4E800020  blr
+
+sub_FFE33450:
+FFE33450  88A30000  lbz     r5, 0x0(r3)
+FFE33454  88040000  lbz     r0, 0x0(r4)
+FFE33458  7CA50775  extsb.  r5, r5
+FFE3345C  7C000774  extsb   r0, r0
+FFE33460  7C850000  cmpw    cr1, r5, r0
+FFE33464  40860028  bne     cr1, loc_FFE3348C
+FFE33468  4182002C  beq     loc_FFE33494
+loc_FFE3346C:
+FFE3346C  8C030001  lbzu    r0, 0x1(r3)
+FFE33470  8CA40001  lbzu    r5, 0x1(r4)
+FFE33474  7C000775  extsb.  r0, r0
+FFE33478  7CA50774  extsb   r5, r5
+FFE3347C  7C802800  cmpw    cr1, r0, r5
+FFE33480  4086000C  bne     cr1, loc_FFE3348C
+FFE33484  41820010  beq     loc_FFE33494
+FFE33488  4BFFFFE4  b       loc_FFE3346C
+loc_FFE3348C:
+FFE3348C  38600000  li      r3, 0x0
+loc_FFE33490:
+FFE33490  4E800020  blr
+loc_FFE33494:
+FFE33494  38600001  li      r3, 0x1
+FFE33498  4BFFFFF8  b       loc_FFE33490
+
+RegistryEntryIDInit:
+FFE3349C  7C0802A6  mfspr   r0, LR
+FFE334A0  93E1FFFC  stw     r31, -0x4(r1)
+FFE334A4  90010008  stw     r0, 0x8(r1)
+FFE334A8  9421FFB0  stwu    r1, -0x50(r1)
+FFE334AC  3BE30000  addi    r31, r3, 0x0
+FFE334B0  38800000  li      r4, 0x0
+FFE334B4  38A00010  li      r5, 0x10
+FFE334B8  480016B9  bl      glue_memset
+FFE334BC  80410014  lwz     r2, 0x14(r1)
+FFE334C0  3C000001  lis     r0, 0x0001
+FFE334C4  3000FFFE  addic   r0, r0, -0x2
+FFE334C8  B01F0000  sth     r0, 0x0(r31)
+FFE334CC  38600000  li      r3, 0x0
+FFE334D0  81810058  lwz     r12, 0x58(r1)
+FFE334D4  83E1004C  lwz     r31, 0x4C(r1)
+FFE334D8  7D8803A6  mtspr   LR, r12
+FFE334DC  30210050  addic   r1, r1, 0x50
+FFE334E0  4E800020  blr
+
+RegistryEntryIDCompare:
+FFE334E4  BFC1FFF8  stmw    r30, -0x8(r1)
+FFE334E8  7C0802A6  mfspr   r0, LR
+FFE334EC  3BE30000  addi    r31, r3, 0x0
+FFE334F0  90010008  stw     r0, 0x8(r1)
+FFE334F4  3BC40000  addi    r30, r4, 0x0
+FFE334F8  9421FFA0  stwu    r1, -0x60(r1)
+FFE334FC  30610038  addic   r3, r1, 0x38
+FFE33500  4BFFFF9D  bl      RegistryEntryIDInit
+FFE33504  2C1F0000  cmpwi   cr0, r31, 0x0
+FFE33508  2C9E0000  cmpwi   cr1, r30, 0x0
+FFE3350C  38800000  li      r4, 0x0
+FFE33510  40820008  bne     loc_FFE33518
+FFE33514  33E10038  addic   r31, r1, 0x38
+loc_FFE33518:
+FFE33518  A01F0000  lhz     r0, 0x0(r31)
+FFE3351C  40860008  bne     cr1, loc_FFE33524
+FFE33520  33C10038  addic   r30, r1, 0x38
+loc_FFE33524:
+FFE33524  A07E0000  lhz     r3, 0x0(r30)
+FFE33528  7C001800  cmpw    r0, r3
+FFE3352C  40820028  bne     loc_FFE33554
+FFE33530  A01F0002  lhz     r0, 0x2(r31)
+FFE33534  A07E0002  lhz     r3, 0x2(r30)
+FFE33538  7C801800  cmpw    cr1, r0, r3
+FFE3353C  40860018  bne     cr1, loc_FFE33554
+FFE33540  801F0004  lwz     r0, 0x4(r31)
+FFE33544  807E0004  lwz     r3, 0x4(r30)
+FFE33548  7C001840  cmplw   r0, r3
+FFE3354C  40820008  bne     loc_FFE33554
+FFE33550  38800001  li      r4, 0x1
+loc_FFE33554:
+FFE33554  5483063E  clrlwi  r3, r4, 24
+FFE33558  81810068  lwz     r12, 0x68(r1)
+FFE3355C  30210060  addic   r1, r1, 0x60
+FFE33560  7D8803A6  mtspr   LR, r12
+FFE33564  BBC1FFF8  lmw     r30, -0x8(r1)
+FFE33568  4E800020  blr
+
+RegistryEntryIDCopy:
+FFE3356C* 7CA384AA  lswi    r5, r3, 0x10
+FFE33570* 38600000  li      r3, 0x0
+FFE33574* 7CA485AA  stswi   r5, r4, 0x10
+FFE33578* 4E800020  blr
+
+RegistryEntryIDDispose:
+FFE3357C* 7C0802A6  mfspr   r0, LR
+FFE33580* 9421FFC0  stwu    r1, -0x40(r1)
+FFE33584* 90010048  stw     r0, 0x48(r1)
+FFE33588* 38800000  li      r4, 0x0
+FFE3358C* 38A00010  li      r5, 0x10
+FFE33590* 480015E1  bl      glue_memset
+FFE33594* 80410014  lwz     r2, 0x14(r1)
+FFE33598* 38600000  li      r3, 0x0
+FFE3359C* 81810048  lwz     r12, 0x48(r1)
+FFE335A0* 30210040  addic   r1, r1, 0x40
+FFE335A4* 7D8803A6  mtspr   LR, r12
+FFE335A8* 4E800020  blr
+
+RegistryCStrEntryCreate:
+FFE335AC* BF81FFF0  stmw    r28, -0x10(r1)
+FFE335B0* 3BE50000  addi    r31, r5, 0x0
+FFE335B4* 3BA40000  addi    r29, r4, 0x0
+FFE335B8* 7C0802A6  mfspr   r0, LR
+FFE335BC* 2C1F0000  cmpwi   cr0, r31, 0x0
+FFE335C0* 90010008  stw     r0, 0x8(r1)
+FFE335C4* 9421FF70  stwu    r1, -0x90(r1)
+FFE335C8* 2C9D0000  cmpwi   cr1, r29, 0x0
+FFE335CC* 90610078  stw     r3, 0x78(r1)
+FFE335D0* 418200B4  beq     loc_FFE33684
+FFE335D4* 387D0000  addi    r3, r29, 0x0
+FFE335D8* 418600AC  beq     cr1, loc_FFE33684
+FFE335DC* 4BFFFCA5  bl      sub_FFE33280
+FFE335E0* 30630001  addic   r3, r3, 0x1
+FFE335E4* 480015B1  bl      glue_NewPtrSys
+FFE335E8* 80410014  lwz     r2, 0x14(r1)
+FFE335EC* 3BC30000  addi    r30, r3, 0x0
+FFE335F0* 2C1E0000  cmpwi   cr0, r30, 0x0
+FFE335F4* 387D0000  addi    r3, r29, 0x0
+FFE335F8* 389E0000  addi    r4, r30, 0x0
+FFE335FC* 41820078  beq     loc_FFE33674
+FFE33600* 30A10048  addic   r5, r1, 0x48
+FFE33604* 4BFFFD55  bl      sub_FFE33358
+FFE33608* 80610078  lwz     r3, 0x78(r1)
+FFE3360C* 30A10038  addic   r5, r1, 0x38
+FFE33610* 48000A91  bl      RegistryCStrEntryLookup
+FFE33614* 3B830000  addi    r28, r3, 0x0
+FFE33618* 2C1C0000  cmpwi   cr0, r28, 0x0
+FFE3361C* 83A1003C  lwz     r29, 0x3C(r1)
+FFE33620* 387F0000  addi    r3, r31, 0x0
+FFE33624* 38800000  li      r4, 0x0
+FFE33628* 4082003C  bne     loc_FFE33664
+FFE3362C* 38A00010  li      r5, 0x10
+FFE33630* 48001541  bl      glue_memset
+FFE33634* 80410014  lwz     r2, 0x14(r1)
+FFE33638* 38800001  li      r4, 0x1
+FFE3363C* B09F0000  sth     r4, 0x0(r31)
+FFE33640* 30DF0004  addic   r6, r31, 0x4
+FFE33644* 387D0000  addi    r3, r29, 0x0
+FFE33648* 38800000  li      r4, 0x0
+FFE3364C* 30A10048  addic   r5, r1, 0x48
+FFE33650* 480017C9  bl      sub_FFE34E18
+FFE33654* 4FFFFB82  crmove  crb31, crb31
+FFE33658* 7C7C0734  extsh   r28, r3
+FFE3365C* 30610038  addic   r3, r1, 0x38
+FFE33660* 4BFFFF1D  bl      RegistryEntryIDDispose
+loc_FFE33664:
+FFE33664* 387E0000  addi    r3, r30, 0x0
+FFE33668* 48001B1D  bl      glue_DisposePtr
+FFE3366C* 80410014  lwz     r2, 0x14(r1)
+FFE33670* 48000018  b       loc_FFE33688
+loc_FFE33674:
+FFE33674  48001B35  bl      glue_MemError
+FFE33678  80410014  lwz     r2, 0x14(r1)
+FFE3367C  7C7C0734  extsh   r28, r3
+FFE33680  48000008  b       loc_FFE33688
+loc_FFE33684:
+FFE33684  3B80FFCE  li      r28, -0x32
+loc_FFE33688:
+FFE33688* 387C0000  addi    r3, r28, 0x0
+FFE3368C* 81810098  lwz     r12, 0x98(r1)
+FFE33690* 30210090  addic   r1, r1, 0x90
+FFE33694* 7D8803A6  mtspr   LR, r12
+FFE33698* BB81FFF0  lmw     r28, -0x10(r1)
+FFE3369C* 4E800020  blr
+
+RegistryEntryDelete:
+FFE336A0  7C0802A6  mfspr   r0, LR
+FFE336A4  9421FFC0  stwu    r1, -0x40(r1)
+FFE336A8  90010048  stw     r0, 0x48(r1)
+FFE336AC  80630004  lwz     r3, 0x4(r3)
+FFE336B0  480017BD  bl      sub_FFE34E6C
+FFE336B4  4FFFFB82  crmove  crb31, crb31
+FFE336B8  7C630734  extsh   r3, r3
+FFE336BC  81810048  lwz     r12, 0x48(r1)
+FFE336C0  30210040  addic   r1, r1, 0x40
+FFE336C4  7D8803A6  mtspr   LR, r12
+FFE336C8  4E800020  blr
+
+sub_FFE336CC:
+FFE336CC* BF61FFEC  stmw    r27, -0x14(r1)
+FFE336D0* 7C0802A6  mfspr   r0, LR
+FFE336D4* 3BA40000  addi    r29, r4, 0x0
+FFE336D8* 90010008  stw     r0, 0x8(r1)
+FFE336DC* 3BE60000  addi    r31, r6, 0x0
+FFE336E0* 9421FF70  stwu    r1, -0x90(r1)
+FFE336E4* 3BC50000  addi    r30, r5, 0x0
+FFE336E8* 3081003C  addic   r4, r1, 0x3C
+FFE336EC* 48001555  bl      sub_FFE34C40
+FFE336F0* 4FFFFB82  crmove  crb31, crb31
+FFE336F4* 7C7B0735  extsh.  r27, r3
+FFE336F8* 83810040  lwz     r28, 0x40(r1)
+FFE336FC* 2C9BF616  cmpwi   cr1, r27, 0xF616
+FFE33700* 2F1C0000  cmpwi   cr6, r28, 0x0
+FFE33704* 38000001  li      r0, 0x1
+FFE33708* 4082006C  bne     loc_FFE33774
+FFE3370C* 939D0000  stw     r28, 0x0(r29)
+FFE33710* 30610038  addic   r3, r1, 0x38
+FFE33714* 419A0068  beq     cr6, loc_FFE3377C
+FFE33718* 480014E5  bl      sub_FFE34BFC
+FFE3371C* 4FFFFB82  crmove  crb31, crb31
+FFE33720* 7C7B0735  extsh.  r27, r3
+FFE33724* 80010038  lwz     r0, 0x38(r1)
+FFE33728* 7C9C0040  cmplw   cr1, r28, r0
+FFE3372C* 40820054  bne     loc_FFE33780
+FFE33730* 2F1E0000  cmpwi   cr6, r30, 0x0
+FFE33734* 38000001  li      r0, 0x1
+FFE33738* 41860044  beq     cr1, loc_FFE3377C
+FFE3373C* 387C0000  addi    r3, r28, 0x0
+FFE33740* 3081003C  addic   r4, r1, 0x3C
+FFE33744* 419A0024  beq     cr6, loc_FFE33768
+FFE33748  480014F9  bl      sub_FFE34C40
+FFE3374C  4FFFFB82  crmove  crb31, crb31
+FFE33750  7C7B0734  extsh   r27, r3
+FFE33754  387E0000  addi    r3, r30, 0x0
+FFE33758  30810050  addic   r4, r1, 0x50
+FFE3375C  38A00030  li      r5, 0x30
+FFE33760  48001A6D  bl      glue_strncpy
+FFE33764  80410014  lwz     r2, 0x14(r1)
+loc_FFE33768:
+FFE33768* 38000000  li      r0, 0x0
+FFE3376C* 981F0000  stb     r0, 0x0(r31)
+FFE33770* 48000010  b       loc_FFE33780
+loc_FFE33774:
+FFE33774  40860008  bne     cr1, loc_FFE3377C
+FFE33778  3B600000  li      r27, 0x0
+loc_FFE3377C:
+FFE3377C* 981F0000  stb     r0, 0x0(r31)
+loc_FFE33780:
+FFE33780* 387B0000  addi    r3, r27, 0x0
+FFE33784* 81810098  lwz     r12, 0x98(r1)
+FFE33788* 30210090  addic   r1, r1, 0x90
+FFE3378C* 7D8803A6  mtspr   LR, r12
+FFE33790* BB61FFEC  lmw     r27, -0x14(r1)
+FFE33794* 4E800020  blr
+
+sub_FFE33798:
+FFE33798  BF81FFF0  stmw    r28, -0x10(r1)
+FFE3379C  7C0802A6  mfspr   r0, LR
+FFE337A0  3BA40000  addi    r29, r4, 0x0
+FFE337A4  90010008  stw     r0, 0x8(r1)
+FFE337A8  3BE60000  addi    r31, r6, 0x0
+FFE337AC  9421FF80  stwu    r1, -0x80(r1)
+FFE337B0  3BC50000  addi    r30, r5, 0x0
+FFE337B4  30810038  addic   r4, r1, 0x38
+FFE337B8  48001489  bl      sub_FFE34C40
+FFE337BC  4FFFFB82  crmove  crb31, crb31
+FFE337C0  7C7C0735  extsh.  r28, r3
+FFE337C4  80610044  lwz     r3, 0x44(r1)
+FFE337C8  2C9CF616  cmpwi   cr1, r28, 0xF616
+FFE337CC  2F030000  cmpwi   cr6, r3, 0x0
+FFE337D0  38800001  li      r4, 0x1
+FFE337D4  40820044  bne     loc_FFE33818
+FFE337D8  2C9E0000  cmpwi   cr1, r30, 0x0
+FFE337DC  907D0000  stw     r3, 0x0(r29)
+FFE337E0  419A0040  beq     cr6, loc_FFE33820
+FFE337E4  30810038  addic   r4, r1, 0x38
+FFE337E8  41860024  beq     cr1, loc_FFE3380C
+FFE337EC  48001455  bl      sub_FFE34C40
+FFE337F0  4FFFFB82  crmove  crb31, crb31
+FFE337F4  7C7C0734  extsh   r28, r3
+FFE337F8  387E0000  addi    r3, r30, 0x0
+FFE337FC  3081004C  addic   r4, r1, 0x4C
+FFE33800  38A00030  li      r5, 0x30
+FFE33804  480019C9  bl      glue_strncpy
+FFE33808  80410014  lwz     r2, 0x14(r1)
+loc_FFE3380C:
+FFE3380C  38600000  li      r3, 0x0
+FFE33810  987F0000  stb     r3, 0x0(r31)
+FFE33814  48000010  b       loc_FFE33824
+loc_FFE33818:
+FFE33818  40860008  bne     cr1, loc_FFE33820
+FFE3381C  3B800000  li      r28, 0x0
+loc_FFE33820:
+FFE33820  989F0000  stb     r4, 0x0(r31)
+loc_FFE33824:
+FFE33824  387C0000  addi    r3, r28, 0x0
+FFE33828  81810088  lwz     r12, 0x88(r1)
+FFE3382C  30210080  addic   r1, r1, 0x80
+FFE33830  7D8803A6  mtspr   LR, r12
+FFE33834  BB81FFF0  lmw     r28, -0x10(r1)
+FFE33838  4E800020  blr
+
+sub_FFE3383C:
+FFE3383C  BF61FFEC  stmw    r27, -0x14(r1)
+FFE33840  3BE30000  addi    r31, r3, 0x0
+FFE33844  7C0802A6  mfspr   r0, LR
+FFE33848  38640000  addi    r3, r4, 0x0
+FFE3384C  90010008  stw     r0, 0x8(r1)
+FFE33850  3B870000  addi    r28, r7, 0x0
+FFE33854  9421FF70  stwu    r1, -0x90(r1)
+FFE33858  3BC50000  addi    r30, r5, 0x0
+FFE3385C  3BA60000  addi    r29, r6, 0x0
+FFE33860  30810038  addic   r4, r1, 0x38
+FFE33864  480013DD  bl      sub_FFE34C40
+FFE33868  4FFFFB82  crmove  crb31, crb31
+FFE3386C  7C7B0735  extsh.  r27, r3
+FFE33870  80810040  lwz     r4, 0x40(r1)
+FFE33874  2C9BF616  cmpwi   cr1, r27, 0xF616
+FFE33878  7F04F840  cmplw   cr6, r4, r31
+FFE3387C  39000001  li      r8, 0x1
+FFE33880  40820048  bne     loc_FFE338C8
+FFE33884  2C1D0000  cmpwi   cr0, r29, 0x0
+FFE33888  38E00000  li      r7, 0x0
+FFE3388C  419A003C  beq     cr6, loc_FFE338C8
+FFE33890  909E0000  stw     r4, 0x0(r30)
+FFE33894  98FC0000  stb     r7, 0x0(r28)
+FFE33898  807E0000  lwz     r3, 0x0(r30)
+FFE3389C  41820038  beq     loc_FFE338D4
+FFE338A0  30810038  addic   r4, r1, 0x38
+FFE338A4  4800139D  bl      sub_FFE34C40
+FFE338A8  4FFFFB82  crmove  crb31, crb31
+FFE338AC  7C7B0734  extsh   r27, r3
+FFE338B0  387D0000  addi    r3, r29, 0x0
+FFE338B4  3081004C  addic   r4, r1, 0x4C
+FFE338B8  38A00030  li      r5, 0x30
+FFE338BC  48001911  bl      glue_strncpy
+FFE338C0  80410014  lwz     r2, 0x14(r1)
+FFE338C4  48000010  b       loc_FFE338D4
+loc_FFE338C8:
+FFE338C8  991C0000  stb     r8, 0x0(r28)
+FFE338CC  40860008  bne     cr1, loc_FFE338D4
+FFE338D0  3B600000  li      r27, 0x0
+loc_FFE338D4:
+FFE338D4  387B0000  addi    r3, r27, 0x0
+FFE338D8  81810098  lwz     r12, 0x98(r1)
+FFE338DC  30210090  addic   r1, r1, 0x90
+FFE338E0  7D8803A6  mtspr   LR, r12
+FFE338E4  BB61FFEC  lmw     r27, -0x14(r1)
+FFE338E8  4E800020  blr
+
+sub_FFE338EC:
+FFE338EC* BEE1FFDC  stmw    r23, -0x24(r1)
+FFE338F0* 3B630000  addi    r27, r3, 0x0
+FFE338F4* 7C0802A6  mfspr   r0, LR
+FFE338F8* 38640000  addi    r3, r4, 0x0
+FFE338FC* 90010008  stw     r0, 0x8(r1)
+FFE33900* 3B1B0000  addi    r24, r27, 0x0
+FFE33904* 9421FF30  stwu    r1, -0xD0(r1)
+FFE33908* 3BC50000  addi    r30, r5, 0x0
+FFE3390C* 3BE60000  addi    r31, r6, 0x0
+FFE33910* 3B870000  addi    r28, r7, 0x0
+FFE33914* 3B200000  li      r25, 0x0
+FFE33918* 30810038  addic   r4, r1, 0x38
+FFE3391C* 48001325  bl      sub_FFE34C40
+FFE33920* 4FFFFB82  crmove  crb31, crb31
+FFE33924* 7C770735  extsh.  r23, r3
+FFE33928* 80C10044  lwz     r6, 0x44(r1)
+FFE3392C* 2C860000  cmpwi   cr1, r6, 0x0
+FFE33930* 408200E8  bne     loc_FFE33A18
+FFE33934* 8061003C  lwz     r3, 0x3C(r1)
+FFE33938* 2F030000  cmpwi   cr6, r3, 0x0
+FFE3393C* 41860014  beq     cr1, loc_FFE33950
+loc_FFE33940:
+FFE33940* 3B060000  addi    r24, r6, 0x0
+FFE33944* 7F18D840  cmplw   cr6, r24, r27
+FFE33948* 2C9F0000  cmpwi   cr1, r31, 0x0
+FFE3394C* 480000D4  b       loc_FFE33A20
+loc_FFE33950:
+FFE33950* 3081006C  addic   r4, r1, 0x6C
+FFE33954* 419A00C4  beq     cr6, loc_FFE33A18
+FFE33958* 480012E9  bl      sub_FFE34C40
+FFE3395C* 4FFFFB82  crmove  crb31, crb31
+FFE33960* 7C770735  extsh.  r23, r3
+FFE33964* 81010040  lwz     r8, 0x40(r1)
+FFE33968* 80C10078  lwz     r6, 0x78(r1)
+FFE3396C* 7C883040  cmplw   cr1, r8, r6
+FFE33970* 408200A8  bne     loc_FFE33A18
+FFE33974* 80C1003C  lwz     r6, 0x3C(r1)
+FFE33978* 7F06D840  cmplw   cr6, r6, r27
+FFE3397C* 41860014  beq     cr1, loc_FFE33990
+FFE33980* 3B080000  addi    r24, r8, 0x0
+FFE33984* 7F18D840  cmplw   cr6, r24, r27
+FFE33988* 2C9F0000  cmpwi   cr1, r31, 0x0
+FFE3398C* 48000094  b       loc_FFE33A20
+loc_FFE33990:
+FFE33990* 33A10088  addic   r29, r1, 0x88
+FFE33994* 33410054  addic   r26, r1, 0x54
+FFE33998* 30610038  addic   r3, r1, 0x38
+FFE3399C* 419A007C  beq     cr6, loc_FFE33A18
+FFE339A0* 3181006C  addic   r12, r1, 0x6C
+FFE339A4* 7CACE4AA  lswi    r5, r12, 0x1C
+FFE339A8* 388C0000  addi    r4, r12, 0x0
+FFE339AC* 7CA3E5AA  stswi   r5, r3, 0x1C
+FFE339B0* 7CBDC4AA  lswi    r5, r29, 0x18
+FFE339B4* 7CBAC5AA  stswi   r5, r26, 0x18
+FFE339B8* 8061003C  lwz     r3, 0x3C(r1)
+FFE339BC* 2C830000  cmpwi   cr1, r3, 0x0
+loc_FFE339C0:
+FFE339C0* 41860058  beq     cr1, loc_FFE33A18
+FFE339C4* 4800127D  bl      sub_FFE34C40
+FFE339C8* 4FFFFB82  crmove  crb31, crb31
+FFE339CC* 8121003C  lwz     r9, 0x3C(r1)
+FFE339D0* 7C770735  extsh.  r23, r3
+FFE339D4* 80C10040  lwz     r6, 0x40(r1)
+FFE339D8* 81010078  lwz     r8, 0x78(r1)
+FFE339DC* 7C89D840  cmplw   cr1, r9, r27
+FFE339E0* 7F064040  cmplw   cr6, r6, r8
+FFE339E4* 31810038  addic   r12, r1, 0x38
+FFE339E8* 40820030  bne     loc_FFE33A18
+FFE339EC* 3061006C  addic   r3, r1, 0x6C
+FFE339F0* 38830000  addi    r4, r3, 0x0
+FFE339F4* 409AFF4C  bne     cr6, loc_FFE33940
+FFE339F8* 41860020  beq     cr1, loc_FFE33A18
+FFE339FC* 7CA3E4AA  lswi    r5, r3, 0x1C
+FFE33A00* 7CACE5AA  stswi   r5, r12, 0x1C
+FFE33A04* 7CBDC4AA  lswi    r5, r29, 0x18
+FFE33A08* 7CBAC5AA  stswi   r5, r26, 0x18
+FFE33A0C* 8061003C  lwz     r3, 0x3C(r1)
+FFE33A10* 2C830000  cmpwi   cr1, r3, 0x0
+FFE33A14* 4BFFFFAC  b       loc_FFE339C0
+loc_FFE33A18:
+FFE33A18* 7F18D840  cmplw   cr6, r24, r27
+FFE33A1C* 2C9F0000  cmpwi   cr1, r31, 0x0
+loc_FFE33A20:
+FFE33A20* 931E0000  stw     r24, 0x0(r30)
+FFE33A24* 38C00001  li      r6, 0x1
+FFE33A28* 419A0008  beq     cr6, loc_FFE33A30
+FFE33A2C* 38D90000  addi    r6, r25, 0x0
+loc_FFE33A30:
+FFE33A30* 54C8063F  clrlwi. r8, r6, 24
+FFE33A34* 98DC0000  stb     r6, 0x0(r28)
+FFE33A38* 40820034  bne     loc_FFE33A6C
+FFE33A3C* 807E0000  lwz     r3, 0x0(r30)
+FFE33A40* 30810038  addic   r4, r1, 0x38
+FFE33A44* 41860028  beq     cr1, loc_FFE33A6C
+FFE33A48  480011F9  bl      sub_FFE34C40
+FFE33A4C  4FFFFB82  crmove  crb31, crb31
+FFE33A50  7C770735  extsh.  r23, r3
+FFE33A54  387F0000  addi    r3, r31, 0x0
+FFE33A58  3081004C  addic   r4, r1, 0x4C
+FFE33A5C  38A00030  li      r5, 0x30
+FFE33A60  4082000C  bne     loc_FFE33A6C
+FFE33A64  48001769  bl      glue_strncpy
+FFE33A68  80410014  lwz     r2, 0x14(r1)
+loc_FFE33A6C:
+FFE33A6C* 2C97F616  cmpwi   cr1, r23, 0xF616
+FFE33A70* 41860008  beq     cr1, loc_FFE33A78
+FFE33A74* 3B370000  addi    r25, r23, 0x0
+loc_FFE33A78:
+FFE33A78* 38790000  addi    r3, r25, 0x0
+FFE33A7C* 818100D8  lwz     r12, 0xD8(r1)
+FFE33A80* 302100D0  addic   r1, r1, 0xD0
+FFE33A84* 7D8803A6  mtspr   LR, r12
+FFE33A88* BAE1FFDC  lmw     r23, -0x24(r1)
+FFE33A8C* 4E800020  blr
+
+sub_FFE33A90:
+FFE33A90* 7C0802A6  mfspr   r0, LR
+FFE33A94* 93E1FFFC  stw     r31, -0x4(r1)
+FFE33A98* 90010008  stw     r0, 0x8(r1)
+FFE33A9C* 9421FF80  stwu    r1, -0x80(r1)
+FFE33AA0* 9081006C  stw     r4, 0x6C(r1)
+FFE33AA4* 30810038  addic   r4, r1, 0x38
+FFE33AA8* 48001199  bl      sub_FFE34C40
+FFE33AAC* 4FFFFB82  crmove  crb31, crb31
+FFE33AB0* 7C7F0735  extsh.  r31, r3
+FFE33AB4* 8061006C  lwz     r3, 0x6C(r1)
+FFE33AB8* 3081004C  addic   r4, r1, 0x4C
+FFE33ABC* 38A00030  li      r5, 0x30
+FFE33AC0* 4082000C  bne     loc_FFE33ACC
+FFE33AC4* 48001709  bl      glue_strncpy
+FFE33AC8* 80410014  lwz     r2, 0x14(r1)
+loc_FFE33ACC:
+FFE33ACC* 387F0000  addi    r3, r31, 0x0
+FFE33AD0* 81810088  lwz     r12, 0x88(r1)
+FFE33AD4* 83E1007C  lwz     r31, 0x7C(r1)
+FFE33AD8* 7D8803A6  mtspr   LR, r12
+FFE33ADC* 30210080  addic   r1, r1, 0x80
+FFE33AE0* 4E800020  blr
+
+RegistryEntryIterateCreate:
+FFE33AE4* BFC1FFF8  stmw    r30, -0x8(r1)
+FFE33AE8* 3BE30000  addi    r31, r3, 0x0
+FFE33AEC* 7C0802A6  mfspr   r0, LR
+FFE33AF0* 3860000C  li      r3, 0xC
+FFE33AF4* 90010008  stw     r0, 0x8(r1)
+FFE33AF8* 9421FFB0  stwu    r1, -0x50(r1)
+FFE33AFC* 480016F5  bl      glue_NewPtrSysClear
+FFE33B00* 80410014  lwz     r2, 0x14(r1)
+FFE33B04* 3BC30000  addi    r30, r3, 0x0
+FFE33B08* 2C1E0000  cmpwi   cr0, r30, 0x0
+FFE33B0C* 38000005  li      r0, 0x5
+FFE33B10* 40820020  bne     loc_FFE33B30
+FFE33B14  48001695  bl      glue_MemError
+FFE33B18  80410014  lwz     r2, 0x14(r1)
+FFE33B1C  7C630734  extsh   r3, r3
+FFE33B20  81810058  lwz     r12, 0x58(r1)
+FFE33B24  30210050  addic   r1, r1, 0x50
+FFE33B28  7D8803A6  mtspr   LR, r12
+FFE33B2C  48000040  b       loc_FFE33B6C
+loc_FFE33B30:
+FFE33B30* 901E0008  stw     r0, 0x8(r30)
+FFE33B34* 480010C9  bl      sub_FFE34BFC
+FFE33B38* 4FFFFB82  crmove  crb31, crb31
+FFE33B3C* 7C630735  extsh.  r3, r3
+FFE33B40* 38000000  li      r0, 0x0
+FFE33B44* 40820018  bne     loc_FFE33B5C
+FFE33B48* 93DF0000  stw     r30, 0x0(r31)
+FFE33B4C* 801E0000  lwz     r0, 0x0(r30)
+FFE33B50* 901E0004  stw     r0, 0x4(r30)
+FFE33B54* 81810058  lwz     r12, 0x58(r1)
+FFE33B58* 4800000C  b       loc_FFE33B64
+loc_FFE33B5C:
+FFE33B5C  901F0000  stw     r0, 0x0(r31)
+FFE33B60  81810058  lwz     r12, 0x58(r1)
+loc_FFE33B64:
+FFE33B64* 30210050  addic   r1, r1, 0x50
+FFE33B68* 7D8803A6  mtspr   LR, r12
+loc_FFE33B6C:
+FFE33B6C* BBC1FFF8  lmw     r30, -0x8(r1)
+FFE33B70* 4E800020  blr
+
+RegistryEntryIterateDispose:
+FFE33B74* 80630000  lwz     r3, 0x0(r3)
+FFE33B78* 7C0802A6  mfspr   r0, LR
+FFE33B7C* 2C030000  cmpwi   cr0, r3, 0x0
+FFE33B80* 9421FFC0  stwu    r1, -0x40(r1)
+FFE33B84* 90010048  stw     r0, 0x48(r1)
+FFE33B88* 4182000C  beq     loc_FFE33B94
+FFE33B8C* 480015F9  bl      glue_DisposePtr
+FFE33B90* 80410014  lwz     r2, 0x14(r1)
+loc_FFE33B94:
+FFE33B94* 38600000  li      r3, 0x0
+FFE33B98* 81810048  lwz     r12, 0x48(r1)
+FFE33B9C* 30210040  addic   r1, r1, 0x40
+FFE33BA0* 7D8803A6  mtspr   LR, r12
+FFE33BA4* 4E800020  blr
+
+RegistryEntryIterateSet:
+FFE33BA8  7C0802A6  mfspr   r0, LR
+FFE33BAC  93E1FFFC  stw     r31, -0x4(r1)
+FFE33BB0  2C040000  cmpwi   cr0, r4, 0x0
+FFE33BB4  83E30000  lwz     r31, 0x0(r3)
+FFE33BB8  90010008  stw     r0, 0x8(r1)
+FFE33BBC  9421FFB0  stwu    r1, -0x50(r1)
+FFE33BC0  387F0000  addi    r3, r31, 0x0
+FFE33BC4  40820028  bne     loc_FFE33BEC
+FFE33BC8  48001035  bl      sub_FFE34BFC
+FFE33BCC  4FFFFB82  crmove  crb31, crb31
+FFE33BD0  7C630735  extsh.  r3, r3
+FFE33BD4  41820024  beq     loc_FFE33BF8
+FFE33BD8  81810058  lwz     r12, 0x58(r1)
+FFE33BDC  83E1004C  lwz     r31, 0x4C(r1)
+FFE33BE0  7D8803A6  mtspr   LR, r12
+FFE33BE4  30210050  addic   r1, r1, 0x50
+FFE33BE8  48000034  b       loc_FFE33C1C
+loc_FFE33BEC:
+FFE33BEC  80040004  lwz     r0, 0x4(r4)
+FFE33BF0  901F0000  stw     r0, 0x0(r31)
+FFE33BF4  48000008  b       loc_FFE33BFC
+loc_FFE33BF8:
+FFE33BF8  801F0000  lwz     r0, 0x0(r31)
+loc_FFE33BFC:
+FFE33BFC  901F0004  stw     r0, 0x4(r31)
+FFE33C00  38000005  li      r0, 0x5
+FFE33C04  901F0008  stw     r0, 0x8(r31)
+FFE33C08  38600000  li      r3, 0x0
+FFE33C0C  81810058  lwz     r12, 0x58(r1)
+FFE33C10  83E1004C  lwz     r31, 0x4C(r1)
+FFE33C14  7D8803A6  mtspr   LR, r12
+FFE33C18  30210050  addic   r1, r1, 0x50
+loc_FFE33C1C:
+FFE33C1C  4E800020  blr
+
+RegistryEntryIterate:
+FFE33C20* BF41FFE8  stmw    r26, -0x18(r1)
+FFE33C24* 3BE50000  addi    r31, r5, 0x0
+FFE33C28* 30A4FFFF  addic   r5, r4, -0x1
+FFE33C2C* 28850005  cmplwi  cr1, r5, 0x5
+FFE33C30* 7C0802A6  mfspr   r0, LR
+FFE33C34* 80E2001C  lwz     r7, 0x1C(r2)                       ; TOC[+28] &code+2160
+FFE33C38* 90010008  stw     r0, 0x8(r1)
+FFE33C3C* 80020020  lwz     r0, 0x20(r2)                       ; TOC[+32] &code+0
+FFE33C40* 54A5103A  slwi    r5, r5, 2
+FFE33C44* 9421FFA0  stwu    r1, -0x60(r1)
+FFE33C48* 83C30000  lwz     r30, 0x0(r3)
+FFE33C4C* 3BA40000  addi    r29, r4, 0x0
+FFE33C50* 7CA72814  addc    r5, r7, r5
+FFE33C54* 3B660000  addi    r27, r6, 0x0
+FFE33C58* 3B400000  li      r26, 0x0
+FFE33C5C* 3B800000  li      r28, 0x0
+FFE33C60* 41850180  bgt     cr1, loc_FFE33DE0
+FFE33C64* 80A50004  lwz     r5, 0x4(r5)
+FFE33C68* 7CA50014  addc    r5, r5, r0
+FFE33C6C* 7CA903A6  mtspr   CTR, r5
+FFE33C70* 4E800420  bctr
+FFE33C74? 30610038  addic   r3, r1, 0x38
+FFE33C78? 48000F85  bl      sub_FFE34BFC
+FFE33C7C? 4FFFFB82  crmove  crb31, crb31
+FFE33C80? 7C7C0735  extsh.  r28, r3
+FFE33C84? 9B5B0000  stb     r26, 0x0(r27)
+FFE33C88? 4800015C  b       loc_FFE33DE4
+FFE33C8C? 807E0000  lwz     r3, 0x0(r30)
+FFE33C90? 30810038  addic   r4, r1, 0x38
+FFE33C94? 38A00000  li      r5, 0x0
+FFE33C98? 4BFFFA35  bl      sub_FFE336CC
+FFE33C9C? 3B830000  addi    r28, r3, 0x0
+FFE33CA0? 2C1C0000  cmpwi   cr0, r28, 0x0
+FFE33CA4? 48000140  b       loc_FFE33DE4
+FFE33CA8? 807E0000  lwz     r3, 0x0(r30)
+FFE33CAC? 30810038  addic   r4, r1, 0x38
+FFE33CB0? 38A00000  li      r5, 0x0
+FFE33CB4? 4BFFFAE5  bl      sub_FFE33798
+FFE33CB8? 3B830000  addi    r28, r3, 0x0
+FFE33CBC? 2C1C0000  cmpwi   cr0, r28, 0x0
+FFE33CC0? 40820164  bne     loc_FFE33E24
+FFE33CC4? 881B0000  lbz     r0, 0x0(r27)
+FFE33CC8? 80A10038  lwz     r5, 0x38(r1)
+FFE33CCC? 2C800000  cmpwi   cr1, r0, 0x0
+FFE33CD0? 40860114  bne     cr1, loc_FFE33DE4
+FFE33CD4? 90BE0004  stw     r5, 0x4(r30)
+FFE33CD8? 4082014C  bne     loc_FFE33E24
+FFE33CDC? 4800010C  b       loc_FFE33DE8
+FFE33CE0? 809E0000  lwz     r4, 0x0(r30)
+FFE33CE4? 30A10038  addic   r5, r1, 0x38
+FFE33CE8? 38640000  addi    r3, r4, 0x0
+FFE33CEC? 38C00000  li      r6, 0x0
+FFE33CF0? 38FB0000  addi    r7, r27, 0x0
+FFE33CF4? 4BFFFB49  bl      sub_FFE3383C
+FFE33CF8? 3B830000  addi    r28, r3, 0x0
+FFE33CFC? 2C1C0000  cmpwi   cr0, r28, 0x0
+FFE33D00? 40820124  bne     loc_FFE33E24
+FFE33D04? 881B0000  lbz     r0, 0x0(r27)
+FFE33D08? 80BE0000  lwz     r5, 0x0(r30)
+FFE33D0C? 2C800000  cmpwi   cr1, r0, 0x0
+FFE33D10? 408600D4  bne     cr1, loc_FFE33DE4
+loc_FFE33D14:
+FFE33D14? 90BE0004  stw     r5, 0x4(r30)
+FFE33D18? 4082010C  bne     loc_FFE33E24
+FFE33D1C? 480000CC  b       loc_FFE33DE8
+FFE33D20? 807E0000  lwz     r3, 0x0(r30)
+FFE33D24? 30810038  addic   r4, r1, 0x38
+FFE33D28? 38A00000  li      r5, 0x0
+FFE33D2C? 4BFFFA6D  bl      sub_FFE33798
+FFE33D30? 3B830000  addi    r28, r3, 0x0
+FFE33D34? 2C1C0000  cmpwi   cr0, r28, 0x0
+FFE33D38? 408200EC  bne     loc_FFE33E24
+FFE33D3C? 881B0000  lbz     r0, 0x0(r27)
+FFE33D40? 80BE0000  lwz     r5, 0x0(r30)
+FFE33D44? 2C800000  cmpwi   cr1, r0, 0x0
+FFE33D48? 4086009C  bne     cr1, loc_FFE33DE4
+FFE33D4C? 4BFFFFC8  b       loc_FFE33D14
+FFE33D50* 83BE0008  lwz     r29, 0x8(r30)
+FFE33D54* 30BDFFFF  addic   r5, r29, -0x1
+FFE33D58* 28850005  cmplwi  cr1, r5, 0x5
+FFE33D5C* 54A5103A  slwi    r5, r5, 2
+FFE33D60* 7CA72814  addc    r5, r7, r5
+FFE33D64* 4185007C  bgt     cr1, loc_FFE33DE0
+FFE33D68* 80A5001C  lwz     r5, 0x1C(r5)
+FFE33D6C* 7C002814  addc    r0, r0, r5
+FFE33D70* 7C0903A6  mtspr   CTR, r0
+FFE33D74* 4E800420  bctr
+FFE33D78? 807E0004  lwz     r3, 0x4(r30)
+FFE33D7C? 809E0000  lwz     r4, 0x0(r30)
+FFE33D80? 30A10038  addic   r5, r1, 0x38
+FFE33D84? 38C00000  li      r6, 0x0
+FFE33D88? 38FB0000  addi    r7, r27, 0x0
+FFE33D8C? 4BFFFAB1  bl      sub_FFE3383C
+FFE33D90? 3B830000  addi    r28, r3, 0x0
+FFE33D94? 2C1C0000  cmpwi   cr0, r28, 0x0
+FFE33D98? 80E10038  lwz     r7, 0x38(r1)
+FFE33D9C? 40820088  bne     loc_FFE33E24
+FFE33DA0? 801E0004  lwz     r0, 0x4(r30)
+FFE33DA4? 38A00001  li      r5, 0x1
+FFE33DA8? 7C803840  cmplw   cr1, r0, r7
+FFE33DAC? 40860038  bne     cr1, loc_FFE33DE4
+FFE33DB0? 98BB0000  stb     r5, 0x0(r27)
+FFE33DB4? 40820070  bne     loc_FFE33E24
+FFE33DB8? 48000030  b       loc_FFE33DE8
+FFE33DBC* 807E0004  lwz     r3, 0x4(r30)
+FFE33DC0* 809E0000  lwz     r4, 0x0(r30)
+FFE33DC4* 30A10038  addic   r5, r1, 0x38
+FFE33DC8* 38C00000  li      r6, 0x0
+FFE33DCC* 38FB0000  addi    r7, r27, 0x0
+FFE33DD0* 4BFFFB1D  bl      sub_FFE338EC
+FFE33DD4* 3B830000  addi    r28, r3, 0x0
+FFE33DD8* 2C1C0000  cmpwi   cr0, r28, 0x0
+FFE33DDC* 48000008  b       loc_FFE33DE4
+loc_FFE33DE0:
+FFE33DE0  4C421242  crset   crb2
+loc_FFE33DE4:
+FFE33DE4* 40820040  bne     loc_FFE33E24
+loc_FFE33DE8:
+FFE33DE8* 881B0000  lbz     r0, 0x0(r27)
+FFE33DEC* 387F0000  addi    r3, r31, 0x0
+FFE33DF0* 2C800000  cmpwi   cr1, r0, 0x0
+FFE33DF4* 38800000  li      r4, 0x0
+FFE33DF8* 38A00010  li      r5, 0x10
+FFE33DFC* 40860028  bne     cr1, loc_FFE33E24
+FFE33E00* 93BE0008  stw     r29, 0x8(r30)
+FFE33E04* 80010038  lwz     r0, 0x38(r1)
+FFE33E08* 901E0000  stw     r0, 0x0(r30)
+FFE33E0C* 48000D65  bl      glue_memset
+FFE33E10* 80410014  lwz     r2, 0x14(r1)
+FFE33E14* 38000001  li      r0, 0x1
+FFE33E18* B01F0000  sth     r0, 0x0(r31)
+FFE33E1C* 801E0000  lwz     r0, 0x0(r30)
+FFE33E20* 901F0004  stw     r0, 0x4(r31)
+loc_FFE33E24:
+FFE33E24* 387C0000  addi    r3, r28, 0x0
+FFE33E28* 81810068  lwz     r12, 0x68(r1)
+FFE33E2C* 30210060  addic   r1, r1, 0x60
+FFE33E30* 7D8803A6  mtspr   LR, r12
+FFE33E34* BB41FFE8  lmw     r26, -0x18(r1)
+FFE33E38* 4E800020  blr
+
+sub_FFE33E3C:
+FFE33E3C  BF41FFE8  stmw    r26, -0x18(r1)
+FFE33E40  3B600000  li      r27, 0x0
+FFE33E44  7C0802A6  mfspr   r0, LR
+FFE33E48  3BE60000  addi    r31, r6, 0x0
+FFE33E4C  3B5B0000  addi    r26, r27, 0x0
+FFE33E50  7D800026  mfcr    r12
+FFE33E54  91810004  stw     r12, 0x4(r1)
+FFE33E58  3B850000  addi    r28, r5, 0x0
+FFE33E5C  2D9C0000  cmpwi   cr3, r28, 0x0
+FFE33E60  281F0000  cmplwi  cr0, r31, 0x0
+FFE33E64  90010008  stw     r0, 0x8(r1)
+FFE33E68  9421FF70  stwu    r1, -0x90(r1)
+FFE33E6C  90810068  stw     r4, 0x68(r1)
+FFE33E70  3BC70000  addi    r30, r7, 0x0
+FFE33E74  90610064  stw     r3, 0x64(r1)
+FFE33E78  9B610038  stb     r27, 0x38(r1)
+FFE33E7C  937E0000  stw     r27, 0x0(r30)
+FFE33E80  3BBB0000  addi    r29, r27, 0x0
+FFE33E84  389B0000  addi    r4, r27, 0x0
+FFE33E88  418E0034  beq     cr3, loc_FFE33EBC
+FFE33E8C  387F0000  addi    r3, r31, 0x0
+FFE33E90  4081002C  ble     loc_FFE33EBC
+FFE33E94  48000D01  bl      glue_NewPtrSys
+FFE33E98  80410014  lwz     r2, 0x14(r1)
+FFE33E9C  3B630000  addi    r27, r3, 0x0
+FFE33EA0  2C1B0000  cmpwi   cr0, r27, 0x0
+FFE33EA4  809E0000  lwz     r4, 0x0(r30)
+FFE33EA8  40820014  bne     loc_FFE33EBC
+FFE33EAC  480012FD  bl      glue_MemError
+FFE33EB0  80410014  lwz     r2, 0x14(r1)
+FFE33EB4  7C640734  extsh   r4, r3
+FFE33EB8  909E0000  stw     r4, 0x0(r30)
+loc_FFE33EBC:
+FFE33EBC  2C040000  cmpwi   cr0, r4, 0x0
+FFE33EC0  3081003A  addic   r4, r1, 0x3A
+FFE33EC4  80610064  lwz     r3, 0x64(r1)
+FFE33EC8  408200F0  bne     loc_FFE33FB8
+FFE33ECC  48000675  bl      RegistryPropertyIterateCreate
+FFE33ED0  2C030000  cmpwi   cr0, r3, 0x0
+FFE33ED4  2E1F0000  cmpwi   cr4, r31, 0x0
+FFE33ED8  907E0000  stw     r3, 0x0(r30)
+FFE33EDC  3BA00001  li      r29, 0x1
+FFE33EE0  408200D8  bne     loc_FFE33FB8
+FFE33EE4  3061003A  addic   r3, r1, 0x3A
+FFE33EE8  4800000C  b       loc_FFE33EF4
+loc_FFE33EEC:
+FFE33EEC  408600CC  bne     cr1, loc_FFE33FB8
+FFE33EF0  3061003A  addic   r3, r1, 0x3A
+loc_FFE33EF4:
+FFE33EF4  30810044  addic   r4, r1, 0x44
+FFE33EF8  30A10038  addic   r5, r1, 0x38
+FFE33EFC  48000709  bl      RegistryPropertyIterate
+FFE33F00  907E0000  stw     r3, 0x0(r30)
+FFE33F04  88810038  lbz     r4, 0x38(r1)
+FFE33F08  80610068  lwz     r3, 0x68(r1)
+FFE33F0C  2C040000  cmpwi   cr0, r4, 0x0
+FFE33F10  30810044  addic   r4, r1, 0x44
+FFE33F14  408200A4  bne     loc_FFE33FB8
+FFE33F18  480012FD  bl      glue_strcmp
+FFE33F1C  80410014  lwz     r2, 0x14(r1)
+FFE33F20  2C030000  cmpwi   cr0, r3, 0x0
+FFE33F24  30A10040  addic   r5, r1, 0x40
+FFE33F28  80810068  lwz     r4, 0x68(r1)
+FFE33F2C  80610064  lwz     r3, 0x64(r1)
+FFE33F30  40820078  bne     loc_FFE33FA8
+FFE33F34  418E0030  beq     cr3, loc_FFE33F64
+FFE33F38  48000771  bl      RegistryPropertyGetSize
+FFE33F3C  80610040  lwz     r3, 0x40(r1)
+FFE33F40  7C03F840  cmplw   r3, r31
+FFE33F44  40820064  bne     loc_FFE33FA8
+FFE33F48  40920024  bne     cr4, loc_FFE33F6C
+FFE33F4C  88610038  lbz     r3, 0x38(r1)
+FFE33F50  3B5D0000  addi    r26, r29, 0x0
+FFE33F54  2C830000  cmpwi   cr1, r3, 0x0
+FFE33F58  2C1A0000  cmpwi   cr0, r26, 0x0
+FFE33F5C  4182FF90  beq     loc_FFE33EEC
+FFE33F60  48000058  b       loc_FFE33FB8
+loc_FFE33F64:
+FFE33F64  3B5D0000  addi    r26, r29, 0x0
+FFE33F68  48000050  b       loc_FFE33FB8
+loc_FFE33F6C:
+FFE33F6C  30C10040  addic   r6, r1, 0x40
+FFE33F70  80610064  lwz     r3, 0x64(r1)
+FFE33F74  80810068  lwz     r4, 0x68(r1)
+FFE33F78  38BB0000  addi    r5, r27, 0x0
+FFE33F7C  48000775  bl      RegistryPropertyGet
+FFE33F80  387B0000  addi    r3, r27, 0x0
+FFE33F84  389C0000  addi    r4, r28, 0x0
+FFE33F88  38BF0000  addi    r5, r31, 0x0
+FFE33F8C  480012AD  bl      glue_memcmp
+FFE33F90  80410014  lwz     r2, 0x14(r1)
+FFE33F94  88810038  lbz     r4, 0x38(r1)
+FFE33F98  7C630034  cntlzw  r3, r3
+FFE33F9C  2C840000  cmpwi   cr1, r4, 0x0
+FFE33FA0  547AD97E  srwi    r26, r3, 5
+FFE33FA4  4800000C  b       loc_FFE33FB0
+loc_FFE33FA8:
+FFE33FA8  88610038  lbz     r3, 0x38(r1)
+FFE33FAC  2C830000  cmpwi   cr1, r3, 0x0
+loc_FFE33FB0:
+FFE33FB0  2C1A0000  cmpwi   cr0, r26, 0x0
+FFE33FB4  4182FF38  beq     loc_FFE33EEC
+loc_FFE33FB8:
+FFE33FB8  2C1D0000  cmpwi   cr0, r29, 0x0
+FFE33FBC  3061003A  addic   r3, r1, 0x3A
+FFE33FC0  40820611  bnel    RegistryPropertyIterateDispose
+FFE33FC4  4DEF7B82  crmove  crb15, crb15
+FFE33FC8  2C1B0000  cmpwi   cr0, r27, 0x0
+FFE33FCC  387B0000  addi    r3, r27, 0x0
+FFE33FD0  4182000C  beq     loc_FFE33FDC
+FFE33FD4  480011B1  bl      glue_DisposePtr
+FFE33FD8  80410014  lwz     r2, 0x14(r1)
+loc_FFE33FDC:
+FFE33FDC  387A0000  addi    r3, r26, 0x0
+FFE33FE0  81810094  lwz     r12, 0x94(r1)
+FFE33FE4  80010098  lwz     r0, 0x98(r1)
+FFE33FE8  7D818120  mtcrf   0x18, r12
+FFE33FEC  30210090  addic   r1, r1, 0x90
+FFE33FF0  7C0803A6  mtspr   LR, r0
+FFE33FF4  BB41FFE8  lmw     r26, -0x18(r1)
+FFE33FF8  4E800020  blr
+
+RegistryEntrySearch:
+FFE33FFC  7C0802A6  mfspr   r0, LR
+FFE34000  93E1FFFC  stw     r31, -0x4(r1)
+FFE34004  3BE60000  addi    r31, r6, 0x0
+FFE34008  90010008  stw     r0, 0x8(r1)
+FFE3400C  9421FFA0  stwu    r1, -0x60(r1)
+FFE34010  9121004C  stw     r9, 0x4C(r1)
+FFE34014  38C00000  li      r6, 0x0
+FFE34018  90C10038  stw     r6, 0x38(r1)
+FFE3401C  90A1003C  stw     r5, 0x3C(r1)
+FFE34020  90610040  stw     r3, 0x40(r1)
+FFE34024  90E10044  stw     r7, 0x44(r1)
+FFE34028  91010048  stw     r8, 0x48(r1)
+FFE3402C  38DF0000  addi    r6, r31, 0x0
+FFE34030  4BFFFBF1  bl      RegistryEntryIterate
+loc_FFE34034:
+FFE34034  90610038  stw     r3, 0x38(r1)
+FFE34038  889F0000  lbz     r4, 0x0(r31)
+FFE3403C  30E10038  addic   r7, r1, 0x38
+FFE34040  2C840000  cmpwi   cr1, r4, 0x0
+FFE34044  80810044  lwz     r4, 0x44(r1)
+FFE34048  80A10048  lwz     r5, 0x48(r1)
+FFE3404C  80C1004C  lwz     r6, 0x4C(r1)
+FFE34050  4086003C  bne     cr1, loc_FFE3408C
+FFE34054  8061003C  lwz     r3, 0x3C(r1)
+FFE34058  4BFFFDE5  bl      sub_FFE33E3C
+FFE3405C  5463063F  clrlwi. r3, r3, 24
+FFE34060  80610038  lwz     r3, 0x38(r1)
+FFE34064  38800001  li      r4, 0x1
+FFE34068  2C830000  cmpwi   cr1, r3, 0x0
+FFE3406C  80A1003C  lwz     r5, 0x3C(r1)
+FFE34070  38DF0000  addi    r6, r31, 0x0
+FFE34074  40820014  bne     loc_FFE34088
+FFE34078  40860014  bne     cr1, loc_FFE3408C
+FFE3407C  80610040  lwz     r3, 0x40(r1)
+FFE34080  4BFFFBA1  bl      RegistryEntryIterate
+FFE34084  4BFFFFB0  b       loc_FFE34034
+loc_FFE34088:
+FFE34088  80610038  lwz     r3, 0x38(r1)
+loc_FFE3408C:
+FFE3408C  81810068  lwz     r12, 0x68(r1)
+FFE34090  83E1005C  lwz     r31, 0x5C(r1)
+FFE34094  7D8803A6  mtspr   LR, r12
+FFE34098  30210060  addic   r1, r1, 0x60
+FFE3409C  4E800020  blr
+
+RegistryCStrEntryLookup:
+FFE340A0* BF61FFEC  stmw    r27, -0x14(r1)
+FFE340A4* 3B840000  addi    r28, r4, 0x0
+FFE340A8* 7C0802A6  mfspr   r0, LR
+FFE340AC* 2C1C0000  cmpwi   cr0, r28, 0x0
+FFE340B0* 7D800026  mfcr    r12
+FFE340B4* 91810004  stw     r12, 0x4(r1)
+FFE340B8* 90010008  stw     r0, 0x8(r1)
+FFE340BC* 9421FF40  stwu    r1, -0xC0(r1)
+FFE340C0* 39030000  addi    r8, r3, 0x0
+FFE340C4* 3BE50000  addi    r31, r5, 0x0
+FFE340C8* 40820010  bne     loc_FFE340D8
+FFE340CC  80E2002C  lwz     r7, 0x2C(r2)                       ; TOC[+44] &data+0
+FFE340D0  80670000  lwz     r3, 0x0(r7)
+FFE340D4  48000008  b       loc_FFE340DC
+loc_FFE340D8:
+FFE340D8* 387C0000  addi    r3, r28, 0x0
+loc_FFE340DC:
+FFE340DC* 30810040  addic   r4, r1, 0x40
+FFE340E0* 4BFFF219  bl      sub_FFE332F8
+FFE340E4* 2D880000  cmpwi   cr3, r8, 0x0
+FFE340E8* 3BC30000  addi    r30, r3, 0x0
+FFE340EC* 408E001C  bne     cr3, loc_FFE34108
+FFE340F0* 3061003C  addic   r3, r1, 0x3C
+FFE340F4* 48000B09  bl      sub_FFE34BFC
+FFE340F8* 4FFFFB82  crmove  crb31, crb31
+FFE340FC* 3BA00000  li      r29, 0x0
+FFE34100* 4F5AD242  crset   crb26
+FFE34104* 48000014  b       loc_FFE34118
+loc_FFE34108:
+FFE34108  80E80004  lwz     r7, 0x4(r8)
+FFE3410C  90E1003C  stw     r7, 0x3C(r1)
+FFE34110  3BA00000  li      r29, 0x0
+FFE34114  4F5AD242  crset   crb26
+loc_FFE34118:
+FFE34118* 3B600000  li      r27, 0x0
+FFE3411C* 30610040  addic   r3, r1, 0x40
+FFE34120* 4BFFF161  bl      sub_FFE33280
+FFE34124* 28030000  cmplwi  cr0, r3, 0x0
+FFE34128* 40810030  ble     loc_FFE34158
+FFE3412C  418E0028  beq     cr3, loc_FFE34154
+FFE34130  3B60FFCE  li      r27, -0x32
+FFE34134  387B0000  addi    r3, r27, 0x0
+FFE34138  818100C4  lwz     r12, 0xC4(r1)
+FFE3413C  800100C8  lwz     r0, 0xC8(r1)
+FFE34140  7D810120  mtcrf   0x10, r12
+FFE34144  302100C0  addic   r1, r1, 0xC0
+FFE34148  7C0803A6  mtspr   LR, r0
+FFE3414C  BB61FFEC  lmw     r27, -0x14(r1)
+FFE34150  4E800020  blr
+loc_FFE34154:
+FFE34154  3BDC0000  addi    r30, r28, 0x0
+loc_FFE34158:
+FFE34158* 387E0000  addi    r3, r30, 0x0
+FFE3415C* 4BFFF125  bl      sub_FFE33280
+FFE34160* 28030000  cmplwi  cr0, r3, 0x0
+FFE34164* 408100D8  ble     loc_FFE3423C
+loc_FFE34168:
+FFE34168  9BA10038  stb     r29, 0x38(r1)
+FFE3416C  387E0000  addi    r3, r30, 0x0
+FFE34170  30810040  addic   r4, r1, 0x40
+FFE34174  4BFFF185  bl      sub_FFE332F8
+FFE34178  3BC30000  addi    r30, r3, 0x0
+FFE3417C  8061003C  lwz     r3, 0x3C(r1)
+FFE34180  3081003C  addic   r4, r1, 0x3C
+FFE34184  30A10070  addic   r5, r1, 0x70
+FFE34188  30C10038  addic   r6, r1, 0x38
+FFE3418C  4BFFF60D  bl      sub_FFE33798
+FFE34190  3B630000  addi    r27, r3, 0x0
+FFE34194  2F1B0000  cmpwi   cr6, r27, 0x0
+FFE34198  88E10038  lbz     r7, 0x38(r1)
+FFE3419C  8381003C  lwz     r28, 0x3C(r1)
+FFE341A0  2C070000  cmpwi   cr0, r7, 0x0
+FFE341A4  409A006C  bne     cr6, loc_FFE34210
+FFE341A8  30610040  addic   r3, r1, 0x40
+FFE341AC  30810070  addic   r4, r1, 0x70
+FFE341B0  4082006C  bne     loc_FFE3421C
+FFE341B4  4BFFF29D  bl      sub_FFE33450
+FFE341B8  5467063F  clrlwi. r7, r3, 24
+FFE341BC  8081003C  lwz     r4, 0x3C(r1)
+FFE341C0  387C0000  addi    r3, r28, 0x0
+FFE341C4  30A1003C  addic   r5, r1, 0x3C
+FFE341C8  40820048  bne     loc_FFE34210
+loc_FFE341CC:
+FFE341CC  30C10070  addic   r6, r1, 0x70
+FFE341D0  30E10038  addic   r7, r1, 0x38
+FFE341D4  4BFFF669  bl      sub_FFE3383C
+FFE341D8  3B630000  addi    r27, r3, 0x0
+FFE341DC  2F1B0000  cmpwi   cr6, r27, 0x0
+FFE341E0  88E10038  lbz     r7, 0x38(r1)
+FFE341E4  30610040  addic   r3, r1, 0x40
+FFE341E8  2C070000  cmpwi   cr0, r7, 0x0
+FFE341EC  30810070  addic   r4, r1, 0x70
+FFE341F0  409A0020  bne     cr6, loc_FFE34210
+FFE341F4  40820028  bne     loc_FFE3421C
+FFE341F8  4BFFF259  bl      sub_FFE33450
+FFE341FC  5467063F  clrlwi. r7, r3, 24
+FFE34200  8081003C  lwz     r4, 0x3C(r1)
+FFE34204  387C0000  addi    r3, r28, 0x0
+FFE34208  30A1003C  addic   r5, r1, 0x3C
+FFE3420C  4182FFC0  beq     loc_FFE341CC
+loc_FFE34210:
+FFE34210  88E10038  lbz     r7, 0x38(r1)
+FFE34214  2C070000  cmpwi   cr0, r7, 0x0
+FFE34218  41820010  beq     loc_FFE34228
+loc_FFE3421C:
+FFE3421C  409A0048  bne     cr6, loc_FFE34264
+FFE34220  3B60F60A  li      r27, -0x9F6
+FFE34224  4F5AD182  crclr   crb26
+loc_FFE34228:
+FFE34228  387E0000  addi    r3, r30, 0x0
+FFE3422C  409A0038  bne     cr6, loc_FFE34264
+FFE34230  4BFFF051  bl      sub_FFE33280
+FFE34234  28030000  cmplwi  cr0, r3, 0x0
+FFE34238  4181FF30  bgt     loc_FFE34168
+loc_FFE3423C:
+FFE3423C* 409A0028  bne     cr6, loc_FFE34264
+FFE34240* 387F0000  addi    r3, r31, 0x0
+FFE34244* 38800000  li      r4, 0x0
+FFE34248* 38A00010  li      r5, 0x10
+FFE3424C* 48000925  bl      glue_memset
+FFE34250* 80410014  lwz     r2, 0x14(r1)
+FFE34254* 38E00001  li      r7, 0x1
+FFE34258* B0FF0000  sth     r7, 0x0(r31)
+FFE3425C* 80E1003C  lwz     r7, 0x3C(r1)
+FFE34260* 90FF0004  stw     r7, 0x4(r31)
+loc_FFE34264:
+FFE34264* 387B0000  addi    r3, r27, 0x0
+FFE34268* 818100C4  lwz     r12, 0xC4(r1)
+FFE3426C* 800100C8  lwz     r0, 0xC8(r1)
+FFE34270* 7D810120  mtcrf   0x10, r12
+FFE34274* 302100C0  addic   r1, r1, 0xC0
+FFE34278* 7C0803A6  mtspr   LR, r0
+FFE3427C* BB61FFEC  lmw     r27, -0x14(r1)
+FFE34280* 4E800020  blr
+
+RegistryEntryToPathSize:
+FFE34284  BFC1FFF8  stmw    r30, -0x8(r1)
+FFE34288  7C0802A6  mfspr   r0, LR
+FFE3428C  80630004  lwz     r3, 0x4(r3)
+FFE34290  90010008  stw     r0, 0x8(r1)
+FFE34294  3BE40000  addi    r31, r4, 0x0
+FFE34298  3BC00000  li      r30, 0x0
+FFE3429C  9421FF80  stwu    r1, -0x80(r1)
+FFE342A0  9061003C  stw     r3, 0x3C(r1)
+FFE342A4  30810040  addic   r4, r1, 0x40
+FFE342A8  4BFFF7E9  bl      sub_FFE33A90
+FFE342AC  2C030000  cmpwi   cr0, r3, 0x0
+FFE342B0  40820034  bne     loc_FFE342E4
+loc_FFE342B4:
+FFE342B4  30610040  addic   r3, r1, 0x40
+FFE342B8  4BFFF14D  bl      sub_FFE33404
+FFE342BC  30030001  addic   r0, r3, 0x1
+FFE342C0  7FC0F014  addc    r30, r0, r30
+FFE342C4  8061003C  lwz     r3, 0x3C(r1)
+FFE342C8  3081003C  addic   r4, r1, 0x3C
+FFE342CC  30A10040  addic   r5, r1, 0x40
+FFE342D0  30C10038  addic   r6, r1, 0x38
+FFE342D4  4BFFF3F9  bl      sub_FFE336CC
+FFE342D8  88010038  lbz     r0, 0x38(r1)
+FFE342DC  2C000000  cmpwi   cr0, r0, 0x0
+FFE342E0  4182FFD4  beq     loc_FFE342B4
+loc_FFE342E4:
+FFE342E4  93DF0000  stw     r30, 0x0(r31)
+FFE342E8  81810088  lwz     r12, 0x88(r1)
+FFE342EC  30210080  addic   r1, r1, 0x80
+FFE342F0  7D8803A6  mtspr   LR, r12
+FFE342F4  BBC1FFF8  lmw     r30, -0x8(r1)
+FFE342F8  4E800020  blr
+
+RegistryCStrEntryToPath:
+FFE342FC  BF61FFEC  stmw    r27, -0x14(r1)
+FFE34300  7C0802A6  mfspr   r0, LR
+FFE34304  7D800026  mfcr    r12
+FFE34308  91810004  stw     r12, 0x4(r1)
+FFE3430C  90010008  stw     r0, 0x8(r1)
+FFE34310  9421FF50  stwu    r1, -0xB0(r1)
+FFE34314  3BE00001  li      r31, 0x1
+FFE34318  3BA40000  addi    r29, r4, 0x0
+FFE3431C  3B850000  addi    r28, r5, 0x0
+FFE34320  7FDDE014  addc    r30, r29, r28
+FFE34324  3081003A  addic   r4, r1, 0x3A
+FFE34328  4BFFF245  bl      RegistryEntryIDCopy
+loc_FFE3432C:
+FFE3432C  33DEFFFF  addic   r30, r30, -0x1
+FFE34330  3061003A  addic   r3, r1, 0x3A
+FFE34334  3081004A  addic   r4, r1, 0x4A
+FFE34338  30A1005A  addic   r5, r1, 0x5A
+FFE3433C  30C10038  addic   r6, r1, 0x38
+FFE34340  480000CD  bl      RegistryCStrEntryToName
+FFE34344  3B630000  addi    r27, r3, 0x0
+FFE34348  2D9B0000  cmpwi   cr3, r27, 0x0
+FFE3434C  3061003A  addic   r3, r1, 0x3A
+FFE34350  408E0070  bne     cr3, loc_FFE343C0
+FFE34354  4BFFF229  bl      RegistryEntryIDDispose
+FFE34358  3061004A  addic   r3, r1, 0x4A
+FFE3435C  3081003A  addic   r4, r1, 0x3A
+FFE34360  4BFFF20D  bl      RegistryEntryIDCopy
+FFE34364  3061004A  addic   r3, r1, 0x4A
+FFE34368  4BFFF215  bl      RegistryEntryIDDispose
+FFE3436C  3061005A  addic   r3, r1, 0x5A
+FFE34370  4BFFF095  bl      sub_FFE33404
+FFE34374  39030000  addi    r8, r3, 0x0
+FFE34378  7FC8F010  subfc   r30, r8, r30
+FFE3437C  7C1EE840  cmplw   r30, r29
+FFE34380  3061005A  addic   r3, r1, 0x5A
+FFE34384  389E0000  addi    r4, r30, 0x0
+FFE34388  41800024  blt     loc_FFE343AC
+FFE3438C  4BFFF0A1  bl      sub_FFE3342C
+FFE34390  2C1F0000  cmpwi   cr0, r31, 0x0
+FFE34394  3BE00000  li      r31, 0x0
+FFE34398  38600000  li      r3, 0x0
+FFE3439C  4182001C  beq     loc_FFE343B8
+FFE343A0  7C68F1AE  stbx    r3, r8, r30
+FFE343A4  88610038  lbz     r3, 0x38(r1)
+FFE343A8  4800001C  b       loc_FFE343C4
+loc_FFE343AC:
+FFE343AC  3B60F609  li      r27, -0x9F7
+FFE343B0  4DCE7182  crclr   crb14
+FFE343B4  48000018  b       loc_FFE343CC
+loc_FFE343B8:
+FFE343B8  3860003A  li      r3, 0x3A
+FFE343BC  7C68F1AE  stbx    r3, r8, r30
+loc_FFE343C0:
+FFE343C0  88610038  lbz     r3, 0x38(r1)
+loc_FFE343C4:
+FFE343C4  2C030000  cmpwi   cr0, r3, 0x0
+FFE343C8  4182FF64  beq     loc_FFE3432C
+loc_FFE343CC:
+FFE343CC  3061003A  addic   r3, r1, 0x3A
+FFE343D0  4BFFF1AD  bl      RegistryEntryIDDispose
+FFE343D4  408E0018  bne     cr3, loc_FFE343EC
+FFE343D8  7C1EE840  cmplw   r30, r29
+FFE343DC  387E0000  addi    r3, r30, 0x0
+FFE343E0  389D0000  addi    r4, r29, 0x0
+FFE343E4  38BC0000  addi    r5, r28, 0x0
+FFE343E8  4082EEC1  bnel    sub_FFE332A8
+loc_FFE343EC:
+FFE343EC  387B0000  addi    r3, r27, 0x0
+FFE343F0  818100B4  lwz     r12, 0xB4(r1)
+FFE343F4  800100B8  lwz     r0, 0xB8(r1)
+FFE343F8  7D810120  mtcrf   0x10, r12
+FFE343FC  302100B0  addic   r1, r1, 0xB0
+FFE34400  7C0803A6  mtspr   LR, r0
+FFE34404  BB61FFEC  lmw     r27, -0x14(r1)
+FFE34408  4E800020  blr
+
+RegistryCStrEntryToName:
+FFE3440C* BFA1FFF4  stmw    r29, -0xC(r1)
+FFE34410* 83C30004  lwz     r30, 0x4(r3)
+FFE34414* 3BE40000  addi    r31, r4, 0x0
+FFE34418* 7C0802A6  mfspr   r0, LR
+FFE3441C* 3BA60000  addi    r29, r6, 0x0
+FFE34420* 90010008  stw     r0, 0x8(r1)
+FFE34424* 9421FFB0  stwu    r1, -0x50(r1)
+FFE34428* 38850000  addi    r4, r5, 0x0
+FFE3442C* 387E0000  addi    r3, r30, 0x0
+FFE34430* 4BFFF661  bl      sub_FFE33A90
+FFE34434* 2C030000  cmpwi   cr0, r3, 0x0
+FFE34438* 38800000  li      r4, 0x0
+FFE3443C* 38A00010  li      r5, 0x10
+FFE34440* 38C00001  li      r6, 0x1
+FFE34444* 40820030  bne     loc_FFE34474
+FFE34448* 387F0000  addi    r3, r31, 0x0
+FFE3444C* 48000725  bl      glue_memset
+FFE34450* 80410014  lwz     r2, 0x14(r1)
+FFE34454* 38A00001  li      r5, 0x1
+FFE34458* B0BF0000  sth     r5, 0x0(r31)
+FFE3445C* 309F0004  addic   r4, r31, 0x4
+FFE34460* 387E0000  addi    r3, r30, 0x0
+FFE34464* 38DD0000  addi    r6, r29, 0x0
+FFE34468* 38A00000  li      r5, 0x0
+FFE3446C* 4BFFF261  bl      sub_FFE336CC
+FFE34470* 48000008  b       loc_FFE34478
+loc_FFE34474:
+FFE34474  98DD0000  stb     r6, 0x0(r29)
+loc_FFE34478:
+FFE34478* 81810058  lwz     r12, 0x58(r1)
+FFE3447C* 30210050  addic   r1, r1, 0x50
+FFE34480* 7D8803A6  mtspr   LR, r12
+FFE34484* BBA1FFF4  lmw     r29, -0xC(r1)
+FFE34488* 4E800020  blr
+
+RegistryPropertyCreate:
+FFE3448C* 9421FFB0  stwu    r1, -0x50(r1)
+FFE34490* 90A1003C  stw     r5, 0x3C(r1)
+FFE34494* 90C10040  stw     r6, 0x40(r1)
+FFE34498* 38A40000  addi    r5, r4, 0x0
+FFE3449C* 7C0802A6  mfspr   r0, LR
+FFE344A0* 80630004  lwz     r3, 0x4(r3)
+FFE344A4* 90010058  stw     r0, 0x58(r1)
+FFE344A8* 30C10038  addic   r6, r1, 0x38
+FFE344AC* 38800000  li      r4, 0x0
+FFE344B0* 48000A01  bl      sub_FFE34EB0
+FFE344B4* 4FFFFB82  crmove  crb31, crb31
+FFE344B8* 7C630735  extsh.  r3, r3
+FFE344BC* 8081003C  lwz     r4, 0x3C(r1)
+FFE344C0* 80A10040  lwz     r5, 0x40(r1)
+FFE344C4* 40820014  bne     loc_FFE344D8
+FFE344C8* 80610038  lwz     r3, 0x38(r1)
+FFE344CC* 48000A7D  bl      sub_FFE34F48
+FFE344D0* 4FFFFB82  crmove  crb31, crb31
+FFE344D4* 7C630734  extsh   r3, r3
+loc_FFE344D8:
+FFE344D8* 81810058  lwz     r12, 0x58(r1)
+FFE344DC* 30210050  addic   r1, r1, 0x50
+FFE344E0* 7D8803A6  mtspr   LR, r12
+FFE344E4* 4E800020  blr
+
+RegistryPropertyDelete:
+FFE344E8* 9421FFC0  stwu    r1, -0x40(r1)
+FFE344EC* 7C0802A6  mfspr   r0, LR
+FFE344F0* 80630004  lwz     r3, 0x4(r3)
+FFE344F4* 90010048  stw     r0, 0x48(r1)
+FFE344F8* 30A10038  addic   r5, r1, 0x38
+FFE344FC* 3101003C  addic   r8, r1, 0x3C
+FFE34500* 38C00000  li      r6, 0x0
+FFE34504* 38E00000  li      r7, 0x0
+FFE34508* 480008B1  bl      sub_FFE34DB8
+FFE3450C* 4FFFFB82  crmove  crb31, crb31
+FFE34510* 7C630735  extsh.  r3, r3
+FFE34514* 2C83F611  cmpwi   cr1, r3, 0xF611
+FFE34518* 41820008  beq     loc_FFE34520
+FFE3451C* 40860014  bne     cr1, loc_FFE34530
+loc_FFE34520:
+FFE34520  80610038  lwz     r3, 0x38(r1)
+FFE34524  480009E1  bl      sub_FFE34F04
+FFE34528  4FFFFB82  crmove  crb31, crb31
+FFE3452C  7C630734  extsh   r3, r3
+loc_FFE34530:
+FFE34530* 81810048  lwz     r12, 0x48(r1)
+FFE34534* 30210040  addic   r1, r1, 0x40
+FFE34538* 7D8803A6  mtspr   LR, r12
+FFE3453C* 4E800020  blr
+
+RegistryPropertyIterateCreate:
+FFE34540  BFA1FFF4  stmw    r29, -0xC(r1)
+FFE34544  3BC30000  addi    r30, r3, 0x0
+FFE34548  7C0802A6  mfspr   r0, LR
+FFE3454C  3BE40000  addi    r31, r4, 0x0
+FFE34550  90010008  stw     r0, 0x8(r1)
+FFE34554  9421FF80  stwu    r1, -0x80(r1)
+FFE34558  3860000C  li      r3, 0xC
+FFE3455C  48000C95  bl      glue_NewPtrSysClear
+FFE34560  80410014  lwz     r2, 0x14(r1)
+FFE34564  3BA30000  addi    r29, r3, 0x0
+FFE34568  2C1D0000  cmpwi   cr0, r29, 0x0
+FFE3456C  30810038  addic   r4, r1, 0x38
+FFE34570  40820018  bne     loc_FFE34588
+FFE34574  48000C35  bl      glue_MemError
+FFE34578  80410014  lwz     r2, 0x14(r1)
+FFE3457C  7C630735  extsh.  r3, r3
+FFE34580  40820034  bne     loc_FFE345B4
+FFE34584  48000028  b       loc_FFE345AC
+loc_FFE34588:
+FFE34588  807E0004  lwz     r3, 0x4(r30)
+FFE3458C  907D0000  stw     r3, 0x0(r29)
+FFE34590  480006B1  bl      sub_FFE34C40
+FFE34594  4FFFFB82  crmove  crb31, crb31
+FFE34598  7C630735  extsh.  r3, r3
+FFE3459C  80010048  lwz     r0, 0x48(r1)
+FFE345A0  40820014  bne     loc_FFE345B4
+FFE345A4  901D0004  stw     r0, 0x4(r29)
+FFE345A8  901D0008  stw     r0, 0x8(r29)
+loc_FFE345AC:
+FFE345AC  93BF0000  stw     r29, 0x0(r31)
+FFE345B0  4800000C  b       loc_FFE345BC
+loc_FFE345B4:
+FFE345B4  38000000  li      r0, 0x0
+FFE345B8  901F0000  stw     r0, 0x0(r31)
+loc_FFE345BC:
+FFE345BC  81810088  lwz     r12, 0x88(r1)
+FFE345C0  30210080  addic   r1, r1, 0x80
+FFE345C4  7D8803A6  mtspr   LR, r12
+FFE345C8  BBA1FFF4  lmw     r29, -0xC(r1)
+FFE345CC  4E800020  blr
+
+RegistryPropertyIterateDispose:
+FFE345D0  80630000  lwz     r3, 0x0(r3)
+FFE345D4  7C0802A6  mfspr   r0, LR
+FFE345D8  2C030000  cmpwi   cr0, r3, 0x0
+FFE345DC  9421FFC0  stwu    r1, -0x40(r1)
+FFE345E0  90010048  stw     r0, 0x48(r1)
+FFE345E4  4182000C  beq     loc_FFE345F0
+FFE345E8  48000B9D  bl      glue_DisposePtr
+FFE345EC  80410014  lwz     r2, 0x14(r1)
+loc_FFE345F0:
+FFE345F0  38600000  li      r3, 0x0
+FFE345F4  81810048  lwz     r12, 0x48(r1)
+FFE345F8  30210040  addic   r1, r1, 0x40
+FFE345FC  7D8803A6  mtspr   LR, r12
+FFE34600  4E800020  blr
+
+RegistryPropertyIterate:
+FFE34604  BF81FFF0  stmw    r28, -0x10(r1)
+FFE34608  83E30000  lwz     r31, 0x0(r3)
+FFE3460C  7C0802A6  mfspr   r0, LR
+FFE34610  807F0004  lwz     r3, 0x4(r31)
+FFE34614  90010008  stw     r0, 0x8(r1)
+FFE34618  9421FF80  stwu    r1, -0x80(r1)
+FFE3461C  90810068  stw     r4, 0x68(r1)
+FFE34620  2C030000  cmpwi   cr0, r3, 0x0
+FFE34624  3BA50000  addi    r29, r5, 0x0
+FFE34628  30810038  addic   r4, r1, 0x38
+FFE3462C  3BC00000  li      r30, 0x0
+FFE34630  3B800000  li      r28, 0x0
+FFE34634  40820010  bne     loc_FFE34644
+FFE34638  38800001  li      r4, 0x1
+FFE3463C  989D0000  stb     r4, 0x0(r29)
+FFE34640  48000050  b       loc_FFE34690
+loc_FFE34644:
+FFE34644  48000645  bl      sub_FFE34C88
+FFE34648  4FFFFB82  crmove  crb31, crb31
+FFE3464C  7C7C0735  extsh.  r28, r3
+FFE34650  80610068  lwz     r3, 0x68(r1)
+FFE34654  30810048  addic   r4, r1, 0x48
+FFE34658  38A00020  li      r5, 0x20
+FFE3465C  38E00001  li      r7, 0x1
+FFE34660  4082002C  bne     loc_FFE3468C
+FFE34664  48000B69  bl      glue_strncpy
+FFE34668  80410014  lwz     r2, 0x14(r1)
+FFE3466C  80810040  lwz     r4, 0x40(r1)
+FFE34670  80FF0008  lwz     r7, 0x8(r31)
+FFE34674  909F0004  stw     r4, 0x4(r31)
+FFE34678  7C043840  cmplw   r4, r7
+FFE3467C  40820008  bne     loc_FFE34684
+FFE34680  93DF0004  stw     r30, 0x4(r31)
+loc_FFE34684:
+FFE34684  9BDD0000  stb     r30, 0x0(r29)
+FFE34688  48000008  b       loc_FFE34690
+loc_FFE3468C:
+FFE3468C  98FD0000  stb     r7, 0x0(r29)
+loc_FFE34690:
+FFE34690  387C0000  addi    r3, r28, 0x0
+FFE34694  81810088  lwz     r12, 0x88(r1)
+FFE34698  30210080  addic   r1, r1, 0x80
+FFE3469C  7D8803A6  mtspr   LR, r12
+FFE346A0  BB81FFF0  lmw     r28, -0x10(r1)
+FFE346A4  4E800020  blr
+
+RegistryPropertyGetSize:
+FFE346A8* 7C0802A6  mfspr   r0, LR
+FFE346AC* 9421FFC0  stwu    r1, -0x40(r1)
+FFE346B0* 80630004  lwz     r3, 0x4(r3)
+FFE346B4* 39050000  addi    r8, r5, 0x0
+FFE346B8* 90010048  stw     r0, 0x48(r1)
+FFE346BC* 30A10038  addic   r5, r1, 0x38
+FFE346C0* 38C00000  li      r6, 0x0
+FFE346C4* 38E00000  li      r7, 0x0
+FFE346C8* 480006F1  bl      sub_FFE34DB8
+FFE346CC* 4FFFFB82  crmove  crb31, crb31
+FFE346D0* 7C630734  extsh   r3, r3
+FFE346D4* 2C03F611  cmpwi   cr0, r3, 0xF611
+FFE346D8* 40820008  bne     loc_FFE346E0
+FFE346DC  38600000  li      r3, 0x0
+loc_FFE346E0:
+FFE346E0* 81810048  lwz     r12, 0x48(r1)
+FFE346E4* 30210040  addic   r1, r1, 0x40
+FFE346E8* 7D8803A6  mtspr   LR, r12
+FFE346EC* 4E800020  blr
+
+RegistryPropertyGet:
+FFE346F0* 7C0802A6  mfspr   r0, LR
+FFE346F4* 93E1FFFC  stw     r31, -0x4(r1)
+FFE346F8* 3BE60000  addi    r31, r6, 0x0
+FFE346FC* 90010008  stw     r0, 0x8(r1)
+FFE34700* 9421FFB0  stwu    r1, -0x50(r1)
+FFE34704* 80FF0000  lwz     r7, 0x0(r31)
+FFE34708* 38C50000  addi    r6, r5, 0x0
+FFE3470C* 80630004  lwz     r3, 0x4(r3)
+FFE34710* 30A10038  addic   r5, r1, 0x38
+FFE34714* 391F0000  addi    r8, r31, 0x0
+FFE34718* 480006A1  bl      sub_FFE34DB8
+FFE3471C* 4FFFFB82  crmove  crb31, crb31
+FFE34720* 7C630735  extsh.  r3, r3
+FFE34724* 38000000  li      r0, 0x0
+FFE34728* 41820008  beq     loc_FFE34730
+FFE3472C* 901F0000  stw     r0, 0x0(r31)
+loc_FFE34730:
+FFE34730* 81810058  lwz     r12, 0x58(r1)
+FFE34734* 83E1004C  lwz     r31, 0x4C(r1)
+FFE34738* 7D8803A6  mtspr   LR, r12
+FFE3473C* 30210050  addic   r1, r1, 0x50
+FFE34740* 4E800020  blr
+
+RegistryPropertySet:
+FFE34744* 9421FFB0  stwu    r1, -0x50(r1)
+FFE34748* 90A10040  stw     r5, 0x40(r1)
+FFE3474C* 90C10044  stw     r6, 0x44(r1)
+FFE34750* 7C0802A6  mfspr   r0, LR
+FFE34754* 80630004  lwz     r3, 0x4(r3)
+FFE34758* 90010058  stw     r0, 0x58(r1)
+FFE3475C* 38000000  li      r0, 0x0
+FFE34760* 90010038  stw     r0, 0x38(r1)
+FFE34764* 30A10038  addic   r5, r1, 0x38
+FFE34768* 3101003C  addic   r8, r1, 0x3C
+FFE3476C* 38C00000  li      r6, 0x0
+FFE34770* 38E00000  li      r7, 0x0
+FFE34774* 48000645  bl      sub_FFE34DB8
+FFE34778* 4FFFFB82  crmove  crb31, crb31
+FFE3477C* 80810040  lwz     r4, 0x40(r1)
+FFE34780* 80A10044  lwz     r5, 0x44(r1)
+FFE34784* 80610038  lwz     r3, 0x38(r1)
+FFE34788* 480007C1  bl      sub_FFE34F48
+FFE3478C* 4FFFFB82  crmove  crb31, crb31
+FFE34790* 7C630734  extsh   r3, r3
+FFE34794* 81810058  lwz     r12, 0x58(r1)
+FFE34798* 30210050  addic   r1, r1, 0x50
+FFE3479C* 7D8803A6  mtspr   LR, r12
+FFE347A0* 4E800020  blr
+
+RegistryEntryGetMod:
+FFE347A4  7C0802A6  mfspr   r0, LR
+FFE347A8  93E1FFFC  stw     r31, -0x4(r1)
+FFE347AC  90010008  stw     r0, 0x8(r1)
+FFE347B0  9421FFB0  stwu    r1, -0x50(r1)
+FFE347B4  80630004  lwz     r3, 0x4(r3)
+FFE347B8  3BE40000  addi    r31, r4, 0x0
+FFE347BC  48000825  bl      sub_FFE34FE0
+FFE347C0  4FFFFB82  crmove  crb31, crb31
+FFE347C4  38000000  li      r0, 0x0
+FFE347C8  901F0000  stw     r0, 0x0(r31)
+FFE347CC  7C630734  extsh   r3, r3
+FFE347D0  81810058  lwz     r12, 0x58(r1)
+FFE347D4  83E1004C  lwz     r31, 0x4C(r1)
+FFE347D8  7D8803A6  mtspr   LR, r12
+FFE347DC  30210050  addic   r1, r1, 0x50
+FFE347E0  4E800020  blr
+
+RegistryEntrySetMod:
+FFE347E4  7C0802A6  mfspr   r0, LR
+FFE347E8  9421FFC0  stwu    r1, -0x40(r1)
+FFE347EC  90010048  stw     r0, 0x48(r1)
+FFE347F0  80630004  lwz     r3, 0x4(r3)
+FFE347F4  38800000  li      r4, 0x0
+FFE347F8  48000831  bl      sub_FFE35028
+FFE347FC  4FFFFB82  crmove  crb31, crb31
+FFE34800  7C630734  extsh   r3, r3
+FFE34804  81810048  lwz     r12, 0x48(r1)
+FFE34808  30210040  addic   r1, r1, 0x40
+FFE3480C  7D8803A6  mtspr   LR, r12
+FFE34810  4E800020  blr
+
+RegistryPropertyGetMod:
+FFE34814* 7C0802A6  mfspr   r0, LR
+FFE34818* 93E1FFFC  stw     r31, -0x4(r1)
+FFE3481C* 3BE50000  addi    r31, r5, 0x0
+FFE34820* 90010008  stw     r0, 0x8(r1)
+FFE34824* 9421FFB0  stwu    r1, -0x50(r1)
+FFE34828* 80630004  lwz     r3, 0x4(r3)
+FFE3482C* 38A00000  li      r5, 0x0
+FFE34830* 90A10038  stw     r5, 0x38(r1)
+FFE34834* 30A10038  addic   r5, r1, 0x38
+FFE34838* 3101003C  addic   r8, r1, 0x3C
+FFE3483C* 38C00000  li      r6, 0x0
+FFE34840* 38E00000  li      r7, 0x0
+FFE34844* 48000575  bl      sub_FFE34DB8
+FFE34848* 4FFFFB82  crmove  crb31, crb31
+FFE3484C* 80610038  lwz     r3, 0x38(r1)
+FFE34850* 389F0000  addi    r4, r31, 0x0
+FFE34854* 4800081D  bl      sub_FFE35070
+FFE34858* 4FFFFB82  crmove  crb31, crb31
+FFE3485C* 809F0000  lwz     r4, 0x0(r31)
+FFE34860* 7C630734  extsh   r3, r3
+FFE34864* 54840674  rlwinm  r4, r4, 0, 25, 26
+FFE34868* 909F0000  stw     r4, 0x0(r31)
+FFE3486C* 81810058  lwz     r12, 0x58(r1)
+FFE34870* 83E1004C  lwz     r31, 0x4C(r1)
+FFE34874* 7D8803A6  mtspr   LR, r12
+FFE34878* 30210050  addic   r1, r1, 0x50
+FFE3487C* 4E800020  blr
+
+RegistryPropertySetMod:
+FFE34880* 7C0802A6  mfspr   r0, LR
+FFE34884* 93E1FFFC  stw     r31, -0x4(r1)
+FFE34888* 3BE50000  addi    r31, r5, 0x0
+FFE3488C* 90010008  stw     r0, 0x8(r1)
+FFE34890* 9421FFB0  stwu    r1, -0x50(r1)
+FFE34894* 80630004  lwz     r3, 0x4(r3)
+FFE34898* 38A00000  li      r5, 0x0
+FFE3489C* 90A10038  stw     r5, 0x38(r1)
+FFE348A0* 30A10038  addic   r5, r1, 0x38
+FFE348A4* 3101003C  addic   r8, r1, 0x3C
+FFE348A8* 38C00000  li      r6, 0x0
+FFE348AC* 38E00000  li      r7, 0x0
+FFE348B0* 48000509  bl      sub_FFE34DB8
+FFE348B4* 4FFFFB82  crmove  crb31, crb31
+FFE348B8* 57E40674  rlwinm  r4, r31, 0, 25, 26
+FFE348BC* 80610038  lwz     r3, 0x38(r1)
+FFE348C0* 480007F9  bl      sub_FFE350B8
+FFE348C4* 4FFFFB82  crmove  crb31, crb31
+FFE348C8* 7C630734  extsh   r3, r3
+FFE348CC* 81810058  lwz     r12, 0x58(r1)
+FFE348D0* 83E1004C  lwz     r31, 0x4C(r1)
+FFE348D4* 7D8803A6  mtspr   LR, r12
+FFE348D8* 30210050  addic   r1, r1, 0x50
+FFE348DC* 4E800020  blr
+
+sub_FFE348E0:
+FFE348E0  BFC1FFF8  stmw    r30, -0x8(r1)
+FFE348E4  7C0802A6  mfspr   r0, LR
+FFE348E8  3BE40000  addi    r31, r4, 0x0
+FFE348EC  90010008  stw     r0, 0x8(r1)
+FFE348F0  3BC50000  addi    r30, r5, 0x0
+FFE348F4  9421FFB0  stwu    r1, -0x50(r1)
+FFE348F8  30810038  addic   r4, r1, 0x38
+FFE348FC  4BFFFEA9  bl      RegistryEntryGetMod
+FFE34900  2C030000  cmpwi   cr0, r3, 0x0
+FFE34904  907E0000  stw     r3, 0x0(r30)
+FFE34908  80010038  lwz     r0, 0x38(r1)
+FFE3490C  38600000  li      r3, 0x0
+FFE34910  40820014  bne     loc_FFE34924
+FFE34914  7FE00038  and     r0, r31, r0
+FFE34918  7C9F0040  cmplw   cr1, r31, r0
+FFE3491C  40860008  bne     cr1, loc_FFE34924
+FFE34920  38600001  li      r3, 0x1
+loc_FFE34924:
+FFE34924  5463063E  clrlwi  r3, r3, 24
+FFE34928  81810058  lwz     r12, 0x58(r1)
+FFE3492C  30210050  addic   r1, r1, 0x50
+FFE34930  7D8803A6  mtspr   LR, r12
+FFE34934  BBC1FFF8  lmw     r30, -0x8(r1)
+FFE34938  4E800020  blr
+
+sub_FFE3493C:
+FFE3493C  BFA1FFF4  stmw    r29, -0xC(r1)
+FFE34940  7C0802A6  mfspr   r0, LR
+FFE34944  3BC40000  addi    r30, r4, 0x0
+FFE34948  90010008  stw     r0, 0x8(r1)
+FFE3494C  9421FF80  stwu    r1, -0x80(r1)
+FFE34950  3BA50000  addi    r29, r5, 0x0
+FFE34954  90610064  stw     r3, 0x64(r1)
+FFE34958  3BE00000  li      r31, 0x0
+FFE3495C  9BE10038  stb     r31, 0x38(r1)
+FFE34960  3081003A  addic   r4, r1, 0x3A
+FFE34964  4BFFFBDD  bl      RegistryPropertyIterateCreate
+FFE34968  2C030000  cmpwi   cr0, r3, 0x0
+FFE3496C  907D0000  stw     r3, 0x0(r29)
+FFE34970  40820074  bne     loc_FFE349E4
+FFE34974  3061003A  addic   r3, r1, 0x3A
+FFE34978  30810044  addic   r4, r1, 0x44
+FFE3497C  30A10038  addic   r5, r1, 0x38
+FFE34980  4BFFFC85  bl      RegistryPropertyIterate
+FFE34984  48000014  b       loc_FFE34998
+loc_FFE34988:
+FFE34988  4086005C  bne     cr1, loc_FFE349E4
+FFE3498C  30810044  addic   r4, r1, 0x44
+FFE34990  30A10038  addic   r5, r1, 0x38
+FFE34994  4BFFFC71  bl      RegistryPropertyIterate
+loc_FFE34998:
+FFE34998  907D0000  stw     r3, 0x0(r29)
+FFE3499C  88610038  lbz     r3, 0x38(r1)
+FFE349A0  30A10040  addic   r5, r1, 0x40
+FFE349A4  2C030000  cmpwi   cr0, r3, 0x0
+FFE349A8  80610064  lwz     r3, 0x64(r1)
+FFE349AC  30810044  addic   r4, r1, 0x44
+FFE349B0  40820034  bne     loc_FFE349E4
+FFE349B4  4BFFFE61  bl      RegistryPropertyGetMod
+FFE349B8  907D0000  stw     r3, 0x0(r29)
+FFE349BC  88810038  lbz     r4, 0x38(r1)
+FFE349C0  80610040  lwz     r3, 0x40(r1)
+FFE349C4  2C840000  cmpwi   cr1, r4, 0x0
+FFE349C8  7FC31838  and     r3, r30, r3
+FFE349CC  7C1E1840  cmplw   r30, r3
+FFE349D0  3061003A  addic   r3, r1, 0x3A
+FFE349D4  4082FFB4  bne     loc_FFE34988
+FFE349D8  4086000C  bne     cr1, loc_FFE349E4
+FFE349DC  30810044  addic   r4, r1, 0x44
+FFE349E0  30A10038  addic   r5, r1, 0x38
+loc_FFE349E4:
+FFE349E4  3061003A  addic   r3, r1, 0x3A
+FFE349E8  4BFFFBE9  bl      RegistryPropertyIterateDispose
+FFE349EC  807D0000  lwz     r3, 0x0(r29)
+FFE349F0  88810038  lbz     r4, 0x38(r1)
+FFE349F4  2C030000  cmpwi   cr0, r3, 0x0
+FFE349F8  2C840000  cmpwi   cr1, r4, 0x0
+FFE349FC  4082000C  bne     loc_FFE34A08
+FFE34A00  40860008  bne     cr1, loc_FFE34A08
+FFE34A04  3BE00001  li      r31, 0x1
+loc_FFE34A08:
+FFE34A08  57E3063E  clrlwi  r3, r31, 24
+FFE34A0C  81810088  lwz     r12, 0x88(r1)
+FFE34A10  30210080  addic   r1, r1, 0x80
+FFE34A14  7D8803A6  mtspr   LR, r12
+FFE34A18  BBA1FFF4  lmw     r29, -0xC(r1)
+FFE34A1C  4E800020  blr
+
+RegistryEntryMod:
+FFE34A20  7C0802A6  mfspr   r0, LR
+FFE34A24  93E1FFFC  stw     r31, -0x4(r1)
+FFE34A28  90010008  stw     r0, 0x8(r1)
+FFE34A2C  9421FFA0  stwu    r1, -0x60(r1)
+FFE34A30  90E10044  stw     r7, 0x44(r1)
+FFE34A34  38000000  li      r0, 0x0
+FFE34A38  90A1003C  stw     r5, 0x3C(r1)
+FFE34A3C  3BE60000  addi    r31, r6, 0x0
+FFE34A40  90610040  stw     r3, 0x40(r1)
+FFE34A44  90010038  stw     r0, 0x38(r1)
+FFE34A48  4BFFF1D9  bl      RegistryEntryIterate
+loc_FFE34A4C:
+FFE34A4C  90610038  stw     r3, 0x38(r1)
+FFE34A50  881F0000  lbz     r0, 0x0(r31)
+FFE34A54  30A10038  addic   r5, r1, 0x38
+FFE34A58  2C800000  cmpwi   cr1, r0, 0x0
+FFE34A5C  80810044  lwz     r4, 0x44(r1)
+FFE34A60  4086003C  bne     cr1, loc_FFE34A9C
+FFE34A64  8061003C  lwz     r3, 0x3C(r1)
+FFE34A68  4BFFFE79  bl      sub_FFE348E0
+FFE34A6C  5460063F  clrlwi. r0, r3, 24
+FFE34A70  80610038  lwz     r3, 0x38(r1)
+FFE34A74  38800001  li      r4, 0x1
+FFE34A78  2C830000  cmpwi   cr1, r3, 0x0
+FFE34A7C  80A1003C  lwz     r5, 0x3C(r1)
+FFE34A80  38DF0000  addi    r6, r31, 0x0
+FFE34A84  40820014  bne     loc_FFE34A98
+FFE34A88  40860014  bne     cr1, loc_FFE34A9C
+FFE34A8C  80610040  lwz     r3, 0x40(r1)
+FFE34A90  4BFFF191  bl      RegistryEntryIterate
+FFE34A94  4BFFFFB8  b       loc_FFE34A4C
+loc_FFE34A98:
+FFE34A98  80610038  lwz     r3, 0x38(r1)
+loc_FFE34A9C:
+FFE34A9C  81810068  lwz     r12, 0x68(r1)
+FFE34AA0  83E1005C  lwz     r31, 0x5C(r1)
+FFE34AA4  7D8803A6  mtspr   LR, r12
+FFE34AA8  30210060  addic   r1, r1, 0x60
+FFE34AAC  4E800020  blr
+
+RegistryEntryPropertyMod:
+FFE34AB0  7C0802A6  mfspr   r0, LR
+FFE34AB4  93E1FFFC  stw     r31, -0x4(r1)
+FFE34AB8  90010008  stw     r0, 0x8(r1)
+FFE34ABC  9421FFA0  stwu    r1, -0x60(r1)
+FFE34AC0  90E10044  stw     r7, 0x44(r1)
+FFE34AC4  38000000  li      r0, 0x0
+FFE34AC8  90A1003C  stw     r5, 0x3C(r1)
+FFE34ACC  3BE60000  addi    r31, r6, 0x0
+FFE34AD0  90610040  stw     r3, 0x40(r1)
+FFE34AD4  90010038  stw     r0, 0x38(r1)
+FFE34AD8  4BFFF149  bl      RegistryEntryIterate
+loc_FFE34ADC:
+FFE34ADC  90610038  stw     r3, 0x38(r1)
+FFE34AE0  881F0000  lbz     r0, 0x0(r31)
+FFE34AE4  30A10038  addic   r5, r1, 0x38
+FFE34AE8  2C800000  cmpwi   cr1, r0, 0x0
+FFE34AEC  80810044  lwz     r4, 0x44(r1)
+FFE34AF0  4086003C  bne     cr1, loc_FFE34B2C
+FFE34AF4  8061003C  lwz     r3, 0x3C(r1)
+FFE34AF8  4BFFFE45  bl      sub_FFE3493C
+FFE34AFC  5460063F  clrlwi. r0, r3, 24
+FFE34B00  80610038  lwz     r3, 0x38(r1)
+FFE34B04  38800001  li      r4, 0x1
+FFE34B08  2C830000  cmpwi   cr1, r3, 0x0
+FFE34B0C  80A1003C  lwz     r5, 0x3C(r1)
+FFE34B10  38DF0000  addi    r6, r31, 0x0
+FFE34B14  40820014  bne     loc_FFE34B28
+FFE34B18  40860014  bne     cr1, loc_FFE34B2C
+FFE34B1C  80610040  lwz     r3, 0x40(r1)
+FFE34B20  4BFFF101  bl      RegistryEntryIterate
+FFE34B24  4BFFFFB8  b       loc_FFE34ADC
+loc_FFE34B28:
+FFE34B28  80610038  lwz     r3, 0x38(r1)
+loc_FFE34B2C:
+FFE34B2C  81810068  lwz     r12, 0x68(r1)
+FFE34B30  83E1005C  lwz     r31, 0x5C(r1)
+FFE34B34  7D8803A6  mtspr   LR, r12
+FFE34B38  30210060  addic   r1, r1, 0x60
+FFE34B3C  4E800020  blr
+
+RegistryEntryIDToDeviceNodeID:
+FFE34B40  80030004  lwz     r0, 0x4(r3)
+FFE34B44  38600000  li      r3, 0x0
+FFE34B48  90040000  stw     r0, 0x0(r4)
+FFE34B4C  4E800020  blr
+
+RegistryDeviceNodeIDToEntryID:
+FFE34B50  38000001  li      r0, 0x1
+FFE34B54  B0040000  sth     r0, 0x0(r4)
+FFE34B58  38000000  li      r0, 0x0
+FFE34B5C  B0040002  sth     r0, 0x2(r4)
+FFE34B60  80030000  lwz     r0, 0x0(r3)
+FFE34B64  38600000  li      r3, 0x0
+FFE34B68  90040004  stw     r0, 0x4(r4)
+FFE34B6C  4E800020  blr
+
+glue_memset:
+FFE34B70* 81820000  lwz     r12, 0x0(r2)                       ; TOC[+0] memset
+FFE34B74* 90410014  stw     r2, 0x14(r1)
+FFE34B78* 800C0000  lwz     r0, 0x0(r12)
+FFE34B7C* 804C0004  lwz     r2, 0x4(r12)
+FFE34B80* 7C0903A6  mtspr   CTR, r0
+FFE34B84* 4E800420  bctr
+FFE34B88d 00000000  .long   0x00000000
+FFE34B8Cd 000C8000  .long   0x000C8000
+FFE34B90d 00000000  .long   0x00000000
+
+glue_NewPtrSys:
+FFE34B94* 81820004  lwz     r12, 0x4(r2)                       ; TOC[+4] NewPtrSys
+FFE34B98* 90410014  stw     r2, 0x14(r1)
+FFE34B9C* 800C0000  lwz     r0, 0x0(r12)
+FFE34BA0* 804C0004  lwz     r2, 0x4(r12)
+FFE34BA4* 7C0903A6  mtspr   CTR, r0
+FFE34BA8* 4E800420  bctr
+FFE34BACd 00000000  .long   0x00000000
+FFE34BB0d 000C8000  .long   0x000C8000
+FFE34BB4d 00000000  .long   0x00000000
+FFE34BB8? 7C0802A6  mfspr   r0, LR
+FFE34BBC? 9421FFC0  stwu    r1, -0x40(r1)
+FFE34BC0? 90010048  stw     r0, 0x48(r1)
+FFE34BC4? 800019CC  lwz     r0, 0x19CC
+FFE34BC8? 38C30000  addi    r6, r3, 0x0
+FFE34BCC? 30600000  addic   r3, r0, 0x0
+FFE34BD0? 388003A8  li      r4, 0x3A8
+FFE34BD4? 38A00203  li      r5, 0x203
+FFE34BD8? 48000589  bl      glue_CallUniversalProc
+FFE34BDC? 80410014  lwz     r2, 0x14(r1)
+FFE34BE0? 90610038  stw     r3, 0x38(r1)
+FFE34BE4? 38C10000  addi    r6, r1, 0x0
+FFE34BE8? AC66003A  lhau    r3, 0x3A(r6)
+FFE34BEC? 81810048  lwz     r12, 0x48(r1)
+FFE34BF0? 30210040  addic   r1, r1, 0x40
+FFE34BF4? 7D8803A6  mtspr   LR, r12
+FFE34BF8? 4E800020  blr
+
+sub_FFE34BFC:
+FFE34BFC* 7C0802A6  mfspr   r0, LR
+FFE34C00* 9421FFC0  stwu    r1, -0x40(r1)
+FFE34C04* 90010048  stw     r0, 0x48(r1)
+FFE34C08* 800019CC  lwz     r0, 0x19CC
+FFE34C0C* 38C30000  addi    r6, r3, 0x0
+FFE34C10* 30600000  addic   r3, r0, 0x0
+FFE34C14* 388003A8  li      r4, 0x3A8
+FFE34C18* 38A00204  li      r5, 0x204
+FFE34C1C* 48000545  bl      glue_CallUniversalProc
+FFE34C20* 80410014  lwz     r2, 0x14(r1)
+FFE34C24* 90610038  stw     r3, 0x38(r1)
+FFE34C28* 38C10000  addi    r6, r1, 0x0
+FFE34C2C* AC66003A  lhau    r3, 0x3A(r6)
+FFE34C30* 81810048  lwz     r12, 0x48(r1)
+FFE34C34* 30210040  addic   r1, r1, 0x40
+FFE34C38* 7D8803A6  mtspr   LR, r12
+FFE34C3C* 4E800020  blr
+
+sub_FFE34C40:
+FFE34C40* 38E40000  addi    r7, r4, 0x0
+FFE34C44* 7C0802A6  mfspr   r0, LR
+FFE34C48* 9421FFC0  stwu    r1, -0x40(r1)
+FFE34C4C* 90010048  stw     r0, 0x48(r1)
+FFE34C50* 800019CC  lwz     r0, 0x19CC
+FFE34C54* 38C30000  addi    r6, r3, 0x0
+FFE34C58* 30600000  addic   r3, r0, 0x0
+FFE34C5C* 38800FA8  li      r4, 0xFA8
+FFE34C60* 38A00405  li      r5, 0x405
+FFE34C64* 480004FD  bl      glue_CallUniversalProc
+FFE34C68* 80410014  lwz     r2, 0x14(r1)
+FFE34C6C* 90610038  stw     r3, 0x38(r1)
+FFE34C70* 38C10000  addi    r6, r1, 0x0
+FFE34C74* AC66003A  lhau    r3, 0x3A(r6)
+FFE34C78* 81810048  lwz     r12, 0x48(r1)
+FFE34C7C* 30210040  addic   r1, r1, 0x40
+FFE34C80* 7D8803A6  mtspr   LR, r12
+FFE34C84* 4E800020  blr
+
+sub_FFE34C88:
+FFE34C88  38E40000  addi    r7, r4, 0x0
+FFE34C8C  7C0802A6  mfspr   r0, LR
+FFE34C90  9421FFC0  stwu    r1, -0x40(r1)
+FFE34C94  90010048  stw     r0, 0x48(r1)
+FFE34C98  800019CC  lwz     r0, 0x19CC
+FFE34C9C  38C30000  addi    r6, r3, 0x0
+FFE34CA0  30600000  addic   r3, r0, 0x0
+FFE34CA4  38800FA8  li      r4, 0xFA8
+FFE34CA8  38A00406  li      r5, 0x406
+FFE34CAC  480004B5  bl      glue_CallUniversalProc
+FFE34CB0  80410014  lwz     r2, 0x14(r1)
+FFE34CB4  90610038  stw     r3, 0x38(r1)
+FFE34CB8  38C10000  addi    r6, r1, 0x0
+FFE34CBC  AC66003A  lhau    r3, 0x3A(r6)
+FFE34CC0  81810048  lwz     r12, 0x48(r1)
+FFE34CC4  30210040  addic   r1, r1, 0x40
+FFE34CC8  7D8803A6  mtspr   LR, r12
+FFE34CCC  4E800020  blr
+FFE34CD0? 38E40000  addi    r7, r4, 0x0
+FFE34CD4? 7C0802A6  mfspr   r0, LR
+FFE34CD8? 9421FFC0  stwu    r1, -0x40(r1)
+FFE34CDC? 90010048  stw     r0, 0x48(r1)
+FFE34CE0? 800019CC  lwz     r0, 0x19CC
+FFE34CE4? 38C30000  addi    r6, r3, 0x0
+FFE34CE8? 30600000  addic   r3, r0, 0x0
+FFE34CEC? 38800FA8  li      r4, 0xFA8
+FFE34CF0? 38A0040D  li      r5, 0x40D
+FFE34CF4? 4800046D  bl      glue_CallUniversalProc
+FFE34CF8? 80410014  lwz     r2, 0x14(r1)
+FFE34CFC? 90610038  stw     r3, 0x38(r1)
+FFE34D00? 38C10000  addi    r6, r1, 0x0
+FFE34D04? AC66003A  lhau    r3, 0x3A(r6)
+FFE34D08? 81810048  lwz     r12, 0x48(r1)
+FFE34D0C? 30210040  addic   r1, r1, 0x40
+FFE34D10? 7D8803A6  mtspr   LR, r12
+FFE34D14? 4E800020  blr
+FFE34D18? 38E40000  addi    r7, r4, 0x0
+FFE34D1C? 7C0802A6  mfspr   r0, LR
+FFE34D20? 9421FFC0  stwu    r1, -0x40(r1)
+FFE34D24? 90010048  stw     r0, 0x48(r1)
+FFE34D28? 800019CC  lwz     r0, 0x19CC
+FFE34D2C? 38C30000  addi    r6, r3, 0x0
+FFE34D30? 30600000  addic   r3, r0, 0x0
+FFE34D34? 38800FA8  li      r4, 0xFA8
+FFE34D38? 38A0040E  li      r5, 0x40E
+FFE34D3C? 48000425  bl      glue_CallUniversalProc
+FFE34D40? 80410014  lwz     r2, 0x14(r1)
+FFE34D44? 90610038  stw     r3, 0x38(r1)
+FFE34D48? 38C10000  addi    r6, r1, 0x0
+FFE34D4C? AC66003A  lhau    r3, 0x3A(r6)
+FFE34D50? 81810048  lwz     r12, 0x48(r1)
+FFE34D54? 30210040  addic   r1, r1, 0x40
+FFE34D58? 7D8803A6  mtspr   LR, r12
+FFE34D5C? 4E800020  blr
+FFE34D60? 39260000  addi    r9, r6, 0x0
+FFE34D64? 54EA063E  clrlwi  r10, r7, 24
+FFE34D68? 39050000  addi    r8, r5, 0x0
+FFE34D6C? 7C0802A6  mfspr   r0, LR
+FFE34D70? 9421FFC0  stwu    r1, -0x40(r1)
+FFE34D74? 90010048  stw     r0, 0x48(r1)
+FFE34D78? 800019CC  lwz     r0, 0x19CC
+FFE34D7C? 38E40000  addi    r7, r4, 0x0
+FFE34D80? 38A00907  li      r5, 0x907
+FFE34D84? 38C30000  addi    r6, r3, 0x0
+FFE34D88? 30600000  addic   r3, r0, 0x0
+FFE34D8C? 3C000002  lis     r0, 0x0002
+FFE34D90? 3080FFA8  addic   r4, r0, -0x58
+FFE34D94? 480003CD  bl      glue_CallUniversalProc
+FFE34D98? 80410014  lwz     r2, 0x14(r1)
+FFE34D9C? 90610038  stw     r3, 0x38(r1)
+FFE34DA0? 38810000  addi    r4, r1, 0x0
+FFE34DA4? AC64003A  lhau    r3, 0x3A(r4)
+FFE34DA8? 81810048  lwz     r12, 0x48(r1)
+FFE34DAC? 30210040  addic   r1, r1, 0x40
+FFE34DB0? 7D8803A6  mtspr   LR, r12
+FFE34DB4? 4E800020  blr
+
+sub_FFE34DB8:
+FFE34DB8* 9421FFB0  stwu    r1, -0x50(r1)
+FFE34DBC* 91010038  stw     r8, 0x38(r1)
+FFE34DC0* 39470000  addi    r10, r7, 0x0
+FFE34DC4* 7C0802A6  mfspr   r0, LR
+FFE34DC8* 810019CC  lwz     r8, 0x19CC
+FFE34DCC* 90010058  stw     r0, 0x58(r1)
+FFE34DD0* 38030000  addi    r0, r3, 0x0
+FFE34DD4* 38680000  addi    r3, r8, 0x0
+FFE34DD8* 38E40000  addi    r7, r4, 0x0
+FFE34DDC* 39050000  addi    r8, r5, 0x0
+FFE34DE0* 38A00C08  li      r5, 0xC08
+FFE34DE4* 39260000  addi    r9, r6, 0x0
+FFE34DE8* 30C00000  addic   r6, r0, 0x0
+FFE34DEC* 3C000010  lis     r0, 0x0010
+FFE34DF0* 3080FFA8  addic   r4, r0, -0x58
+FFE34DF4* 4800036D  bl      glue_CallUniversalProc
+FFE34DF8* 80410014  lwz     r2, 0x14(r1)
+FFE34DFC* 9061003C  stw     r3, 0x3C(r1)
+FFE34E00* 38810000  addi    r4, r1, 0x0
+FFE34E04* AC64003E  lhau    r3, 0x3E(r4)
+FFE34E08* 81810058  lwz     r12, 0x58(r1)
+FFE34E0C* 30210050  addic   r1, r1, 0x50
+FFE34E10* 7D8803A6  mtspr   LR, r12
+FFE34E14* 4E800020  blr
+
+sub_FFE34E18:
+FFE34E18* 39260000  addi    r9, r6, 0x0
+FFE34E1C* 39050000  addi    r8, r5, 0x0
+FFE34E20* 7C0802A6  mfspr   r0, LR
+FFE34E24* 9421FFC0  stwu    r1, -0x40(r1)
+FFE34E28* 90010048  stw     r0, 0x48(r1)
+FFE34E2C* 800019CC  lwz     r0, 0x19CC
+FFE34E30* 38E40000  addi    r7, r4, 0x0
+FFE34E34* 38A00809  li      r5, 0x809
+FFE34E38* 38C30000  addi    r6, r3, 0x0
+FFE34E3C* 30600000  addic   r3, r0, 0x0
+FFE34E40* 3C000001  lis     r0, 0x0001
+FFE34E44* 3080FFA8  addic   r4, r0, -0x58
+FFE34E48* 48000319  bl      glue_CallUniversalProc
+FFE34E4C* 80410014  lwz     r2, 0x14(r1)
+FFE34E50* 90610038  stw     r3, 0x38(r1)
+FFE34E54* 38810000  addi    r4, r1, 0x0
+FFE34E58* AC64003A  lhau    r3, 0x3A(r4)
+FFE34E5C* 81810048  lwz     r12, 0x48(r1)
+FFE34E60* 30210040  addic   r1, r1, 0x40
+FFE34E64* 7D8803A6  mtspr   LR, r12
+FFE34E68* 4E800020  blr
+
+sub_FFE34E6C:
+FFE34E6C  7C0802A6  mfspr   r0, LR
+FFE34E70  9421FFC0  stwu    r1, -0x40(r1)
+FFE34E74  90010048  stw     r0, 0x48(r1)
+FFE34E78  800019CC  lwz     r0, 0x19CC
+FFE34E7C  38C30000  addi    r6, r3, 0x0
+FFE34E80  30600000  addic   r3, r0, 0x0
+FFE34E84  388003A8  li      r4, 0x3A8
+FFE34E88  38A0020A  li      r5, 0x20A
+FFE34E8C  480002D5  bl      glue_CallUniversalProc
+FFE34E90  80410014  lwz     r2, 0x14(r1)
+FFE34E94  90610038  stw     r3, 0x38(r1)
+FFE34E98  38C10000  addi    r6, r1, 0x0
+FFE34E9C  AC66003A  lhau    r3, 0x3A(r6)
+FFE34EA0  81810048  lwz     r12, 0x48(r1)
+FFE34EA4  30210040  addic   r1, r1, 0x40
+FFE34EA8  7D8803A6  mtspr   LR, r12
+FFE34EAC  4E800020  blr
+
+sub_FFE34EB0:
+FFE34EB0* 39260000  addi    r9, r6, 0x0
+FFE34EB4* 39050000  addi    r8, r5, 0x0
+FFE34EB8* 7C0802A6  mfspr   r0, LR
+FFE34EBC* 9421FFC0  stwu    r1, -0x40(r1)
+FFE34EC0* 90010048  stw     r0, 0x48(r1)
+FFE34EC4* 800019CC  lwz     r0, 0x19CC
+FFE34EC8* 38E40000  addi    r7, r4, 0x0
+FFE34ECC* 38A0080B  li      r5, 0x80B
+FFE34ED0* 38C30000  addi    r6, r3, 0x0
+FFE34ED4* 30600000  addic   r3, r0, 0x0
+FFE34ED8* 3C000001  lis     r0, 0x0001
+FFE34EDC* 3080FFA8  addic   r4, r0, -0x58
+FFE34EE0* 48000281  bl      glue_CallUniversalProc
+FFE34EE4* 80410014  lwz     r2, 0x14(r1)
+FFE34EE8* 90610038  stw     r3, 0x38(r1)
+FFE34EEC* 38810000  addi    r4, r1, 0x0
+FFE34EF0* AC64003A  lhau    r3, 0x3A(r4)
+FFE34EF4* 81810048  lwz     r12, 0x48(r1)
+FFE34EF8* 30210040  addic   r1, r1, 0x40
+FFE34EFC* 7D8803A6  mtspr   LR, r12
+FFE34F00* 4E800020  blr
+
+sub_FFE34F04:
+FFE34F04  7C0802A6  mfspr   r0, LR
+FFE34F08  9421FFC0  stwu    r1, -0x40(r1)
+FFE34F0C  90010048  stw     r0, 0x48(r1)
+FFE34F10  800019CC  lwz     r0, 0x19CC
+FFE34F14  38C30000  addi    r6, r3, 0x0
+FFE34F18  30600000  addic   r3, r0, 0x0
+FFE34F1C  388003A8  li      r4, 0x3A8
+FFE34F20  38A0020C  li      r5, 0x20C
+FFE34F24  4800023D  bl      glue_CallUniversalProc
+FFE34F28  80410014  lwz     r2, 0x14(r1)
+FFE34F2C  90610038  stw     r3, 0x38(r1)
+FFE34F30  38C10000  addi    r6, r1, 0x0
+FFE34F34  AC66003A  lhau    r3, 0x3A(r6)
+FFE34F38  81810048  lwz     r12, 0x48(r1)
+FFE34F3C  30210040  addic   r1, r1, 0x40
+FFE34F40  7D8803A6  mtspr   LR, r12
+FFE34F44  4E800020  blr
+
+sub_FFE34F48:
+FFE34F48* 38E40000  addi    r7, r4, 0x0
+FFE34F4C* 39050000  addi    r8, r5, 0x0
+FFE34F50* 7C0802A6  mfspr   r0, LR
+FFE34F54* 9421FFC0  stwu    r1, -0x40(r1)
+FFE34F58* 90010048  stw     r0, 0x48(r1)
+FFE34F5C* 800019CC  lwz     r0, 0x19CC
+FFE34F60* 38C30000  addi    r6, r3, 0x0
+FFE34F64* 30600000  addic   r3, r0, 0x0
+FFE34F68* 38803FA8  li      r4, 0x3FA8
+FFE34F6C* 38A0060F  li      r5, 0x60F
+FFE34F70* 480001F1  bl      glue_CallUniversalProc
+FFE34F74* 80410014  lwz     r2, 0x14(r1)
+FFE34F78* 90610038  stw     r3, 0x38(r1)
+FFE34F7C* 38E10000  addi    r7, r1, 0x0
+FFE34F80* AC67003A  lhau    r3, 0x3A(r7)
+FFE34F84* 81810048  lwz     r12, 0x48(r1)
+FFE34F88* 30210040  addic   r1, r1, 0x40
+FFE34F8C* 7D8803A6  mtspr   LR, r12
+FFE34F90* 4E800020  blr
+FFE34F94? 38E40000  addi    r7, r4, 0x0
+FFE34F98? 39050000  addi    r8, r5, 0x0
+FFE34F9C? 7C0802A6  mfspr   r0, LR
+FFE34FA0? 9421FFC0  stwu    r1, -0x40(r1)
+FFE34FA4? 90010048  stw     r0, 0x48(r1)
+FFE34FA8? 800019CC  lwz     r0, 0x19CC
+FFE34FAC? 38C30000  addi    r6, r3, 0x0
+FFE34FB0? 30600000  addic   r3, r0, 0x0
+FFE34FB4? 38803FA8  li      r4, 0x3FA8
+FFE34FB8? 38A00610  li      r5, 0x610
+FFE34FBC? 480001A5  bl      glue_CallUniversalProc
+FFE34FC0? 80410014  lwz     r2, 0x14(r1)
+FFE34FC4? 90610038  stw     r3, 0x38(r1)
+FFE34FC8? 38E10000  addi    r7, r1, 0x0
+FFE34FCC? AC67003A  lhau    r3, 0x3A(r7)
+FFE34FD0? 81810048  lwz     r12, 0x48(r1)
+FFE34FD4? 30210040  addic   r1, r1, 0x40
+FFE34FD8? 7D8803A6  mtspr   LR, r12
+FFE34FDC? 4E800020  blr
+
+sub_FFE34FE0:
+FFE34FE0  38E40000  addi    r7, r4, 0x0
+FFE34FE4  7C0802A6  mfspr   r0, LR
+FFE34FE8  9421FFC0  stwu    r1, -0x40(r1)
+FFE34FEC  90010048  stw     r0, 0x48(r1)
+FFE34FF0  800019CC  lwz     r0, 0x19CC
+FFE34FF4  38C30000  addi    r6, r3, 0x0
+FFE34FF8  30600000  addic   r3, r0, 0x0
+FFE34FFC  38800FA8  li      r4, 0xFA8
+FFE35000  38A00415  li      r5, 0x415
+FFE35004  4800015D  bl      glue_CallUniversalProc
+FFE35008  80410014  lwz     r2, 0x14(r1)
+FFE3500C  90610038  stw     r3, 0x38(r1)
+FFE35010  38C10000  addi    r6, r1, 0x0
+FFE35014  AC66003A  lhau    r3, 0x3A(r6)
+FFE35018  81810048  lwz     r12, 0x48(r1)
+FFE3501C  30210040  addic   r1, r1, 0x40
+FFE35020  7D8803A6  mtspr   LR, r12
+FFE35024  4E800020  blr
+
+sub_FFE35028:
+FFE35028  38E40000  addi    r7, r4, 0x0
+FFE3502C  7C0802A6  mfspr   r0, LR
+FFE35030  9421FFC0  stwu    r1, -0x40(r1)
+FFE35034  90010048  stw     r0, 0x48(r1)
+FFE35038  800019CC  lwz     r0, 0x19CC
+FFE3503C  38C30000  addi    r6, r3, 0x0
+FFE35040  30600000  addic   r3, r0, 0x0
+FFE35044  38800FA8  li      r4, 0xFA8
+FFE35048  38A00416  li      r5, 0x416
+FFE3504C  48000115  bl      glue_CallUniversalProc
+FFE35050  80410014  lwz     r2, 0x14(r1)
+FFE35054  90610038  stw     r3, 0x38(r1)
+FFE35058  38C10000  addi    r6, r1, 0x0
+FFE3505C  AC66003A  lhau    r3, 0x3A(r6)
+FFE35060  81810048  lwz     r12, 0x48(r1)
+FFE35064  30210040  addic   r1, r1, 0x40
+FFE35068  7D8803A6  mtspr   LR, r12
+FFE3506C  4E800020  blr
+
+sub_FFE35070:
+FFE35070* 38E40000  addi    r7, r4, 0x0
+FFE35074* 7C0802A6  mfspr   r0, LR
+FFE35078* 9421FFC0  stwu    r1, -0x40(r1)
+FFE3507C* 90010048  stw     r0, 0x48(r1)
+FFE35080* 800019CC  lwz     r0, 0x19CC
+FFE35084* 38C30000  addi    r6, r3, 0x0
+FFE35088* 30600000  addic   r3, r0, 0x0
+FFE3508C* 38800FA8  li      r4, 0xFA8
+FFE35090* 38A00417  li      r5, 0x417
+FFE35094* 480000CD  bl      glue_CallUniversalProc
+FFE35098* 80410014  lwz     r2, 0x14(r1)
+FFE3509C* 90610038  stw     r3, 0x38(r1)
+FFE350A0* 38C10000  addi    r6, r1, 0x0
+FFE350A4* AC66003A  lhau    r3, 0x3A(r6)
+FFE350A8* 81810048  lwz     r12, 0x48(r1)
+FFE350AC* 30210040  addic   r1, r1, 0x40
+FFE350B0* 7D8803A6  mtspr   LR, r12
+FFE350B4* 4E800020  blr
+
+sub_FFE350B8:
+FFE350B8* 38E40000  addi    r7, r4, 0x0
+FFE350BC* 7C0802A6  mfspr   r0, LR
+FFE350C0* 9421FFC0  stwu    r1, -0x40(r1)
+FFE350C4* 90010048  stw     r0, 0x48(r1)
+FFE350C8* 800019CC  lwz     r0, 0x19CC
+FFE350CC* 38C30000  addi    r6, r3, 0x0
+FFE350D0* 30600000  addic   r3, r0, 0x0
+FFE350D4* 38800FA8  li      r4, 0xFA8
+FFE350D8* 38A00418  li      r5, 0x418
+FFE350DC* 48000085  bl      glue_CallUniversalProc
+FFE350E0* 80410014  lwz     r2, 0x14(r1)
+FFE350E4* 90610038  stw     r3, 0x38(r1)
+FFE350E8* 38C10000  addi    r6, r1, 0x0
+FFE350EC* AC66003A  lhau    r3, 0x3A(r6)
+FFE350F0* 81810048  lwz     r12, 0x48(r1)
+FFE350F4* 30210040  addic   r1, r1, 0x40
+FFE350F8* 7D8803A6  mtspr   LR, r12
+FFE350FC* 4E800020  blr
+FFE35100? 39050000  addi    r8, r5, 0x0
+FFE35104? 39470000  addi    r10, r7, 0x0
+FFE35108? 7C0802A6  mfspr   r0, LR
+FFE3510C? 9421FFC0  stwu    r1, -0x40(r1)
+FFE35110? 90010048  stw     r0, 0x48(r1)
+FFE35114? 800019CC  lwz     r0, 0x19CC
+FFE35118? 38A30000  addi    r5, r3, 0x0
+FFE3511C? 30600000  addic   r3, r0, 0x0
+FFE35120? 39260000  addi    r9, r6, 0x0
+FFE35124? 38C50000  addi    r6, r5, 0x0
+FFE35128? 38E40000  addi    r7, r4, 0x0
+FFE3512C? 38A00A1E  li      r5, 0xA1E
+FFE35130? 3C000004  lis     r0, 0x0004
+FFE35134? 3080FFA8  addic   r4, r0, -0x58
+FFE35138? 48000029  bl      glue_CallUniversalProc
+FFE3513C? 80410014  lwz     r2, 0x14(r1)
+FFE35140? 90610038  stw     r3, 0x38(r1)
+FFE35144? 38810000  addi    r4, r1, 0x0
+FFE35148? AC64003A  lhau    r3, 0x3A(r4)
+FFE3514C? 81810048  lwz     r12, 0x48(r1)
+FFE35150? 30210040  addic   r1, r1, 0x40
+FFE35154? 7D8803A6  mtspr   LR, r12
+FFE35158? 4E800020  blr
+FFE3515Cd 00000000  .long   0x00000000
+
+glue_CallUniversalProc:
+FFE35160* 81820008  lwz     r12, 0x8(r2)                       ; TOC[+8] CallUniversalProc
+FFE35164* 90410014  stw     r2, 0x14(r1)
+FFE35168* 800C0000  lwz     r0, 0x0(r12)
+FFE3516C* 804C0004  lwz     r2, 0x4(r12)
+FFE35170* 7C0903A6  mtspr   CTR, r0
+FFE35174* 4E800420  bctr
+FFE35178d 00000000  .long   0x00000000
+FFE3517Cd 000C8000  .long   0x000C8000
+FFE35180d 00000000  .long   0x00000000
+
+glue_DisposePtr:
+FFE35184* 8182000C  lwz     r12, 0xC(r2)                       ; TOC[+12] DisposePtr
+FFE35188* 90410014  stw     r2, 0x14(r1)
+FFE3518C* 800C0000  lwz     r0, 0x0(r12)
+FFE35190* 804C0004  lwz     r2, 0x4(r12)
+FFE35194* 7C0903A6  mtspr   CTR, r0
+FFE35198* 4E800420  bctr
+FFE3519Cd 00000000  .long   0x00000000
+FFE351A0d 000C8000  .long   0x000C8000
+FFE351A4d 00000000  .long   0x00000000
+
+glue_MemError:
+FFE351A8  81820010  lwz     r12, 0x10(r2)                      ; TOC[+16] MemError
+FFE351AC  90410014  stw     r2, 0x14(r1)
+FFE351B0  800C0000  lwz     r0, 0x0(r12)
+FFE351B4  804C0004  lwz     r2, 0x4(r12)
+FFE351B8  7C0903A6  mtspr   CTR, r0
+FFE351BC  4E800420  bctr
+FFE351C0d 00000000  .long   0x00000000
+FFE351C4d 000C8000  .long   0x000C8000
+FFE351C8d 00000000  .long   0x00000000
+
+glue_strncpy:
+FFE351CC* 81820014  lwz     r12, 0x14(r2)                      ; TOC[+20] strncpy
+FFE351D0* 90410014  stw     r2, 0x14(r1)
+FFE351D4* 800C0000  lwz     r0, 0x0(r12)
+FFE351D8* 804C0004  lwz     r2, 0x4(r12)
+FFE351DC* 7C0903A6  mtspr   CTR, r0
+FFE351E0* 4E800420  bctr
+FFE351E4d 00000000  .long   0x00000000
+FFE351E8d 000C8000  .long   0x000C8000
+FFE351ECd 00000000  .long   0x00000000
+
+glue_NewPtrSysClear:
+FFE351F0* 81820018  lwz     r12, 0x18(r2)                      ; TOC[+24] NewPtrSysClear
+FFE351F4* 90410014  stw     r2, 0x14(r1)
+FFE351F8* 800C0000  lwz     r0, 0x0(r12)
+FFE351FC* 804C0004  lwz     r2, 0x4(r12)
+FFE35200* 7C0903A6  mtspr   CTR, r0
+FFE35204* 4E800420  bctr
+FFE35208d 00000000  .long   0x00000000
+FFE3520Cd 000C8000  .long   0x000C8000
+FFE35210d 00000000  .long   0x00000000
+
+glue_strcmp:
+FFE35214  81820024  lwz     r12, 0x24(r2)                      ; TOC[+36] strcmp
+FFE35218  90410014  stw     r2, 0x14(r1)
+FFE3521C  800C0000  lwz     r0, 0x0(r12)
+FFE35220  804C0004  lwz     r2, 0x4(r12)
+FFE35224  7C0903A6  mtspr   CTR, r0
+FFE35228  4E800420  bctr
+FFE3522Cd 00000000  .long   0x00000000
+FFE35230d 000C8000  .long   0x000C8000
+FFE35234d 00000000  .long   0x00000000
+
+glue_memcmp:
+FFE35238  81820028  lwz     r12, 0x28(r2)                      ; TOC[+40] memcmp
+FFE3523C  90410014  stw     r2, 0x14(r1)
+FFE35240  800C0000  lwz     r0, 0x0(r12)
+FFE35244  804C0004  lwz     r2, 0x4(r12)
+FFE35248  7C0903A6  mtspr   CTR, r0
+FFE3524C  4E800420  bctr
+FFE35250d 00000000  .long   0x00000000
+FFE35254d 000C8000  .long   0x000C8000
+FFE35258d 00000000  .long   0x00000000
+
+sub_FFE3525C:
+FFE3525C* BFA1FFF4  stmw    r29, -0xC(r1)
+FFE35260* 3FC00001  lis     r30, 0x0001
+FFE35264* 7C0802A6  mfspr   r0, LR
+FFE35268* 307EA1AD  addic   r3, r30, -0x5E53
+FFE3526C* 90010008  stw     r0, 0x8(r1)
+FFE35270* 9421FFA0  stwu    r1, -0x60(r1)
+FFE35274* 48000101  bl      glue_GetOSTrapAddress
+FFE35278* 80410014  lwz     r2, 0x14(r1)
+FFE3527C* 3BE30000  addi    r31, r3, 0x0
+FFE35280* 307EA89F  addic   r3, r30, -0x5761
+FFE35284* 48000115  bl      glue_GetToolTrapAddress
+FFE35288* 80410014  lwz     r2, 0x14(r1)
+FFE3528C* 7C1F1840  cmplw   r31, r3
+FFE35290* 80020038  lwz     r0, 0x38(r2)                       ; TOC[+56] &code+2198
+FFE35294* 38600000  li      r3, 0x0
+FFE35298* 30800055  addic   r4, r0, 0x55
+FFE3529C* 4182009C  beq     loc_FFE35338
+FFE352A0* 30A1003C  addic   r5, r1, 0x3C
+FFE352A4* 4BFFE309  bl      RegistryCStrEntryCreate
+FFE352A8* 4FFFFB82  crmove  crb31, crb31
+FFE352AC* 2C030000  cmpwi   cr0, r3, 0x0
+FFE352B0* 8002003C  lwz     r0, 0x3C(r2)                       ; TOC[+60] &data+10
+FFE352B4* 3BA0000F  li      r29, 0xF
+FFE352B8* 4082006C  bne     loc_FFE35324
+FFE352BC* 33E00044  addic   r31, r0, 0x44
+FFE352C0* 87DFFFFC  lwzu    r30, -0x4(r31)
+FFE352C4* 30810038  addic   r4, r1, 0x38
+FFE352C8* 807E0000  lwz     r3, 0x0(r30)
+FFE352CC* 480000F1  bl      glue_Gestalt
+FFE352D0* 80410014  lwz     r2, 0x14(r1)
+loc_FFE352D4:
+FFE352D4* 7C600735  extsh.  r0, r3
+FFE352D8* 389E0000  addi    r4, r30, 0x0
+FFE352DC* 3061003C  addic   r3, r1, 0x3C
+FFE352E0* 30A10038  addic   r5, r1, 0x38
+FFE352E4* 40820010  bne     loc_FFE352F4
+FFE352E8* 38C00004  li      r6, 0x4
+FFE352EC* 4BFFF1A1  bl      RegistryPropertyCreate
+FFE352F0* 4FFFFB82  crmove  crb31, crb31
+loc_FFE352F4:
+FFE352F4* 2C1D0000  cmpwi   cr0, r29, 0x0
+FFE352F8* 33BDFFFF  addic   r29, r29, -0x1
+FFE352FC* 30810038  addic   r4, r1, 0x38
+FFE35300* 41800018  blt     loc_FFE35318
+FFE35304* 87DFFFFC  lwzu    r30, -0x4(r31)
+FFE35308* 807E0000  lwz     r3, 0x0(r30)
+FFE3530C* 480000B1  bl      glue_Gestalt
+FFE35310* 80410014  lwz     r2, 0x14(r1)
+FFE35314* 4BFFFFC0  b       loc_FFE352D4
+loc_FFE35318:
+FFE35318* 3061003C  addic   r3, r1, 0x3C
+FFE3531C* 4BFFE261  bl      RegistryEntryIDDispose
+FFE35320* 4FFFFB82  crmove  crb31, crb31
+loc_FFE35324:
+FFE35324* 81810068  lwz     r12, 0x68(r1)
+FFE35328* 30210060  addic   r1, r1, 0x60
+FFE3532C* 7D8803A6  mtspr   LR, r12
+FFE35330* BBA1FFF4  lmw     r29, -0xC(r1)
+FFE35334* 4E800020  blr
+loc_FFE35338:
+FFE35338  81810068  lwz     r12, 0x68(r1)
+FFE3533C  30210060  addic   r1, r1, 0x60
+FFE35340  7D8803A6  mtspr   LR, r12
+FFE35344  BBC1FFF8  lmw     r30, -0x8(r1)
+FFE35348  4E800020  blr
+
+__init:
+FFE3534C* 7C0802A6  mfspr   r0, LR
+FFE35350* 9421FFC0  stwu    r1, -0x40(r1)
+FFE35354* 90010048  stw     r0, 0x48(r1)
+FFE35358* 4BFFFF05  bl      sub_FFE3525C
+FFE3535C* 38600000  li      r3, 0x0
+FFE35360* 81810048  lwz     r12, 0x48(r1)
+FFE35364* 30210040  addic   r1, r1, 0x40
+FFE35368* 7D8803A6  mtspr   LR, r12
+FFE3536C* 4E800020  blr
+FFE35370d 00000000  .long   0x00000000
+
+glue_GetOSTrapAddress:
+FFE35374* 81820030  lwz     r12, 0x30(r2)                      ; TOC[+48] GetOSTrapAddress
+FFE35378* 90410014  stw     r2, 0x14(r1)
+FFE3537C* 800C0000  lwz     r0, 0x0(r12)
+FFE35380* 804C0004  lwz     r2, 0x4(r12)
+FFE35384* 7C0903A6  mtspr   CTR, r0
+FFE35388* 4E800420  bctr
+FFE3538Cd 00000000  .long   0x00000000
+FFE35390d 000C8000  .long   0x000C8000
+FFE35394d 00000000  .long   0x00000000
+
+glue_GetToolTrapAddress:
+FFE35398* 81820034  lwz     r12, 0x34(r2)                      ; TOC[+52] GetToolTrapAddress
+FFE3539C* 90410014  stw     r2, 0x14(r1)
+FFE353A0* 800C0000  lwz     r0, 0x0(r12)
+FFE353A4* 804C0004  lwz     r2, 0x4(r12)
+FFE353A8* 7C0903A6  mtspr   CTR, r0
+FFE353AC* 4E800420  bctr
+FFE353B0d 00000000  .long   0x00000000
+FFE353B4d 000C8000  .long   0x000C8000
+FFE353B8d 00000000  .long   0x00000000
+
+glue_Gestalt:
+FFE353BC* 81820040  lwz     r12, 0x40(r2)                      ; TOC[+64] Gestalt
+FFE353C0* 90410014  stw     r2, 0x14(r1)
+FFE353C4* 800C0000  lwz     r0, 0x0(r12)
+FFE353C8* 804C0004  lwz     r2, 0x4(r12)
+FFE353CC* 7C0903A6  mtspr   CTR, r0
+FFE353D0* 4E800420  bctr
+FFE353D4d 00000000  .long   0x00000000
+FFE353D8d 000C8000  .long   0x000C8000
+FFE353DCd 00000000  .long   0x00000000
+FFE353E0d 0049424D  .long   0x0049424D                         ; '.IBM'
+FFE353E4d 00000AD0  .long   0x00000AD0
+FFE353E8d 000009F4  .long   0x000009F4
+FFE353ECd 00000A0C  .long   0x00000A0C
+FFE353F0d 00000A28  .long   0x00000A28
+FFE353F4d 00000AA0  .long   0x00000AA0
+FFE353F8d 00000A60  .long   0x00000A60
+FFE353FCd 00000B60  .long   0x00000B60
+FFE35400d 00000B3C  .long   0x00000B3C
+FFE35404d 00000A0C  .long   0x00000A0C
+FFE35408d 00000AF8  .long   0x00000AF8
+FFE3540Cd 00000B3C  .long   0x00000B3C
+FFE35410d 00000AF8  .long   0x00000AF8
+FFE35414d 00000000  .long   0x00000000
+FFE35418d 6D616368  .ascii  "mach.rom"
+FFE35420? 7600726F  andis.  r0, r16, 0x726F
+FFE35424? 6D200076  xoris   r0, r9, 0x76
+FFE35428? 6D202000  xoris   r0, r9, 0x2000
+FFE3542Cd 76657273  .ascii  "vers.tv "
+FFE35434? 2000736E  subfic  r0, r0, 0x736E
+FFE35438? 64200073  oris    r0, r1, 0x73
+FFE3543C? 65722000  oris    r18, r11, 0x2000
+FFE35440d 70726F63  .ascii  "proc.ram"
+FFE35448? 20007072  subfic  r0, r0, 0x7072
+FFE3544C? 7479006D  andis.  r25, r3, 0x6D
+FFE35450? 6D752000  xoris   r21, r11, 0x2000
+FFE35454d 6C72616D  .ascii  "lram.pgs"
+FFE3545Cd 7A006B62  .long   0x7A006B62                         ; 'z.kb'
+FFE35460? 64200068  oris    r0, r1, 0x68
+FFE35464? 64777200  oris    r23, r3, 0x7200
+FFE35468d 66707520  .ascii  "fpu .:Ge"
+FFE35470? 7374616C  andi.   r20, r27, 0x616C
+
+; ----------------------------------------------------------------------------
+; data section 1 (pidata), unpacked 218 bytes; addresses are offsets in the section;
+; relocated words are named (imports) or point into a section (code+X / data+X).
+; ----------------------------------------------------------------------------
++00000  00002160  -> code+2160 = FFE353E0
++00010  00002198  -> code+2198 = FFE35418
++00014  0000219D  -> code+219D = FFE3541D
++00018  000021A2  -> code+21A2 = FFE35422
++0001C  000021A7  -> code+21A7 = FFE35427
++00020  000021AC  -> code+21AC = FFE3542C
++00024  000021B1  -> code+21B1 = FFE35431
++00028  000021B6  -> code+21B6 = FFE35436
++0002C  000021BB  -> code+21BB = FFE3543B
++00030  000021C0  -> code+21C0 = FFE35440
++00034  000021C5  -> code+21C5 = FFE35445
++00038  000021CA  -> code+21CA = FFE3544A
++0003C  000021CF  -> code+21CF = FFE3544F
++00040  000021D4  -> code+21D4 = FFE35454
++00044  000021D9  -> code+21D9 = FFE35459
++00048  000021DE  -> code+21DE = FFE3545E
++0004C  000021E3  -> code+21E3 = FFE35463
++00050  000021E8  -> code+21E8 = FFE35468
++00054  0000021C  -> code+21C = FFE3349C RegistryEntryIDInit
++00058  000001D4  -> data+1D4
++00060  00000264  -> code+264 = FFE334E4 RegistryEntryIDCompare
++00064  000001D4  -> data+1D4
++0006C  000002EC  -> code+2EC = FFE3356C RegistryEntryIDCopy
++00070  000001D4  -> data+1D4
++00078  000002FC  -> code+2FC = FFE3357C RegistryEntryIDDispose
++0007C  000001D4  -> data+1D4
++00084  0000032C  -> code+32C = FFE335AC RegistryCStrEntryCreate
++00088  000001D4  -> data+1D4
++00090  00000420  -> code+420 = FFE336A0 RegistryEntryDelete
++00094  000001D4  -> data+1D4
++0009C  00000864  -> code+864 = FFE33AE4 RegistryEntryIterateCreate
++000A0  000001D4  -> data+1D4
++000A8  000008F4  -> code+8F4 = FFE33B74 RegistryEntryIterateDispose
++000AC  000001D4  -> data+1D4
++000B4  00000928  -> code+928 = FFE33BA8 RegistryEntryIterateSet
++000B8  000001D4  -> data+1D4
++000C0  000009A0  -> code+9A0 = FFE33C20 RegistryEntryIterate
++000C4  000001D4  -> data+1D4
++000CC  00000D7C  -> code+D7C = FFE33FFC RegistryEntrySearch
++000D0  000001D4  -> data+1D4
++000D8  00000E20  -> code+E20 = FFE340A0 RegistryCStrEntryLookup
++000DC  000001D4  -> data+1D4
++000E4  00001004  -> code+1004 = FFE34284 RegistryEntryToPathSize
++000E8  000001D4  -> data+1D4
++000F0  0000107C  -> code+107C = FFE342FC RegistryCStrEntryToPath
++000F4  000001D4  -> data+1D4
++000FC  0000118C  -> code+118C = FFE3440C RegistryCStrEntryToName
++00100  000001D4  -> data+1D4
++00108  0000120C  -> code+120C = FFE3448C RegistryPropertyCreate
++0010C  000001D4  -> data+1D4
++00114  00001268  -> code+1268 = FFE344E8 RegistryPropertyDelete
++00118  000001D4  -> data+1D4
++00120  000012C0  -> code+12C0 = FFE34540 RegistryPropertyIterateCreate
++00124  000001D4  -> data+1D4
++0012C  00001350  -> code+1350 = FFE345D0 RegistryPropertyIterateDispose
++00130  000001D4  -> data+1D4
++00138  00001384  -> code+1384 = FFE34604 RegistryPropertyIterate
++0013C  000001D4  -> data+1D4
++00144  00001428  -> code+1428 = FFE346A8 RegistryPropertyGetSize
++00148  000001D4  -> data+1D4
++00150  00001470  -> code+1470 = FFE346F0 RegistryPropertyGet
++00154  000001D4  -> data+1D4
++0015C  000014C4  -> code+14C4 = FFE34744 RegistryPropertySet
++00160  000001D4  -> data+1D4
++00168  00001524  -> code+1524 = FFE347A4 RegistryEntryGetMod
++0016C  000001D4  -> data+1D4
++00174  00001564  -> code+1564 = FFE347E4 RegistryEntrySetMod
++00178  000001D4  -> data+1D4
++00180  00001594  -> code+1594 = FFE34814 RegistryPropertyGetMod
++00184  000001D4  -> data+1D4
++0018C  00001600  -> code+1600 = FFE34880 RegistryPropertySetMod
++00190  000001D4  -> data+1D4
++00198  000017A0  -> code+17A0 = FFE34A20 RegistryEntryMod
++0019C  000001D4  -> data+1D4
++001A4  00001830  -> code+1830 = FFE34AB0 RegistryEntryPropertyMod
++001A8  000001D4  -> data+1D4
++001B0  000018C0  -> code+18C0 = FFE34B40 RegistryEntryIDToDeviceNodeID
++001B4  000001D4  -> data+1D4
++001BC  000018D0  -> code+18D0 = FFE34B50 RegistryDeviceNodeIDToEntryID
++001C0  000001D4  -> data+1D4
++001C8  000020CC  -> code+20CC = FFE3534C __init
++001CC  000001D4  -> data+1D4
++001D4  00000000  -> StdCLib::memset
++001D8  00000000  -> InterfaceLib::NewPtrSys
++001DC  00000000  -> InterfaceLib::CallUniversalProc
++001E0  00000000  -> InterfaceLib::DisposePtr
++001E4  00000000  -> InterfaceLib::MemError
++001E8  00000000  -> StdCLib::strncpy
++001EC  00000000  -> InterfaceLib::NewPtrSysClear
++001F0  00002160  -> code+2160 = FFE353E0
++001F4  00000000  -> code+0 = FFE33280
++001F8  00000000  -> StdCLib::strcmp
++001FC  00000000  -> StdCLib::memcmp
++00200  00000000  -> data+0
++00204  00000000  -> InterfaceLib::GetOSTrapAddress
++00208  00000000  -> InterfaceLib::GetToolTrapAddress
++0020C  00002198  -> code+2198 = FFE35418
++00210  00000010  -> data+10
++00214  00000000  -> InterfaceLib::Gestalt
+; full unpacked image:
+00000000  00 00 21 60 00 00 00 00 00 00 00 00 00 00 00 00  |..!`............|
+00000010  00 00 21 98 00 00 21 9D 00 00 21 A2 00 00 21 A7  |..!...!...!...!.|
+00000020  00 00 21 AC 00 00 21 B1 00 00 21 B6 00 00 21 BB  |..!...!...!...!.|
+00000030  00 00 21 C0 00 00 21 C5 00 00 21 CA 00 00 21 CF  |..!...!...!...!.|
+00000040  00 00 21 D4 00 00 21 D9 00 00 21 DE 00 00 21 E3  |..!...!...!...!.|
+00000050  00 00 21 E8 00 00 02 1C 00 00 01 D4 00 00 00 00  |..!.............|
+00000060  00 00 02 64 00 00 01 D4 00 00 00 00 00 00 02 EC  |...d............|
+00000070  00 00 01 D4 00 00 00 00 00 00 02 FC 00 00 01 D4  |................|
+00000080  00 00 00 00 00 00 03 2C 00 00 01 D4 00 00 00 00  |.......,........|
+00000090  00 00 04 20 00 00 01 D4 00 00 00 00 00 00 08 64  |... ...........d|
+000000A0  00 00 01 D4 00 00 00 00 00 00 08 F4 00 00 01 D4  |................|
+000000B0  00 00 00 00 00 00 09 28 00 00 01 D4 00 00 00 00  |.......(........|
+000000C0  00 00 09 A0 00 00 01 D4 00 00 00 00 00 00 0D 7C  |...............||
+000000D0  00 00 01 D4 00 00 00 00 00 00 0E 20 00 00 01 D4  |........... ....|
+000000E0  00 00 00 00 00 00 10 04 00 00 01 D4 00 00 00 00  |................|
+000000F0  00 00 10 7C 00 00 01 D4 00 00 00 00 00 00 11 8C  |...|............|
+00000100  00 00 01 D4 00 00 00 00 00 00 12 0C 00 00 01 D4  |................|
+00000110  00 00 00 00 00 00 12 68 00 00 01 D4 00 00 00 00  |.......h........|
+00000120  00 00 12 C0 00 00 01 D4 00 00 00 00 00 00 13 50  |...............P|
+00000130  00 00 01 D4 00 00 00 00 00 00 13 84 00 00 01 D4  |................|
+00000140  00 00 00 00 00 00 14 28 00 00 01 D4 00 00 00 00  |.......(........|
+00000150  00 00 14 70 00 00 01 D4 00 00 00 00 00 00 14 C4  |...p............|
+00000160  00 00 01 D4 00 00 00 00 00 00 15 24 00 00 01 D4  |...........$....|
+00000170  00 00 00 00 00 00 15 64 00 00 01 D4 00 00 00 00  |.......d........|
+00000180  00 00 15 94 00 00 01 D4 00 00 00 00 00 00 16 00  |................|
+00000190  00 00 01 D4 00 00 00 00 00 00 17 A0 00 00 01 D4  |................|
+000001A0  00 00 00 00 00 00 18 30 00 00 01 D4 00 00 00 00  |.......0........|
+000001B0  00 00 18 C0 00 00 01 D4 00 00 00 00 00 00 18 D0  |................|
+000001C0  00 00 01 D4 00 00 00 00 00 00 20 CC 00 00 01 D4  |.......... .....|
+000001D0  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |................|
+000001E0  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |................|
+000001F0  00 00 21 60 00 00 00 00 00 00 00 00 00 00 00 00  |..!`............|
+00000200  00 00 00 00 00 00 00 00 00 00 00 00 00 00 21 98  |..............!.|
+00000210  00 00 00 10 00 00 00 00                          |........|
+
+; exports (31):
+;   RegistryEntryIDInit                      class tvector section  1 offset 54
+;   RegistryEntryIDCompare                   class tvector section  1 offset 60
+;   RegistryEntryIDCopy                      class tvector section  1 offset 6C
+;   RegistryEntryIDDispose                   class tvector section  1 offset 78
+;   RegistryCStrEntryCreate                  class tvector section  1 offset 84
+;   RegistryEntryDelete                      class tvector section  1 offset 90
+;   RegistryEntryIterateCreate               class tvector section  1 offset 9C
+;   RegistryEntryIterateDispose              class tvector section  1 offset A8
+;   RegistryEntryIterateSet                  class tvector section  1 offset B4
+;   RegistryEntryIterate                     class tvector section  1 offset C0
+;   RegistryEntrySearch                      class tvector section  1 offset CC
+;   RegistryCStrEntryLookup                  class tvector section  1 offset D8
+;   RegistryEntryToPathSize                  class tvector section  1 offset E4
+;   RegistryCStrEntryToPath                  class tvector section  1 offset F0
+;   RegistryCStrEntryToName                  class tvector section  1 offset FC
+;   RegistryPropertyCreate                   class tvector section  1 offset 108
+;   RegistryPropertyDelete                   class tvector section  1 offset 114
+;   RegistryPropertyIterateCreate            class tvector section  1 offset 120
+;   RegistryPropertyIterateDispose           class tvector section  1 offset 12C
+;   RegistryPropertyIterate                  class tvector section  1 offset 138
+;   RegistryPropertyGetSize                  class tvector section  1 offset 144
+;   RegistryPropertyGet                      class tvector section  1 offset 150
+;   RegistryPropertySet                      class tvector section  1 offset 15C
+;   RegistryEntryGetMod                      class tvector section  1 offset 168
+;   RegistryEntrySetMod                      class tvector section  1 offset 174
+;   RegistryPropertyGetMod                   class tvector section  1 offset 180
+;   RegistryPropertySetMod                   class tvector section  1 offset 18C
+;   RegistryEntryMod                         class tvector section  1 offset 198
+;   RegistryEntryPropertyMod                 class tvector section  1 offset 1A4
+;   RegistryEntryIDToDeviceNodeID            class tvector section  1 offset 1B0
+;   RegistryDeviceNodeIDToEntryID            class tvector section  1 offset 1BC
+; imports (12):
+;      0 StdCLib                  memset                                   tvector
+;      1 StdCLib                  strncpy                                  tvector
+;      2 StdCLib                  strcmp                                   tvector
+;      3 StdCLib                  memcmp                                   tvector
+;      4 InterfaceLib             NewPtrSys                                tvector
+;      5 InterfaceLib             CallUniversalProc                        tvector
+;      6 InterfaceLib             DisposePtr                               tvector
+;      7 InterfaceLib             MemError                                 tvector
+;      8 InterfaceLib             NewPtrSysClear                           tvector
+;      9 InterfaceLib             GetOSTrapAddress                         tvector
+;     10 InterfaceLib             GetToolTrapAddress                       tvector
+;     11 InterfaceLib             Gestalt                                  tvector

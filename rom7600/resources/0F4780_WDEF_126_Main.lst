@@ -1,0 +1,82 @@
+; ============================================================================
+; ROM resource 'WDEF' 126 Main at FFCF4780
+; ============================================================================
+; data at ROM 0F4780 (CC bytes), entry at 0F4840, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 000000cc 000002b4
+; 68k code resource, disassembled from its start (entry points: offset 0, driver
+; header entries for DRVR, and executed addresses).
+;
+; Columns: address, flag, raw bytes, instruction, ; comment.
+;   flag '*' executed in the coverage run, ' ' reached by control flow,
+;   '?' decodes as code but neither executed nor reached, 'd' data.
+
+FFCF4780  600C                 bra     loc_FFCF478E
+FFCF4782d 0000045744454600     dc.b    $00,$00,$04,$57,$44,$45,$46,$00,$00,$7E,$00,$02 ; |...WDEF..~..|
+loc_FFCF478E:
+FFCF478E  4EFA0010             jmp     (loc_FFCF47A0,PC)
+FFCF4792d 0000000000000000     dc.b    $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00 ; |..............|
+loc_FFCF47A0:
+FFCF47A0  4E56FFEC             link    A6, #-$14
+FFCF47A4  48E70318             movem.l D6-D7/A3-A4, -(A7)
+FFCF47A8  2C2E000E             move.l  ($e,A6), D6
+FFCF47AC  7000                 moveq   #$0, D0
+FFCF47AE  2D400014             move.l  D0, ($14,A6)
+FFCF47B2  2846                 movea.l D6, A4
+FFCF47B4  302E000C             move.w  ($c,A6), D0
+FFCF47B8  6706                 beq     loc_FFCF47C0
+FFCF47BA  5540                 subq.w  #2, D0
+FFCF47BC  671C                 beq     loc_FFCF47DA
+FFCF47BE  6074                 bra     loc_FFCF4834
+loc_FFCF47C0:
+FFCF47C0  102C006E             move.b  ($6e,A4), D0
+FFCF47C4  676E                 beq     loc_FFCF4834
+FFCF47C6  A89E                 _PenNormal                                ; A-line trap A89E
+FFCF47C8  4267                 clr.w   -(A7)
+FFCF47CA  2F2C0072             move.l  ($72,A4), -(A7)
+FFCF47CE  303C02FE             move.w  #$2fe, D0
+FFCF47D2  A830                 _Pack14                                   ; A-line trap A830
+FFCF47D4  4A5F                 tst.w   (A7)+
+FFCF47D6  A89E                 _PenNormal                                ; A-line trap A89E
+FFCF47D8  605A                 bra     loc_FFCF4834
+loc_FFCF47DA:
+FFCF47DA  2046                 movea.l D6, A0
+FFCF47DC  43EEFFF0             lea     (-$10,A6), A1
+FFCF47E0  41E80010             lea     ($10,A0), A0
+FFCF47E4  22D8                 move.l  (A0)+, (A1)+
+FFCF47E6  22D8                 move.l  (A0)+, (A1)+
+FFCF47E8  2646                 movea.l D6, A3
+FFCF47EA  4A6B0006             tst.w   ($6,A3)
+FFCF47EE  6C0C                 bge     loc_FFCF47FC
+FFCF47F0  206B0002             movea.l ($2,A3), A0
+FFCF47F4  2050                 movea.l (A0), A0
+FFCF47F6  5C88                 addq.l  #6, A0
+FFCF47F8  2E08                 move.l  A0, D7
+FFCF47FA  6006                 bra     loc_FFCF4802
+loc_FFCF47FC:
+FFCF47FC  2046                 movea.l D6, A0
+FFCF47FE  5088                 addq.l  #8, A0
+FFCF4800  2E08                 move.l  A0, D7
+loc_FFCF4802:
+FFCF4802  486EFFF0             pea     (-$10,A6)
+FFCF4806  2047                 movea.l D7, A0
+FFCF4808  30280002             move.w  ($2,A0), D0
+FFCF480C  4440                 neg.w   D0
+FFCF480E  3F00                 move.w  D0, -(A7)
+FFCF4810  2047                 movea.l D7, A0
+FFCF4812  3010                 move.w  (A0), D0
+FFCF4814  4440                 neg.w   D0
+FFCF4816  3F00                 move.w  D0, -(A7)
+FFCF4818  A8A8                 _OffsetRect                               ; A-line trap A8A8
+FFCF481A  4267                 clr.w   -(A7)
+FFCF481C  3F2E0012             move.w  ($12,A6), -(A7)
+FFCF4820  486C0072             pea     ($72,A4)
+FFCF4824  486C0076             pea     ($76,A4)
+FFCF4828  486EFFF0             pea     (-$10,A6)
+FFCF482C  303C07FF             move.w  #$7ff, D0
+FFCF4830  A830                 _Pack14                                   ; A-line trap A830
+FFCF4832  4A5F                 tst.w   (A7)+
+loc_FFCF4834:
+FFCF4834  4CDF18C0             movem.l (A7)+, D6-D7/A3-A4
+FFCF4838  4E5E                 unlk    A6
+FFCF483A  4E74000C             rtd     #$c; (1+)
+FFCF483Ed 0000780000000000     dc.b    $00,$00,$78,$00,$00,$00,$00,$00,$00,$00,$00,$0F,$47,$50 ; |..x.........GP|

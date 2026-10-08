@@ -1,0 +1,65 @@
+; ============================================================================
+; ROM resource 'nlib' -16407 DSLGlobalsLib at FFDFF850
+; ============================================================================
+; data at ROM 1FF850 (62A bytes), entry at 1FFE70, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 0000062a 00000484
+;
+; Columns: address, flag, raw bytes, instruction, ; comment.
+;   flag '*' executed in the coverage run, ' ' reached by control flow,
+;   '?' decodes as code but neither executed nor reached, 'd' data.
+
+; PEF container: architecture pwpc, format version 1, timestamp ABBB6237, versions 00000000/00000000/00000000
+;   2 sections (1 instantiated)
+;   section 0 pidata     container +00620 len 00000 (ROM 1FFE70 = FFDFFE70), unpacked 00000, total 00284, share 4, align 4
+;   section 1 loader     container +00060 len 005BE (ROM 1FF8B0 = FFDFF8B0), unpacked 00000, total 00000, share 4, align 2
+;
+
+; ----------------------------------------------------------------------------
+; data section 0 (pidata), unpacked 0 bytes; addresses are offsets in the section;
+; relocated words are named (imports) or point into a section (code+X / data+X).
+; ----------------------------------------------------------------------------
+; full unpacked image:
+
+; exports (41):
+;   ProbeSuccess                             class data    section  0 offset 0
+;   CreatedSwis                              class data    section  0 offset 10
+;   AvailableSwis                            class data    section  0 offset 20
+;   AllSwis                                  class data    section  0 offset 30
+;   theRootSetOfAllTrees                     class data    section  0 offset 40
+;   gInterruptCount                          class data    section  0 offset 50
+;   nullInterruptHook                        class data    section  0 offset 60
+;   vectorTable                              class data    section  0 offset 70
+;   gDeallocateQueueHead                     class data    section  0 offset 80
+;   gDeallocateQueueTail                     class data    section  0 offset 90
+;   gSIH                                     class data    section  0 offset A0
+;   atSecondaryInterruptLevel                class data    section  0 offset B0
+;   Available_SIHsPtr                        class data    section  0 offset C0
+;   Deferred_SIHsPtr                         class data    section  0 offset D0
+;   inNativeIntDispatcher                    class data    section  0 offset E0
+;   gDelayForHdwrProc                        class data    section  0 offset F0
+;   UnAlignAddAtomicCount                    class data    section  0 offset 100
+;   AddAtomicCount                           class data    section  0 offset 110
+;   UnAlignIncrementAtomicCount              class data    section  0 offset 120
+;   IncrementAtomicCount                     class data    section  0 offset 130
+;   UnAlignDecrementAtomicCount              class data    section  0 offset 140
+;   DecrementAtomicCount                     class data    section  0 offset 150
+;   UnAlignBitOrAtomicCount                  class data    section  0 offset 160
+;   BitOrAtomicCount                         class data    section  0 offset 170
+;   UnAlignBitAndAtomicCount                 class data    section  0 offset 180
+;   BitAndAtomicCount                        class data    section  0 offset 190
+;   UnAlignBitXorAtomicCount                 class data    section  0 offset 1A0
+;   BitXorAtomicCount                        class data    section  0 offset 1B0
+;   UnAlignCompareAndSwapCount               class data    section  0 offset 1C0
+;   CompareAndSwapCount                      class data    section  0 offset 1D0
+;   gTimer                                   class data    section  0 offset 1E0
+;   interruptableDeviceTable                 class data    section  0 offset 1F0
+;   interruptTreeTNTGlobals                  class data    section  0 offset 200
+;   gUpTimeProc                              class data    section  0 offset 210
+;   gElapsedTime                             class data    section  0 offset 220
+;   gProcessorConversionChanged              class data    section  0 offset 230
+;   gMinAbsoluteTimeDelta                    class data    section  0 offset 240
+;   gAbsoluteTimeToNanosecondsNumerator      class data    section  0 offset 250
+;   gAbsoluteTimeToNanosecondsDenominator    class data    section  0 offset 260
+;   gProcessorToAbsoluteTimeNumerator        class data    section  0 offset 270
+;   gProcessorToAbsoluteTimeDenominator      class data    section  0 offset 280
+; imports (0):

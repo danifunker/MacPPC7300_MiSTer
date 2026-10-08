@@ -1,0 +1,11 @@
+; ROM resource 'libr' -20005 appl$SerialDrvrStub,1.0 at FFEAC850
+; data at ROM 2AC850 (62 bytes), entry at 2AC8B0, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 00000062 0000054c
+
+FFEAC850  61 70 70 6C 24 53 65 72 69 61 6C 44 72 76 72 53  |appl$SerialDrvrS|
+FFEAC860  74 75 62 2C 31 2E 30 00 73 6C 30 35 01 10 01 00  |tub,1.0.sl05....|
+FFEAC870  80 00 00 00 00 00 00 00 00 00 00 00 06 07 00 01  |................|
+FFEAC880  00 00 00 0B 01 00 01 00 61 70 70 6C 24 53 65 72  |........appl$Ser|
+FFEAC890  69 61 6C 44 72 76 72 53 74 75 62 00 00 01 21 24  |ialDrvrStub...!$|
+FFEAC8A0  64 79 6E 61 00 00 6B 63 6B 63 6B 63 6B 63 6B 63  |dyna..kckckckckc|
+FFEAC8B0  78 00                                            |x.|

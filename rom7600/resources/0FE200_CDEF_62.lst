@@ -1,0 +1,451 @@
+; ============================================================================
+; ROM resource 'CDEF' 62  at FFCFE200
+; ============================================================================
+; data at ROM 0FE200 (472 bytes), entry at 0FE670, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 00000472 000002cc
+; 68k code resource, disassembled from its start (entry points: offset 0, driver
+; header entries for DRVR, and executed addresses).
+;
+; Columns: address, flag, raw bytes, instruction, ; comment.
+;   flag '*' executed in the coverage run, ' ' reached by control flow,
+;   '?' decodes as code but neither executed nor reached, 'd' data.
+
+FFCFE200  4E56FFF4             link    A6, #-$c
+FFCFE204  48E70708             movem.l D5-D7/A4, -(A7)
+FFCFE208  2A2E0008             move.l  ($8,A6), D5
+FFCFE20C  3E2E0012             move.w  ($12,A6), D7
+FFCFE210  286E000E             movea.l ($e,A6), A4
+FFCFE214  7C0A                 moveq   #$a, D6
+FFCFE216  2F0C                 move.l  A4, -(A7)
+FFCFE218  486EFFF8             pea     (-$8,A6)
+FFCFE21C  4EBA0414             jsr     (sub_FFCFE632,PC)
+FFCFE220  7C0A                 moveq   #$a, D6
+FFCFE222  302E000C             move.w  ($c,A6), D0
+FFCFE226  6710                 beq     loc_FFCFE238
+FFCFE228  5340                 subq.w  #1, D0
+FFCFE22A  670000D8             beq     loc_FFCFE304
+FFCFE22E  5340                 subq.w  #1, D0
+FFCFE230  6700010E             beq     loc_FFCFE340
+FFCFE234  60000112             bra     loc_FFCFE348
+loc_FFCFE238:
+FFCFE238  558F                 subq.l  #2, A7
+FFCFE23A  2F0C                 move.l  A4, -(A7)
+FFCFE23C  4EBA0416             jsr     (sub_FFCFE654,PC)
+FFCFE240  4A1F                 tst.b   (A7)+
+FFCFE242  670000BC             beq     loc_FFCFE300
+FFCFE246  558F                 subq.l  #2, A7
+FFCFE248  2F0C                 move.l  A4, -(A7)
+FFCFE24A  4EBA03FC             jsr     (sub_FFCFE648,PC)
+FFCFE24E  7000                 moveq   #$0, D0
+FFCFE250  101F                 move.b  (A7)+, D0
+FFCFE252  4A80                 tst.l   D0
+FFCFE254  6640                 bne     loc_FFCFE296
+FFCFE256  4A47                 tst.w   D7
+FFCFE258  660C                 bne     loc_FFCFE266
+FFCFE25A  2F0C                 move.l  A4, -(A7)
+FFCFE25C  4EBA00FA             jsr     (sub_FFCFE358,PC)
+FFCFE260  584F                 addq.w  #4, A7
+FFCFE262  600000E4             bra     loc_FFCFE348
+loc_FFCFE266:
+FFCFE266  0C470001             cmpi.w  #$1, D7
+FFCFE26A  660C                 bne     loc_FFCFE278
+FFCFE26C  2F0C                 move.l  A4, -(A7)
+FFCFE26E  4EBA0184             jsr     (sub_FFCFE3F4,PC)
+FFCFE272  584F                 addq.w  #4, A7
+FFCFE274  600000D2             bra     loc_FFCFE348
+loc_FFCFE278:
+FFCFE278  0C470002             cmpi.w  #$2, D7
+FFCFE27C  660C                 bne     loc_FFCFE28A
+FFCFE27E  2F0C                 move.l  A4, -(A7)
+FFCFE280  4EBA032E             jsr     (sub_FFCFE5B0,PC)
+FFCFE284  584F                 addq.w  #4, A7
+FFCFE286  600000C0             bra     loc_FFCFE348
+loc_FFCFE28A:
+FFCFE28A  0C470003             cmpi.w  #$3, D7
+FFCFE28E  660000B8             bne     loc_FFCFE348
+FFCFE292  600000B4             bra     loc_FFCFE348
+loc_FFCFE296:
+FFCFE296  558F                 subq.l  #2, A7
+FFCFE298  2F0C                 move.l  A4, -(A7)
+FFCFE29A  4EBA03AC             jsr     (sub_FFCFE648,PC)
+FFCFE29E  7000                 moveq   #$0, D0
+FFCFE2A0  101F                 move.b  (A7)+, D0
+FFCFE2A2  0C4000FF             cmpi.w  #$ff, D0
+FFCFE2A6  663A                 bne     loc_FFCFE2E2
+FFCFE2A8  4A47                 tst.w   D7
+FFCFE2AA  6600009C             bne     loc_FFCFE348
+FFCFE2AE  486EFFF8             pea     (-$8,A6)
+FFCFE2B2  7001                 moveq   #$1, D0
+FFCFE2B4  3F00                 move.w  D0, -(A7)
+FFCFE2B6  3F00                 move.w  D0, -(A7)
+FFCFE2B8  A8A9                 _InsetRect                                ; A-line trap A8A9
+FFCFE2BA  2F0C                 move.l  A4, -(A7)
+FFCFE2BC  4EBA009A             jsr     (sub_FFCFE358,PC)
+FFCFE2C0  700B                 moveq   #$b, D0
+FFCFE2C2  3F00                 move.w  D0, -(A7)
+FFCFE2C4  A89C                 _PenMode                                  ; A-line trap A89C
+FFCFE2C6  598F                 subq.l  #4, A7
+FFCFE2C8  2EB80904             move.l  $904.w, (A7)                      ; CurrentA5
+FFCFE2CC  205F                 movea.l (A7)+, A0
+FFCFE2CE  2050                 movea.l (A0), A0
+FFCFE2D0  4868FFE8             pea     (-$18,A0)
+FFCFE2D4  A89D                 _PenPat                                   ; A-line trap A89D
+FFCFE2D6  486EFFF8             pea     (-$8,A6)
+FFCFE2DA  A8A2                 _PaintRect                                ; A-line trap A8A2
+FFCFE2DC  A89E                 _PenNormal                                ; A-line trap A89E
+FFCFE2DE  584F                 addq.w  #4, A7
+FFCFE2E0  6066                 bra     loc_FFCFE348
+loc_FFCFE2E2:
+FFCFE2E2  4A47                 tst.w   D7
+FFCFE2E4  6662                 bne     loc_FFCFE348
+FFCFE2E6  486EFFF8             pea     (-$8,A6)
+FFCFE2EA  7003                 moveq   #$3, D0
+FFCFE2EC  3F00                 move.w  D0, -(A7)
+FFCFE2EE  3F00                 move.w  D0, -(A7)
+FFCFE2F0  A8B3                 _InverRoundRect                           ; A-line trap A8B3
+FFCFE2F2  486EFFF8             pea     (-$8,A6)
+FFCFE2F6  7003                 moveq   #$3, D0
+FFCFE2F8  3F00                 move.w  D0, -(A7)
+FFCFE2FA  3F00                 move.w  D0, -(A7)
+FFCFE2FC  A8B0                 _FrameRoundRect                           ; A-line trap A8B0
+FFCFE2FE  6048                 bra     loc_FFCFE348
+loc_FFCFE300:
+FFCFE300  7C00                 moveq   #$0, D6
+FFCFE302  6044                 bra     loc_FFCFE348
+loc_FFCFE304:
+FFCFE304  7C00                 moveq   #$0, D6
+FFCFE306  558F                 subq.l  #2, A7
+FFCFE308  2F0C                 move.l  A4, -(A7)
+FFCFE30A  4EBA0348             jsr     (sub_FFCFE654,PC)
+FFCFE30E  4A1F                 tst.b   (A7)+
+FFCFE310  6736                 beq     loc_FFCFE348
+FFCFE312  203C0000FFFF         move.l  #$ffff, D0
+FFCFE318  C085                 and.l   D5, D0
+FFCFE31A  3D40FFF6             move.w  D0, (-$a,A6)
+FFCFE31E  7010                 moveq   #$10, D0
+FFCFE320  2205                 move.l  D5, D1
+FFCFE322  E0A9                 lsr.l   D0, D1
+FFCFE324  3D41FFF4             move.w  D1, (-$c,A6)
+FFCFE328  4A47                 tst.w   D7
+FFCFE32A  661C                 bne     loc_FFCFE348
+FFCFE32C  558F                 subq.l  #2, A7
+FFCFE32E  2F2EFFF4             move.l  (-$c,A6), -(A7)
+FFCFE332  486EFFF8             pea     (-$8,A6)
+FFCFE336  A8AD                 _PtInRect                                 ; A-line trap A8AD
+FFCFE338  4A1F                 tst.b   (A7)+
+FFCFE33A  670C                 beq     loc_FFCFE348
+FFCFE33C  7C0A                 moveq   #$a, D6
+FFCFE33E  6008                 bra     loc_FFCFE348
+loc_FFCFE340:
+FFCFE340  2F05                 move.l  D5, -(A7)
+FFCFE342  486EFFF8             pea     (-$8,A6)
+FFCFE346  A8DF                 _RectRgn                                  ; A-line trap A8DF
+loc_FFCFE348:
+FFCFE348  2D460014             move.l  D6, ($14,A6)
+FFCFE34C  4CEE10E0FFE4         movem.l (-$1c,A6), D5-D7/A4
+FFCFE352  4E5E                 unlk    A6
+FFCFE354  4E74000C             rtd     #$c; (1+)
+
+sub_FFCFE358:
+FFCFE358  4E56FFF0             link    A6, #-$10
+FFCFE35C  48E70038             movem.l A2-A4, -(A7)
+FFCFE360  266E0008             movea.l ($8,A6), A3
+FFCFE364  2F0B                 move.l  A3, -(A7)
+FFCFE366  486EFFF0             pea     (-$10,A6)
+FFCFE36A  4EBA02C6             jsr     (sub_FFCFE632,PC)
+FFCFE36E  486EFFF0             pea     (-$10,A6)
+FFCFE372  7003                 moveq   #$3, D0
+FFCFE374  3F00                 move.w  D0, -(A7)
+FFCFE376  3F00                 move.w  D0, -(A7)
+FFCFE378  A8B2                 _EraseRoundRect                           ; A-line trap A8B2
+FFCFE37A  486EFFF0             pea     (-$10,A6)
+FFCFE37E  7003                 moveq   #$3, D0
+FFCFE380  3F00                 move.w  D0, -(A7)
+FFCFE382  3F00                 move.w  D0, -(A7)
+FFCFE384  A8B0                 _FrameRoundRect                           ; A-line trap A8B0
+FFCFE386  598F                 subq.l  #4, A7
+FFCFE388  2F3C50494354         move.l  #$50494354, -(A7)
+FFCFE38E  598F                 subq.l  #4, A7
+FFCFE390  2F0B                 move.l  A3, -(A7)
+FFCFE392  A95A                 _GetControlReference                      ; A-line trap A95A
+FFCFE394  201F                 move.l  (A7)+, D0
+FFCFE396  3F00                 move.w  D0, -(A7)
+FFCFE398  A9A0                 _GetResource                              ; A-line trap A9A0
+FFCFE39A  285F                 movea.l (A7)+, A4
+FFCFE39C  200C                 move.l  A4, D0
+FFCFE39E  674A                 beq     loc_FFCFE3EA
+FFCFE3A0  204C                 movea.l A4, A0
+FFCFE3A2  A04A                 _HNoPurge                                 ; A-line trap A04A
+FFCFE3A4  2014                 move.l  (A4), D0
+FFCFE3A6  5480                 addq.l  #2, D0
+FFCFE3A8  2040                 movea.l D0, A0
+FFCFE3AA  45EEFFF8             lea     (-$8,A6), A2
+FFCFE3AE  224A                 movea.l A2, A1
+FFCFE3B0  7008                 moveq   #$8, D0
+FFCFE3B2  A22E                 _BlockMoveData                            ; A-line trap A22E
+FFCFE3B4  486EFFF8             pea     (-$8,A6)
+FFCFE3B8  302EFFF2             move.w  (-$e,A6), D0
+FFCFE3BC  48C0                 ext.l   D0
+FFCFE3BE  322EFFFA             move.w  (-$6,A6), D1
+FFCFE3C2  48C1                 ext.l   D1
+FFCFE3C4  9081                 sub.l   D1, D0
+FFCFE3C6  5240                 addq.w  #1, D0
+FFCFE3C8  3F00                 move.w  D0, -(A7)
+FFCFE3CA  302EFFF0             move.w  (-$10,A6), D0
+FFCFE3CE  48C0                 ext.l   D0
+FFCFE3D0  322EFFF8             move.w  (-$8,A6), D1
+FFCFE3D4  48C1                 ext.l   D1
+FFCFE3D6  9081                 sub.l   D1, D0
+FFCFE3D8  5240                 addq.w  #1, D0
+FFCFE3DA  3F00                 move.w  D0, -(A7)
+FFCFE3DC  A8A8                 _OffsetRect                               ; A-line trap A8A8
+FFCFE3DE  2F0C                 move.l  A4, -(A7)
+FFCFE3E0  486EFFF8             pea     (-$8,A6)
+FFCFE3E4  A8F6                 _DrawPicture                              ; A-line trap A8F6
+FFCFE3E6  204C                 movea.l A4, A0
+FFCFE3E8  A049                 _HPurge                                   ; A-line trap A049
+loc_FFCFE3EA:
+FFCFE3EA  4CEE1C00FFE4         movem.l (-$1c,A6), A2-A4
+FFCFE3F0  4E5E                 unlk    A6
+FFCFE3F2  4E75                 rts
+
+sub_FFCFE3F4:
+FFCFE3F4  4E56FFD8             link    A6, #-$28
+FFCFE3F8  48E70108             movem.l D7/A4, -(A7)
+FFCFE3FC  286E0008             movea.l ($8,A6), A4
+FFCFE400  2F0C                 move.l  A4, -(A7)
+FFCFE402  486EFFF8             pea     (-$8,A6)
+FFCFE406  4EBA022A             jsr     (sub_FFCFE632,PC)
+FFCFE40A  558F                 subq.l  #2, A7
+FFCFE40C  2F0C                 move.l  A4, -(A7)
+FFCFE40E  A960                 _GetControlValue                          ; A-line trap A960
+FFCFE410  301F                 move.w  (A7)+, D0
+FFCFE412  C1FC0168             muls.w  #$168, D0
+FFCFE416  2D40FFF4             move.l  D0, (-$c,A6)
+FFCFE41A  558F                 subq.l  #2, A7
+FFCFE41C  2F0C                 move.l  A4, -(A7)
+FFCFE41E  A962                 _GetControlMaximum                        ; A-line trap A962
+FFCFE420  301F                 move.w  (A7)+, D0
+FFCFE422  48C0                 ext.l   D0
+FFCFE424  2D40FFF0             move.l  D0, (-$10,A6)
+FFCFE428  558F                 subq.l  #2, A7
+FFCFE42A  2F0C                 move.l  A4, -(A7)
+FFCFE42C  A961                 _GetControlMinimum                        ; A-line trap A961
+FFCFE42E  301F                 move.w  (A7)+, D0
+FFCFE430  48C0                 ext.l   D0
+FFCFE432  222EFFF0             move.l  (-$10,A6), D1
+FFCFE436  9280                 sub.l   D0, D1
+FFCFE438  202EFFF4             move.l  (-$c,A6), D0
+FFCFE43C  4C410800             divs.l  D1, D0; (2+)
+FFCFE440  3E3C0168             move.w  #$168, D7
+FFCFE444  9E40                 sub.w   D0, D7
+FFCFE446  598F                 subq.l  #4, A7
+FFCFE448  2F0C                 move.l  A4, -(A7)
+FFCFE44A  A95A                 _GetControlReference                      ; A-line trap A95A
+FFCFE44C  201F                 move.l  (A7)+, D0
+FFCFE44E  66000156             bne     loc_FFCFE5A6
+FFCFE452  486EFFF8             pea     (-$8,A6)
+FFCFE456  A8A1                 _FrameRect                                ; A-line trap A8A1
+FFCFE458  486EFFF8             pea     (-$8,A6)
+FFCFE45C  7001                 moveq   #$1, D0
+FFCFE45E  3F00                 move.w  D0, -(A7)
+FFCFE460  7202                 moveq   #$2, D1
+FFCFE462  3F01                 move.w  D1, -(A7)
+FFCFE464  A8A9                 _InsetRect                                ; A-line trap A8A9
+FFCFE466  302EFFFE             move.w  (-$2,A6), D0
+FFCFE46A  48C0                 ext.l   D0
+FFCFE46C  322EFFFA             move.w  (-$6,A6), D1
+FFCFE470  48C1                 ext.l   D1
+FFCFE472  9081                 sub.l   D1, D0
+FFCFE474  322EFFFC             move.w  (-$4,A6), D1
+FFCFE478  48C1                 ext.l   D1
+FFCFE47A  342EFFF8             move.w  (-$8,A6), D2
+FFCFE47E  48C2                 ext.l   D2
+FFCFE480  9282                 sub.l   D2, D1
+FFCFE482  B280                 cmp.l   D0, D1
+FFCFE484  6C000092             bge     loc_FFCFE518
+FFCFE488  3E2EFFFE             move.w  (-$2,A6), D7
+FFCFE48C  302EFFFE             move.w  (-$2,A6), D0
+FFCFE490  48C0                 ext.l   D0
+FFCFE492  322EFFFA             move.w  (-$6,A6), D1
+FFCFE496  48C1                 ext.l   D1
+FFCFE498  9081                 sub.l   D1, D0
+FFCFE49A  2D40FFEC             move.l  D0, (-$14,A6)
+FFCFE49E  558F                 subq.l  #2, A7
+FFCFE4A0  2F0C                 move.l  A4, -(A7)
+FFCFE4A2  A960                 _GetControlValue                          ; A-line trap A960
+FFCFE4A4  301F                 move.w  (A7)+, D0
+FFCFE4A6  48C0                 ext.l   D0
+FFCFE4A8  222EFFEC             move.l  (-$14,A6), D1
+FFCFE4AC  4C010800             muls.l  D1, D0; (2+)
+FFCFE4B0  2D40FFE8             move.l  D0, (-$18,A6)
+FFCFE4B4  558F                 subq.l  #2, A7
+FFCFE4B6  2F0C                 move.l  A4, -(A7)
+FFCFE4B8  A962                 _GetControlMaximum                        ; A-line trap A962
+FFCFE4BA  301F                 move.w  (A7)+, D0
+FFCFE4BC  48C0                 ext.l   D0
+FFCFE4BE  2D40FFE4             move.l  D0, (-$1c,A6)
+FFCFE4C2  558F                 subq.l  #2, A7
+FFCFE4C4  2F0C                 move.l  A4, -(A7)
+FFCFE4C6  A961                 _GetControlMinimum                        ; A-line trap A961
+FFCFE4C8  301F                 move.w  (A7)+, D0
+FFCFE4CA  48C0                 ext.l   D0
+FFCFE4CC  222EFFE4             move.l  (-$1c,A6), D1
+FFCFE4D0  9280                 sub.l   D0, D1
+FFCFE4D2  202EFFE8             move.l  (-$18,A6), D0
+FFCFE4D6  4C410800             divs.l  D1, D0; (2+)
+FFCFE4DA  D06EFFFA             add.w   (-$6,A6), D0
+FFCFE4DE  3D40FFFE             move.w  D0, (-$2,A6)
+FFCFE4E2  486EFFF8             pea     (-$8,A6)
+FFCFE4E6  598F                 subq.l  #4, A7
+FFCFE4E8  2EB80904             move.l  $904.w, (A7)                      ; CurrentA5
+FFCFE4EC  205F                 movea.l (A7)+, A0
+FFCFE4EE  2050                 movea.l (A0), A0
+FFCFE4F0  4868FFF0             pea     (-$10,A0)
+FFCFE4F4  A8A5                 _FillRect                                 ; A-line trap A8A5
+FFCFE4F6  3D6EFFFEFFFA         move.w  (-$2,A6), (-$6,A6)
+FFCFE4FC  3D47FFFE             move.w  D7, (-$2,A6)
+FFCFE500  486EFFF8             pea     (-$8,A6)
+FFCFE504  598F                 subq.l  #4, A7
+FFCFE506  2EB80904             move.l  $904.w, (A7)                      ; CurrentA5
+FFCFE50A  205F                 movea.l (A7)+, A0
+FFCFE50C  2050                 movea.l (A0), A0
+FFCFE50E  4868FFF8             pea     (-$8,A0)
+FFCFE512  A8A5                 _FillRect                                 ; A-line trap A8A5
+FFCFE514  60000090             bra     loc_FFCFE5A6
+loc_FFCFE518:
+FFCFE518  3E2EFFF8             move.w  (-$8,A6), D7
+FFCFE51C  302EFFFC             move.w  (-$4,A6), D0
+FFCFE520  48C0                 ext.l   D0
+FFCFE522  322EFFF8             move.w  (-$8,A6), D1
+FFCFE526  48C1                 ext.l   D1
+FFCFE528  9081                 sub.l   D1, D0
+FFCFE52A  2D40FFE0             move.l  D0, (-$20,A6)
+FFCFE52E  558F                 subq.l  #2, A7
+FFCFE530  2F0C                 move.l  A4, -(A7)
+FFCFE532  A960                 _GetControlValue                          ; A-line trap A960
+FFCFE534  301F                 move.w  (A7)+, D0
+FFCFE536  48C0                 ext.l   D0
+FFCFE538  222EFFE0             move.l  (-$20,A6), D1
+FFCFE53C  4C010800             muls.l  D1, D0; (2+)
+FFCFE540  2D40FFDC             move.l  D0, (-$24,A6)
+FFCFE544  558F                 subq.l  #2, A7
+FFCFE546  2F0C                 move.l  A4, -(A7)
+FFCFE548  A962                 _GetControlMaximum                        ; A-line trap A962
+FFCFE54A  301F                 move.w  (A7)+, D0
+FFCFE54C  48C0                 ext.l   D0
+FFCFE54E  2D40FFD8             move.l  D0, (-$28,A6)
+FFCFE552  558F                 subq.l  #2, A7
+FFCFE554  2F0C                 move.l  A4, -(A7)
+FFCFE556  A961                 _GetControlMinimum                        ; A-line trap A961
+FFCFE558  301F                 move.w  (A7)+, D0
+FFCFE55A  48C0                 ext.l   D0
+FFCFE55C  222EFFD8             move.l  (-$28,A6), D1
+FFCFE560  9280                 sub.l   D0, D1
+FFCFE562  202EFFDC             move.l  (-$24,A6), D0
+FFCFE566  4C410800             divs.l  D1, D0; (2+)
+FFCFE56A  322EFFFC             move.w  (-$4,A6), D1
+FFCFE56E  9240                 sub.w   D0, D1
+FFCFE570  3D41FFF8             move.w  D1, (-$8,A6)
+FFCFE574  486EFFF8             pea     (-$8,A6)
+FFCFE578  598F                 subq.l  #4, A7
+FFCFE57A  2EB80904             move.l  $904.w, (A7)                      ; CurrentA5
+FFCFE57E  205F                 movea.l (A7)+, A0
+FFCFE580  2050                 movea.l (A0), A0
+FFCFE582  4868FFF0             pea     (-$10,A0)
+FFCFE586  A8A5                 _FillRect                                 ; A-line trap A8A5
+FFCFE588  3D6EFFF8FFFC         move.w  (-$8,A6), (-$4,A6)
+FFCFE58E  3D47FFF8             move.w  D7, (-$8,A6)
+FFCFE592  486EFFF8             pea     (-$8,A6)
+FFCFE596  598F                 subq.l  #4, A7
+FFCFE598  2EB80904             move.l  $904.w, (A7)                      ; CurrentA5
+FFCFE59C  205F                 movea.l (A7)+, A0
+FFCFE59E  2050                 movea.l (A0), A0
+FFCFE5A0  4868FFF8             pea     (-$8,A0)
+FFCFE5A4  A8A5                 _FillRect                                 ; A-line trap A8A5
+loc_FFCFE5A6:
+FFCFE5A6  4CEE1080FFD0         movem.l (-$30,A6), D7/A4
+FFCFE5AC  4E5E                 unlk    A6
+FFCFE5AE  4E75                 rts
+
+sub_FFCFE5B0:
+FFCFE5B0  4E56FFF0             link    A6, #-$10
+FFCFE5B4  48E70118             movem.l D7/A3-A4, -(A7)
+FFCFE5B8  286E0008             movea.l ($8,A6), A4
+FFCFE5BC  558F                 subq.l  #2, A7
+FFCFE5BE  2F0C                 move.l  A4, -(A7)
+FFCFE5C0  A960                 _GetControlValue                          ; A-line trap A960
+FFCFE5C2  321F                 move.w  (A7)+, D1
+FFCFE5C4  48C1                 ext.l   D1
+FFCFE5C6  D281                 add.l   D1, D1
+FFCFE5C8  2001                 move.l  D1, D0
+FFCFE5CA  D080                 add.l   D0, D0
+FFCFE5CC  D280                 add.l   D0, D1
+FFCFE5CE  2D41FFF4             move.l  D1, (-$c,A6)
+FFCFE5D2  558F                 subq.l  #2, A7
+FFCFE5D4  2F0C                 move.l  A4, -(A7)
+FFCFE5D6  A962                 _GetControlMaximum                        ; A-line trap A962
+FFCFE5D8  301F                 move.w  (A7)+, D0
+FFCFE5DA  48C0                 ext.l   D0
+FFCFE5DC  2D40FFF0             move.l  D0, (-$10,A6)
+FFCFE5E0  558F                 subq.l  #2, A7
+FFCFE5E2  2F0C                 move.l  A4, -(A7)
+FFCFE5E4  A961                 _GetControlMinimum                        ; A-line trap A961
+FFCFE5E6  301F                 move.w  (A7)+, D0
+FFCFE5E8  48C0                 ext.l   D0
+FFCFE5EA  222EFFF0             move.l  (-$10,A6), D1
+FFCFE5EE  9280                 sub.l   D0, D1
+FFCFE5F0  202EFFF4             move.l  (-$c,A6), D0
+FFCFE5F4  4C410800             divs.l  D1, D0; (2+)
+FFCFE5F8  3E00                 move.w  D0, D7
+FFCFE5FA  598F                 subq.l  #4, A7
+FFCFE5FC  2F3C49434F4E         move.l  #$49434f4e, -(A7)
+FFCFE602  598F                 subq.l  #4, A7
+FFCFE604  2F0C                 move.l  A4, -(A7)
+FFCFE606  A95A                 _GetControlReference                      ; A-line trap A95A
+FFCFE608  201F                 move.l  (A7)+, D0
+FFCFE60A  9047                 sub.w   D7, D0
+FFCFE60C  3F00                 move.w  D0, -(A7)
+FFCFE60E  A9A0                 _GetResource                              ; A-line trap A9A0
+FFCFE610  265F                 movea.l (A7)+, A3
+FFCFE612  200B                 move.l  A3, D0
+FFCFE614  6712                 beq     loc_FFCFE628
+FFCFE616  2F0C                 move.l  A4, -(A7)
+FFCFE618  486EFFF8             pea     (-$8,A6)
+FFCFE61C  4EBA0014             jsr     (sub_FFCFE632,PC)
+FFCFE620  486EFFF8             pea     (-$8,A6)
+FFCFE624  2F0B                 move.l  A3, -(A7)
+FFCFE626  A94B                 _PlotIcon                                 ; A-line trap A94B
+loc_FFCFE628:
+FFCFE628  4CEE1880FFE4         movem.l (-$1c,A6), D7/A3-A4
+FFCFE62E  4E5E                 unlk    A6
+FFCFE630  4E75                 rts
+
+sub_FFCFE632:
+FFCFE632  206F0004             movea.l ($4,A7), A0
+FFCFE636  226F0008             movea.l ($8,A7), A1
+FFCFE63A  2251                 movea.l (A1), A1
+FFCFE63C  5049                 addq.w  #8, A1
+FFCFE63E  20D9                 move.l  (A1)+, (A0)+
+FFCFE640  20D9                 move.l  (A1)+, (A0)+
+FFCFE642  205F                 movea.l (A7)+, A0
+FFCFE644  504F                 addq.w  #8, A7
+FFCFE646  4ED0                 jmp     (A0)
+
+sub_FFCFE648:
+FFCFE648  205F                 movea.l (A7)+, A0
+FFCFE64A  225F                 movea.l (A7)+, A1
+FFCFE64C  2251                 movea.l (A1), A1
+FFCFE64E  1EA90011             move.b  ($11,A1), (A7)
+FFCFE652  4ED0                 jmp     (A0)
+
+sub_FFCFE654:
+FFCFE654  205F                 movea.l (A7)+, A0
+FFCFE656  225F                 movea.l (A7)+, A1
+FFCFE658  2251                 movea.l (A1), A1
+FFCFE65A  4A290010             tst.b   ($10,A1)
+FFCFE65E  56C0                 sne     D0
+FFCFE660  4400                 neg.b   D0
+FFCFE662  1E80                 move.b  D0, (A7)
+FFCFE664  4ED0                 jmp     (A0)
+FFCFE666d 6B636B636B636B63     dc.b    $6B,$63,$6B,$63,$6B,$63,$6B,$63,$6B,$63,$78,$00 ; |kckckckckcx.|

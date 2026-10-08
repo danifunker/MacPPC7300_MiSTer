@@ -1,0 +1,9 @@
+; ROM resource 'ics#' -16386  at FFCDC050
+; data at ROM 0DC050 (4C bytes), entry at 0DC090, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 0000004c 00000144
+
+FFCDC050  00 00 00 60 00 C0 00 80 0E 70 1F F8 3F E0 3F E0  |...`.....p..?.?.|
+FFCDC060  3F E0 3F F0 3F F8 1F F8 1F F8 0F F0 06 60 00 00  |?.?.?........`..|
+FFCDC070  00 00 00 60 00 C0 00 80 0E 70 1F F8 3F E0 3F E0  |...`.....p..?.?.|
+FFCDC080  3F E0 3F F0 3F F8 1F F8 1F F8 0F F0 06 60 00 00  |?.?.?........`..|
+FFCDC090  78 00 00 00 00 00 00 00 00 0D C0 20              |x.......... |

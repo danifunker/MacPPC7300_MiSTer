@@ -1,0 +1,10 @@
+; ROM resource 'thng' -16557  at FFD08980
+; data at ROM 108980 (46 bytes), entry at 1089C0, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 00000046 00000314
+
+; component description: type 'sift' subtype 'ratb' manufacturer 'appl'
+FFD08980  73 69 66 74 72 61 74 62 61 70 70 6C 00 82 09 09  |siftratbappl....|
+FFD08990  00 00 00 00 73 69 66 74 BF 53 53 54 52 20 BF 53  |....sift.SSTR .S|
+FFD089A0  53 54 52 20 BF 3F 49 43 4F 4E BF 53 00 01 00 00  |STR .?ICON.S....|
+FFD089B0  00 00 00 01 00 00 00 00 00 00 6B 63 6B 63 6B 63  |..........kckckc|
+FFD089C0  78 00 00 00 00 00                                |x.....|

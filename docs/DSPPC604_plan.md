@@ -1184,7 +1184,7 @@ give the address, 00FEA000.
 the 7300's ROM (077D.34F2) by default and the 7600's with `--rom7600`. The
 two ROMs share Open Firmware, the 68k emulator and its opcode table byte
 for byte and differ in the start-up code, the NanoKernel and a few drivers
-(`rom7300/README.md`, git-ignored like `rom7600/`, has the disassembly and
+(`rom7300/README.md`, beside `rom7600/`, has the disassembly and
 where every address quoted here moves to: FFF047C0 is FFF0499C there, the
 NanoKernel's addresses stay). The 34F2 ROM runs 60 million instructions in
 lockstep with no difference, 2.20 cycles per instruction, through Open

@@ -1,0 +1,9 @@
+; ROM resource 'CURS' 4  at FFCD5080
+; data at ROM 0D5080 (50 bytes), entry at 0D50D0, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 00000050 0000008c
+
+FFCD5080  3F 00 3F 00 3F 00 3F 00 40 80 84 40 84 40 84 60  |?.?.?.?.@..@.@.`|
+FFCD5090  9C 60 80 40 80 40 40 80 3F 00 3F 00 3F 00 3F 00  |.`.@.@@.?.?.?.?.|
+FFCD50A0  3F 00 3F 00 3F 00 3F 00 7F 80 FF C0 FF C0 FF C0  |?.?.?.?.........|
+FFCD50B0  FF C0 FF C0 FF C0 7F 80 3F 00 3F 00 3F 00 3F 00  |........?.?.?.?.|
+FFCD50C0  00 08 00 08 6B 63 6B 63 6B 63 6B 63 6B 63 6B 63  |....kckckckckckc|

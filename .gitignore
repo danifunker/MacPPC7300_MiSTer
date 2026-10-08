@@ -66,10 +66,6 @@ RESUME_hardware.md
 # the golden results are the one thing in runs/ that is tracked
 !ppctest/runs/results_*.csv
 
-# the disassemblies of the 7600's and the 7300's ROMs: Apple's code, kept
-# local like the ROMs
-rom7600/
-rom7300/
 
 # the MiSTer's address on this LAN (syn/mister.py)
 syn/mister_host

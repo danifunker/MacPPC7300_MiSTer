@@ -1,0 +1,11 @@
+; ROM resource 'libr' -20006 appl$SerialDriver,1.0 at FFEAD790
+; data at ROM 2AD790 (6C bytes), entry at 2AD7F0, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 0000006c 0000056c
+
+FFEAD790  61 70 70 6C 24 53 65 72 69 61 6C 44 72 69 76 65  |appl$SerialDrive|
+FFEAD7A0  72 2C 31 2E 30 00 73 6C 30 36 01 10 01 00 80 00  |r,1.0.sl06......|
+FFEAD7B0  00 00 00 00 00 00 00 00 00 00 06 06 00 01 00 00  |................|
+FFEAD7C0  00 0A 01 00 01 00 61 70 70 6C 24 53 65 72 69 61  |......appl$Seria|
+FFEAD7D0  6C 44 72 69 76 65 72 00 00 01 61 70 70 6C 24 53  |lDriver...appl$S|
+FFEAD7E0  65 72 69 61 6C 44 72 76 72 43 6C 61 73 73 00 00  |erialDrvrClass..|
+FFEAD7F0  78 00 00 00 00 00 00 00 00 2A D7 60              |x........*.`|

@@ -1,0 +1,8 @@
+; ROM resource 'cctb' 0  at FFCE0230
+; data at ROM 0E0230 (34 bytes), entry at 0E0260, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 00000034 00000234
+
+FFCE0230  00 00 00 00 00 00 00 03 00 00 00 00 00 00 00 00  |................|
+FFCE0240  00 01 FF FF FF FF FF FF 00 02 00 00 00 00 00 00  |................|
+FFCE0250  00 03 FF FF FF FF FF FF 6B 63 6B 63 6B 63 6B 63  |........kckckckc|
+FFCE0260  78 00 00 00                                      |x...|

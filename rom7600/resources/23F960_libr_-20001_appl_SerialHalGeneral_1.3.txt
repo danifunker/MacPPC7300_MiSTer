@@ -1,0 +1,11 @@
+; ROM resource 'libr' -20001 appl$SerialHalGeneral,1.3 at FFE3F960
+; data at ROM 23F960 (6E bytes), entry at 23F9D0, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 0000006e 000004e4
+
+FFE3F960  61 70 70 6C 24 53 65 72 69 61 6C 48 61 6C 47 65  |appl$SerialHalGe|
+FFE3F970  6E 65 72 61 6C 2C 31 2E 33 00 73 6C 30 31 01 10  |neral,1.3.sl01..|
+FFE3F980  01 30 80 00 00 00 00 00 00 00 00 00 00 00 06 06  |.0..............|
+FFE3F990  00 01 00 00 00 08 01 30 01 30 61 70 70 6C 24 53  |.......0.0appl$S|
+FFE3F9A0  65 72 69 61 6C 48 61 6C 47 65 6E 65 72 61 6C 00  |erialHalGeneral.|
+FFE3F9B0  00 01 61 70 70 6C 24 53 65 72 69 61 6C 48 61 6C  |..appl$SerialHal|
+FFE3F9C0  00 00 6B 63 6B 63 6B 63 6B 63 6B 63 6B 63        |..kckckckckckc|

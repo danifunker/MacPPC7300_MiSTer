@@ -1,0 +1,20 @@
+; ============================================================================
+; ROM resource 'proc' -5727 Main at FFCF3200
+; ============================================================================
+; data at ROM 0F3200 (2C bytes), entry at 0F3220, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 0000002c 000002a4
+; 68k code resource, disassembled from its start (entry points: offset 0, driver
+; header entries for DRVR, and executed addresses).
+;
+; Columns: address, flag, raw bytes, instruction, ; comment.
+;   flag '*' executed in the coverage run, ' ' reached by control flow,
+;   '?' decodes as code but neither executed nor reached, 'd' data.
+
+FFCF3200  48E700C0             movem.l A0-A1, -(A7)
+FFCF3204  2268000E             movea.l ($e,A0), A1
+FFCF3208  4229000E             clr.b   ($e,A1)
+FFCF320C  4CDF0300             movem.l (A7)+, A0-A1
+FFCF3210  7000                 moveq   #$0, D0
+FFCF3212  4E75                 rts
+FFCF3214d 0000000000000000     dc.b    $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$78,$00,$00,$00 ; |............x...|
+FFCF3224d 00000000000F31D0     dc.b    $00,$00,$00,$00,$00,$0F,$31,$D0   ; |......1.|

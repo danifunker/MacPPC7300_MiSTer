@@ -1,0 +1,7 @@
+; ROM resource 'accl' 0  at FFCDBAD0
+; data at ROM 0DBAD0 (2E bytes), entry at 0DBB00, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 0000002e 00000104
+
+FFCDBAD0  00 00 00 00 00 02 00 00 00 00 00 01 00 01 00 00  |................|
+FFCDBAE0  00 01 00 00 00 01 00 00 00 01 00 01 00 00 00 01  |................|
+FFCDBAF0  00 00 6B 63 6B 63 6B 63 6B 63 6B 63 6B 63        |..kckckckckckc|

@@ -1,0 +1,8 @@
+; ROM resource 'wctb' 0  at FFCE01D0
+; data at ROM 0E01D0 (3C bytes), entry at 0E0200, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 0000003c 0000022c
+
+FFCE01D0  00 00 00 00 00 00 00 04 00 00 FF FF FF FF FF FF  |................|
+FFCE01E0  00 01 00 00 00 00 00 00 00 02 00 00 00 00 00 00  |................|
+FFCE01F0  00 03 00 00 00 00 00 00 00 04 FF FF FF FF FF FF  |................|
+FFCE0200  78 00 00 00 00 00 00 00 00 0E 01 A0              |x...........|

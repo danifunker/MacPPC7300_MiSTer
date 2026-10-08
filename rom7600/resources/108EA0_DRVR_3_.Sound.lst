@@ -1,0 +1,844 @@
+; ============================================================================
+; ROM resource 'DRVR' 3 .Sound at FFD08EA0
+; ============================================================================
+; data at ROM 108EA0 (A1C bytes), entry at 1098B0, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 00000a1c 00000364
+; 68k code resource, disassembled from its start (entry points: offset 0, driver
+; header entries for DRVR, and executed addresses).
+;
+; Columns: address, flag, raw bytes, instruction, ; comment.
+;   flag '*' executed in the coverage run, ' ' reached by control flow,
+;   '?' decodes as code but neither executed nor reached, 'd' data.
+
+FFD08EA0d 4E00000000000000     dc.b    $4E,$00,$00,$00,$00,$00,$00,$00,$00,$1A,$00,$36,$00,$54,$01,$F4 ; |N..........6.T..| DRVR header: flags 4E00, entries open/prime/control/status/close 1A 36 54 1F4 A6, name .Sound
+FFD08EB0d 00A6062E536F756E     dc.b    $00,$A6,$06,$2E,$53,$6F,$75,$6E,$64,$20 ; |....Sound |
+FFD08EBA* 610000BC             bsr     sub_FFD08F78                      ; driver Open entry
+FFD08EBE* 0C8061736320         cmpi.l  #$61736320, D0
+FFD08EC4* 67000108             beq     loc_FFD08FCE
+FFD08EC8* 0C80636C6173         cmpi.l  #$636c6173, D0
+FFD08ECE* 6700052E             beq     loc_FFD093FE
+FFD08ED2* 7000                 moveq   #$0, D0
+FFD08ED4* 4E75                 rts
+FFD08ED6  610000A0             bsr     sub_FFD08F78                      ; driver Prime entry
+FFD08EDA  0C8061736320         cmpi.l  #$61736320, D0
+FFD08EE0  670001B6             beq     loc_FFD09098
+FFD08EE4  0C80636C6173         cmpi.l  #$636c6173, D0
+FFD08EEA  670005DE             beq     loc_FFD094CA
+FFD08EEE  303CFF38             move.w  #$ff38, D0
+FFD08EF2  606C                 bra     loc_FFD08F60
+FFD08EF4  3028001A             move.w  ($1a,A0), D0                      ; driver Control entry
+FFD08EF8  0C400002             cmpi.w  #$2, D0
+FFD08EFC  662C                 bne     loc_FFD08F2A
+FFD08EFE  2F08                 move.l  A0, -(A7)
+FFD08F00  7000                 moveq   #$0, D0
+FFD08F02  3028001C             move.w  ($1c,A0), D0
+FFD08F06  02400007             andi.w  #$7, D0
+FFD08F0A  11C00260             move.b  D0, $260.w                        ; SdVolume
+FFD08F0E  E148                 lsl.w   #8, D0
+FFD08F10  5C40                 addq.w  #6, D0
+FFD08F12  81FC0007             divs.w  #$7, D0
+FFD08F16  4267                 clr.w   -(A7)
+FFD08F18  3F00                 move.w  D0, -(A7)
+FFD08F1A  3F00                 move.w  D0, -(A7)
+FFD08F1C  203C02300018         move.l  #$2300018, D0
+FFD08F22  A800                 _SoundDispatch                            ; A-line trap A800
+FFD08F24  301F                 move.w  (A7)+, D0
+FFD08F26  205F                 movea.l (A7)+, A0
+FFD08F28  6036                 bra     loc_FFD08F60
+loc_FFD08F2A:
+FFD08F2A  614C                 bsr     sub_FFD08F78
+FFD08F2C  0C8061736320         cmpi.l  #$61736320, D0
+FFD08F32  67000150             beq     loc_FFD09084
+FFD08F36  0C80636C6173         cmpi.l  #$636c6173, D0
+FFD08F3C  67000542             beq     loc_FFD09480
+FFD08F40  303CFF38             move.w  #$ff38, D0
+FFD08F44  601A                 bra     loc_FFD08F60
+FFD08F46  6130                 bsr     sub_FFD08F78                      ; driver Close entry
+FFD08F48  0C8061736320         cmpi.l  #$61736320, D0
+FFD08F4E  670000D4             beq     loc_FFD09024
+FFD08F52  0C80636C6173         cmpi.l  #$636c6173, D0
+FFD08F58  670004D0             beq     loc_FFD0942A
+FFD08F5C  7000                 moveq   #$0, D0
+FFD08F5E  4E75                 rts
+loc_FFD08F60:
+FFD08F60  32280006             move.w  ($6,A0), D1
+FFD08F64  08010009             btst    #$9, D1
+FFD08F68  6706                 beq     loc_FFD08F70
+FFD08F6A  0801000A             btst    #$a, D1
+FFD08F6E  6706                 beq     loc_FFD08F76
+loc_FFD08F70:
+FFD08F70  207808FC             movea.l $8fc.w, A0                        ; JIODone
+FFD08F74  4ED0                 jmp     (A0)
+loc_FFD08F76:
+FFD08F76  4E75                 rts
+
+sub_FFD08F78:
+FFD08F78* 48E700E0             movem.l A0-A2, -(A7)
+FFD08F7C* 203C736E6877         move.l  #$736e6877, D0
+FFD08F82* A1AD                 _Gestalt                                  ; A-line trap A1AD
+FFD08F84* 4A40                 tst.w   D0
+FFD08F86* 663A                 bne     loc_FFD08FC2
+FFD08F88* 2008                 move.l  A0, D0
+FFD08F8A* 0C8061736320         cmpi.l  #$61736320, D0
+FFD08F90* 6626                 bne     loc_FFD08FB8
+FFD08F92  24780CC0             movea.l $cc0.w, A2
+FFD08F96  122A0800             move.b  ($800,A2), D1
+FFD08F9A  020100F0             andi.b  #$f0, D1
+FFD08F9E  0C010000             cmpi.b  #$0, D1
+FFD08FA2  6724                 beq     loc_FFD08FC8
+FFD08FA4  0C0100B0             cmpi.b  #-$50, D1
+FFD08FA8  6706                 beq     loc_FFD08FB0
+FFD08FAA  0C0100E0             cmpi.b  #-$20, D1
+FFD08FAE  6612                 bne     loc_FFD08FC2
+loc_FFD08FB0:
+FFD08FB0  203C636C6173         move.l  #$636c6173, D0
+FFD08FB6  6010                 bra     loc_FFD08FC8
+loc_FFD08FB8:
+FFD08FB8* 0C80636C6173         cmpi.l  #$636c6173, D0
+FFD08FBE* 6602                 bne     loc_FFD08FC2
+FFD08FC0  6006                 bra     loc_FFD08FC8
+loc_FFD08FC2:
+FFD08FC2* 203C3F3F3F3F         move.l  #$3f3f3f3f, D0
+loc_FFD08FC8:
+FFD08FC8* 4CDF0700             movem.l (A7)+, A0-A2
+FFD08FCC* 4E75                 rts
+loc_FFD08FCE:
+FFD08FCE  21C9027A             move.l  A1, $27a.w                        ; SoundDCE
+FFD08FD2  6102                 bsr     sub_FFD08FD6
+FFD08FD4  4E75                 rts
+
+sub_FFD08FD6:
+FFD08FD6  4238027E             clr.b   $27e.w                            ; SoundActive
+FFD08FDA  4AB80266             tst.l   $266.w                            ; SoundBase
+FFD08FDE  673C                 beq     loc_FFD0901C
+FFD08FE0  7010                 moveq   #$10, D0
+FFD08FE2  A51E                 _NewPtrSys                                ; A-line trap A51E
+FFD08FE4  4A40                 tst.w   D0
+FFD08FE6  6634                 bne     loc_FFD0901C
+FFD08FE8  4290                 clr.l   (A0)
+FFD08FEA  317C00010004         move.w  #$1, ($4,A0)
+FFD08FF0  43FA03B8             lea     ($ffd093aa,PC), A1
+FFD08FF4  21490006             move.l  A1, ($6,A0)
+FFD08FF8  317C003D000A         move.w  #$3d, ($a,A0)
+FFD08FFE  317C0009000C         move.w  #$9, ($c,A0)
+FFD09004  227801D4             movea.l $1d4.w, A1                        ; VIA
+FFD09008  08D10007             bset    #$7, (A1)
+FFD0900C  317C0080000E         move.w  #$80, ($e,A0)
+FFD09012  A033                 _VInstall                                 ; A-line trap A033
+loc_FFD09014:
+FFD09014  20780CC0             movea.l $cc0.w, A0
+FFD09018  21C80266             move.l  A0, $266.w                        ; SoundBase
+loc_FFD0901C:
+FFD0901C  7000                 moveq   #$0, D0
+FFD0901E  4E75                 rts
+loc_FFD09020:
+FFD09020  42780280             clr.w   $280.w                            ; CurPitch
+loc_FFD09024:
+FFD09024  20780CC0             movea.l $cc0.w, A0
+FFD09028  42280801             clr.b   ($801,A0)
+FFD0902C  6102                 bsr     sub_FFD09030
+FFD0902E  60EC                 bra     loc_FFD0901C
+
+sub_FFD09030:
+FFD09030  4A38027E             tst.b   $27e.w                            ; SoundActive
+FFD09034  670A                 beq     loc_FFD09040
+FFD09036  41F8026A             lea     $26a.w, A0                        ; SoundVBL
+FFD0903A  A034                 _VRemove                                  ; A-line trap A034
+FFD0903C  4238027E             clr.b   $27e.w                            ; SoundActive
+loc_FFD09040:
+FFD09040  4E75                 rts
+
+sub_FFD09042:
+FFD09042  11C0027F             move.b  D0, $27f.w                        ; SoundLevel
+FFD09046  20780CC0             movea.l $cc0.w, A0
+FFD0904A  2242                 movea.l D2, A1
+FFD0904C  143C0080             move.b  #$80, D2
+FFD09050  E208                 lsr.b   #1, D0
+FFD09052  4A280800             tst.b   ($800,A0)
+FFD09056  6606                 bne     loc_FFD0905E
+FFD09058  143C0040             move.b  #$40, D2
+FFD0905C  E208                 lsr.b   #1, D0
+loc_FFD0905E:
+FFD0905E  1202                 move.b  D2, D1
+FFD09060  9200                 sub.b   D0, D1
+FFD09062  D002                 add.b   D2, D0
+FFD09064  363C00FF             move.w  #$ff, D3
+loc_FFD09068:
+FFD09068  11410500             move.b  D1, ($500,A0)
+FFD0906C  11410100             move.b  D1, ($100,A0)
+FFD09070  11400400             move.b  D0, ($400,A0)
+FFD09074  10C0                 move.b  D0, (A0)+
+FFD09076  51CBFFF0             dbra    D3, loc_FFD09068
+FFD0907A  1082                 move.b  D2, (A0)
+FFD0907C  11420400             move.b  D2, ($400,A0)
+FFD09080  2409                 move.l  A1, D2
+FFD09082  4E75                 rts
+loc_FFD09084:
+FFD09084  3028001A             move.w  ($1a,A0), D0
+FFD09088  670A                 beq     loc_FFD09094
+FFD0908A  5340                 subq.w  #1, D0
+FFD0908C  6792                 beq     loc_FFD09020
+FFD0908E  3028001C             move.w  ($1c,A0), D0
+FFD09092  61AE                 bsr     sub_FFD09042
+loc_FFD09094:
+FFD09094  6000017E             bra     loc_FFD09214                      ; driver Status entry
+loc_FFD09098:
+FFD09098  22680020             movea.l ($20,A0), A1
+FFD0909C  4A59                 tst.w   (A1)+
+FFD0909E  67000248             beq     loc_FFD092E8
+FFD090A2  6A00017C             bpl     loc_FFD09220
+FFD090A6  2F08                 move.l  A0, -(A7)
+FFD090A8  20780CC0             movea.l $cc0.w, A0
+FFD090AC  41E80800             lea     ($800,A0), A0
+FFD090B0  42280007             clr.b   ($7,A0)
+FFD090B4  117C00020002         move.b  #$2, ($2,A0)
+FFD090BA  48E78080             movem.l D0/A0, -(A7)
+FFD090BE  41E80010             lea     ($10,A0), A0
+FFD090C2  303C001F             move.w  #$1f, D0
+loc_FFD090C6:
+FFD090C6  4218                 clr.b   (A0)+
+FFD090C8  51C8FFFC             dbra    D0, loc_FFD090C6
+FFD090CC  4CDF0101             movem.l (A7)+, D0/A0
+FFD090D0  117C00FE0030         move.b  #$fe, ($30,A0)
+FFD090D6  42280031             clr.b   ($31,A0)
+FFD090DA  117C00FE0032         move.b  #$fe, ($32,A0)
+FFD090E0  42280033             clr.b   ($33,A0)
+FFD090E4  117C00FE0034         move.b  #$fe, ($34,A0)
+FFD090EA  42280035             clr.b   ($35,A0)
+FFD090EE  117C00FE0036         move.b  #$fe, ($36,A0)
+FFD090F4  42280037             clr.b   ($37,A0)
+FFD090F8  42280005             clr.b   ($5,A0)
+FFD090FC  0C2800020001         cmpi.b  #$2, ($1,A0)
+FFD09102  6706                 beq     loc_FFD0910A
+FFD09104  117C00020001         move.b  #$2, ($1,A0)
+loc_FFD0910A:
+FFD0910A  205F                 movea.l (A7)+, A0
+FFD0910C  4C990007             movem.w (A1)+, D0-D2
+FFD09110  4A42                 tst.w   D2
+FFD09112  670000A0             beq     loc_FFD091B4
+FFD09116  2F08                 move.l  A0, -(A7)
+FFD09118  31C00280             move.w  D0, $280.w                        ; CurPitch
+FFD0911C  7600                 moveq   #$0, D3
+FFD0911E  4A40                 tst.w   D0
+FFD09120  670A                 beq     loc_FFD0912C
+FFD09122  263C11999999         move.l  #$11999999, D3
+FFD09128  4C403003             divu.l  D0, D3; (2+)
+loc_FFD0912C:
+FFD0912C  20780CC0             movea.l $cc0.w, A0
+FFD09130  11430817             move.b  D3, ($817,A0)
+FFD09134  11430827             move.b  D3, ($827,A0)
+FFD09138  E09B                 ror.l   #8, D3
+FFD0913A  11430816             move.b  D3, ($816,A0)
+FFD0913E  11430826             move.b  D3, ($826,A0)
+FFD09142  E09B                 ror.l   #8, D3
+FFD09144  11430815             move.b  D3, ($815,A0)
+FFD09148  11430825             move.b  D3, ($825,A0)
+FFD0914C  E09B                 ror.l   #8, D3
+FFD0914E  11430814             move.b  D3, ($814,A0)
+FFD09152  11430824             move.b  D3, ($824,A0)
+FFD09156  3001                 move.w  D1, D0
+FFD09158  6100FEE8             bsr     sub_FFD09042
+FFD0915C  3002                 move.w  D2, D0
+FFD0915E  43FA0036             lea     ($ffd09196,PC), A1
+FFD09162  610C                 bsr     sub_FFD09170
+FFD09164  205F                 movea.l (A7)+, A0
+FFD09166  5CA80028             addq.l  #6, ($28,A0)
+FFD0916A  6000FEB0             bra     loc_FFD0901C
+
+sub_FFD0916E:
+FFD0916E  7001                 moveq   #$1, D0
+
+sub_FFD09170:
+FFD09170  41F8026A             lea     $26a.w, A0                        ; SoundVBL
+FFD09174  3140000A             move.w  D0, ($a,A0)
+FFD09178  4A38027E             tst.b   $27e.w                            ; SoundActive
+FFD0917C  6616                 bne     loc_FFD09194
+FFD0917E  4290                 clr.l   (A0)
+FFD09180  317C00010004         move.w  #$1, ($4,A0)
+FFD09186  21490006             move.l  A1, ($6,A0)
+FFD0918A  4268000C             clr.w   ($c,A0)
+FFD0918E  A033                 _VInstall                                 ; A-line trap A033
+FFD09190  50F8027E             st      $27e.w                            ; SoundActive
+loc_FFD09194:
+FFD09194  4E75                 rts
+FFD09196d 2278027A20690008     dc.b    $22,$78,$02,$7A,$20,$69,$00,$08,$20,$28,$00,$28,$22,$68,$00,$20 ; |"x.z i.. (.("h. |
+FFD091A6d D3C054895840B0A8     dc.b    $D3,$C0,$54,$89,$58,$40,$B0,$A8,$00,$24,$6D,$00,$FF,$5A ; |..T.X@...$m..Z|
+loc_FFD091B4:
+FFD091B4  42780280             clr.w   $280.w                            ; CurPitch
+FFD091B8  20780CC0             movea.l $cc0.w, A0
+FFD091BC  41E80800             lea     ($800,A0), A0
+FFD091C0  42280014             clr.b   ($14,A0)
+FFD091C4  42280015             clr.b   ($15,A0)
+FFD091C8  42280016             clr.b   ($16,A0)
+FFD091CC  42280017             clr.b   ($17,A0)
+FFD091D0  4228001C             clr.b   ($1c,A0)
+FFD091D4  4228001D             clr.b   ($1d,A0)
+FFD091D8  4228001E             clr.b   ($1e,A0)
+FFD091DC  4228001F             clr.b   ($1f,A0)
+FFD091E0  42280024             clr.b   ($24,A0)
+FFD091E4  42280025             clr.b   ($25,A0)
+FFD091E8  42280026             clr.b   ($26,A0)
+FFD091EC  42280027             clr.b   ($27,A0)
+FFD091F0  4228002C             clr.b   ($2c,A0)
+FFD091F4  4228002D             clr.b   ($2d,A0)
+FFD091F8  4228002E             clr.b   ($2e,A0)
+FFD091FC  4228002F             clr.b   ($2f,A0)
+FFD09200  42280001             clr.b   ($1,A0)
+FFD09204  42280002             clr.b   ($2,A0)
+FFD09208  42280003             clr.b   ($3,A0)
+FFD0920C  42280004             clr.b   ($4,A0)
+FFD09210  6100FE1E             bsr     sub_FFD09030
+loc_FFD09214:
+FFD09214  7000                 moveq   #$0, D0
+FFD09216  2278027A             movea.l $27a.w, A1                        ; SoundDCE
+FFD0921A  207808FC             movea.l $8fc.w, A0                        ; JIODone
+FFD0921E  4ED0                 jmp     (A0)
+loc_FFD09220:
+FFD09220  21D90262             move.l  (A1)+, $262.w                     ; SoundVars
+FFD09224  22780CC0             movea.l $cc0.w, A1
+FFD09228  43E90800             lea     ($800,A1), A1
+FFD0922C  0C2900010001         cmpi.b  #$1, ($1,A1)
+FFD09232  671A                 beq     loc_FFD0924E
+FFD09234  42290007             clr.b   ($7,A1)
+FFD09238  42290002             clr.b   ($2,A1)
+FFD0923C  137C00010001         move.b  #$1, ($1,A1)
+FFD09242  08E900070003         bset    #$7, ($3,A1)
+FFD09248  08A900070003         bclr    #$7, ($3,A1)
+loc_FFD0924E:
+FFD0924E  43FA0018             lea     ($ffd09268,PC), A1
+loc_FFD09252:
+FFD09252  6100FF1A             bsr     sub_FFD0916E
+FFD09256  6000FDC4             bra     loc_FFD0901C
+FFD0925A? 22780CC0             movea.l $cc0.w, A1
+FFD0925E? 42290801             clr.b   ($801,A1)
+FFD09262? 4CDF7FFF             movem.l (A7)+, D0-D7/A0-A6
+FFD09266? 60A8                 bra     $ffd09210
+FFD09268? 48E7FFFE             movem.l D0-D7/A0-A6, -(A7)
+FFD0926C? 2C780262             movea.l $262.w, A6                        ; SoundVars
+FFD09270? 4A56                 tst.w   (A6)
+FFD09272? 67E6                 beq     $ffd0925a
+FFD09274? 41F8026A             lea     $26a.w, A0                        ; SoundVBL
+FFD09278? 317C0001000A         move.w  #$1, ($a,A0)
+FFD0927E? 535E                 subq.w  #1, (A6)+
+FFD09280? 4CD63FFC             movem.l (A6), D2-D7/A0-A5
+FFD09284? 2C780CC0             movea.l $cc0.w, A6
+FFD09288? 223C00FF0000         move.l  #$ff0000, D1
+FFD0928E? 3F3C0172             move.w  #$172, -(A7)
+FFD09292? 4241                 clr.w   D1
+FFD09294? D682                 add.l   D2, D3
+FFD09296? DA84                 add.l   D4, D5
+FFD09298? DE86                 add.l   D6, D7
+FFD0929A? D3C8                 adda.l  A0, A1
+FFD0929C? 2003                 move.l  D3, D0
+FFD0929E? C081                 and.l   D1, D0
+FFD092A0? 4840                 swap    D0
+FFD092A2? 12320000             move.b  (A2,D0.w), D1
+FFD092A6? 2005                 move.l  D5, D0
+FFD092A8? C081                 and.l   D1, D0
+FFD092AA? 4840                 swap    D0
+FFD092AC? 10330000             move.b  (A3,D0.w), D0
+FFD092B0? D240                 add.w   D0, D1
+FFD092B2? 2007                 move.l  D7, D0
+FFD092B4? C081                 and.l   D1, D0
+FFD092B6? 4840                 swap    D0
+FFD092B8? 10340000             move.b  (A4,D0.w), D0
+FFD092BC? D240                 add.w   D0, D1
+FFD092BE? 2009                 move.l  A1, D0
+FFD092C0? C081                 and.l   D1, D0
+FFD092C2? 4840                 swap    D0
+FFD092C4? 10350000             move.b  (A5,D0.w), D0
+FFD092C8? D240                 add.w   D0, D1
+FFD092CA? E449                 lsr.w   #2, D1
+FFD092CC? 1C81                 move.b  D1, (A6)
+FFD092CE? 5357                 subq.w  #1, (A7)
+FFD092D0? 66C0                 bne     $ffd09292
+FFD092D2? 11C1027F             move.b  D1, $27f.w                        ; SoundLevel
+FFD092D6? 544F                 addq.w  #2, A7
+FFD092D8? 2C780262             movea.l $262.w, A6                        ; SoundVars
+FFD092DC? 544E                 addq.w  #2, A6
+FFD092DE? 48D603FC             movem.l D2-D7/A0-A1, (A6)
+FFD092E2? 4CDF7FFF             movem.l (A7)+, D0-D7/A0-A6
+FFD092E6? 4E75                 rts
+loc_FFD092E8:
+FFD092E8  22780CC0             movea.l $cc0.w, A1
+FFD092EC  43E90800             lea     ($800,A1), A1
+FFD092F0  0C2900010001         cmpi.b  #$1, ($1,A1)
+FFD092F6  671A                 beq     loc_FFD09312
+FFD092F8  42290007             clr.b   ($7,A1)
+FFD092FC  42290002             clr.b   ($2,A1)
+FFD09300  137C00010001         move.b  #$1, ($1,A1)
+FFD09306  08E900070003         bset    #$7, ($3,A1)
+FFD0930C  08A900070003         bclr    #$7, ($3,A1)
+loc_FFD09312:
+FFD09312  2278027A             movea.l $27a.w, A1                        ; SoundDCE
+FFD09316  42A90010             clr.l   ($10,A1)
+FFD0931A  43FA0006             lea     ($ffd09322,PC), A1
+FFD0931E  6000FF32             bra     loc_FFD09252
+FFD09322? 2278027A             movea.l $27a.w, A1                        ; SoundDCE
+FFD09326? 20290008             move.l  ($8,A1), D0
+FFD0932A? 660E                 bne     $ffd0933a
+FFD0932C? 22780CC0             movea.l $cc0.w, A1
+FFD09330? 42290801             clr.b   ($801,A1)
+FFD09334? 6100FCFA             bsr     sub_FFD09030
+FFD09338? 4E75                 rts
+FFD0933A? 2040                 movea.l D0, A0
+FFD0933C? 20280028             move.l  ($28,A0), D0
+FFD09340? B0A80024             cmp.l   ($24,A0), D0
+FFD09344? 6D06                 blt     $ffd0934c
+FFD09346? 6100FEC8             bsr     $ffd09210
+FFD0934A? 60D6                 bra     $ffd09322
+FFD0934C? 26290010             move.l  ($10,A1), D3
+FFD09350? 47F8026A             lea     $26a.w, A3                        ; SoundVBL
+FFD09354? 377C0001000A         move.w  #$1, ($a,A3)
+FFD0935A? 22680020             movea.l ($20,A0), A1
+FFD0935E? 5449                 addq.w  #2, A1
+FFD09360? 2219                 move.l  (A1)+, D1
+FFD09362? 2649                 movea.l A1, A3
+FFD09364? D7E80024             adda.l  ($24,A0), A3
+FFD09368? D3C0                 adda.l  D0, A1
+FFD0936A? 24780CC0             movea.l $cc0.w, A2
+FFD0936E? 343C0171             move.w  #$171, D2
+FFD09372? 7000                 moveq   #$0, D0
+FFD09374? 1491                 move.b  (A1), (A2)
+FFD09376? D681                 add.l   D1, D3
+FFD09378? 4843                 swap    D3
+FFD0937A? D2C3                 adda.w  D3, A1
+FFD0937C? D043                 add.w   D3, D0
+FFD0937E? 4243                 clr.w   D3
+FFD09380? 4843                 swap    D3
+FFD09382? B7C9                 cmpa.l  A1, A3
+FFD09384? 5FCAFFEE             dble    D2, $ffd09374
+FFD09388? D1A80028             add.l   D0, ($28,A0)
+FFD0938C? 11E9FFFF027F         move.b  (-$1,A1), $27f.w                  ; SoundLevel
+FFD09392? 2278027A             movea.l $27a.w, A1                        ; SoundDCE
+FFD09396? 23430010             move.l  D3, ($10,A1)
+FFD0939A? 20280028             move.l  ($28,A0), D0
+FFD0939E? B0A80024             cmp.l   ($24,A0), D0
+FFD093A2? 6D04                 blt     $ffd093a8
+FFD093A4? 6100FE6E             bsr     loc_FFD09214
+FFD093A8? 4E75                 rts
+FFD093AA? 317C003D000A         move.w  #$3d, ($a,A0)
+FFD093B0? 227801D4             movea.l $1d4.w, A1                        ; VIA
+FFD093B4? 1011                 move.b  (A1), D0
+FFD093B6? 02000080             andi.b  #$80, D0
+FFD093BA? 1228000E             move.b  ($e,A0), D1
+FFD093BE? B101                 eor.b   D0, D1
+FFD093C0? 673A                 beq     $ffd093fc
+FFD093C2? 1140000E             move.b  D0, ($e,A0)
+FFD093C6? 670A                 beq     $ffd093d2
+FFD093C8? 22780CC0             movea.l $cc0.w, A1
+FFD093CC? 42290801             clr.b   ($801,A1)
+FFD093D0? 4E75                 rts
+FFD093D2? 20780CC0             movea.l $cc0.w, A0
+FFD093D6? 41E80800             lea     ($800,A0), A0
+FFD093DA? 0C2800010001         cmpi.b  #$1, ($1,A0)
+FFD093E0? 671A                 beq     $ffd093fc
+FFD093E2? 42280007             clr.b   ($7,A0)
+FFD093E6? 42280002             clr.b   ($2,A0)
+FFD093EA? 117C00010001         move.b  #$1, ($1,A0)
+FFD093F0? 08E800070003         bset    #$7, ($3,A0)
+FFD093F6? 08A800070003         bclr    #$7, ($3,A0)
+FFD093FC? 4E75                 rts
+loc_FFD093FE:
+FFD093FE  2401                 move.l  D1, D2
+FFD09400  21C9027A             move.l  A1, $27a.w                        ; SoundDCE
+FFD09404  612E                 bsr     sub_FFD09434
+FFD09406  4238027E             clr.b   $27e.w                            ; SoundActive
+FFD0940A  700C                 moveq   #$c, D0
+FFD0940C  A51E                 _NewPtrSys                                ; A-line trap A51E
+FFD0940E  2008                 move.l  A0, D0
+FFD09410  6708                 beq     loc_FFD0941A
+FFD09412  2278027A             movea.l $27a.w, A1                        ; SoundDCE
+FFD09416  23480014             move.l  A0, ($14,A1)
+loc_FFD0941A:
+FFD0941A  0C0200B0             cmpi.b  #-$50, D2
+FFD0941E  6700FBB6             beq     sub_FFD08FD6
+FFD09422  6000FBF0             bra     loc_FFD09014
+loc_FFD09426:
+FFD09426  42780280             clr.w   $280.w                            ; CurPitch
+loc_FFD0942A:
+FFD0942A  6100FC04             bsr     sub_FFD09030
+FFD0942E  6104                 bsr     sub_FFD09434
+FFD09430  6000FBEA             bra     loc_FFD0901C
+
+sub_FFD09434:
+FFD09434  103C0080             move.b  #$80, D0
+FFD09438  611A                 bsr     sub_FFD09454
+
+sub_FFD0943A:
+FFD0943A  207801D4             movea.l $1d4.w, A0                        ; VIA
+FFD0943E  4A380B3F             tst.b   $b3f.w
+FFD09442  660A                 bne     loc_FFD0944E
+FFD09444  0228003F1600         andi.b  #$3f, ($1600,A0)
+FFD0944A  50F80B3F             st      $b3f.w
+loc_FFD0944E:
+FFD0944E  4E75                 rts
+
+sub_FFD09450:
+FFD09450  1038027F             move.b  $27f.w, D0                        ; SoundLevel
+
+sub_FFD09454:
+FFD09454  11C0027F             move.b  D0, $27f.w                        ; SoundLevel
+FFD09458  1200                 move.b  D0, D1
+FFD0945A  E148                 lsl.w   #8, D0
+FFD0945C  1001                 move.b  D1, D0
+FFD0945E  3200                 move.w  D0, D1
+FFD09460  4840                 swap    D0
+FFD09462  3001                 move.w  D1, D0
+FFD09464  20780266             movea.l $266.w, A0                        ; SoundBase
+FFD09468  722D                 moveq   #$2d, D1
+loc_FFD0946A:
+FFD0946A  01C80000             movep.l D0, ($0,A0)
+FFD0946E  01C80008             movep.l D0, ($8,A0)
+FFD09472  41E80010             lea     ($10,A0), A0
+FFD09476  51C9FFF2             dbra    D1, loc_FFD0946A
+FFD0947A  01880000             movep.w D0, ($0,A0)
+FFD0947E  4E75                 rts
+loc_FFD09480:
+FFD09480  3028001A             move.w  ($1a,A0), D0
+FFD09484  6700FC0E             beq     loc_FFD09094
+FFD09488  5340                 subq.w  #1, D0
+FFD0948A  679A                 beq     loc_FFD09426
+FFD0948C  3028001C             move.w  ($1c,A0), D0
+FFD09490  6100FAE6             bsr     sub_FFD08F78
+FFD09494  0C0100E0             cmpi.b  #-$20, D1
+FFD09498  670C                 beq     loc_FFD094A6
+FFD0949A  0C0100B0             cmpi.b  #-$50, D1
+FFD0949E  6706                 beq     loc_FFD094A6
+FFD094A0  61B2                 bsr     sub_FFD09454
+FFD094A2  6000FBF0             bra     loc_FFD09094
+loc_FFD094A6:
+FFD094A6  2278027A             movea.l $27a.w, A1                        ; SoundDCE
+FFD094AA  22690014             movea.l ($14,A1), A1
+FFD094AE  11C0027F             move.b  D0, $27f.w                        ; SoundLevel
+FFD094B2  123C0080             move.b  #$80, D1
+FFD094B6  E208                 lsr.b   #1, D0
+FFD094B8  1401                 move.b  D1, D2
+FFD094BA  9400                 sub.b   D0, D2
+FFD094BC  D001                 add.b   D1, D0
+FFD094BE  13420008             move.b  D2, ($8,A1)
+FFD094C2  13400009             move.b  D0, ($9,A1)
+FFD094C6  6000FBCC             bra     loc_FFD09094
+loc_FFD094CA:
+FFD094CA  227801D4             movea.l $1d4.w, A1                        ; VIA
+FFD094CE  08910007             bclr    #$7, (A1)
+FFD094D2  22680020             movea.l ($20,A0), A1
+FFD094D6  4A59                 tst.w   (A1)+
+FFD094D8  67000302             beq     loc_FFD097DC
+FFD094DC  6A0001DA             bpl     loc_FFD096B8
+FFD094E0  6100FA96             bsr     sub_FFD08F78
+FFD094E4  0C0100E0             cmpi.b  #-$20, D1
+FFD094E8  670000BA             beq     loc_FFD095A4
+FFD094EC  0C0100B0             cmpi.b  #-$50, D1
+FFD094F0  670000B2             beq     loc_FFD095A4
+FFD094F4  4C990007             movem.w (A1)+, D0-D2
+FFD094F8  4A42                 tst.w   D2
+FFD094FA  67000094             beq     loc_FFD09590
+FFD094FE  2F08                 move.l  A0, -(A7)
+FFD09500  4A380B3F             tst.b   $b3f.w
+FFD09504  670C                 beq     loc_FFD09512
+FFD09506  08B800070B3F         bclr    #$7, $b3f.w
+FFD0950C  6720                 beq     loc_FFD0952E
+FFD0950E  42380B3F             clr.b   $b3f.w
+loc_FFD09512:
+FFD09512  207801D4             movea.l $1d4.w, A0                        ; VIA
+FFD09516  002800C01600         ori.b   #$c0, ($1600,A0)
+FFD0951C  B0780280             cmp.w   $280.w, D0                        ; CurPitch
+FFD09520  670C                 beq     loc_FFD0952E
+FFD09522  11400800             move.b  D0, ($800,A0)
+FFD09526  E058                 ror.w   #8, D0
+FFD09528  11400A00             move.b  D0, ($a00,A0)
+FFD0952C  E058                 ror.w   #8, D0
+loc_FFD0952E:
+FFD0952E  31C00280             move.w  D0, $280.w                        ; CurPitch
+FFD09532  3001                 move.w  D1, D0
+FFD09534  6100FF1E             bsr     sub_FFD09454
+FFD09538  3002                 move.w  D2, D0
+FFD0953A  43FA0036             lea     ($ffd09572,PC), A1
+FFD0953E  610C                 bsr     sub_FFD0954C
+FFD09540  205F                 movea.l (A7)+, A0
+FFD09542  5CA80028             addq.l  #6, ($28,A0)
+FFD09546  6000FAD4             bra     loc_FFD0901C
+
+sub_FFD0954A:
+FFD0954A  7001                 moveq   #$1, D0
+
+sub_FFD0954C:
+FFD0954C  41F8026A             lea     $26a.w, A0                        ; SoundVBL
+FFD09550  3140000A             move.w  D0, ($a,A0)
+FFD09554  4A38027E             tst.b   $27e.w                            ; SoundActive
+FFD09558  6616                 bne     loc_FFD09570
+FFD0955A  4290                 clr.l   (A0)
+FFD0955C  317C00010004         move.w  #$1, ($4,A0)
+FFD09562  21490006             move.l  A1, ($6,A0)
+FFD09566  4268000C             clr.w   ($c,A0)
+FFD0956A  A033                 _VInstall                                 ; A-line trap A033
+FFD0956C  50F8027E             st      $27e.w                            ; SoundActive
+loc_FFD09570:
+FFD09570  4E75                 rts
+FFD09572d 2278027A20690008     dc.b    $22,$78,$02,$7A,$20,$69,$00,$08,$20,$28,$00,$28,$22,$68,$00,$20 ; |"x.z i.. (.("h. |
+FFD09582d D3C054895840B0A8     dc.b    $D3,$C0,$54,$89,$58,$40,$B0,$A8,$00,$24,$6D,$00,$FF,$66 ; |..T.X@...$m..f|
+loc_FFD09590:
+FFD09590  6100FEA8             bsr     sub_FFD0943A
+FFD09594  42780280             clr.w   $280.w                            ; CurPitch
+FFD09598  6100FA96             bsr     sub_FFD09030
+FFD0959C  6100FEB2             bsr     sub_FFD09450
+FFD095A0  6000FC72             bra     loc_FFD09214
+loc_FFD095A4:
+FFD095A4  20780CC0             movea.l $cc0.w, A0
+FFD095A8  41E80800             lea     ($800,A0), A0
+FFD095AC  0C2800010001         cmpi.b  #$1, ($1,A0)
+FFD095B2  671A                 beq     loc_FFD095CE
+FFD095B4  42280007             clr.b   ($7,A0)
+FFD095B8  42280002             clr.b   ($2,A0)
+FFD095BC  117C00010001         move.b  #$1, ($1,A0)
+FFD095C2  08E800070003         bset    #$7, ($3,A0)
+FFD095C8  08A800070003         bclr    #$7, ($3,A0)
+loc_FFD095CE:
+FFD095CE  2278027A             movea.l $27a.w, A1                        ; SoundDCE
+FFD095D2  24690014             movea.l ($14,A1), A2
+FFD095D6  4292                 clr.l   (A2)
+FFD095D8  426A000A             clr.w   ($a,A2)
+FFD095DC  43FA000A             lea     ($ffd095e8,PC), A1
+FFD095E0  6100FB8C             bsr     sub_FFD0916E
+FFD095E4  6000FA36             bra     loc_FFD0901C
+FFD095E8? 48E70E00             movem.l D4-D6, -(A7)
+FFD095EC? 317C0001000A         move.w  #$1, ($a,A0)
+FFD095F2? 2278027A             movea.l $27a.w, A1                        ; SoundDCE
+FFD095F6? 24690014             movea.l ($14,A1), A2
+FFD095FA? 4A6A000A             tst.w   ($a,A2)
+FFD095FE? 66000076             bne     $ffd09676
+FFD09602? 2278027A             movea.l $27a.w, A1                        ; SoundDCE
+FFD09606? 20690008             movea.l ($8,A1), A0
+FFD0960A? 20280028             move.l  ($28,A0), D0
+FFD0960E? 22680020             movea.l ($20,A0), A1
+FFD09612? D3C0                 adda.l  D0, A1
+FFD09614? 5489                 addq.l  #2, A1
+FFD09616? 5840                 addq.w  #4, D0
+FFD09618? B0A80024             cmp.l   ($24,A0), D0
+FFD0961C? 6D18                 blt     $ffd09636
+FFD0961E? 42780280             clr.w   $280.w                            ; CurPitch
+FFD09622? 20780CC0             movea.l $cc0.w, A0
+FFD09626? 42280801             clr.b   ($801,A0)
+FFD0962A? 6100FA04             bsr     sub_FFD09030
+FFD0962E? 4CDF0070             movem.l (A7)+, D4-D6
+FFD09632? 6000FBE0             bra     loc_FFD09214
+FFD09636? 4C990007             movem.w (A1)+, D0-D2
+FFD0963A? 4A42                 tst.w   D2
+FFD0963C? 67E0                 beq     $ffd0961e
+FFD0963E? 7600                 moveq   #$0, D3
+FFD09640? 4A40                 tst.w   D0
+FFD09642? 670E                 beq     $ffd09652
+FFD09644? 263C11999999         move.l  #$11999999, D3
+FFD0964A? 4C403003             divu.l  D0, D3; (2+)
+FFD0964E? 31C00280             move.w  D0, $280.w                        ; CurPitch
+FFD09652? 25430004             move.l  D3, ($4,A2)
+FFD09656? 11C1027F             move.b  D1, $27f.w                        ; SoundLevel
+FFD0965A? 103C0080             move.b  #$80, D0
+FFD0965E? E209                 lsr.b   #1, D1
+FFD09660? 1600                 move.b  D0, D3
+FFD09662? 9601                 sub.b   D1, D3
+FFD09664? D200                 add.b   D0, D1
+FFD09666? 15430008             move.b  D3, ($8,A2)
+FFD0966A? 15410009             move.b  D1, ($9,A2)
+FFD0966E? 3542000A             move.w  D2, ($a,A2)
+FFD09672? 5CA80028             addq.l  #6, ($28,A0)
+FFD09676? 536A000A             subq.w  #1, ($a,A2)
+FFD0967A? 2012                 move.l  (A2), D0
+FFD0967C? 222A0004             move.l  ($4,A2), D1
+FFD09680? 142A0008             move.b  ($8,A2), D2
+FFD09684? 162A0009             move.b  ($9,A2), D3
+FFD09688? 20780CC0             movea.l $cc0.w, A0
+FFD0968C? 283C00800000         move.l  #$800000, D4
+FFD09692? 3C3C0172             move.w  #$172, D6
+FFD09696? 4A80                 tst.l   D0
+FFD09698? 6604                 bne     $ffd0969e
+FFD0969A? 3C3C01F2             move.w  #$1f2, D6
+FFD0969E? D081                 add.l   D1, D0
+FFD096A0? 2A00                 move.l  D0, D5
+FFD096A2? CA84                 and.l   D4, D5
+FFD096A4? 6604                 bne     $ffd096aa
+FFD096A6? 1083                 move.b  D3, (A0)
+FFD096A8? 6002                 bra     $ffd096ac
+FFD096AA? 1082                 move.b  D2, (A0)
+FFD096AC? 5346                 subq.w  #1, D6
+FFD096AE? 66EE                 bne     $ffd0969e
+FFD096B0? 2480                 move.l  D0, (A2)
+FFD096B2? 4CDF0070             movem.l (A7)+, D4-D6
+FFD096B6? 4E75                 rts
+loc_FFD096B8:
+FFD096B8  21D90262             move.l  (A1)+, $262.w                     ; SoundVars
+FFD096BC  43FA0012             lea     ($ffd096d0,PC), A1
+loc_FFD096C0:
+FFD096C0  6100FE88             bsr     sub_FFD0954A
+FFD096C4  6000F956             bra     loc_FFD0901C
+FFD096C8d 4CDF7FFF6000FECA     dc.b    $4C,$DF,$7F,$FF,$60,$00,$FE,$CA   ; |L...`...|
+FFD096D0? 48E7FFFE             movem.l D0-D7/A0-A6, -(A7)
+FFD096D4? 2C780262             movea.l $262.w, A6                        ; SoundVars
+FFD096D8? 4A56                 tst.w   (A6)
+FFD096DA? 67EC                 beq     $ffd096c8
+FFD096DC? 41F8026A             lea     $26a.w, A0                        ; SoundVBL
+FFD096E0? 317C0001000A         move.w  #$1, ($a,A0)
+FFD096E6? 535E                 subq.w  #1, (A6)+
+FFD096E8? 4CD63FFC             movem.l (A6), D2-D7/A0-A5
+FFD096EC? 2C780266             movea.l $266.w, A6                        ; SoundBase
+FFD096F0? 223C00FF0000         move.l  #$ff0000, D1
+FFD096F6? 2008                 move.l  A0, D0
+FFD096F8? 6608                 bne     $ffd09702
+FFD096FA? 2006                 move.l  D6, D0
+FFD096FC? 6604                 bne     $ffd09702
+FFD096FE? 2004                 move.l  D4, D0
+FFD09700? 6764                 beq     $ffd09766
+FFD09702? 4DEE0172             lea     ($172,A6), A6
+FFD09706? 3F3C0002             move.w  #$2, -(A7)
+FFD0970A? 3F3C00B9             move.w  #$b9, -(A7)
+FFD0970E? 4241                 clr.w   D1
+FFD09710? D682                 add.l   D2, D3
+FFD09712? DA84                 add.l   D4, D5
+FFD09714? DE86                 add.l   D6, D7
+FFD09716? D3C8                 adda.l  A0, A1
+FFD09718? 2003                 move.l  D3, D0
+FFD0971A? C081                 and.l   D1, D0
+FFD0971C? 4840                 swap    D0
+FFD0971E? 12320000             move.b  (A2,D0.w), D1
+FFD09722? 2005                 move.l  D5, D0
+FFD09724? C081                 and.l   D1, D0
+FFD09726? 4840                 swap    D0
+FFD09728? 10330000             move.b  (A3,D0.w), D0
+FFD0972C? D240                 add.w   D0, D1
+FFD0972E? 2007                 move.l  D7, D0
+FFD09730? C081                 and.l   D1, D0
+FFD09732? 4840                 swap    D0
+FFD09734? 10340000             move.b  (A4,D0.w), D0
+FFD09738? D240                 add.w   D0, D1
+FFD0973A? 2009                 move.l  A1, D0
+FFD0973C? C081                 and.l   D1, D0
+FFD0973E? 4840                 swap    D0
+FFD09740? 10350000             move.b  (A5,D0.w), D0
+FFD09744? D240                 add.w   D0, D1
+FFD09746? E449                 lsr.w   #2, D1
+FFD09748? 1C81                 move.b  D1, (A6)
+FFD0974A? 544E                 addq.w  #2, A6
+FFD0974C? 5357                 subq.w  #1, (A7)
+FFD0974E? 66BE                 bne     $ffd0970e
+FFD09750? 11EAFFFE027F         move.b  (-$2,A2), $27f.w                  ; SoundLevel
+FFD09756? 2C780266             movea.l $266.w, A6                        ; SoundBase
+FFD0975A? 3EBC00B9             move.w  #$b9, (A7)
+FFD0975E? 536F0002             subq.w  #1, ($2,A7)
+FFD09762? 66AA                 bne     $ffd0970e
+FFD09764? 6064                 bra     $ffd097ca
+FFD09766? 4DEE008C             lea     ($8c,A6), A6
+FFD0976A? 3F3C0002             move.w  #$2, -(A7)
+FFD0976E? 3F3C012C             move.w  #$12c, -(A7)
+FFD09772? 2005                 move.l  D5, D0
+FFD09774? C081                 and.l   D1, D0
+FFD09776? 4840                 swap    D0
+FFD09778? 10330000             move.b  (A3,D0.w), D0
+FFD0977C? 3F00                 move.w  D0, -(A7)
+FFD0977E? 2007                 move.l  D7, D0
+FFD09780? C081                 and.l   D1, D0
+FFD09782? 4840                 swap    D0
+FFD09784? 10340000             move.b  (A4,D0.w), D0
+FFD09788? D157                 add.w   D0, (A7)
+FFD0978A? 2009                 move.l  A1, D0
+FFD0978C? C081                 and.l   D1, D0
+FFD0978E? 4840                 swap    D0
+FFD09790? 10350000             move.b  (A5,D0.w), D0
+FFD09794? D157                 add.w   D0, (A7)
+FFD09796? 4241                 clr.w   D1
+FFD09798? D682                 add.l   D2, D3
+FFD0979A? 2003                 move.l  D3, D0
+FFD0979C? C081                 and.l   D1, D0
+FFD0979E? 4840                 swap    D0
+FFD097A0? 12320000             move.b  (A2,D0.w), D1
+FFD097A4? D257                 add.w   (A7), D1
+FFD097A6? E449                 lsr.w   #2, D1
+FFD097A8? 1C81                 move.b  D1, (A6)
+FFD097AA? 544E                 addq.w  #2, A6
+FFD097AC? 536F0002             subq.w  #1, ($2,A7)
+FFD097B0? 66E4                 bne     $ffd09796
+FFD097B2? 11EAFFFE027F         move.b  (-$2,A2), $27f.w                  ; SoundLevel
+FFD097B8? 2C780266             movea.l $266.w, A6                        ; SoundBase
+FFD097BC? 3F7C00460002         move.w  #$46, ($2,A7)
+FFD097C2? 536F0004             subq.w  #1, ($4,A7)
+FFD097C6? 66CE                 bne     $ffd09796
+FFD097C8? 544F                 addq.w  #2, A7
+FFD097CA? 584F                 addq.w  #4, A7
+FFD097CC? 2C780262             movea.l $262.w, A6                        ; SoundVars
+FFD097D0? 544E                 addq.w  #2, A6
+FFD097D2? 48D603FC             movem.l D2-D7/A0-A1, (A6)
+FFD097D6? 4CDF7FFF             movem.l (A7)+, D0-D7/A0-A6
+FFD097DA? 4E75                 rts
+loc_FFD097DC:
+FFD097DC  2278027A             movea.l $27a.w, A1                        ; SoundDCE
+FFD097E0  42A90010             clr.l   ($10,A1)
+FFD097E4  43FA0006             lea     ($ffd097ec,PC), A1
+FFD097E8  6000FED6             bra     loc_FFD096C0
+FFD097EC? 2278027A             movea.l $27a.w, A1                        ; SoundDCE
+FFD097F0? 20290008             move.l  ($8,A1), D0
+FFD097F4? 660A                 bne     $ffd09800
+FFD097F6? 6100F838             bsr     sub_FFD09030
+FFD097FA? 6100FC54             bsr     sub_FFD09450
+FFD097FE? 4E75                 rts
+FFD09800? 2040                 movea.l D0, A0
+FFD09802? 20280028             move.l  ($28,A0), D0
+FFD09806? B0A80024             cmp.l   ($24,A0), D0
+FFD0980A? 6D06                 blt     $ffd09812
+FFD0980C? 6100FD8A             bsr     $ffd09598
+FFD09810? 60DA                 bra     $ffd097ec
+FFD09812? 26290010             move.l  ($10,A1), D3
+FFD09816? 47F8026A             lea     $26a.w, A3                        ; SoundVBL
+FFD0981A? 377C0001000A         move.w  #$1, ($a,A3)
+FFD09820? 2F0C                 move.l  A4, -(A7)
+FFD09822? 22680020             movea.l ($20,A0), A1
+FFD09826? 5449                 addq.w  #2, A1
+FFD09828? 2219                 move.l  (A1)+, D1
+FFD0982A? 2649                 movea.l A1, A3
+FFD0982C? D7E80024             adda.l  ($24,A0), A3
+FFD09830? D3C0                 adda.l  D0, A1
+FFD09832? 24780266             movea.l $266.w, A2                        ; SoundBase
+FFD09836? 45EA0040             lea     ($40,A2), A2
+FFD0983A? 49EA02A4             lea     ($2a4,A2), A4
+FFD0983E? 4267                 clr.w   -(A7)
+FFD09840? 343C0151             move.w  #$151, D2
+FFD09844? 7000                 moveq   #$0, D0
+FFD09846? 1491                 move.b  (A1), (A2)
+FFD09848? 544A                 addq.w  #2, A2
+FFD0984A? D681                 add.l   D1, D3
+FFD0984C? 4843                 swap    D3
+FFD0984E? D2C3                 adda.w  D3, A1
+FFD09850? D043                 add.w   D3, D0
+FFD09852? 4243                 clr.w   D3
+FFD09854? 4843                 swap    D3
+FFD09856? B7C9                 cmpa.l  A1, A3
+FFD09858? 5FCAFFEC             dble    D2, $ffd09846
+FFD0985C? D1A80028             add.l   D0, ($28,A0)
+FFD09860? 4A5F                 tst.w   (A7)+
+FFD09862? 6736                 beq     $ffd0989a
+FFD09864? 4A42                 tst.w   D2
+FFD09866? 6B12                 bmi     $ffd0987a
+FFD09868? 7000                 moveq   #$0, D0
+FFD0986A? 1480                 move.b  D0, (A2)
+FFD0986C? 544A                 addq.w  #2, A2
+FFD0986E? B9CA                 cmpa.l  A2, A4
+FFD09870? 6E04                 bgt     $ffd09876
+FFD09872? 24780266             movea.l $266.w, A2                        ; SoundBase
+FFD09876? 51CAFFF2             dbra    D2, $ffd0986a
+FFD0987A? 2278027A             movea.l $27a.w, A1                        ; SoundDCE
+FFD0987E? 23430010             move.l  D3, ($10,A1)
+FFD09882? 11EAFFFE027F         move.b  (-$2,A2), $27f.w                  ; SoundLevel
+FFD09888? 285F                 movea.l (A7)+, A4
+FFD0988A? 20280028             move.l  ($28,A0), D0
+FFD0988E? B0A80024             cmp.l   ($24,A0), D0
+FFD09892? 6D04                 blt     $ffd09898
+FFD09894? 6100F97E             bsr     loc_FFD09214
+FFD09898? 4E75                 rts
+FFD0989A? 4A42                 tst.w   D2
+FFD0989C? 6B06                 bmi     $ffd098a4
+FFD0989E? 06420020             addi.w  #$20, D2
+FFD098A2? 60C4                 bra     $ffd09868
+FFD098A4? 3F3C0001             move.w  #$1, -(A7)
+FFD098A8? 24780266             movea.l $266.w, A2                        ; SoundBase
+FFD098AC? 741F                 moveq   #$1f, D2
+FFD098AE? 6094                 bra     $ffd09844
+FFD098B0d 7800000000000000     dc.b    $78,$00,$00,$00,$00,$00,$00,$00,$00,$10,$8E,$70 ; |x..........p|

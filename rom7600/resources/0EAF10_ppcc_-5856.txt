@@ -1,0 +1,6 @@
+; ROM resource 'ppcc' -5856  at FFCEAF10
+; data at ROM 0EAF10 (18 bytes), entry at 0EAF20, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 00000018 00000274
+
+FFCEAF10  01 05 00 09 01 00 00 78 00 80 00 78 6B 63 6B 63  |.......x...xkckc|
+FFCEAF20  78 00 00 00 00 00 00 00                          |x.......|

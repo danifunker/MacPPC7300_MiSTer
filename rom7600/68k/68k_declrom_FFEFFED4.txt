@@ -1,0 +1,39 @@
+Slot 0 declaration ROM at the top of the 68k ROM (ROM 2FFED4-2FFFFF = FFEFFED4)
+============================================================================
+Format block (last 20 bytes): directory offset -12 -> 2FFFE0, length 12C, CRC ACEDF87B,
+revision 1, format 1, test pattern 5A932BC7, byte lanes 0F.
+The Slot Manager reads it like a NuBus card ROM; it describes the main logic board
+sResource directory (id, offset -> target):
+  2FFFE0  id 3E  offset    -20 -> 2FFFCC
+      2FFFCC  id 01  offset     -8 -> 2FFFC4
+      2FFFD0  id 02  offset    -26 -> 2FFFB6  "Macintosh 4A"
+      2FFFD4  id 20  offset  +1648 -> 300644
+      2FFFD8  id 24  offset    -54 -> 2FFFA2
+      2FFFDC  id FF  offset     +0 -> 2FFFDC
+  2FFFE4  id FD  offset   -226 -> 2FFF02
+      2FFF02  id 01  offset     -8 -> 2FFEFA
+      2FFF06  id 02  offset    -50 -> 2FFED4  "Network_Ethernet_Apple_OpenTransport"
+      2FFF0A  id 07  offset     +0 -> 2FFF0A
+      2FFF0E  id 08  offset     +2 -> 2FFF10
+      2FFF12  id FF  offset     +0 -> 2FFF12
+  2FFFE8  id FF  offset     +0 -> 2FFFE8
+
+FFEFFED4  4E 65 74 77 6F 72 6B 5F 45 74 68 65 72 6E 65 74  |Network_Ethernet|
+FFEFFEE4  5F 41 70 70 6C 65 5F 4F 70 65 6E 54 72 61 6E 73  |_Apple_OpenTrans|
+FFEFFEF4  70 6F 72 74 00 00 00 04 00 01 00 01 00 04 01 FF  |port............|
+FFEFFF04  FF F8 02 FF FF CE 07 00 00 00 08 00 00 02 FF 00  |................|
+FFEFFF14  00 00 54 68 75 72 73 64 61 79 2C 20 4D 61 79 20  |..Thursday, May |
+FFEFFF24  31 38 2C 20 31 39 39 35 00 00 44 65 63 6C 52 4F  |18, 1995..DeclRO|
+FFEFFF34  4D 20 66 6F 72 20 4F 70 65 6E 54 78 70 74 00 00  |M for OpenTxpt..|
+FFEFFF44  4D 61 63 69 6E 74 6F 73 68 20 43 50 55 20 46 61  |Macintosh CPU Fa|
+FFEFFF54  6D 69 6C 79 20 36 2E 30 00 00 43 6F 70 79 72 69  |mily 6.0..Copyri|
+FFEFFF64  67 68 74 20 A9 20 31 39 38 36 2D 31 39 39 35 20  |ght . 1986-1995 |
+FFEFFF74  62 79 20 41 70 70 6C 65 20 43 6F 6D 70 75 74 65  |by Apple Compute|
+FFEFFF84  72 2C 20 49 6E 63 2E 20 20 41 6C 6C 20 52 69 67  |r, Inc.  All Rig|
+FFEFFF94  68 74 73 20 52 65 73 65 72 76 65 64 2E 00 01 FF  |hts Reserved....|
+FFEFFFA4  FF BC 03 FF FF 9E 04 FF FF 84 05 FF FF 68 FF 00  |.............h..|
+FFEFFFB4  00 00 4D 61 63 69 6E 74 6F 73 68 20 34 41 00 00  |..Macintosh 4A..|
+FFEFFFC4  00 01 00 00 00 00 00 00 01 FF FF F8 02 FF FF E6  |................|
+FFEFFFD4  20 00 06 70 24 FF FF CA FF 00 00 00 3E FF FF EC  | ..p$.......>...|
+FFEFFFE4  FD FF FF 1E FF 00 00 00 00 FF FF F4 00 00 01 2C  |...............,|
+FFEFFFF4  AC ED F8 7B 01 01 5A 93 2B C7 00 0F              |...{..Z.+...|

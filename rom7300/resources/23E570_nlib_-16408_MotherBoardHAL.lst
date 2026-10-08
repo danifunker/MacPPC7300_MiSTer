@@ -1,0 +1,103 @@
+; ============================================================================
+; ROM resource 'nlib' -16408 MotherBoardHAL at FFE3E570
+; ============================================================================
+; data at ROM 23E570 (21C bytes), entry at 1FFEA0, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 0000021c 0000048c
+;
+; Columns: address, flag, raw bytes, instruction, ; comment.
+;   flag '*' executed in the coverage run, ' ' reached by control flow,
+;   '?' decodes as code but neither executed nor reached, 'd' data.
+
+; PEF container: architecture pwpc, format version 1, timestamp ABBB6960, versions 00000000/00000000/00000000
+;   3 sections (2 instantiated)
+;   section 0 code       container +00120 len 000E2 (ROM 23E690 = FFE3E690), unpacked 000E2, total 000E2, share 4, align 4
+;   section 1 pidata     container +00204 len 0000C (ROM 23E774 = FFE3E774), unpacked 00018, total 00018, share 4, align 4
+;   section 2 loader     container +00080 len 00098 (ROM 23E5F0 = FFE3E5F0), unpacked 00000, total 00000, share 4, align 2
+;   init: section 1 offset 0
+;   imports from InterfaceLib: 2 symbols
+;
+; ----------------------------------------------------------------------------
+; code section 0: ROM 23E690-23E771 = FFE3E690
+; TOC (r2) = data section + C; TOC[d] comments name the word at that offset.
+; ----------------------------------------------------------------------------
+
+sub_FFE3E690:
+FFE3E690* 9421FEB0  stwu    r1, -0x150(r1)
+FFE3E694* 3C606D61  lis     r3, 0x6D61
+FFE3E698* 7C0802A6  mfspr   r0, LR
+FFE3E69C* 30636368  addic   r3, r3, 0x6368
+FFE3E6A0* 90010158  stw     r0, 0x158(r1)
+FFE3E6A4* 30810038  addic   r4, r1, 0x38
+FFE3E6A8* 48000071  bl      glue_Gestalt
+FFE3E6AC* 80410014  lwz     r2, 0x14(r1)
+FFE3E6B0* 7C630735  extsh.  r3, r3
+FFE3E6B4* 3C007077  lis     r0, 0x7077
+FFE3E6B8* 40820028  bne     loc_FFE3E6E0
+FFE3E6BC* 80620004  lwz     r3, 0x4(r2)                        ; TOC[+4] &code+D0
+FFE3E6C0* 30C1003C  addic   r6, r1, 0x3C
+FFE3E6C4* 30E10040  addic   r7, r1, 0x40
+FFE3E6C8* 30807063  addic   r4, r0, 0x7063
+FFE3E6CC* 31010044  addic   r8, r1, 0x44
+FFE3E6D0* 38A00001  li      r5, 0x1
+FFE3E6D4* 48000069  bl      glue_GetSharedLibrary
+FFE3E6D8* 80410014  lwz     r2, 0x14(r1)
+FFE3E6DC* 7C630734  extsh   r3, r3
+loc_FFE3E6E0:
+FFE3E6E0* 81810158  lwz     r12, 0x158(r1)
+FFE3E6E4* 30210150  addic   r1, r1, 0x150
+FFE3E6E8* 7D8803A6  mtspr   LR, r12
+FFE3E6EC* 4E800020  blr
+
+__init:
+FFE3E6F0* 7C0802A6  mfspr   r0, LR
+FFE3E6F4* 9421FFC0  stwu    r1, -0x40(r1)
+FFE3E6F8* 90010048  stw     r0, 0x48(r1)
+FFE3E6FC* 4BFFFF95  bl      sub_FFE3E690
+FFE3E700* 7C630734  extsh   r3, r3
+FFE3E704* 81810048  lwz     r12, 0x48(r1)
+FFE3E708* 30210040  addic   r1, r1, 0x40
+FFE3E70C* 7D8803A6  mtspr   LR, r12
+FFE3E710* 4E800020  blr
+FFE3E714d 00000000  .long   0x00000000
+
+glue_Gestalt:
+FFE3E718* 81820000  lwz     r12, 0x0(r2)                       ; TOC[+0] Gestalt
+FFE3E71C* 90410014  stw     r2, 0x14(r1)
+FFE3E720* 800C0000  lwz     r0, 0x0(r12)
+FFE3E724* 804C0004  lwz     r2, 0x4(r12)
+FFE3E728* 7C0903A6  mtspr   CTR, r0
+FFE3E72C* 4E800420  bctr
+FFE3E730d 00000000  .long   0x00000000
+FFE3E734d 000C8000  .long   0x000C8000
+FFE3E738d 00000000  .long   0x00000000
+
+glue_GetSharedLibrary:
+FFE3E73C* 81820008  lwz     r12, 0x8(r2)                       ; TOC[+8] GetSharedLibrary
+FFE3E740* 90410014  stw     r2, 0x14(r1)
+FFE3E744* 800C0000  lwz     r0, 0x0(r12)
+FFE3E748* 804C0004  lwz     r2, 0x4(r12)
+FFE3E74C* 7C0903A6  mtspr   CTR, r0
+FFE3E750* 4E800420  bctr
+FFE3E754d 00000000  .long   0x00000000
+FFE3E758d 000C8000  .long   0x000C8000
+FFE3E75Cd 00000000  .long   0x00000000
+FFE3E760d 10496E74  .long   0x10496E74
+FFE3E764d 65727275  .ascii  "erruptTreeTN"
+
+; ----------------------------------------------------------------------------
+; data section 1 (pidata), unpacked 18 bytes; addresses are offsets in the section;
+; relocated words are named (imports) or point into a section (code+X / data+X).
+; ----------------------------------------------------------------------------
++00000  00000060  -> code+60 = FFE3E6F0 __init
++00004  0000000C  -> data+C
++0000C  00000000  -> InterfaceLib::Gestalt
++00010  000000D0  -> code+D0 = FFE3E760
++00014  00000000  -> InterfaceLib::GetSharedLibrary
+; full unpacked image:
+00000000  00 00 00 60 00 00 00 0C 00 00 00 00 00 00 00 00  |...`............|
+00000010  00 00 00 D0 00 00 00 00                          |........|
+
+; exports (0):
+; imports (2):
+;      0 InterfaceLib             Gestalt                                  tvector
+;      1 InterfaceLib             GetSharedLibrary                         tvector

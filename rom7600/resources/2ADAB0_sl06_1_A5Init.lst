@@ -1,0 +1,323 @@
+; ============================================================================
+; ROM resource 'sl06' 1 %A5Init at FFEADAB0
+; ============================================================================
+; data at ROM 2ADAB0 (4A6 bytes), entry at 2ADF50, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 000004a6 0000057c
+; 68k code resource, disassembled from its start (entry points: offset 0, driver
+; header entries for DRVR, and executed addresses).
+;
+; Columns: address, flag, raw bytes, instruction, ; comment.
+;   flag '*' executed in the coverage run, ' ' reached by control flow,
+;   '?' decodes as code but neither executed nor reached, 'd' data.
+
+FFEADAB0d FFFF                 dc.b    $FF,$FF                           ; |..|
+FFEADAB2? 00000000             ori.b   #$0, D0
+FFEADAB6? 00100000             ori.b   #$0, (A0)
+FFEADABA? 00020000             ori.b   #$0, D2
+FFEADABE? 00000000             ori.b   #$0, D0
+FFEADAC2? 00000000             ori.b   #$0, D0
+FFEADAC6? 03480000             movep.l ($0,A0), D1
+FFEADACA? 00000000             ori.b   #$0, D0
+FFEADACE? 0358                 bchg    D1, (A0)+
+FFEADAD0? 00000000             ori.b   #$0, D0
+FFEADAD4? 00000000             ori.b   #$0, D0
+FFEADAD8? 4E56FFF4             link    A6, #-$c
+FFEADADC? 48E70138             movem.l D7/A2-A4, -(A7)
+FFEADAE0? 2079FFFFFFB8         movea.l $ffffffb8.l, A0
+FFEADAE6? 22680014             movea.l ($14,A0), A1
+FFEADAEA? 2051                 movea.l (A1), A0
+FFEADAEC? 2D48FFFC             move.l  A0, (-$4,A6)
+FFEADAF0? 24680064             movea.l ($64,A0), A2
+FFEADAF4? 2F09                 move.l  A1, -(A7)
+FFEADAF6? 7001                 moveq   #$1, D0
+FFEADAF8? 2F00                 move.l  D0, -(A7)
+FFEADAFA? 4879FFFFFF74         pea     $ffffff74.l
+FFEADB00? 2F09                 move.l  A1, -(A7)
+FFEADB02? 204A                 movea.l A2, A0
+FFEADB04? 4E90                 jsr     (A0)
+FFEADB06? 4FEF000C             lea     ($c,A7), A7
+FFEADB0A? 225F                 movea.l (A7)+, A1
+FFEADB0C? 2840                 movea.l D0, A4
+FFEADB0E? 2654                 movea.l (A4), A3
+FFEADB10? 49F9FFFFFF2C         lea     $ffffff2c.l, A4
+FFEADB16? 508C                 addq.l  #8, A4
+FFEADB18? 508B                 addq.l  #8, A3
+FFEADB1A? 7E00                 moveq   #$0, D7
+FFEADB1C? 6004                 bra     $ffeadb22
+FFEADB1E? 28DB                 move.l  (A3)+, (A4)+
+FFEADB20? 5287                 addq.l  #1, D7
+FFEADB22? 7007                 moveq   #$7, D0
+FFEADB24? B087                 cmp.l   D7, D0
+FFEADB26? 62F6                 bhi     $ffeadb1e
+FFEADB28? 206EFFFC             movea.l (-$4,A6), A0
+FFEADB2C? 24680054             movea.l ($54,A0), A2
+FFEADB30? 2F09                 move.l  A1, -(A7)
+FFEADB32? 7000                 moveq   #$0, D0
+FFEADB34? 2F00                 move.l  D0, -(A7)
+FFEADB36? 48781B92             pea     $1b92.w
+FFEADB3A? 4879FFFFFF74         pea     $ffffff74.l
+FFEADB40? 4879FFFFFE10         pea     $fffffe10.l
+FFEADB46? 4879FFFFFF2C         pea     $ffffff2c.l
+FFEADB4C? 2F2E0008             move.l  ($8,A6), -(A7)
+FFEADB50? 2F09                 move.l  A1, -(A7)
+FFEADB52? 204A                 movea.l A2, A0
+FFEADB54? 4E90                 jsr     (A0)
+FFEADB56? 4FEF001C             lea     ($1c,A7), A7
+FFEADB5A? 225F                 movea.l (A7)+, A1
+FFEADB5C? 2D400008             move.l  D0, ($8,A6)
+FFEADB60? 4CEE1C80FFE4         movem.l (-$1c,A6), D7/A2-A4
+FFEADB66? 4E5E                 unlk    A6
+FFEADB68? 4E75                 rts
+FFEADB6A? 4E56FFF4             link    A6, #-$c
+FFEADB6E? 48E70038             movem.l A2-A4, -(A7)
+FFEADB72? 2079FFFFFFB8         movea.l $ffffffb8.l, A0
+FFEADB78? 26680014             movea.l ($14,A0), A3
+FFEADB7C? 2453                 movea.l (A3), A2
+FFEADB7E? 286A004C             movea.l ($4c,A2), A4
+FFEADB82? 2F09                 move.l  A1, -(A7)
+FFEADB84? 7001                 moveq   #$1, D0
+FFEADB86? 2F00                 move.l  D0, -(A7)
+FFEADB88? 2F0B                 move.l  A3, -(A7)
+FFEADB8A? 204C                 movea.l A4, A0
+FFEADB8C? 4E90                 jsr     (A0)
+FFEADB8E? 508F                 addq.l  #8, A7
+FFEADB90? 225F                 movea.l (A7)+, A1
+FFEADB92? 2240                 movea.l D0, A1
+FFEADB94? 286A0050             movea.l ($50,A2), A4
+FFEADB98? 2D49FFF4             move.l  A1, (-$c,A6)
+FFEADB9C? 2F09                 move.l  A1, -(A7)
+FFEADB9E? 4879FFFFFEEC         pea     $fffffeec.l
+FFEADBA4? 48790000003A         pea     $3a.l
+FFEADBAA? 2F2EFFF4             move.l  (-$c,A6), -(A7)
+FFEADBAE? 2F0B                 move.l  A3, -(A7)
+FFEADBB0? 4E94                 jsr     (A4)
+FFEADBB2? 4FEF0010             lea     ($10,A7), A7
+FFEADBB6? 225F                 movea.l (A7)+, A1
+FFEADBB8? 2D40FFF4             move.l  D0, (-$c,A6)
+FFEADBBC? 2009                 move.l  A1, D0
+FFEADBBE? 4CEE1C00FFE8         movem.l (-$18,A6), A2-A4
+FFEADBC4? 4E5E                 unlk    A6
+FFEADBC6? 4E75                 rts
+FFEADBC8? 4E560000             link    A6, #$0
+FFEADBCC? 2079FFFFFFB8         movea.l $ffffffb8.l, A0
+FFEADBD2? 7000                 moveq   #$0, D0
+FFEADBD4? 2140000C             move.l  D0, ($c,A0)
+FFEADBD8? 4E5E                 unlk    A6
+FFEADBDA? 4E75                 rts
+FFEADBDC? 4E560000             link    A6, #$0
+FFEADBE0? 48E70108             movem.l D7/A4, -(A7)
+FFEADBE4? 2E2E000C             move.l  ($c,A6), D7
+FFEADBE8? 202E0008             move.l  ($8,A6), D0
+FFEADBEC? 6B58                 bmi     $ffeadc46
+FFEADBEE? 0C8000000003         cmpi.l  #$3, D0
+FFEADBF4? 6E50                 bgt     $ffeadc46
+FFEADBF6? D080                 add.l   D0, D0
+FFEADBF8? 303B0806             move.w  ($6,PC,D0.l), D0
+FFEADBFC? 4EFB0000             jmp     (PC,D0.w)
+FFEADC00d 000A                 dc.b    $00,$0A                           ; |..|
+FFEADC02? 0022002C             ori.b   #$2c, -(A2)
+FFEADC06? 003C2F2E             ori     #$2e, CCR
+FFEADC0A? 00102F07             ori.b   #$7, (A0)
+FFEADC0E? 4EB90000017A         jsr     $17a.l                            ; -> outside
+FFEADC14? 4EB900000252         jsr     $252.l                            ; -> outside
+FFEADC1A? 7000                 moveq   #$0, D0
+FFEADC1C? 504F                 addq.w  #8, A7
+FFEADC1E? 6028                 bra     $ffeadc48
+FFEADC20? 23C7FFFFFFB8         move.l  D7, $ffffffb8.l
+FFEADC26? 7000                 moveq   #$0, D0
+FFEADC28? 601E                 bra     $ffeadc48
+FFEADC2A? 4EB9000000F0         jsr     $f0.l                             ; -> outside
+FFEADC30? 41F900000042         lea     $42.l, A0
+FFEADC36? 2008                 move.l  A0, D0
+FFEADC38? 600E                 bra     $ffeadc48
+FFEADC3A? 4EB900000092         jsr     $92.l                             ; -> outside
+FFEADC40? 2840                 movea.l D0, A4
+FFEADC42? 200C                 move.l  A4, D0
+FFEADC44? 6002                 bra     $ffeadc48
+FFEADC46? 7000                 moveq   #$0, D0
+FFEADC48? 4CEE1080FFF8         movem.l (-$8,A6), D7/A4
+FFEADC4E? 4E5E                 unlk    A6
+FFEADC50? 4E75                 rts
+FFEADC52? 4E560000             link    A6, #$0
+FFEADC56? 48E77FF8             movem.l D1-D7/A0-A4, -(A7)
+FFEADC5A? 49FA01B2             lea     ($ffeade0e,PC), A4
+FFEADC5E? 302C0004             move.w  ($4,A4), D0
+FFEADC62? 5340                 subq.w  #1, D0
+FFEADC64? 6704                 beq     $ffeadc6a
+FFEADC66? 70FF                 moveq   #-$1, D0
+FFEADC68? 603A                 bra     $ffeadca4
+FFEADC6A? 266E0008             movea.l ($8,A6), A3
+FFEADC6E? 97D4                 suba.l  (A4), A3
+FFEADC70? 2F0B                 move.l  A3, -(A7)
+FFEADC72? 2F14                 move.l  (A4), -(A7)
+FFEADC74? 6100014C             bsr     $ffeaddc2
+FFEADC78? 202C0008             move.l  ($8,A4), D0
+FFEADC7C? 48740800             pea     (A4,D0.l)
+FFEADC80? 2F0B                 move.l  A3, -(A7)
+FFEADC82? 6100002E             bsr     $ffeadcb2
+FFEADC86? 504F                 addq.w  #8, A7
+FFEADC88? 202C000C             move.l  ($c,A4), D0
+FFEADC8C? 2F2E000C             move.l  ($c,A6), -(A7)
+FFEADC90? 48740800             pea     (A4,D0.l)
+FFEADC94? 2F0B                 move.l  A3, -(A7)
+FFEADC96? 2F2E0008             move.l  ($8,A6), -(A7)
+FFEADC9A? 610000AC             bsr     $ffeadd48
+FFEADC9E? 4FEF0010             lea     ($10,A7), A7
+FFEADCA2? 7000                 moveq   #$0, D0
+FFEADCA4? 4EB900000242         jsr     $242.l                            ; -> outside
+FFEADCAA? 4CDF1FFE             movem.l (A7)+, D1-D7/A0-A4
+FFEADCAE? 4E5E                 unlk    A6
+FFEADCB0? 4E75                 rts
+FFEADCB2? 226F0004             movea.l ($4,A7), A1
+FFEADCB6? 206F0008             movea.l ($8,A7), A0
+FFEADCBA? 48E71800             movem.l D3-D4, -(A7)
+FFEADCBE? 7601                 moveq   #$1, D3
+FFEADCC0? 7200                 moveq   #$0, D1
+FFEADCC2? 1218                 move.b  (A0)+, D1
+FFEADCC4? 2401                 move.l  D1, D2
+FFEADCC6? 0241000F             andi.w  #$f, D1
+FFEADCCA? 660A                 bne     $ffeadcd6
+FFEADCCC? 61000030             bsr     $ffeadcfe
+FFEADCD0? 2200                 move.l  D0, D1
+FFEADCD2? 6724                 beq     $ffeadcf8
+FFEADCD4? 6002                 bra     $ffeadcd8
+FFEADCD6? D241                 add.w   D1, D1
+FFEADCD8? 024200F0             andi.w  #$f0, D2
+FFEADCDC? 6608                 bne     $ffeadce6
+FFEADCDE? 6100001E             bsr     $ffeadcfe
+FFEADCE2? 2400                 move.l  D0, D2
+FFEADCE4? 6002                 bra     $ffeadce8
+FFEADCE6? E64A                 lsr.w   #3, D2
+FFEADCE8? D3C2                 adda.l  D2, A1
+FFEADCEA? 2801                 move.l  D1, D4
+FFEADCEC? 12D8                 move.b  (A0)+, (A1)+
+FFEADCEE? 5384                 subq.l  #1, D4
+FFEADCF0? 66FA                 bne     $ffeadcec
+FFEADCF2? 5383                 subq.l  #1, D3
+FFEADCF4? 66F2                 bne     $ffeadce8
+FFEADCF6? 60C6                 bra     $ffeadcbe
+FFEADCF8d 4CDF00184E75         dc.b    $4C,$DF,$00,$18,$4E,$75           ; |L...Nu|
+FFEADCFE? 7000                 moveq   #$0, D0
+FFEADD00? 1018                 move.b  (A0)+, D0
+FFEADD02? 6A42                 bpl     $ffeadd46
+FFEADD04? 08000006             btst    #$6, D0
+FFEADD08? 6734                 beq     $ffeadd3e
+FFEADD0A? 08000005             btst    #$5, D0
+FFEADD0E? 6720                 beq     $ffeadd30
+FFEADD10? 08000004             btst    #$4, D0
+FFEADD14? 670A                 beq     $ffeadd20
+FFEADD16? 61E6                 bsr     $ffeadcfe
+FFEADD18? 2600                 move.l  D0, D3
+FFEADD1A? 61E2                 bsr     $ffeadcfe
+FFEADD1C? C143                 exg     D0, D3
+FFEADD1E? 4E75                 rts
+FFEADD20? 1018                 move.b  (A0)+, D0
+FFEADD22? E180                 asl.l   #8, D0
+FFEADD24? 1018                 move.b  (A0)+, D0
+FFEADD26? E180                 asl.l   #8, D0
+FFEADD28? 1018                 move.b  (A0)+, D0
+FFEADD2A? E180                 asl.l   #8, D0
+FFEADD2C? 1018                 move.b  (A0)+, D0
+FFEADD2E? 4E75                 rts
+FFEADD30? 0200001F             andi.b  #$1f, D0
+FFEADD34? E180                 asl.l   #8, D0
+FFEADD36? 1018                 move.b  (A0)+, D0
+FFEADD38? E180                 asl.l   #8, D0
+FFEADD3A? 1018                 move.b  (A0)+, D0
+FFEADD3C? 4E75                 rts
+FFEADD3E? 0200003F             andi.b  #$3f, D0
+FFEADD42? E180                 asl.l   #8, D0
+FFEADD44? 1018                 move.b  (A0)+, D0
+FFEADD46? 4E75                 rts
+FFEADD48? 4E56FFFC             link    A6, #-$4
+FFEADD4C? 222E0008             move.l  ($8,A6), D1
+FFEADD50? 226E000C             movea.l ($c,A6), A1
+FFEADD54? 206E0010             movea.l ($10,A6), A0
+FFEADD58? 7401                 moveq   #$1, D2
+FFEADD5A? 7000                 moveq   #$0, D0
+FFEADD5C? 1018                 move.b  (A0)+, D0
+FFEADD5E? 670C                 beq     $ffeadd6c
+FFEADD60? 6A26                 bpl     $ffeadd88
+FFEADD62? 08800007             bclr    #$7, D0
+FFEADD66? E188                 lsl.l   #8, D0
+FFEADD68? 1018                 move.b  (A0)+, D0
+FFEADD6A? 601C                 bra     $ffeadd88
+FFEADD6C? 1018                 move.b  (A0)+, D0
+FFEADD6E? 674E                 beq     $ffeaddbe
+FFEADD70? 6A0E                 bpl     $ffeadd80
+FFEADD72? E188                 lsl.l   #8, D0
+FFEADD74? 1018                 move.b  (A0)+, D0
+FFEADD76? E188                 lsl.l   #8, D0
+FFEADD78? 1018                 move.b  (A0)+, D0
+FFEADD7A? E188                 lsl.l   #8, D0
+FFEADD7C? 1018                 move.b  (A0)+, D0
+FFEADD7E? 6008                 bra     $ffeadd88
+FFEADD80? 2400                 move.l  D0, D2
+FFEADD82? 6100FF7A             bsr     $ffeadcfe
+FFEADD86? C142                 exg     D0, D2
+FFEADD88? D080                 add.l   D0, D0
+FFEADD8A? D3C0                 adda.l  D0, A1
+FFEADD8C? 2D40FFFC             move.l  D0, (-$4,A6)
+FFEADD90? 2011                 move.l  (A1), D0
+FFEADD92? 6F1C                 ble     $ffeaddb0
+FFEADD94? 4AAE0014             tst.l   ($14,A6)
+FFEADD98? 6716                 beq     $ffeaddb0
+FFEADD9A? 246E0014             movea.l ($14,A6), A2
+FFEADD9E? D5C0                 adda.l  D0, A2
+FFEADDA0? 0C524EF9             cmpi.w  #$4ef9, (A2)
+FFEADDA4? 6704                 beq     $ffeaddaa
+FFEADDA6? A9FF                 _Debugger                                 ; A-line trap A9FF
+FFEADDA8? 6008                 bra     $ffeaddb2
+FFEADDAAd 202A00026002         dc.b    $20,$2A,$00,$02,$60,$02           ; | *..`.|
+FFEADDB0? D081                 add.l   D1, D0
+FFEADDB2? 2280                 move.l  D0, (A1)
+FFEADDB4? 202EFFFC             move.l  (-$4,A6), D0
+FFEADDB8? 5382                 subq.l  #1, D2
+FFEADDBA? 66CE                 bne     $ffeadd8a
+FFEADDBC? 609A                 bra     $ffeadd58
+FFEADDBEd 4E5E4E75             dc.b    $4E,$5E,$4E,$75                   ; |N^Nu|
+FFEADDC2? 7400                 moveq   #$0, D2
+FFEADDC4? 205F                 movea.l (A7)+, A0
+FFEADDC6? 201F                 move.l  (A7)+, D0
+FFEADDC8? 225F                 movea.l (A7)+, A1
+FFEADDCA? 6728                 beq     $ffeaddf4
+FFEADDCC? 3209                 move.w  A1, D1
+FFEADDCE? 02410003             andi.w  #$3, D1
+FFEADDD2? 6708                 beq     $ffeadddc
+FFEADDD4? 12C2                 move.b  D2, (A1)+
+FFEADDD6? 5380                 subq.l  #1, D0
+FFEADDD8? 66F2                 bne     $ffeaddcc
+FFEADDDA? 6018                 bra     $ffeaddf4
+FFEADDDC? 2200                 move.l  D0, D1
+FFEADDDE? E489                 lsr.l   #2, D1
+FFEADDE0? 6706                 beq     $ffeadde8
+FFEADDE2? 22C2                 move.l  D2, (A1)+
+FFEADDE4? 5381                 subq.l  #1, D1
+FFEADDE6? 66FA                 bne     $ffeadde2
+FFEADDE8? 02400003             andi.w  #$3, D0
+FFEADDEC? 6002                 bra     $ffeaddf0
+FFEADDEE? 12C2                 move.b  D2, (A1)+
+FFEADDF0? 51C8FFFC             dbra    D0, $ffeaddee
+FFEADDF4? 4ED0                 jmp     (A0)
+FFEADDF6d 0000190D0B150303     dc.b    $00,$00,$19,$0D,$0B,$15,$03,$03,$16,$16,$03,$14,$24,$06,$08,$3A ; |............$..:|
+FFEADE06d 000080B00E080000     dc.b    $00,$00,$80,$B0,$0E,$08,$00,$00,$00,$00,$01,$F0,$00,$01,$00,$00 ; |................|
+FFEADE16d 0000001400000120     dc.b    $00,$00,$00,$14,$00,$00,$01,$20,$00,$00,$00,$00,$02,$00,$FF,$FF ; |....... ........|
+FFEADE26d FE2000F0010E034A     dc.b    $FE,$20,$00,$F0,$01,$0E,$03,$4A,$62,$5A,$AA,$B2,$BA,$C2,$CA,$D2 ; |. .....JbZ......|
+FFEADE36d DAE2EAF2FA10F002     dc.b    $DA,$E2,$EA,$F2,$FA,$10,$F0,$02,$28,$01,$02,$01,$0A,$01,$12,$01 ; |........(.......|
+FFEADE46d 1A0122012A013201     dc.b    $1A,$01,$22,$01,$2A,$01,$32,$01,$3A,$01,$42,$01,$4A,$01,$52,$01 ; |..".*.2.:.B.J.R.|
+FFEADE56d 5A0162016A017201     dc.b    $5A,$01,$62,$01,$6A,$01,$72,$01,$7A,$01,$82,$01,$8A,$01,$92,$01 ; |Z.b.j.r.z.......|
+FFEADE66d 9A01A201AA01B201     dc.b    $9A,$01,$A2,$01,$AA,$01,$B2,$01,$BA,$01,$C2,$01,$CA,$01,$D2,$01 ; |................|
+FFEADE76d DA01E201EA01F201     dc.b    $DA,$01,$E2,$01,$EA,$01,$F2,$01,$FA,$02,$02,$02,$0A,$02,$12,$02 ; |................|
+FFEADE86d 1A0222022A023202     dc.b    $1A,$02,$22,$02,$2A,$02,$32,$02,$3A,$60,$15,$01,$00,$01,$00,$61 ; |..".*.2.:`.....a|
+FFEADE96d 70706C2453657269     dc.b    $70,$70,$6C,$24,$53,$65,$72,$69,$61,$6C,$44,$72,$69,$76,$65,$72 ; |ppl$SerialDriver|
+FFEADEA6d 0205FFFFFEEC0001     dc.b    $02,$05,$FF,$FF,$FE,$EC,$00,$01,$05,$03,$20,$F0,$04,$02,$FF,$FF ; |.......... .....|
+FFEADEB6d FEECFFFFFF2C0001     dc.b    $FE,$EC,$FF,$FF,$FF,$2C,$00,$01,$07,$52,$10,$F0,$02,$07,$02,$4A ; |.....,...R.....J|
+FFEADEC6d 024A024A024A024A     dc.b    $02,$4A,$02,$4A,$02,$4A,$02,$4A,$02,$4A,$02,$4A,$00,$F0,$01,$08 ; |.J.J.J.J.J.J....|
+FFEADED6d 036A727A828A929A     dc.b    $03,$6A,$72,$7A,$82,$8A,$92,$9A,$A2,$8C,$01,$00,$01,$00,$61,$70 ; |.jrz..........ap|
+FFEADEE6d 706C245365726961     dc.b    $70,$6C,$24,$53,$65,$72,$69,$61,$6C,$44,$72,$76,$72,$43,$6C,$61 ; |pl$SerialDrvrCla|
+FFEADEF6d 737332FFFFFF7400     dc.b    $73,$73,$32,$FF,$FF,$FF,$74,$00,$01,$05,$03,$22,$FF,$FF,$FF,$74 ; |ss2...t...."...t|
+FFEADF06d D501200100212466     dc.b    $D5,$01,$20,$01,$00,$21,$24,$66,$73,$65,$74,$32,$FF,$FF,$FF,$BE ; |.. ..!$fset2....|
+FFEADF16d 0001051522FFFFFF     dc.b    $00,$01,$05,$15,$22,$FF,$FF,$FF,$BE,$00,$01,$05,$1D,$22,$FF,$FF ; |...."........"..|
+FFEADF26d FFBE0001051E1000     dc.b    $FF,$BE,$00,$01,$05,$1E,$10,$00,$80,$00,$00,$02,$36,$15,$07,$04 ; |............6...|
+FFEADF36d 0400020F19071707     dc.b    $04,$00,$02,$0F,$19,$07,$17,$07,$07,$00,$00,$00,$00,$00,$03,$5E ; |...............^|
+FFEADF46d 6D7077646B636B63     dc.b    $6D,$70,$77,$64,$6B,$63,$6B,$63,$6B,$63,$78,$00,$00,$00,$00,$00 ; |mpwdkckckcx.....|

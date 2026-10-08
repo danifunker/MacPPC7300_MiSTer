@@ -1,0 +1,138 @@
+Coverage run summary
+============================================================================
+machine pm7300 rom /mnt/c/Temp/mistercore/PPC_Mac/ppctest/runs/my7300.rom ram 32 MB pvr 00040303
+instructions 1000000000 steps 1001577347 fetch_faults 17 unknown_fetch 0 device_accesses 1650037
+rom_words_executed 32821 ram_words_executed 16860
+end pc 68063E30 msr 0000D072 (instruction limit)
+68k instructions executed (distinct addresses): 32866
+
+Per listing:
+  PowerPC exception vectors and boot code (FFF00000)           words 12288, code 2377, executed 1053
+  NanoKernel (FFF10000)                                        words 16384, code 5336, executed 1888
+  HWInit / diagnostics (FFF20000)                              words 16384, code 1690, executed 323
+  Open Firmware 1.0.5 bundle (FFF30000)                        words 32768, code 4681, executed 246
+  Open Firmware FCode                                          10 images, 2386 token definitions
+  Open Firmware runtime image                                  words 246784, executed 11601
+  Open Firmware dictionary                                     2987 headers, 33 wordlists
+  68k emulator (runs at 68060000)                              words 32768, code 23108, executed 5225
+  68k emulator opcode table                                    65536 entries, 3865 executed
+  68k ROM: header and code (FFC00000)                          instructions 254202 (executed 32238, reached 64412, unverified 157552)
+  ROM resource 'CDEF' 0 Main at FFCDA8C0                       instructions 477 (executed 0, reached 89, unverified 388)
+  ROM resource 'CDEF' 1 Main at FFCDAE40                       instructions 846 (executed 0, reached 26, unverified 820)
+  ROM resource 'DRVR' 48 .EDisk at FFCDD5F0                    instructions 693 (executed 55, reached 196, unverified 442)
+  ROM resource 'WDEF' 0 Main at FFCDEC00                       instructions 1285 (executed 0, reached 126, unverified 1159)
+  ROM resource 'WDEF' 1 Main at FFCDFCB0                       instructions 402 (executed 0, reached 95, unverified 307)
+  ROM resource 'PACK' 0 Main at FFCE02A0                       instructions 1592 (executed 0, reached 15, unverified 1577)
+  ROM resource 'LDEF' 0 Main at FFCE14B0                       instructions 130 (executed 0, reached 130, unverified 0)
+  ROM resource 'LDEF' 19 Main at FFCE1650                      instructions 186 (executed 0, reached 186, unverified 0)
+  ROM resource 'PACK' 4 Main at FFCE18B0                       instructions 2890 (executed 0, reached 19, unverified 2871)
+  ROM resource 'PACK' 5 Main at FFCE3960                       instructions 1310 (executed 0, reached 175, unverified 1135)
+  ROM resource 'PACK' 7 Main at FFCE4BA0                       instructions 503 (executed 0, reached 503, unverified 0)
+  ROM resource 'PACK' 8 AevtMgr at FFCE5120                    instructions 7525 (executed 0, reached 2, unverified 7523)
+  ROM resource 'PACK' 12 Main at FFCEBC20                      instructions 4170 (executed 0, reached 10, unverified 4160)
+  ROM resource 'PACK' 13 Main at FFCEF120                      instructions 4596 (executed 0, reached 2, unverified 4594)
+  ROM resource 'proc' -5728 Main at FFCF2A40                   instructions 590 (executed 0, reached 590, unverified 0)
+  ROM resource 'proc' -5727 Main at FFCF3200                   instructions 6 (executed 0, reached 6, unverified 0)
+  ROM resource 'dimg' -16385 Main at FFCF3250                  instructions 1772 (executed 0, reached 8, unverified 1764)
+  ROM resource 'WDEF' 126 Main at FFCF4790                     instructions 60 (executed 0, reached 60, unverified 0)
+  ROM resource 'PACK' 15 Main at FFCF4880                      instructions 4092 (executed 0, reached 2, unverified 4090)
+  ROM resource 'DRVR' 4 .Sony at FFCF7A50                      instructions 7835 (executed 384, reached 761, unverified 6690)
+  ROM resource 'CDEF' 62  at FFCFE210                          instructions 412 (executed 0, reached 412, unverified 0)
+  ROM resource 'proc' -16498  at FFCFE6B0                      instructions 2175 (executed 0, reached 170, unverified 2005)
+  ROM resource 'proc' -16497  at FFD00140                      instructions 3642 (executed 0, reached 6, unverified 3636)
+  ROM resource 'sift' -16557  at FFD02DC0                      instructions 1030 (executed 0, reached 98, unverified 932)
+  ROM resource 'sift' -16558  at FFD03AE0                      instructions 1029 (executed 0, reached 98, unverified 931)
+  ROM resource 'sift' -16559  at FFD04800                      instructions 700 (executed 0, reached 98, unverified 602)
+  ROM resource 'sift' -16560  at FFD05090                      instructions 285 (executed 0, reached 56, unverified 229)
+  ROM resource 'sift' -16561  at FFD053F0                      instructions 2997 (executed 0, reached 100, unverified 2897)
+  ROM resource 'sift' -16566  at FFD07FF0                      instructions 745 (executed 0, reached 98, unverified 647)
+  ROM resource 'DRVR' 3 .Sound at FFD08EB0                     instructions 752 (executed 20, reached 390, unverified 342)
+  ROM resource 'DRVR' -16495 .AppleSoundInput at FFD098F0      instructions 1299 (executed 0, reached 364, unverified 935)
+  ROM resource 'DRVR' -16500 .AppleSoundInput at FFD0ADB0      instructions 1570 (executed 0, reached 421, unverified 1149)
+  ROM resource 'DRVR' -16501 .AppleSoundInput at FFD0C700      instructions 3376 (executed 0, reached 2441, unverified 935)
+  ROM resource 'sift' -16497  at FFD0F230                      instructions 1267 (executed 0, reached 98, unverified 1169)
+  ROM resource 'sift' -16569  at FFD10250                      instructions 1708 (executed 0, reached 98, unverified 1610)
+  ROM resource 'sift' -16501  at FFD11940                      instructions 1923 (executed 0, reached 115, unverified 1808)
+  ROM resource 'adio' -16570  at FFD13270                      instructions 284 (executed 0, reached 46, unverified 238)
+  ROM resource 'GARY' 1 Main at FFD139C0                       instructions 412 (executed 0, reached 83, unverified 329)
+  PEF CodeFragmentMgr                                          code words 17467, executed 5486
+  PEF MixedMode                                                code words 4458, executed 699
+  PEF ProcessMgrSupport                                        code words 569, executed 0
+  PEF InterfaceLib                                             code words 39012, executed 781
+  PEF PrivateInterfaceLib                                      code words 5039, executed 79
+  PEF MathLib                                                  code words 25018, executed 0
+  PEF StdCLib                                                  code words 17105, executed 896
+  PEF NQD                                                      code words 53152, executed 0
+  PEF FMSwapFont                                               code words 6200, executed 0
+  PEF StdText                                                  code words 7723, executed 0
+  PEF Resources                                                code words 11176, executed 0
+  PEF QuickdrawText                                            code words 848, executed 0
+  PEF MemoryMgr                                                code words 10314, executed 0
+  PEF NameRegistryLib                                          code words 2173, executed 903
+  PEF DriverServicesLib                                        code words 5850, executed 1506
+  PEF VideoServicesLib                                         code words 1116, executed 433
+  PEF PCILib                                                   code words 339, executed 31
+  PEF MotherBoardHAL                                           code words 56, executed 45
+  PEF QuickdrawLib                                             code words 191, executed 0
+  ROM resource 'DRVR' 52 .BCScreen at FFE3ED60                 instructions 219 (executed 0, reached 141, unverified 78)
+  ROM resource 'sl00' 0  at FFE3F160                           instructions 0 (executed 0, reached 0, unverified 0)
+  ROM resource 'sl00' 1 %A5Init at FFE3F200                    instructions 285 (executed 0, reached 0, unverified 285)
+  ROM resource 'sl00' 2 Main at FFE3F6A0                       instructions 166 (executed 0, reached 0, unverified 166)
+  ROM resource 'sl01' 0  at FFE3FA40                           instructions 0 (executed 0, reached 0, unverified 0)
+  PEF FontDispatch                                             code words 28674, executed 0
+  PEF DriverLoaderLib                                          code words 4272, executed 0
+  PEF InterruptTreeTNT                                         code words 3931, executed 1024
+  PEF ndrv100                                                  code words 9396, executed 4275
+  PEF ndrv99                                                   code words 3663, executed 0
+  PEF ndrv101                                                  code words 9620, executed 0
+  PEF NativeNub                                                code words 28888, executed 0
+  ROM resource 'sl01' 1 %A5Init at FFEA3920                    instructions 284 (executed 0, reached 0, unverified 284)
+  ROM resource 'sl01' 2 Main at FFEA3E40                       instructions 1205 (executed 0, reached 0, unverified 1205)
+  ROM resource 'sl02' 0  at FFEA4DB0                           instructions 0 (executed 0, reached 0, unverified 0)
+  ROM resource 'sl02' 1 %A5Init at FFEA4F60                    instructions 364 (executed 0, reached 0, unverified 364)
+  ROM resource 'sl02' 2 Main at FFEA55B0                       instructions 2307 (executed 0, reached 0, unverified 2307)
+  ROM resource 'sl04' 0  at FFEA75D0                           instructions 0 (executed 0, reached 0, unverified 0)
+  ROM resource 'sl04' 1 %A5Init at FFEA7860                    instructions 344 (executed 0, reached 0, unverified 344)
+  ROM resource 'sl04' 2 Main at FFEA7F40                       instructions 5548 (executed 0, reached 0, unverified 5548)
+  ROM resource 'sl05' 0  at FFEAC910                           instructions 0 (executed 0, reached 0, unverified 0)
+  ROM resource 'sl05' 1 %A5Init at FFEAC9C0                    instructions 285 (executed 0, reached 0, unverified 285)
+  ROM resource 'sl05' 2 Main at FFEACE00                       instructions 661 (executed 0, reached 0, unverified 661)
+  ROM resource 'sl06' 0  at FFEAD850                           instructions 0 (executed 0, reached 0, unverified 0)
+  ROM resource 'sl06' 1 %A5Init at FFEADAD0                    instructions 284 (executed 0, reached 0, unverified 284)
+  ROM resource 'sl06' 2 Main at FFEADFA0                       instructions 4945 (executed 0, reached 0, unverified 4945)
+  ROM resource 'sl07' 0  at FFEB2030                           instructions 0 (executed 0, reached 0, unverified 0)
+  ROM resource 'sl07' 1 %A5Init at FFEB20D0                    instructions 285 (executed 0, reached 0, unverified 285)
+  ROM resource 'sl07' 2 Main at FFEB2500                       instructions 166 (executed 0, reached 0, unverified 166)
+  PEF Native 4.3                                               code words 18834, executed 4473
+  ROM resource 'gcko' 43 Main at FFEC5AC0                      instructions 154 (executed 0, reached 36, unverified 118)
+  PEF ndrv505                                                  code words 3791, executed 984
+  ROM resource 'daud' -16600  at FFEC9D10                      instructions 460 (executed 0, reached 46, unverified 414)
+
+RAM code that is a copy of ROM code (matched byte for byte; execution in the copy
+counts as execution of the ROM words in the listings):
+  RAM 000471A0-00049CBF  <- ROM 26BDD0 (resource 'ndrv' 100  (PEF)), first executed at instruction 117842633
+  RAM 0004ADA4-0004ED57  <- ROM 26F9D4 (resource 'ndrv' 100  (PEF)), first executed at instruction 118028767
+  RAM 0004F3B8-0004F7C7  <- ROM 273FE8 (resource 'ndrv' 100  (PEF)), first executed at instruction 120070970
+  RAM 000500AC-0005046F  <- ROM 274CDC (resource 'ndrv' 100  (PEF)), first executed at instruction 117842660
+  RAM 00052B30-00052CF7  <- ROM 2C6A60 (resource 'ndrv' 505  (PEF)), first executed at instruction 101441840
+  RAM 000531AC-000531FB  <- ROM 2C70DC (resource 'ndrv' 505  (PEF)), first executed at instruction 101442209
+  RAM 000539B4-00053B67  <- ROM 2C78E4 (resource 'ndrv' 505  (PEF)), first executed at instruction 101304159
+  RAM 00054218-000548EB  <- ROM 2C8148 (resource 'ndrv' 505  (PEF)), first executed at instruction 101304188
+  RAM 00054EF0-00055B3B  <- ROM 2C8E20 (resource 'ndrv' 505  (PEF)), first executed at instruction 101038400
+
+Where code ran (first instruction count, effective page, physical page, MSR low 16 bits):
+see pages.txt in the coverage directory; summary by kind:
+  MSR 0040  EA=PA                           4 pages, first at instruction 0
+  MSR 0050  EA=PA                           4 pages, first at instruction 84
+  MSR 2040  EA=PA                           1 pages, first at instruction 69697
+  MSR 1040  EA=PA                          14 pages, first at instruction 1436993
+  MSR 3070  EA=PA                           1 pages, first at instruction 1480568
+  MSR 3070  EA FF8.. -> PA 004..           43 pages, first at instruction 1501035
+  MSR 3060  EA FF8.. -> PA 004..            2 pages, first at instruction 27470857
+  MSR 1050  EA=PA                           5 pages, first at instruction 28359138
+  MSR D072  EA 680.. -> PA FFF..          134 pages, first at instruction 28359187
+  MSR D072  EA FF8.. -> PA 004..           20 pages, first at instruction 32088861
+  MSR D072  EA=PA                          99 pages, first at instruction 72853704
+  MSR 3040  EA=PA                           1 pages, first at instruction 73242895
+  MSR F072  EA=PA                          19 pages, first at instruction 73242938
+  MSR F072  EA 680.. -> PA FFF..            2 pages, first at instruction 73243502

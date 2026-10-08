@@ -1,0 +1,20 @@
+; ============================================================================
+; ROM resource 'sl07' 0  at FFEB2030
+; ============================================================================
+; data at ROM 2B2030 (7C bytes), entry at 2B20A0, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 0000007c 00000594
+; 68k code resource, disassembled from its start (entry points: offset 0, driver
+; header entries for DRVR, and executed addresses).
+;
+; Columns: address, flag, raw bytes, instruction, ; comment.
+;   flag '*' executed in the coverage run, ' ' reached by control flow,
+;   '?' decodes as code but neither executed nor reached, 'd' data.
+
+FFEB2030d 00000080000000E4     dc.b    $00,$00,$00,$80,$00,$00,$00,$E4,$00,$00,$00,$60,$00,$00,$00,$20 ; |...........`... | library descriptor
+FFEB2040d 00003F3C0003A9F0     dc.b    $00,$00,$3F,$3C,$00,$03,$A9,$F0,$00,$00,$FF,$FF,$00,$00,$00,$00 ; |..?<............|
+FFEB2050d 0001A9F00000012C     dc.b    $00,$01,$A9,$F0,$00,$00,$01,$2C,$00,$01,$A9,$F0,$00,$00,$00,$28 ; |.......,.......(|
+FFEB2060d 0002A9F000000028     dc.b    $00,$02,$A9,$F0,$00,$00,$00,$28,$00,$02,$A9,$F0,$00,$00,$00,$30 ; |.......(.......0|
+FFEB2070d 0002A9F00000003C     dc.b    $00,$02,$A9,$F0,$00,$00,$00,$3C,$00,$02,$A9,$F0,$00,$00,$00,$48 ; |.......<.......H|
+FFEB2080d 0002A9F000000088     dc.b    $00,$02,$A9,$F0,$00,$00,$00,$88,$00,$02,$A9,$F0,$00,$00,$00,$CA ; |................|
+FFEB2090d 0002A9F000000182     dc.b    $00,$02,$A9,$F0,$00,$00,$01,$82,$00,$02,$A9,$F0,$00,$00,$02,$3E ; |...............>|
+FFEB20A0d 7800000000000000     dc.b    $78,$00,$00,$00,$00,$00,$00,$00,$00,$2B,$1F,$F0 ; |x........+..|

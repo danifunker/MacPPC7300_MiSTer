@@ -1,0 +1,11 @@
+; ROM resource 'thng' -16600 DAV Audio Component at FFECA300
+; data at ROM 2CA300 (52 bytes), entry at 2CA350, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 00000052 000005cc
+
+; component description: type 'daud' subtype 'dav ' manufacturer 'appl'
+FFECA300  64 61 75 64 64 61 76 20 61 70 70 6C 80 00 00 00  |dauddav appl....|
+FFECA310  00 00 00 00 64 61 75 64 BF 28 53 54 52 20 BF 28  |....daud.(STR .(|
+FFECA320  53 54 52 20 BF 28 00 00 00 00 00 00 00 00 00 00  |STR .(..........|
+FFECA330  00 00 00 08 BF 28 00 00 00 01 80 00 00 00 64 61  |.....(........da|
+FFECA340  75 64 BF 28 00 01 6B 63 6B 63 6B 63 6B 63 6B 63  |ud.(..kckckckckc|
+FFECA350  78 00                                            |x.|

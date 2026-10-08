@@ -1,0 +1,6 @@
+; ROM resource 'libi' -20004  at FFEA7590
+; data at ROM 2A7590 (1C bytes), entry at 2A75A0, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 0000001c 0000052c
+
+FFEA7590  00 00 00 00 00 00 00 00 00 00 00 01 FF FF FF 2C  |...............,|
+FFEA75A0  78 00 00 00 00 00 00 00 00 23 FF C0              |x........#..|

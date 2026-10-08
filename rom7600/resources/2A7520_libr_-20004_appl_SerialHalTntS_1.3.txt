@@ -1,0 +1,11 @@
+; ROM resource 'libr' -20004 appl$SerialHalTntS,1.3 at FFEA7520
+; data at ROM 2A7520 (6C bytes), entry at 23FFA0, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 0000006c 00000524
+
+FFEA7520  61 70 70 6C 24 53 65 72 69 61 6C 48 61 6C 54 6E  |appl$SerialHalTn|
+FFEA7530  74 53 2C 31 2E 33 00 00 73 6C 30 34 01 10 01 30  |tS,1.3..sl04...0|
+FFEA7540  80 00 00 00 00 00 00 00 00 00 00 00 06 06 00 01  |................|
+FFEA7550  00 00 00 0A 01 30 01 30 61 70 70 6C 24 53 65 72  |.....0.0appl$Ser|
+FFEA7560  69 61 6C 48 61 6C 54 6E 74 53 00 00 00 01 61 70  |ialHalTntS....ap|
+FFEA7570  70 6C 24 53 65 72 69 61 6C 48 61 6C 53 63 63 00  |pl$SerialHalScc.|
+FFEA7580  78 00 00 00 00 00 00 00 00 23 FF A0              |x........#..|

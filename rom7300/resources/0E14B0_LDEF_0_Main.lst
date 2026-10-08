@@ -1,0 +1,157 @@
+; ============================================================================
+; ROM resource 'LDEF' 0 Main at FFCE14B0
+; ============================================================================
+; data at ROM 0E14B0 (17C bytes), entry at 0E1620, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 0000017c 00000244
+; 68k code resource, disassembled from its start (entry points: offset 0, driver
+; header entries for DRVR, and executed addresses).
+;
+; Columns: address, flag, raw bytes, instruction, ; comment.
+;   flag '*' executed in the coverage run, ' ' reached by control flow,
+;   '?' decodes as code but neither executed nor reached, 'd' data.
+
+FFCE14B0  600C                 bra     loc_FFCE14BE
+FFCE14B2d 0000044C44454600     dc.b    $00,$00,$04,$4C,$44,$45,$46,$00,$00,$00,$00,$02 ; |...LDEF.....|
+loc_FFCE14BE:
+FFCE14BE  4E560000             link    A6, #$0
+FFCE14C2  48E71F38             movem.l D3-D7/A2-A4, -(A7)
+FFCE14C6  206E0008             movea.l ($8,A6), A0
+FFCE14CA  2650                 movea.l (A0), A3
+FFCE14CC  302E001A             move.w  ($1a,A6), D0
+FFCE14D0  5340                 subq.w  #1, D0
+FFCE14D2  6734                 beq     loc_FFCE1508
+FFCE14D4  5340                 subq.w  #1, D0
+FFCE14D6  6722                 beq     loc_FFCE14FA
+FFCE14D8  6A12                 bpl     loc_FFCE14EC
+FFCE14DA  514F                 subq.w  #8, A7
+FFCE14DC  2F0F                 move.l  A7, -(A7)
+FFCE14DE  A88B                 _GetFontInfo                              ; A-line trap A88B
+FFCE14E0  3757000C             move.w  (A7), ($c,A3)
+FFCE14E4  377C0004000E         move.w  #$4, ($e,A3)
+FFCE14EA  504F                 addq.w  #8, A7
+loc_FFCE14EC:
+FFCE14EC  4CDF1CF8             movem.l (A7)+, D3-D7/A2-A4
+FFCE14F0  4E5E                 unlk    A6
+FFCE14F2  205F                 movea.l (A7)+, A0
+FFCE14F4  DEFC0014             adda.w  #$14, A7
+FFCE14F8  4ED0                 jmp     (A0)
+loc_FFCE14FA:
+FFCE14FA  08B800070938         bclr    #$7, $938.w                       ; HiliteMode
+FFCE1500  2F2E0014             move.l  ($14,A6), -(A7)
+FFCE1504  A8A4                 _InverRect                                ; A-line trap A8A4
+FFCE1506  60E4                 bra     loc_FFCE14EC
+loc_FFCE1508:
+FFCE1508  286E0014             movea.l ($14,A6), A4
+FFCE150C  4A380BAD             tst.b   $bad.w
+FFCE1510  6714                 beq     loc_FFCE1526
+FFCE1512  302C0006             move.w  ($6,A4), D0
+FFCE1516  906B000E             sub.w   ($e,A3), D0
+FFCE151A  3F00                 move.w  D0, -(A7)
+FFCE151C  3014                 move.w  (A4), D0
+FFCE151E  D06B000C             add.w   ($c,A3), D0
+FFCE1522  3F00                 move.w  D0, -(A7)
+FFCE1524  600C                 bra     loc_FFCE1532
+loc_FFCE1526:
+FFCE1526  2F14                 move.l  (A4), -(A7)
+FFCE1528  2F2B000C             move.l  ($c,A3), -(A7)
+FFCE152C  486F0004             pea     ($4,A7)
+FFCE1530  A87E                 _AddPt                                    ; A-line trap A87E
+loc_FFCE1532:
+FFCE1532  A893                 _MoveTo                                   ; A-line trap A893
+FFCE1534  A89E                 _PenNormal                                ; A-line trap A89E
+FFCE1536  246B0050             movea.l ($50,A3), A2
+FFCE153A  204A                 movea.l A2, A0
+FFCE153C  A069                 _HGetState                                ; A-line trap A069
+FFCE153E  1F00                 move.b  D0, -(A7)
+FFCE1540  A029                 _HLock                                    ; A-line trap A029
+FFCE1542  2F0C                 move.l  A4, -(A7)
+FFCE1544  A8A3                 _EraseRect                                ; A-line trap A8A3
+FFCE1546  362E000C             move.w  ($c,A6), D3
+FFCE154A  6F0000B4             ble     loc_FFCE1600
+FFCE154E  2C12                 move.l  (A2), D6
+FFCE1550  3A2E000E             move.w  ($e,A6), D5
+FFCE1554  3E2C0006             move.w  ($6,A4), D7
+FFCE1558  9E6C0002             sub.w   ($2,A4), D7
+FFCE155C  9E6B000E             sub.w   ($e,A3), D7
+FFCE1560  5347                 subq.w  #1, D7
+FFCE1562  554F                 subq.w  #2, A7
+FFCE1564  2F06                 move.l  D6, -(A7)
+FFCE1566  3F05                 move.w  D5, -(A7)
+FFCE1568  3F03                 move.w  D3, -(A7)
+FFCE156A  A886                 _TextWidth                                ; A-line trap A886
+FFCE156C  BE57                 cmp.w   (A7), D7
+FFCE156E  6C000076             bge     loc_FFCE15E6
+FFCE1572  544F                 addq.w  #2, A7
+FFCE1574  2055                 movea.l (A5), A0
+FFCE1576  2050                 movea.l (A0), A0
+FFCE1578  10280046             move.b  ($46,A0), D0
+FFCE157C  3800                 move.w  D0, D4
+FFCE157E  08C00005             bset    #$5, D0
+FFCE1582  3F00                 move.w  D0, -(A7)
+FFCE1584  A888                 _TextFace                                 ; A-line trap A888
+FFCE1586  3003                 move.w  D3, D0
+FFCE1588  08000000             btst    #$0, D0
+FFCE158C  6702                 beq     loc_FFCE1590
+FFCE158E  5240                 addq.w  #1, D0
+loc_FFCE1590:
+FFCE1590  3840                 movea.w D0, A4
+FFCE1592  9EC0                 suba.w  D0, A7
+FFCE1594  224F                 movea.l A7, A1
+FFCE1596  2046                 movea.l D6, A0
+FFCE1598  D0C5                 adda.w  D5, A0
+FFCE159A  7000                 moveq   #$0, D0
+FFCE159C  3003                 move.w  D3, D0
+FFCE159E  A02E                 _BlockMove                                ; A-line trap A02E
+FFCE15A0  3F03                 move.w  D3, -(A7)
+FFCE15A2  554F                 subq.w  #2, A7
+FFCE15A4  3F07                 move.w  D7, -(A7)
+FFCE15A6  486F0006             pea     ($6,A7)
+FFCE15AA  486F0008             pea     ($8,A7)
+FFCE15AE  4267                 clr.w   -(A7)
+FFCE15B0  2F3C820CFFDE         move.l  #$820cffde, -(A7)
+FFCE15B6  A8B5                 _ScriptUtil                               ; A-line trap A8B5
+FFCE15B8  544F                 addq.w  #2, A7
+FFCE15BA  4A380BAD             tst.b   $bad.w
+FFCE15BE  6714                 beq     loc_FFCE15D4
+FFCE15C0  3017                 move.w  (A7), D0
+FFCE15C2  554F                 subq.w  #2, A7
+FFCE15C4  486F0004             pea     ($4,A7)
+FFCE15C8  4267                 clr.w   -(A7)
+FFCE15CA  3F00                 move.w  D0, -(A7)
+FFCE15CC  A886                 _TextWidth                                ; A-line trap A886
+FFCE15CE  4457                 neg.w   (A7)
+FFCE15D0  4267                 clr.w   -(A7)
+FFCE15D2  A894                 _Move                                     ; A-line trap A894
+loc_FFCE15D4:
+FFCE15D4  301F                 move.w  (A7)+, D0
+FFCE15D6  4857                 pea     (A7)
+FFCE15D8  4267                 clr.w   -(A7)
+FFCE15DA  3F00                 move.w  D0, -(A7)
+FFCE15DC  A885                 _DrawText                                 ; A-line trap A885
+FFCE15DE  DECC                 adda.w  A4, A7
+FFCE15E0  3F04                 move.w  D4, -(A7)
+FFCE15E2  A888                 _TextFace                                 ; A-line trap A888
+FFCE15E4  601A                 bra     loc_FFCE1600
+loc_FFCE15E6:
+FFCE15E6  4A380BAD             tst.b   $bad.w
+FFCE15EA  6604                 bne     loc_FFCE15F0
+FFCE15EC  544F                 addq.w  #2, A7
+FFCE15EE  6006                 bra     loc_FFCE15F6
+loc_FFCE15F0:
+FFCE15F0  4457                 neg.w   (A7)
+FFCE15F2  4267                 clr.w   -(A7)
+FFCE15F4  A894                 _Move                                     ; A-line trap A894
+loc_FFCE15F6:
+FFCE15F6  2F06                 move.l  D6, -(A7)
+FFCE15F8  3F2E000E             move.w  ($e,A6), -(A7)
+FFCE15FC  3F03                 move.w  D3, -(A7)
+FFCE15FE  A885                 _DrawText                                 ; A-line trap A885
+loc_FFCE1600:
+FFCE1600  204A                 movea.l A2, A0
+FFCE1602  101F                 move.b  (A7)+, D0
+FFCE1604  A06A                 _HSetState                                ; A-line trap A06A
+FFCE1606  4A2E0018             tst.b   ($18,A6)
+FFCE160A  6600FEEE             bne     loc_FFCE14FA
+FFCE160E  6000FEDC             bra     loc_FFCE14EC
+FFCE1612d 0000000000000000     dc.b    $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$78,$00 ; |..............x.|
+FFCE1622d 000000000000000E     dc.b    $00,$00,$00,$00,$00,$00,$00,$0E,$14,$80 ; |..........|

@@ -1,0 +1,189 @@
+ROM resources of the 7300 ROM (077D.34F2)
+============================================================================
+Resource list header at ROM 0D4D00 (header field RomRsrc): first entry 2F3740.
+Entries: combo mask (8 bytes), next entry, data offset, type, id, attributes, name.
+Data is preceded by a 16-byte header: tag "Kurt", flags, size, and a fourth word.
+Listed in address order of the data. Kind: PEF (PowerPC code fragment, listed with
+its code disassembled), 68k (68k code resource, disassembled), data (hex dump).
+
+data     phys     size     type       id attr name                       kind     file
+0D4D80   FFCD4D80 000158   rovm        0 58                              data     0D4D80_rovm_0.txt
+0D4F00   FFCD4F00 000050   CURS        1 58                              data     0D4F00_CURS_1.txt
+0D4F80   FFCD4F80 000050   CURS        2 58                              data     0D4F80_CURS_2.txt
+0D5000   FFCD5000 000050   CURS        3 58                              data     0D5000_CURS_3.txt
+0D5080   FFCD5080 000050   CURS        4 58                              data     0D5080_CURS_4.txt
+0D5100   FFCD5100 000E2A   FONT       12 58                              data     0D5100_FONT_12.txt
+0D5F50   FFCD5F50 000A2E   FONT      393 58                              data     0D5F50_FONT_393.txt
+0D69B0   FFCD69B0 000C74   FONT      396 58                              data     0D69B0_FONT_396.txt
+0D7650   FFCD7650 0009B0   FONT      521 58                              data     0D7650_FONT_521.txt
+0D8030   FFCD8030 00160C   snd         1 58   Simple Beep                data     0D8030_snd_1_Simple_Beep.txt
+0D9670   FFCD9670 00059A   KCHR        0 58   U.S.                       data     0D9670_KCHR_0_U.S..txt
+0D9C30   FFCD9C30 000092   KMAP        0 58                              data     0D9C30_KMAP_0.txt
+0D9CF0   FFCD9CF0 00009C   KMAP        2 58                              data     0D9CF0_KMAP_2.txt
+0D9DB0   FFCD9DB0 000242   KCAP        1 58                              data     0D9DB0_KCAP_1.txt
+0DA020   FFCDA020 0002E8   KCAP        2 58                              data     0DA020_KCAP_2.txt
+0DA330   FFCDA330 000248   KCAP        4 58                              data     0DA330_KCAP_4.txt
+0DA5A0   FFCDA5A0 0002F2   KCAP        5 58                              data     0DA5A0_KCAP_5.txt
+0DA8C0   FFCDA8C0 00055C   CDEF        0 58   Main                       68k      0DA8C0_CDEF_0_Main.lst
+0DAE40   FFCDAE40 000C6C   CDEF        1 58   Main                       68k      0DAE40_CDEF_1_Main.lst
+0DBAD0   FFCDBAD0 00002E   accl        0 58                              data     0DBAD0_accl_0.txt
+0DBB30   FFCDBB30 00006E   accl        1 58                              data     0DBB30_accl_1.txt
+0DBBD0   FFCDBBD0 00006E   accl        2 58                              data     0DBBD0_accl_2.txt
+0DBC70   FFCDBC70 00002E   accl        4 58                              data     0DBC70_accl_4.txt
+0DBCD0   FFCDBCD0 00002E   accl        5 58                              data     0DBCD0_accl_5.txt
+0DBD30   FFCDBD30 00006E   accl        6 58                              data     0DBD30_accl_6.txt
+0DBDD0   FFCDBDD0 00006E   accl        7 58                              data     0DBDD0_accl_7.txt
+0DBE70   FFCDBE70 0001AE   accl        8 58                              data     0DBE70_accl_8.txt
+0DC050   FFCDC050 00004C   ics#   -16386 58                              data     0DC050_ics_-16386.txt
+0DC0C0   FFCDC0C0 00008C   ics4   -16386 58                              data     0DC0C0_ics4_-16386.txt
+0DC170   FFCDC170 00010C   ics8   -16386 58                              data     0DC170_ics8_-16386.txt
+0DC2A0   FFCDC2A0 000094   clut        5 58                              data     0DC2A0_clut_5.txt
+0DC360   FFCDC360 000814   clut        9 58                              data     0DC360_clut_9.txt
+0DCBA0   FFCDCBA0 0000C2   ppat       16 58                              data     0DCBA0_ppat_16.txt
+0DCC90   FFCDCC90 0000C2   ppat       18 58                              data     0DCC90_ppat_18.txt
+0DCD80   FFCDCD80 00005A   pixs   -14335 58                              data     0DCD80_pixs_-14335.txt
+0DCE00   FFCDCE00 00005A   pixs   -14334 58                              data     0DCE00_pixs_-14334.txt
+0DCE80   FFCDCE80 000096   pixs   -10199 58                              data     0DCE80_pixs_-10199.txt
+0DCF40   FFCDCF40 000096   pixs   -10200 58                              data     0DCF40_pixs_-10200.txt
+0DD000   FFCDD000 000096   pixs   -10201 58                              data     0DD000_pixs_-10201.txt
+0DD0C0   FFCDD0C0 000096   pixs   -10202 58                              data     0DD0C0_pixs_-10202.txt
+0DD180   FFCDD180 000096   pixs   -10203 58                              data     0DD180_pixs_-10203.txt
+0DD240   FFCDD240 000096   pixs   -10204 58                              data     0DD240_pixs_-10204.txt
+0DD300   FFCDD300 000096   pixs   -10205 58                              data     0DD300_pixs_-10205.txt
+0DD3C0   FFCDD3C0 000096   pixs   -10206 58                              data     0DD3C0_pixs_-10206.txt
+0DD480   FFCDD480 000086   pixs   -10207 58                              data     0DD480_pixs_-10207.txt
+0DD530   FFCDD530 000096   pixs   -10208 58                              data     0DD530_pixs_-10208.txt
+0DD5F0   FFCDD5F0 000A3C   DRVR       48 58   .EDisk                     68k      0DD5F0_DRVR_48_.EDisk.lst
+0DE050   FFCDE050 000024   clut        1 58                              data     0DE050_clut_1.txt
+0DE0A0   FFCDE0A0 000034   clut        2 58                              data     0DE0A0_clut_2.txt
+0DE100   FFCDE100 000094   clut        4 58                              data     0DE100_clut_4.txt
+0DE1C0   FFCDE1C0 000814   clut        8 58                              data     0DE1C0_clut_8.txt
+0DEA00   FFCDEA00 000054   clut      127 58                              data     0DEA00_clut_127.txt
+0DEA80   FFCDEA80 000118   gama        0 58   StdGamma                   data     0DEA80_gama_0_StdGamma.txt
+0DEBC0   FFCDEBC0 000018   mitq        0 58                              data     0DEBC0_mitq_0.txt
+0DEC00   FFCDEC00 00108C   WDEF        0 58   Main                       68k      0DEC00_WDEF_0_Main.lst
+0DFCB0   FFCDFCB0 00050C   WDEF        1 58   Main                       68k      0DFCB0_WDEF_1_Main.lst
+0E01E0   FFCE01E0 00003C   wctb        0 58                              data     0E01E0_wctb_0.txt
+0E0240   FFCE0240 000034   cctb        0 58                              data     0E0240_cctb_0.txt
+0E02A0   FFCE02A0 0011EC   PACK        0 58   Main                       68k      0E02A0_PACK_0_Main.lst
+0E14B0   FFCE14B0 00017C   LDEF        0 58   Main                       68k      0E14B0_LDEF_0_Main.lst
+0E1650   FFCE1650 00023C   LDEF       19 58   Main                       68k      0E1650_LDEF_19_Main.lst
+0E18B0   FFCE18B0 00208C   PACK        4 58   Main                       68k      0E18B0_PACK_4_Main.lst
+0E3960   FFCE3960 00121C   PACK        5 58   Main                       68k      0E3960_PACK_5_Main.lst
+0E4BA0   FFCE4BA0 00055C   PACK        7 58   Main                       68k      0E4BA0_PACK_7_Main.lst
+0E5120   FFCE5120 005DDC   PACK        8 58   AevtMgr                    68k      0E5120_PACK_8_AevtMgr.lst
+0EAF20   FFCEAF20 000018   ppcc    -5856 58                              data     0EAF20_ppcc_-5856.txt
+0EAF60   FFCEAF60 0006D1   wedg    -5760 58                              data     0EAF60_wedg_-5760.txt
+0EB660   FFCEB660 000590   wedg    -5759 58                              data     0EB660_wedg_-5759.txt
+0EBC20   FFCEBC20 0034DC   PACK       12 58   Main                       68k      0EBC20_PACK_12_Main.lst
+0EF120   FFCEF120 0038FC   PACK       13 58   Main                       68k      0EF120_PACK_13_Main.lst
+0F2A40   FFCF2A40 00079C   proc    -5728 58   Main                       68k      0F2A40_proc_-5728_Main.lst
+0F3200   FFCF3200 00002C   proc    -5727 58   Main                       68k      0F3200_proc_-5727_Main.lst
+0F3250   FFCF3250 00151A   dimg   -16385 58   Main                       68k      0F3250_dimg_-16385_Main.lst
+0F4790   FFCF4790 0000CC   WDEF      126 58   Main                       68k      0F4790_WDEF_126_Main.lst
+0F4880   FFCF4880 0031AC   PACK       15 58   Main                       68k      0F4880_PACK_15_Main.lst
+0F7A50   FFCF7A50 00679C   DRVR        4 58   .Sony                      68k      0F7A50_DRVR_4_.Sony.lst
+0FE210   FFCFE210 000472   CDEF       62 58                              68k      0FE210_CDEF_62.lst
+0FE6B0   FFCFE6B0 001A6C   proc   -16498 58                              68k      0FE6B0_proc_-16498.lst
+100140   FFD00140 002C52   proc   -16497 58                              68k      100140_proc_-16497.lst
+102DC0   FFD02DC0 000CFA   sift   -16557 58                              68k      102DC0_sift_-16557.lst
+103AE0   FFD03AE0 000CF2   sift   -16558 58                              68k      103AE0_sift_-16558.lst
+104800   FFD04800 000860   sift   -16559 58                              68k      104800_sift_-16559.lst
+105090   FFD05090 000334   sift   -16560 58                              68k      105090_sift_-16560.lst
+1053F0   FFD053F0 002BD2   sift   -16561 58                              68k      1053F0_sift_-16561.lst
+107FF0   FFD07FF0 00097A   sift   -16566 58                              68k      107FF0_sift_-16566.lst
+108990   FFD08990 000046   thng   -16557 58                              data     108990_thng_-16557.txt
+108A00   FFD08A00 000046   thng   -16558 58                              data     108A00_thng_-16558.txt
+108A70   FFD08A70 000046   thng   -16559 58                              data     108A70_thng_-16559.txt
+108AE0   FFD08AE0 000046   thng   -16560 58                              data     108AE0_thng_-16560.txt
+108B50   FFD08B50 000046   thng   -16561 58                              data     108B50_thng_-16561.txt
+108BC0   FFD08BC0 000046   thng   -16566 58                              data     108BC0_thng_-16566.txt
+108C30   FFD08C30 000046   thng   -16567 58                              data     108C30_thng_-16567.txt
+108CA0   FFD08CA0 00008C   ICON   -16557 58                              data     108CA0_ICON_-16557.txt
+108D50   FFD08D50 00008C   ICON   -16560 58                              data     108D50_ICON_-16560.txt
+108E00   FFD08E00 00008C   ICON   -16561 58                              data     108E00_ICON_-16561.txt
+108EB0   FFD08EB0 000A1C   DRVR        3 58   .Sound                     68k      108EB0_DRVR_3_.Sound.lst
+1098F0   FFD098F0 00148C   DRVR   -16495 58   .AppleSoundInput           68k      1098F0_DRVR_-16495_.AppleSoundInput.lst
+10ADB0   FFD0ADB0 00191C   DRVR   -16500 58   .AppleSoundInput           68k      10ADB0_DRVR_-16500_.AppleSoundInput.lst
+10C700   FFD0C700 002AFC   DRVR   -16501 58   .AppleSoundInput           68k      10C700_DRVR_-16501_.AppleSoundInput.lst
+10F230   FFD0F230 000FFC   sift   -16497 58                              68k      10F230_sift_-16497.lst
+110250   FFD10250 0016CC   sift   -16569 58                              68k      110250_sift_-16569.lst
+111940   FFD11940 00190C   sift   -16501 58                              68k      111940_sift_-16501.lst
+113270   FFD13270 00040C   adio   -16570 58                              68k      113270_adio_-16570.lst
+1136A0   FFD136A0 000046   thng   -16497 58                              data     1136A0_thng_-16497.txt
+113710   FFD13710 000046   thng   -16569 58                              data     113710_thng_-16569.txt
+113780   FFD13780 000046   thng   -16570 58                              data     113780_thng_-16570.txt
+1137F0   FFD137F0 000046   thng   -16501 58                              data     1137F0_thng_-16501.txt
+113860   FFD13860 00008C   ICON   -16563 58                              data     113860_ICON_-16563.txt
+113910   FFD13910 00008C   ICON   -16570 58                              data     113910_ICON_-16570.txt
+1139C0   FFD139C0 0017CC   GARY        1 58   Main                       68k      1139C0_GARY_1_Main.lst
+1151B0   FFD151B0 011D5C   ncod        0 58   CodeFragmentMgr            PEF      1151B0_ncod_0_CodeFragmentMgr.lst
+126F40   FFD26F40 00564C   ncod        1 58   MixedMode                  PEF      126F40_ncod_1_MixedMode.lst
+12C5C0   FFD2C5C0 000B8C   ncod        8 58   ProcessMgrSupport          PEF      12C5C0_ncod_8_ProcessMgrSupport.lst
+12D180   FFD2D180 037D6C   nlib        5 58   InterfaceLib               PEF      12D180_nlib_5_InterfaceLib.lst
+164F20   FFD64F20 00C07C   nlib        6 58   PrivateInterfaceLib        PEF      164F20_nlib_6_PrivateInterfaceLib.lst
+170FD0   FFD70FD0 01E36C   nlib        9 58   MathLib                    PEF      170FD0_nlib_9_MathLib.lst
+18F360   FFD8F360 012DBC   nlib       10 58   StdCLib                    PEF      18F360_nlib_10_StdCLib.lst
+1A2140   FFDA2140 03717C   nlib       11 58   NQD                        PEF      1A2140_nlib_11_NQD.lst
+1D92E0   FFDD92E0 00656C   nlib       15 58   FMSwapFont                 PEF      1D92E0_nlib_15_FMSwapFont.lst
+1DF880   FFDDF880 007F0C   nlib       16 58   StdText                    PEF      1DF880_nlib_16_StdText.lst
+1E77B0   FFDE77B0 00C00C   nlib       17 58   Resources                  PEF      1E77B0_nlib_17_Resources.lst
+1F37F0   FFDF37F0 00108C   nlib       18 58   QuickdrawText              PEF      1F37F0_nlib_18_QuickdrawText.lst
+1F48B0   FFDF48B0 00AD2C   nlib       19 58   MemoryMgr                  PEF      1F48B0_nlib_19_MemoryMgr.lst
+1FF720   FFDFF720 0000CC   nlib   -16405 58   VideoServicesGlobals       PEF      1FF720_nlib_-16405_VideoServicesGlobals.lst
+1FF850   FFDFF850 00062A   nlib   -16407 58   DSLGlobalsLib              PEF      1FF850_nlib_-16407_DSLGlobalsLib.lst
+200010   FFE00010 032BFC   beep        0 58   Boot Beep Resource         data     200010_beep_0_Boot_Beep_Resource.txt
+232C10   FFE32C10 00290C   nlib   -16400 58   NameRegistryLib            PEF      232C10_nlib_-16400_NameRegistryLib.lst
+235520   FFE35520 00717C   nlib   -16401 58   DriverServicesLib          PEF      235520_nlib_-16401_DriverServicesLib.lst
+23C6A0   FFE3C6A0 00156C   nlib   -16403 58   VideoServicesLib           PEF      23C6A0_nlib_-16403_VideoServicesLib.lst
+23DC10   FFE3DC10 00095C   nlib   -16404 58   PCILib                     PEF      23DC10_nlib_-16404_PCILib.lst
+23E570   FFE3E570 00021C   nlib   -16408 58   MotherBoardHAL             PEF      23E570_nlib_-16408_MotherBoardHAL.lst
+23E790   FFE3E790 0005CC   nlib   -16410 58   QuickdrawLib               PEF      23E790_nlib_-16410_QuickdrawLib.lst
+23ED60   FFE3ED60 00039C   DRVR       52 58   .BCScreen                  68k      23ED60_DRVR_52_.BCScreen.lst
+23F100   FFE3F100 00005A   libr   -20000 58   appl$SerialHal,1.3         data     23F100_libr_-20000_appl_SerialHal_1.3.txt
+23F160   FFE3F160 00007C   sl00        0 58                              68k      23F160_sl00_0.lst
+23F200   FFE3F200 00046E   sl00        1 58   %A5Init                    68k      23F200_sl00_1_A5Init.lst
+23F6A0   FFE3F6A0 0002B2   sl00        2 58   Main                       68k      23F6A0_sl00_2_Main.lst
+23F980   FFE3F980 00006E   libr   -20001 58   appl$SerialHalGeneral,1.3  data     23F980_libr_-20001_appl_SerialHalGeneral_1.3.txt
+23FA40   FFE3FA40 000424   sl01        0 58                              68k      23FA40_sl01_0.lst
+23FED0   FFE3FED0 00006C   libr   -20002 58   appl$SerialHalScc,1.3      data     23FED0_libr_-20002_appl_SerialHalScc_1.3.txt
+240010   FFE40010 006274   beep        1 58   Error Beep Resource        data     240010_beep_1_Error_Beep_Resource.txt
+246290   FFE46290 01CB9C   nlib       20 58   FontDispatch               PEF      246290_nlib_20_FontDispatch.lst
+262E30   FFE62E30 004B3C   nlib   -16402 58   DriverLoaderLib            PEF      262E30_nlib_-16402_DriverLoaderLib.lst
+267970   FFE67970 0043DC   nlib   -16406 58   InterruptTreeTNT           PEF      267970_nlib_-16406_InterruptTreeTNT.lst
+26BD50   FFE6BD50 00AC10   ndrv      100 58                              PEF      26BD50_ndrv_100.lst
+276970   FFE76970 0041E0   ndrv       99 58                              PEF      276970_ndrv_99.lst
+27AB60   FFE7AB60 00B2E4   ndrv      101 58                              PEF      27AB60_ndrv_101.lst
+285E50   FFE85E50 01DACC   ncod       50 58   NativeNub                  PEF      285E50_ncod_50_NativeNub.lst
+2A3920   FFEA3920 000514   sl01        1 58   %A5Init                    68k      2A3920_sl01_1_A5Init.lst
+2A3E40   FFEA3E40 000F62   sl01        2 58   Main                       68k      2A3E40_sl01_2_Main.lst
+2A4DB0   FFEA4DB0 0001AC   sl02        0 58                              68k      2A4DB0_sl02_0.lst
+2A4F60   FFEA4F60 00064C   sl02        1 58   %A5Init                    68k      2A4F60_sl02_1_A5Init.lst
+2A55B0   FFEA55B0 001F60   sl02        2 58   Main                       68k      2A55B0_sl02_2_Main.lst
+2A7520   FFEA7520 00006C   libr   -20004 58   appl$SerialHalTntS,1.3     data     2A7520_libr_-20004_appl_SerialHalTntS_1.3.txt
+2A7590   FFEA7590 00001C   libi   -20004 58                              data     2A7590_libi_-20004.txt
+2A75D0   FFEA75D0 00026C   sl04        0 58                              68k      2A75D0_sl04_0.lst
+2A7860   FFEA7860 0006AE   sl04        1 58   %A5Init                    68k      2A7860_sl04_1_A5Init.lst
+2A7F40   FFEA7F40 00490C   sl04        2 58   Main                       68k      2A7F40_sl04_2_Main.lst
+2AC870   FFEAC870 000062   libr   -20005 58   appl$SerialDrvrStub,1.0    data     2AC870_libr_-20005_appl_SerialDrvrStub_1.0.txt
+2AC910   FFEAC910 00008C   sl05        0 58                              68k      2AC910_sl05_0.lst
+2AC9C0   FFEAC9C0 000414   sl05        1 58   %A5Init                    68k      2AC9C0_sl05_1_A5Init.lst
+2ACE00   FFEACE00 00098A   sl05        2 58   Main                       68k      2ACE00_sl05_2_Main.lst
+2AD7B0   FFEAD7B0 00006C   libr   -20006 58   appl$SerialDriver,1.0      data     2AD7B0_libr_-20006_appl_SerialDriver_1.0.txt
+2AD850   FFEAD850 000254   sl06        0 58                              68k      2AD850_sl06_0.lst
+2ADAD0   FFEADAD0 0004A6   sl06        1 58   %A5Init                    68k      2ADAD0_sl06_1_A5Init.lst
+2ADFA0   FFEADFA0 003FCA   sl06        2 58   Main                       68k      2ADFA0_sl06_2_Main.lst
+2B1F90   FFEB1F90 000066   libr   -20007 58   appl$SerialDrvrClass,1.0   data     2B1F90_libr_-20007_appl_SerialDrvrClass_1.0.txt
+2B2030   FFEB2030 00007C   sl07        0 58                              68k      2B2030_sl07_0.lst
+2B20D0   FFEB20D0 00040C   sl07        1 58   %A5Init                    68k      2B20D0_sl07_1_A5Init.lst
+2B2500   FFEB2500 0002B2   sl07        2 58   Main                       68k      2B2500_sl07_2_Main.lst
+2B27E0   FFEB27E0 0132A2   nitt       43 58   Native 4.3                 PEF      2B27E0_nitt_43_Native_4.3.lst
+2C5AC0   FFEC5AC0 000242   gcko       43 58   Main                       68k      2C5AC0_gcko_43_Main.lst
+2C5D30   FFEC5D30 003FB7   ndrv      505 58                              PEF      2C5D30_ndrv_505.lst
+2C9D10   FFEC9D10 0005C4   daud   -16600 58                              68k      2C9D10_daud_-16600.lst
+2CA300   FFECA300 000052   thng   -16600 58   DAV Audio Component        data     2CA300_thng_-16600_DAV_Audio_Component.txt
+2CA390   FFECA390 000020   STR    -16600 58   DAV Audio Component        data     2CA390_STR_-16600_DAV_Audio_Component.txt
+2CA3F0   FFECA3F0 01B08A   PICT   -20032 58   ROM Picture                data     2CA3F0_PICT_-20032_ROM_Picture.txt
+2E54B0   FFEE54B0 0014D0   timd       26 58   tmap                       data     2E54B0_timd_26_tmap.txt
+2E69B0   FFEE69B0 00A6E2   timd       27 58   bdrop                      data     2E69B0_timd_27_bdrop.txt
+2F10C0   FFEF10C0 002686   timd       29 58   grp                        data     2F10C0_timd_29_grp.txt

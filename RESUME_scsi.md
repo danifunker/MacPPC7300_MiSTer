@@ -17,7 +17,7 @@ Read these first. They are the source of truth and override anything remembered:
 - `docs/PPCMac_stubs.md`: everything the machine stubs, simplifies or leaves out. An entry changes in the same commit as the stub, and leaves only when the real thing is built and tested.
 - `docs/DSPPC604_plan.md`: the CPU's rules and its M6 section.
 - `verilator/ref/README.md`, `verilator/machref/README.md`.
-- `rom7300/README.md` and `rom7300/hw_access.txt` (git-ignored: the 7300's ROM disassembled, and every device register it touched in dingusppc's run, with counts, first and last instruction, code and values); `rom7600/README.md` for the method.
+- `rom7300/README.md` and `rom7300/hw_access.txt` (the 7300's ROM disassembled, and every device register it touched in dingusppc's run, with counts, first and last instruction, code and values); `rom7600/README.md` for the method.
 - dingusppc (`C:\Temp\mistercore\dingusppc`, the reference): `devices/common/scsi/mesh.cpp`, `mesh.h`, `scsibusctrl.cpp`, `scsibus.cpp`, `scsi.h`, `sc53c94.cpp`, `sc53c94.h`, `devices/ioctrl/grandcentral.cpp`.
 
 ## Where things stand (2026-10-07)

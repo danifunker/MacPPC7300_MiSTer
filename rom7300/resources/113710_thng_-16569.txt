@@ -1,0 +1,10 @@
+; ROM resource 'thng' -16569  at FFD13710
+; data at ROM 113710 (46 bytes), entry at 113750, attributes 58, combo 7800000000000000
+; data header: 4b757274 c0a00000 00000046 000003ac
+
+; component description: type 'sdev' subtype 'awac' manufacturer 'appl'
+FFD13710  73 64 65 76 61 77 61 63 61 70 70 6C 80 00 00 0C  |sdevawacappl....|
+FFD13720  00 00 00 00 73 69 66 74 BF 47 53 54 52 20 BF 4D  |....sift.GSTR .M|
+FFD13730  53 54 52 20 BF 47 49 43 4F 4E BF 4D 00 00 00 00  |STR .GICON.M....|
+FFD13740  00 00 00 00 00 00 00 00 00 00 6B 63 6B 63 6B 63  |..........kckckc|
+FFD13750  78 00 00 00 00 00                                |x.....|
