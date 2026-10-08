@@ -107,8 +107,7 @@ localparam CONF_STR = {
 	"S6,DSKIMGIMA,Insert floppy disk;",
 	"SC2,NVR,Mount NVRAM;",
 	"-;",
-	"O[3:1],RAM,16 MB,24 MB,48 MB,64 MB,96 MB,6 MB;",
-	"O[4],Boot,ROM,Memory test;",
+	"O[3:1],RAM,16 MB,24 MB,48 MB,64 MB,96 MB,6 MB,120 MB;",
 	"O[6],UART,Modem port,Debug readout;",
 	"-;",
 	"O[7],Picture,Mac,Debug readout;",
@@ -117,8 +116,7 @@ localparam CONF_STR = {
 	"O[13:11],ADB controller (on reset),None,Gravis MouseStick II,Gravis Firebird,Gravis GamePad,SideWinder 3D Pro;",
 	"O[14],Stick moves pointer,No,Yes;",
 	"-;",
-	"O[17],Ethernet (on reset),Off,On;",
-	"O[19:18],Net interface,eth0,eth1,wlan0,tap0;",
+	"O[19:17],Ethernet (on reset),Off,eth0,eth1,wlan0,tap0;",
 	"-;",
 	"P1,MT32-pi;",
 	"P1-;",
@@ -285,10 +283,11 @@ always @(posedge clk_mem) begin
 		3'd3:    ram_mb <= 8'd64;
 		3'd4:    ram_mb <= 8'd96;
 		3'd5:    ram_mb <= 8'd6;
+		3'd6:    ram_mb <= 8'd120;          // (124 at most: the ROM has the module's top 4 MB)
 		default: ram_mb <= 8'd16;
 	endcase
 end
-wire boot_memtest = status[4];
+wire boot_memtest = 1'b0;                   // the memory-test boot (PPCMac_bootrom): no menu entry since 2026-10-08
 
 // the ROM upload: index 1 from the OSD, index 0 a boot.rom loaded at start
 wire rom_index = ioctl_index[7:0] == 8'd0 || ioctl_index[7:0] == 8'd1;
@@ -410,7 +409,7 @@ reg         net_on = 0;
 reg         tr_mesh_m = 0;                  // the trace also takes MESH (status[29]: no menu entry)
 always @(posedge clk_mem) if (cpu_reset_m) begin
 	joy_mode  <= (status[13:11] > 3'd4) ? 3'd0 : status[13:11];
-	net_on    <= status[17];
+	net_on    <= status[19:17] != 3'd0;     // the Main's mac_eth.cpp takes the interface from it too
 	tr_mesh_m <= status[29];
 end
 wire [51:0] joy = {status[14], joy_mode, joystick_r_analog_0, joystick_l_analog_0, joystick_0[15:0]};

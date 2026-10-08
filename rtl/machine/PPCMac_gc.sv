@@ -170,7 +170,7 @@ module PPCMac_gc
 	output logic [15:0]  cursor_x,
 	output logic [191:0] cursor_clut,
 	input  logic         clk_v,
-	input  logic [7:0]   clut_index,
+	input  logic [23:0]  clut_index,
 	output logic [23:0]  clut_rgb,
 
 	// for PPCMac_trace: DMA channel 2 or 3 (dfin_ch) finished (dfin_type 0), fetched (1) or
@@ -567,7 +567,8 @@ wire        rad_sel = sel & devs & (sub == 4'hB) & (off[8:6] == 3'd0);
 PPCMac_radacal radacal (
 	.clk, .reset, .sel(rad_sel), .we, .rn(off[5:4]), .wdata(io_w[7:0]), .rq(rad_rq),
 	.dac_cr, .dbl_buf_cr, .cursor_x, .cursor_clut,
-	.clk_v, .v_index(clut_index), .v_rgb(clut_rgb)
+	.clk_v, .v_index_r(clut_index[23:16]), .v_index_g(clut_index[15:8]), .v_index_b(clut_index[7:0]),
+	.v_rgb(clut_rgb)
 );
 
 // an IOBus device's 16-bit value as a CPU word (grandcentral.cpp:224-233)

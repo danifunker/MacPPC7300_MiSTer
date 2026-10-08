@@ -21,11 +21,12 @@ to the card and the core's UART.
                                                  games/PPCMac/PPCMac.nvr) if there is none, mounted
                                                  on block slot 2 (config/PPCMac.s2): the core loads
                                                  it at its start and keeps the NVRAM in it
-    python syn\\mister.py cfg [--ram MB] [--boot rom|memtest] [--uart modem|debug]
+    python syn\\mister.py cfg [--ram MB] [--uart modem|debug]
                               [--picture mac|debug] [--monitor 16|13|12]
                               [--joy none|mousestick|firebird|gamepad|sidewinder] [--ptr]
                               [--eth] [--net eth0|eth1|wlan0|tap0] [--trace-mesh]
-                                                 writes config/PPCMac.CFG (--trace-mesh: the trace
+                                                 writes config/PPCMac.CFG (--eth or --net: Ethernet
+                                                 on, eth0 unless --net; --trace-mesh: the trace
                                                  also takes MESH's accesses and interrupt;
                                                  no OSD entry)
     python syn\\mister.py load                    loads _Unstable/PPCMac.rbf (Remote: /api/launch)
@@ -34,6 +35,10 @@ to the card and the core's UART.
                                                  (/api/screenshots)
     python syn\\mister.py keys TEXT               typed on the Remote's keyboard (\\n Return),
                                                  to the core's ADB keyboard
+    python syn\\mister.py osd-mount N NAME ...     the OSD opened, down N items, Enter, then each
+                                                 NAME typed in the file browser and Enter (e.g.
+                                                 osd-mount 4 floppy arkanoid: the floppy's item,
+                                                 games/PPCMac/floppy/arkanoid.img); blind
     python syn\\mister.py mouse DX DY [STEPS]     the Remote's mouse moved, right and down
     python syn\\mister.py click [left|right]      its button
     python syn\\mister.py ws STEP ...             any tools\\misterdeploy\\ws_send.py steps
@@ -78,7 +83,7 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 CORE = "/media/fat/_Unstable/PPCMac.rbf"
-RAM_OPTION = {16: 0, 24: 1, 48: 2, 64: 3, 96: 4, 6: 5}       # PPCMac.sv: O[3:1]
+RAM_OPTION = {16: 0, 24: 1, 48: 2, 64: 3, 96: 4, 6: 5, 120: 6}      # PPCMac.sv: O[3:1]
 
 # a reader of the UART left from an earlier command would take part of what
 # comes in: stop any before starting another
@@ -226,18 +231,19 @@ def main():
                 picture = a[i + 1]
             if a[i] == "--monitor":
                 monitor = int(a[i + 1])
-        if (ram not in RAM_OPTION or boot not in ("rom", "memtest") or uart not in ("modem", "debug")
+        if (ram not in RAM_OPTION or boot != "rom" or uart not in ("modem", "debug")
                 or picture not in ("mac", "debug") or monitor not in (16, 13, 12)):
-            sys.exit("--ram one of %s, --boot rom or memtest, --uart modem or debug, --picture mac or debug, "
-                     "--monitor 16, 13 or 12" % sorted(RAM_OPTION))
-        nets = ["eth0", "eth1", "wlan0", "tap0"]                                # PPCMac.sv: O[19:18]
+            sys.exit("--ram one of %s, --uart modem or debug, --picture mac or debug, "
+                     "--monitor 16, 13 or 12 (the memory-test boot is gone)" % sorted(RAM_OPTION))
+        nets = ["eth0", "eth1", "wlan0", "tap0"]                                # PPCMac.sv: O[19:17], 0 off
         net = a[a.index("--net") + 1] if "--net" in a else "eth0"
         if net not in nets:
             sys.exit("--net one of %s" % ", ".join(nets))
-        status = ((RAM_OPTION[ram] << 1) | ((boot == "memtest") << 4) | ((uart == "debug") << 6)
+        eth = (nets.index(net) + 1) if ("--eth" in a or "--net" in a) else 0
+        status = ((RAM_OPTION[ram] << 1) | ((uart == "debug") << 6)
                   | ((picture == "debug") << 7) | (joys.index(joy) << 11)
                   | (("--ptr" in a) << 14) | ({16: 0, 13: 1, 12: 2}[monitor] << 15)
-                  | (("--eth" in a) << 17) | (nets.index(net) << 18) | (("--trace-mesh" in a) << 29))
+                  | (eth << 17) | (("--trace-mesh" in a) << 29))
         data = "".join("\\x%02x" % ((status >> (8 * i)) & 0xFF) for i in range(4)) + "\\x00" * 12
         return ssh("printf '%s' > /media/fat/config/PPCMac.CFG && xxd /media/fat/config/PPCMac.CFG" % data)
     if cmd == "load":
@@ -277,6 +283,16 @@ def main():
                 steps += ["kbdRawDown:" + s[7:], "kbdRawUp:" + s[7:]]
             else:
                 steps.append(s)
+        return ws(steps)
+    if cmd == "osd-mount":
+        # blind, as the screenshots leave the OSD out: F12, down to the menu item, Enter; in
+        # the file browser each name typed jumps to it (the Main's filter), Enter
+        sys.path.insert(0, os.path.join(ROOT, "tools", "misterdeploy"))
+        import ws_send
+        steps = ["kbdRaw:88", "sleep:1"] + ["kbdRaw:108", "sleep:0.2"] * int(a[1]) + ["kbdRaw:28", "sleep:1.5"]
+        for name in a[2:]:
+            steps += ws_send.expand_text(name)
+            steps += ["sleep:0.5", "kbdRaw:28", "sleep:1.5"]
         return ws(steps)
     if cmd == "mouse":
         dx, dy = int(a[1]), int(a[2])

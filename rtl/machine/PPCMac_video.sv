@@ -35,8 +35,10 @@
 //      pixels are not 32 bits, plus 2 MB when RaDACal's double-buffer
 //      control is 0 (the optional bank);
 //    - 8 bits a pixel through RaDACal's colour table; 16 bits as x-R5-G5-B5,
-//      each component c widened to {c, c[4:2]}; 32 bits as x-R-G-B (no
-//      colour table in the direct modes, as dingusppc);
+//      each component c widened to {c, c[4:2]} (no colour table, as
+//      dingusppc); 32 bits as x-R-G-B, each component through its own
+//      column of the colour table (DirectColor: Linux's controlfb keeps
+//      its console colours there, 2026-10-08; dingusppc skips the table);
 //    - the hardware cursor (MISC_CTRL bit 1): 32 pixels of 4 bits from the
 //      16 bytes before the line's first pixel, at RaDACal's cursor position:
 //      bit 3 set, the cursor colour (bits 2-0); else bit 0 set, each
@@ -90,7 +92,7 @@ module PPCMac_video
 	input  logic [7:0]   athens_p2,
 	output logic         vbl_start_tog,
 	output logic         vbl_end_tog,
-	output logic [7:0]   clut_index,      // RaDACal's colour table, read a clock later
+	output logic [23:0]  clut_index,      // RaDACal's colour table (R, G, B indices), read a clock later
 	input  logic [23:0]  clut_rgb,
 
 	// the picture
@@ -393,10 +395,10 @@ always_ff @(posedge clk) begin
 	p2_vs      <= p1_vs;
 	p2_hb      <= p1_hb;
 	p2_vb      <= p1_vb;
-	p2_idx     <= pw == 2'd0;
+	p2_idx     <= pw != 2'd1;
 	p2_rgb     <= (pw == 2'd1) ? {pix16[14:10], pix16[14:12], pix16[9:5], pix16[9:7], pix16[4:0], pix16[4:2]} : pix32;
 	p2_cur     <= c_in ? c_nib : 4'h0;
-	clut_index <= pix8;
+	clut_index <= (pw == 2'd0) ? {3{pix8}} : pix32;
 
 	p3_ce  <= p2_ce;
 	p3_de  <= p2_de;

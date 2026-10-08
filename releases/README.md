@@ -40,7 +40,8 @@ Test builds of the Power Macintosh 7300/7600 core for the MiSTer
    Toolbox's Mac app ("BlueSCSI SD Transfer") to copy them in and out.
 8. Optional, Ethernet (needs the Main from here): OSD "Ethernet (on
    reset)" On, "Net interface" the MiSTer's (eth0 for the cable), then the
-   core's Reset. The Mac gets its own address on your network (Open
+   core's Reset. (Builds after this one have a single option, "Ethernet (on
+   reset)": Off or the interface, with a Main to match.) The Mac gets its own address on your network (Open
    Transport's TCP/IP, "Using DHCP Server").
 
 ## What works, what does not

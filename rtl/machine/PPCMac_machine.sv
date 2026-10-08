@@ -238,7 +238,7 @@ module PPCMac_machine
 	input  logic         vbl_start_tog,
 	input  logic         vbl_end_tog,
 	input  logic         clk_v,
-	input  logic [7:0]   clut_index,
+	input  logic [23:0]  clut_index,
 	output logic [23:0]  clut_rgb,
 
 	// the debug registers, for the debug readout

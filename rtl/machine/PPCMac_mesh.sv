@@ -72,7 +72,9 @@
 //                     dingusppc keeps ACK there and moves its target on by
 //                     hand; on a bus of signals only ACK going moves it
 //                     (Mac OS 8.5's driver, 2026-10-08)
-//    C, D             reselection on, off: command done at once
+//    C, D             reselection on, off: no command done (dingusppc sets
+//                     it; Linux's mesh.c issues C when idle and takes any
+//                     interrupt after D as a reselection, 2026-10-08)
 //    E  reset MESH    the registers dingusppc's reset(false) resets (not the
 //                     bus status, synchronous parameters or destination ID),
 //                     the FIFO emptied, any running command stopped; then done
@@ -222,11 +224,7 @@ always_comb begin
 	if (wr & rn == 4'hA) int_clr = int_clr | wdata[2:0];
 	if (cmd) begin
 		int_clr = int_clr | 3'b001;
-		case (op)
-			4'hC, 4'hD: int_set = int_set | 3'b001;
-			4'hE:       begin int_clr = 3'b111; int_set = 3'b001; end
-			default: ;
-		endcase
+		if (op == 4'hE) begin int_clr = 3'b111; int_set = 3'b001; end
 	end
 end
 

@@ -25,8 +25,10 @@
 //       a read's first fetches it
 //
 //  The colour table is 256 x 24 bits, in two copies written together: one
-//  read in the CPU's clock, one in the video clock by the scan-out
-//  (v_index in, v_rgb a clock later). The cursor table and the cursor's
+//  read in the CPU's clock, one in the video clock by the scan-out, a
+//  table a component (v_index_r/g/b in, v_rgb a clock later: an 8-bit
+//  pixel gives all three the same index, a 32-bit one each its component,
+//  as a DirectColor RAMDAC; 2026-10-08, Linux's controlfb). The cursor table and the cursor's
 //  position and the control bits go to the scan-out as they are (they change
 //  between frames, and a frame's worth of tearing on a cursor is all a
 //  stray read can cost).
@@ -54,7 +56,9 @@ module PPCMac_radacal
 
 	// the colour table's second read port, in the video clock
 	input  logic         clk_v,
-	input  logic [7:0]   v_index,
+	input  logic [7:0]   v_index_r,
+	input  logic [7:0]   v_index_g,
+	input  logic [7:0]   v_index_b,
 	output logic [23:0]  v_rgb
 );
 
@@ -74,7 +78,6 @@ logic [7:0]  cur_b [8];
 
 // ---- the colour table: two copies ---------------------------------------------------------
 logic [23:0] clut_c [0:255];
-logic [23:0] clut_v [0:255];
 logic [23:0] clut_q;
 logic        clut_we;
 logic [23:0] clut_wv;
@@ -84,8 +87,17 @@ always_ff @(posedge clk) begin
 	clut_q <= clut_c[dac_addr];
 end
 
-always_ff @(posedge clk) if (clut_we) clut_v[dac_addr] <= clut_wv;
-always_ff @(posedge clk_v) v_rgb <= clut_v[v_index];
+// the scan-out's copy, a table a component: 8-bit pixels look all three up with one index,
+// 32-bit (DirectColor, as Linux's controlfb sets it up) each with its own
+logic [7:0] clut_vr [0:255];
+logic [7:0] clut_vg [0:255];
+logic [7:0] clut_vb [0:255];
+always_ff @(posedge clk) if (clut_we) clut_vr[dac_addr] <= clut_wv[23:16];
+always_ff @(posedge clk) if (clut_we) clut_vg[dac_addr] <= clut_wv[15:8];
+always_ff @(posedge clk) if (clut_we) clut_vb[dac_addr] <= clut_wv[7:0];
+always_ff @(posedge clk_v) v_rgb[23:16] <= clut_vr[v_index_r];
+always_ff @(posedge clk_v) v_rgb[15:8]  <= clut_vg[v_index_g];
+always_ff @(posedge clk_v) v_rgb[7:0]   <= clut_vb[v_index_b];
 
 assign rq = rq_ram ? clut_q[23:16] : rq_reg;
 

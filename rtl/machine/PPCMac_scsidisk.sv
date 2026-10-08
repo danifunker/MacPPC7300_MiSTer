@@ -294,6 +294,8 @@ logic        ext_msg;                   // an extended message came
 logic [7:0]  mo [5];                    // a message out's bytes (after IDENTIFY)
 logic [7:0]  mi [5];                    // a message in's bytes, mi_len of them
 logic [2:0]  mi_n, mi_len;
+logic [2:0]  lun;                       // IDENTIFY's logical unit (lun_id: one came)
+logic        lun_id;
 logic        mo_late;                   // the message out came after a message in
 logic        cmd_seen;                  // the command came: after the messages, bus free
 logic [3:0]  sense_key [3];
@@ -354,7 +356,7 @@ endfunction
 
 // ---- the fixed responses ------------------------------------------------------------------------------
 localparam logic [3:0] R_INQ = 4'd0, R_SENSE = 4'd1, R_CAP = 4'd2, R_MODE = 4'd3, R_BUF = 4'd4,
-                       R_HDR = 4'd5, R_P31 = 4'd6, R_DEV = 4'd7, R_DBG = 4'd8;
+                       R_HDR = 4'd5, R_P31 = 4'd6, R_DEV = 4'd7, R_DBG = 4'd8, R_NOLUN = 4'd9;
 localparam logic [8*36-1:0] INQ = {8'h00, 8'h00, 8'h02, 8'h02, 8'd31, 8'h00, 8'h00, 8'h00,
                                    "QUANTUM ", "MiSTer PPCMac HD", "1.0 "};
 localparam logic [8*22-1:0] APPLE = {"APPLE COMPUTER, INC", 24'h202020};
@@ -432,6 +434,8 @@ function automatic logic [7:0] resp_byte(input logic [3:0] kind, input logic [9:
 	resp_byte = 8'h00;
 	case (kind)
 		R_INQ:   if (i < 10'd36) resp_byte = INQ[8 * (35 - i[5:0]) +: 8];
+		R_NOLUN: if (i == 10'd0) resp_byte = 8'h7F;              // no logical unit here
+		         else if (i < 10'd36) resp_byte = INQ[8 * (35 - i[5:0]) +: 8];
 		R_SENSE: case (i[4:0])
 			5'd0:  resp_byte = 8'h70;
 			5'd2:  resp_byte = {4'h0, sense_key[cur]};
@@ -620,6 +624,7 @@ always_ff @(posedge clk) begin
 			ext_msg  <= 1'b0;
 			mo_late  <= 1'b0;
 			cmd_seen <= 1'b0;
+			lun_id   <= 1'b0;
 			cdb_n    <= 5'd0;
 			if (b_atn) begin ph <= 3'b110; t_after <= T_MSGOUT_DONE; end
 			else       begin ph <= 3'b010; t_after <= T_CMD_DONE; end
@@ -648,6 +653,7 @@ always_ff @(posedge clk) begin
 			logic [7:0] m0;
 			m0 = (cdb_n == 5'd0) ? ib : mo[0];
 			if (cdb_n == 5'd0 && ib == 8'h01) ext_msg <= 1'b1;   // an extended message's first byte
+			if (cdb_n == 5'd0 && ib[7]) begin lun <= ib[2:0]; lun_id <= 1'b1; end   // IDENTIFY
 			if (!(cdb_n == 5'd0 && ib[7])) begin
 				case (cdb_n)
 					5'd0:    mo[0] <= ib;
@@ -707,7 +713,16 @@ always_ff @(posedge clk) begin
 				sense_asc[cur] <= 8'h00;
 			end
 			ts <= T_STATUS;                     // unless a data phase comes first
-			if (tb_fs || tb_cdc) begin          // the Toolbox: a round trip through the Main
+			if ((lun_id ? lun : cdb[1][7:5]) != 3'd0) begin   // only logical unit 0 is there
+				if (op == 8'h12) respond(R_NOLUN, clamp(10'd36, alloc6));
+				else if (op == 8'h03) begin
+					sense_key[cur] <= 4'h5;
+					sense_asc[cur] <= 8'h25;
+					respond(R_SENSE, clamp(10'd18, alloc6));
+				end
+				else check(4'h5, 8'h25);
+			end
+			else if (tb_fs || tb_cdc) begin     // the Toolbox: a round trip through the Main
 				tb_slot <= tb_cdc ? 3'd5 : 3'd3;
 				tbo_p   <= '0;
 				if (op == 8'hD3 || op == 8'hD4) begin tb_dir <= 2'd1; tbo_left <= tb_send; ts <= T_TBO; end

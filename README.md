@@ -47,7 +47,7 @@ the OSD chooses, a debug readout of rows of squares.
 | Game controllers | the Quadra 800 core's ADB controllers from the MiSTer's joystick 0 (OSD "ADB controller (on reset)", "Stick moves pointer"): Gravis MouseStick II, Firebird, Mac GamePad, SideWinder 3D Pro, with ADB's address collisions; Cuda's firmware takes their answers in `run_cuda.py`; on the board Mac OS 7.6.1 separates a GamePad from the keyboard and a MouseStick from the mouse (2026-10-08, build 7); the controllers themselves are the user's to try |
 | Serial MIDI, MT32-pi, PPP, printer | as the Quadra 800 core: the modem port's TRxC clock a MIDI interface's (31,250 bit/s), the UART's MIDI mode, the MT32-pi on the user port (its OSD page, popups, LCD, audio), CTS and RTS for PPP and the Main's printer daemon; `run_escc.py` measures the rates (2026-10-08, build 8); the devices are the user's and the Discord testers' to try |
 | CD-ROM, BlueSCSI Toolbox | the CD-ROM drive at SCSI ID 3 (slot 4: ISO, TOAST, CUE, BIN, CHD), speaking the Quadra 800 core's contract with the Main's Mac CD layer, its audio (`PPCMac_cdaudio.sv`) mixed after AWACS; the Toolbox's file sharing (ID 0, slot 3) and CD changer (ID 3, slot 5) as the Mac LC core's; `run_scsi.py` checks them against a model of the Main (2026-10-08, build 8). Needs the Main branch `Mac-ppc-enhancements` (ppcmac in the Mac family); with the official Main there is no CD drive. On the board with that Main (2026-10-08): ISO and CUE/BIN discs mount and run, CD audio plays from the right tracks, BlueSCSI SD Transfer downloads and uploads; the CD changer app does not find the changer (parked) |
-| Ethernet | MACE's frames through two rings in DDR3 (`PPCMac_enet.sv`, the DDR3 port shared with the video by `PPCMac_ddrarb.sv`) to the Main's interface (OSD "Ethernet (on reset)", "Net interface"; the Main branch's `mac_eth.cpp`); receive into DMA channel 3 as Linux's `mace.c` reads it (2026-10-08, build 10). On the board with the Main branch (build 17): Mac OS 7.6.1's TCP/IP takes an address by DHCP, Cyberdog loads web pages from the LAN, the LAN pings it, Fetch reaches FTP servers; it took MACE's internal loopback (the driver's self-test), the FCS, and Grand Central's DMA status bits (s5 on the transmit channel, an INPUT_MORE ended by the frame and s6 on the receive one). Off, MACE's cable stays unplugged as before |
+| Ethernet | MACE's frames through two rings in DDR3 (`PPCMac_enet.sv`, the DDR3 port shared with the video by `PPCMac_ddrarb.sv`) to the Main's interface (OSD "Ethernet (on reset)": Off or the interface, eth0, eth1, wlan0, tap0, one option since 2026-10-08; the Main branch's `mac_eth.cpp`); receive into DMA channel 3 as Linux's `mace.c` reads it (2026-10-08, build 10). On the board with the Main branch (build 17): Mac OS 7.6.1's TCP/IP takes an address by DHCP, Cyberdog loads web pages from the LAN, the LAN pings it, Fetch reaches FTP servers; it took MACE's internal loopback (the driver's self-test), the FCS, and Grand Central's DMA status bits (s5 on the transmit channel, an INPUT_MORE ended by the frame and s6 on the receive one). Off, MACE's cable stays unplugged as before |
 
 The first full build of the core (2026-10-06: the CPU at 65 MHz, the
 machine, the SDRAM controller at 100 MHz, the debug readout, the MiSTer
@@ -81,6 +81,8 @@ framework), Quartus 17.0, slow 100 C model; this is the number that counts:
 | With the DMA's quads reaching MACE and LOAD_QUAD's value written back (build 18) | 35,039 (84%) | 192 | 48 | 62.3 MHz (slack -0.659 ns). On the board: the Ethernet driver's LOAD_QUADs read XMTRC 00, XMTFS 80, IR 03; 60 pings of 1,400 bytes, none lost; the MESH trace found Mac OS 8.6's stall |
 | With SDTR answered, MESH's bus free letting ACK go, the MESH interrupt records (build 20) | 35,089 (84%) | 192 | 48 | 60.3 MHz (slack -1.200 ns). On the board: Mac OS 8.5, 8.6 and 9.1 start from their own images to the Finder (8.5 and 9.1 then say the clock is not set: Mac OS's own 2019 limit) |
 | With the floppy drive: SWIM3 reading images, DMA channel 1 (build 21) | 35,626 (85%) | 193 | 49 | 61.7 MHz (slack -0.950 ns). On the SCSI bench: DiskCopy and raw images read; the board test waits for the board |
+| With MESH's reselection commands setting no command done (build 22) | 35,914 (86%) | 193 | 49 | 59.6 MHz (slack -1.448 ns). On the board: Debian 7.11 finds its disk and boots |
+| With LUN 0 only, 32-bit pixels through the colour table, 120 MB, one Ethernet option (build 24) | 35,618 (85%) | 195 | 49 | 59.5 MHz (slack -1.466 ns). On the board: Debian 7.11 sees one disk and one CD, its console readable |
 
 On the board (DE10-Nano, 128 MB SDRAM) the memory test passes at every RAM
 size the OSD offers (6 to 96 MB, three or more passes each, no error) at
@@ -203,9 +205,11 @@ not by drift.
 
 - Main memory lives on the MiSTer SDRAM module, the 128 MB one (the board
   here has it). The machine's installed RAM is a core option: 6, 16, 24, 48,
-  64 or 96 MB (changed 2026-10-06 from 6, 16, 24, 32, 64, 128: the ROM takes
-  the module's top 4 MB, so 124 MB is the most a 128 MB module allows; 6 MB
-  is the Pippin's). The caches fill their lines from the SDRAM, so the cache
+  64, 96 or 120 MB (changed 2026-10-06 from 6, 16, 24, 32, 64, 128: the
+  ROM takes the module's top 4 MB, so 124 MB is the most a 128 MB module
+  allows; 6 MB is the Pippin's; 120 added 2026-10-08, the user's choice for
+  the largest). The OSD's memory-test boot is gone (2026-10-08, the user);
+  `PPCMac_bootrom` stays for the bench. The caches fill their lines from the SDRAM, so the cache
   line-fill bus is designed for that controller. 128 MB of RAM would need the
   ROM elsewhere (the HPS's DDR3 or a second SDRAM board): left out for now.
 

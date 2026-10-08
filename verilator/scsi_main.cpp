@@ -782,7 +782,7 @@ int main(int argc, char** argv) {
 	}
 
 	// ---- 12: Mac OS 8.5's driver negotiates: SDTR, WDTR, and a message answered with ATN ----
-	std::printf("12. IDENTIFY with SDTR (answered with offset 0), with WDTR (8 bits); a MESSAGE REJECT answered under ATN\n");
+	std::printf("12. IDENTIFY with SDTR (answered with offset 0), with WDTR (8 bits); a MESSAGE REJECT answered under ATN; LUN 1 absent\n");
 	{
 		arbitrate_select(0, true);
 		msg_out({0xC0, 0x01, 0x03, 0x01, 0x19, 0x0F});
@@ -822,6 +822,22 @@ int main(int argc, char** argv) {
 		send_cdb({0x00, 0, 0, 0, 0, 0});
 		check(wait_phase() == 3, "TEST UNIT READY after the reject: no STATUS");
 		finish(0x00);
+
+		// logical unit 1 (IDENTIFY C1), as Linux scans: not there
+		arbitrate_select(0, true);
+		msg_out({0xC1});
+		check(wait_phase() == 2, "LUN 1: no COMMAND");
+		send_cdb({0x12, 0x20, 0, 0, 36, 0});
+		wait_phase();
+		pio_in(buf, 36);
+		check(buf[0] == 0x7F, "INQUIRY of LUN 1: byte 0 %02X, 7F expected", buf[0]);
+		finish(0x00);
+		arbitrate_select(0, true);
+		msg_out({0xC1});
+		wait_phase();
+		send_cdb({0x00, 0x20, 0, 0, 0, 0});
+		check(wait_phase() == 3, "TEST UNIT READY of LUN 1: no STATUS");
+		finish(0x02);
 	}
 
 	// ---- 13: the floppy: a DiskCopy 1440K image read by SWIM3 into memory by DMA channel 1 ----
