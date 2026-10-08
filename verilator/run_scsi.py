@@ -8,9 +8,11 @@ The bench (scsi_main.cpp) drives Grand Central's registers as the 7300's ROM
 and Mac OS 7.6.1's disk driver drive them (dingusppc's device log of a boot
 from the 7.6.1 image): programmed-I/O reads, DMA reads into memory with a
 descriptor longer than MESH's count, multi-block DMA, DMA writes, INQUIRY,
-READ CAPACITY, a selection of an absent ID. A memory answers the DMA port,
-and hps_io's block side serves a made-up image (or --disk FILE). Every byte
-is checked. --verbose prints every block the card moves. A few seconds.
+READ CAPACITY, a selection of an absent ID; then the CD-ROM at ID 3 and the
+BlueSCSI Toolbox against a model of the Main's Mac layer (--stock: the
+official Main, no CD drive). A memory answers the DMA port, and hps_io's
+block side serves a made-up image (or --disk FILE). Every byte is checked.
+--verbose prints every block the card moves. A few seconds.
 
 Runs from Windows (through WSL) or directly under Linux.
 """

@@ -7,6 +7,7 @@
 #   make gui        build $(BUILD)/gui/ppcmac_gui   the whole machine in a window (ImGui, SDL2, OpenGL)
 #   make sdram      build $(BUILD)/sdram/sdram_tb   the SDRAM controller against a model of the board
 #   make cuda       build $(BUILD)/cuda/cuda_tb   Cuda (the 68HC05 and its firmware) alone
+#   make escc       build $(BUILD)/escc/escc_tb   the ESCC alone (its bit rates, MIDI, CTS, RTS)
 #   make lint       Verilator lint only
 #   make clean
 #
@@ -138,6 +139,17 @@ $(BUILD)/scsi/scsi_tb: $(SCSI_SRCS) $(HERE)scsi_main.cpp $(MACH)/PPCMac_machine.
 		> $(BUILD)/scsi/build.log 2>&1 || (cat $(BUILD)/scsi/build.log; false)
 	@grep -E '^%Warning' $(BUILD)/scsi/build.log || true
 
+# the ESCC alone: the modem port's bit rates, MIDI in, CTS and RTS
+escc: $(BUILD)/escc/escc_tb
+
+$(BUILD)/escc/escc_tb: $(MACH)/PPCMac_escc.sv $(HERE)escc_main.cpp $(HERE)Makefile
+	@mkdir -p $(BUILD)/escc
+	@$(VERILATOR) $(VFLAGS) --top-module PPCMac_escc --prefix Vescc_tb -Mdir $(BUILD)/escc -o escc_tb \
+		-CFLAGS "-O2 -std=c++17" \
+		$(MACH)/PPCMac_escc.sv $(HERE)escc_main.cpp \
+		> $(BUILD)/escc/build.log 2>&1 || (cat $(BUILD)/escc/build.log; false)
+	@grep -E '^%Warning' $(BUILD)/escc/build.log || true
+
 cdc: $(BUILD)/cdc/cdc_tb
 
 $(BUILD)/cdc/cdc_tb: $(RTL)/DSPPC604_memcdc.sv $(HERE)cdc_main.cpp $(HERE)Makefile
@@ -162,4 +174,4 @@ lint:
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all core machine gui sdram cdc cuda scsi lint clean
+.PHONY: all core machine gui sdram cdc cuda scsi escc lint clean

@@ -102,9 +102,12 @@ module PPCMac_gc
 	output logic        via_cb2_oe,    // the VIA drives CB2 (shifting out)
 	output logic        via_cb2_out,
 
-	// the modem port (the ESCC's channel A): 1 when idle
+	// the modem port (the ESCC's channel A): 1 when idle; CTS 0 clear to send,
+	// RTS 1 while a received byte waits
 	output logic        modem_txd,
 	input  logic        modem_rxd,
+	input  logic        modem_cts,
+	output logic        modem_rts,
 
 	// the NVRAM written from outside, a byte a cycle (with the machine held in
 	// reset), or read from outside (nv_ld_re held until nv_ld_rack, the byte
@@ -215,9 +218,10 @@ end
 logic [7:0] scc_rq;
 
 PPCMac_escc escc (
-	.clk, .reset, .rtxc_tick,
+	.clk, .reset, .rtxc_tick, .trxc_tick(us_tick),
 	.sel(sel & devs & (scc_compat | scc_risc)), .we, .rn(scc_rn), .wdata(wb),
-	.rq(scc_rq), .txd_a(modem_txd), .rxd_a(modem_rxd), .irq_a(scc_a_irq), .irq_b(scc_b_irq)
+	.rq(scc_rq), .txd_a(modem_txd), .rxd_a(modem_rxd), .cts_a(modem_cts), .rts_a(modem_rts),
+	.irq_a(scc_a_irq), .irq_b(scc_b_irq)
 );
 
 // ---- the SCSI controllers: byte registers at (offset >> 4) & F (grandcentral.cpp:188, 211) ----

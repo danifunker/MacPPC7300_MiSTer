@@ -60,8 +60,6 @@ localparam int CPU_MHZ = 65;            // 60 and 70 also work with the PLL (VCO
 ///////// Default values for ports not used in this core /////////
 
 assign ADC_BUS  = 'Z;
-assign USER_OUT = '1;
-assign {UART_RTS, UART_DTR} = 0;      // (the modem port's handshake lines are not modelled)
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 assign VGA_SL = 0;
@@ -76,9 +74,8 @@ assign HDMI_BOB_DEINT = 0;
 // rate, and the framework's audio input keeps a value only once it has seen
 // it twice in its own clock
 wire [15:0] snd_left, snd_right;
+wire signed [15:0] cd_left, cd_right; // the CD-ROM drive's audio, likewise
 assign AUDIO_S = 1;
-assign AUDIO_L = snd_left;
-assign AUDIO_R = snd_right;
 assign AUDIO_MIX = 0;
 
 wire   disk_busy;                     // a block moving to or from an image (the memory clock's side syncs it)
@@ -94,15 +91,18 @@ wire [1:0] ar = status[122:121];         // the aspect ratio (video_freak, below
 
 `include "build_id.v"
 localparam CONF_STR = {
-	"PPCMac;UART115200;",
+	"PPCMac;UART115200:57600:38400:19200:9600,MIDI;",
 	"-;",
 	"F1,ROM,Load ROM;",
 	// the disks: SC, so the Main remembers the image and mounts it at the
 	// next start (as the other Mac cores); slots 2-5 are the Mac SCSI
 	// family's (NVRAM, BlueSCSI Toolbox, CD-ROM, CD changer); slot 2 holds
-	// Grand Central's NVRAM (an 8 KB .nvr file, PPCMac_nvsave), 3-5 unused yet
+	// Grand Central's NVRAM (an 8 KB .nvr file, PPCMac_nvsave); the Toolbox
+	// and the changer are the Main's own (no menu entry); the CD-ROM needs
+	// the Main's Mac CD layer (PPCMac_scsidisk)
 	"SC0,HDAVHD,Mount SCSI disk 0;",
 	"SC1,HDAVHD,Mount SCSI disk 1;",
+	"SC4,ISOTO*CUEBINCHD,Mount CD-ROM;",
 	"SC2,NVR,Mount NVRAM;",
 	"-;",
 	"O[3:1],RAM,16 MB,24 MB,48 MB,64 MB,96 MB,6 MB;",
@@ -110,7 +110,18 @@ localparam CONF_STR = {
 	"O[6],UART,Modem port,Debug readout;",
 	"-;",
 	"O[7],Picture,Mac,Debug readout;",
-	"O[8],Monitor,16-inch 832x624,13-inch 640x480;",
+	"O[16:15],Monitor,16-inch 832x624,13-inch 640x480,12-inch 512x384;",
+	"-;",
+	"O[13:11],ADB controller (on reset),None,Gravis MouseStick II,Gravis Firebird,Gravis GamePad,SideWinder 3D Pro;",
+	"O[14],Stick moves pointer,No,Yes;",
+	"-;",
+	"P1,MT32-pi;",
+	"P1-;",
+	"P1O[20],Use MT32-pi,Yes,No;",
+	"P1O[21],Synth,Munt,FluidSynth;",
+	"P1O[23:22],Munt ROM,MT-32 v1,MT-32 v2,CM-32L;",
+	"P1O[26:24],SoundFont,0,1,2,3,4,5,6,7;",
+	"P1O[28:27],Show Info,No,Yes,LCD-On,LCD-Auto;",
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"O[10:9],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
@@ -118,6 +129,22 @@ localparam CONF_STR = {
 	"-;",
 	"T[0],Reset;",
 	"R[0],Reset and close OSD;",
+	"J,Trigger,Thumb,Button 3,Button 4,Button 5,Base 1,Base 2,Base 3;",
+	"jn,A,B,X,Y,L,R,Select,Start;",
+	"jp,B,A,Y,X,L,R,Select,Start;",
+	"I,",
+	"MT32-pi: SoundFont #0,",
+	"MT32-pi: SoundFont #1,",
+	"MT32-pi: SoundFont #2,",
+	"MT32-pi: SoundFont #3,",
+	"MT32-pi: SoundFont #4,",
+	"MT32-pi: SoundFont #5,",
+	"MT32-pi: SoundFont #6,",
+	"MT32-pi: SoundFont #7,",
+	"MT32-pi: MT-32 v1,",
+	"MT32-pi: MT-32 v2,",
+	"MT32-pi: CM-32L,",
+	"MT32-pi: Unknown mode;",
 	"v,0;",
 	"V,v",`BUILD_DATE
 };
@@ -150,13 +177,19 @@ wire        ioctl_download;
 wire [15:0] ioctl_index;
 wire [10:0] ps2_key;
 wire [24:0] ps2_mouse;
+wire [31:0] joystick_0;
+wire [15:0] joystick_l_analog_0, joystick_r_analog_0;
+wire  [7:0] uart_mode;                // the Main's UART mode: 3 MIDI
+reg         mt32_info_req;
+reg   [3:0] mt32_info_disp;
 wire        ioctl_wr;
 wire [26:0] ioctl_addr;
 wire  [7:0] ioctl_dout;
 wire        ioctl_wait;
 
 // the block devices, as the Mac SCSI family's layout has them (VDNUM 6):
-// SCSI disks 0 and 1 on slots 0 and 1, the NVRAM image on 2; 3-5 tied off
+// SCSI disks 0 and 1 on slots 0 and 1, the NVRAM image on 2, the Toolbox on
+// 3, the CD-ROM on 4, the CD changer on 5
 localparam VDNUM = 6;
 wire [31:0] nvs_lba;
 wire        nvs_rd, nvs_wr;
@@ -171,15 +204,15 @@ wire        sd_buff_wr, img_readonly;
 wire [63:0] img_size;
 wire [31:0] disk_lba;
 wire  [7:0] disk_buff_din;
-wire  [1:0] disk_rd, disk_wr;
-assign sd_lba[0] = disk_lba;   assign sd_lba[1] = disk_lba;
-assign sd_lba[2] = nvs_lba; assign sd_lba[3] = 0; assign sd_lba[4] = 0; assign sd_lba[5] = 0;
-assign sd_blk_cnt[0] = 0; assign sd_blk_cnt[1] = 0; assign sd_blk_cnt[2] = 0;
-assign sd_blk_cnt[3] = 0; assign sd_blk_cnt[4] = 0; assign sd_blk_cnt[5] = 0;
-assign sd_rd = {3'b000, nvs_rd, disk_rd};
-assign sd_wr = {3'b000, nvs_wr, disk_wr};
-assign sd_buff_din[0] = disk_buff_din;   assign sd_buff_din[1] = disk_buff_din;
-assign sd_buff_din[2] = nvs_din; assign sd_buff_din[3] = 0; assign sd_buff_din[4] = 0; assign sd_buff_din[5] = 0;
+wire  [5:0] disk_rd, disk_wr, disk_blk_cnt;
+assign sd_lba[0] = disk_lba; assign sd_lba[1] = disk_lba; assign sd_lba[2] = nvs_lba;
+assign sd_lba[3] = disk_lba; assign sd_lba[4] = disk_lba; assign sd_lba[5] = disk_lba;
+assign sd_blk_cnt[0] = disk_blk_cnt; assign sd_blk_cnt[1] = disk_blk_cnt; assign sd_blk_cnt[2] = 0;
+assign sd_blk_cnt[3] = disk_blk_cnt; assign sd_blk_cnt[4] = disk_blk_cnt; assign sd_blk_cnt[5] = disk_blk_cnt;
+assign sd_rd = {disk_rd[5:3], nvs_rd, disk_rd[1:0]};
+assign sd_wr = {disk_wr[5:3], nvs_wr, disk_wr[1:0]};
+assign sd_buff_din[0] = disk_buff_din; assign sd_buff_din[1] = disk_buff_din; assign sd_buff_din[2] = nvs_din;
+assign sd_buff_din[3] = disk_buff_din; assign sd_buff_din[4] = disk_buff_din; assign sd_buff_din[5] = disk_buff_din;
 
 hps_io #(.CONF_STR(CONF_STR), .VDNUM(VDNUM), .BLKSZ(2)) hps_io
 (
@@ -194,6 +227,12 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(VDNUM), .BLKSZ(2)) hps_io
 	.status_menumask(16'd0),
 	.ps2_key(ps2_key),
 	.ps2_mouse(ps2_mouse),
+	.joystick_0(joystick_0),
+	.joystick_l_analog_0(joystick_l_analog_0),
+	.joystick_r_analog_0(joystick_r_analog_0),
+	.uart_mode(uart_mode),
+	.info_req(mt32_info_req),
+	.info({4'd0, mt32_info_disp}),
 
 	.img_mounted(img_mounted),
 	.img_readonly(img_readonly),
@@ -333,8 +372,8 @@ wire sdram_init = ~locked_m[1];
 wire sdram_ready;
 
 // a change of RAM size, boot option or monitor resets the CPU for a moment
-wire [4:0] cfg = {status[8], status[4:1]};
-reg  [4:0] cfg_q;
+wire [5:0] cfg = {status[16:15], status[4:1]};
+reg  [5:0] cfg_q;
 reg  [7:0] cfg_hold = 8'hFF;
 reg  [2:0] reset_in;
 always @(posedge clk_mem) begin
@@ -345,13 +384,18 @@ always @(posedge clk_mem) begin
 end
 
 // the monitor's AppleSense codes (dingusppc's displayid.cpp): the 16-inch RGB
-// (7, 2D) or the 13-inch (6, 2B)
-wire [2:0] mon_std = status[8] ? 3'd6 : 3'd7;
-wire [5:0] mon_ext = status[8] ? 6'h2B : 6'h2D;
+// (7, 2D), the 13-inch (6, 2B) or the 12-inch (2, 21)
+wire [2:0] mon_std = (status[16:15] == 2'd1) ? 3'd6  : (status[16:15] == 2'd2) ? 3'd2  : 3'd7;
+wire [5:0] mon_ext = (status[16:15] == 2'd1) ? 6'h2B : (status[16:15] == 2'd2) ? 6'h21 : 6'h2D;
 
 reg cpu_reset_m = 1;
 always @(posedge clk_mem)
 	cpu_reset_m <= reset_in[2] | ~sdram_ready | rom_dl | nv_dl | nvs_hold | (~boot_memtest & ~rom_loaded) | (cfg_hold != 0);
+
+// the ADB game controller, taken under reset (ADB has no hot plug); PPCMac_adb synchronises the bus
+reg  [2:0]  joy_mode = 0;
+always @(posedge clk_mem) if (cpu_reset_m) joy_mode <= (status[13:11] > 3'd4) ? 3'd0 : status[13:11];
+wire [51:0] joy = {status[14], joy_mode, joystick_r_analog_0, joystick_l_analog_0, joystick_0[15:0]};
 
 // into the CPU's clock (the options are quasi-static: they change only with the reset held)
 reg [2:0] cpu_reset_s = 3'b111;
@@ -408,13 +452,97 @@ end
 assign nv_ack = nv_ack_c;
 assign nv_c_q = nv_q_c;
 
-// the UART: the modem port, or the debug readout (status[6])
+// the UART: the modem port, or the debug readout (status[6]); the modem port
+// also drives the MT32-pi's MIDI in, and in the Main's MIDI mode the user
+// port's MIDI joins what it receives (both lines idle high)
 wire uart_debug = status[6];
 wire modem_txd, dbg_txd;
 reg  [1:0] uart_debug_c;
 always @(posedge clk_cpu) uart_debug_c <= {uart_debug_c[0], uart_debug};
-wire modem_rxd = uart_debug_c[1] | UART_RXD;
+wire mt32_midi_rx;
+wire midi_in   = (uart_mode == 8'd3) ? mt32_midi_rx : 1'b1;
+wire modem_rxd = uart_debug_c[1] | (UART_RXD & midi_in);
 assign UART_TXD = uart_debug ? dbg_txd : modem_txd;
+// the handshake, as the Quadra 800 core's (an ImageWriter through the Main's
+// printer daemon, PPP): CTS uninverted, RTS while a received byte waits, the
+// other end's DTR back as its DSR
+wire modem_rts;
+wire modem_cts = ~uart_debug_c[1] & UART_CTS;
+assign UART_RTS = ~uart_debug & modem_rts;
+assign UART_DTR = UART_DSR;
+
+// the MT32-pi on the user port (sys/mt32pi.sv), as the Quadra 800 core has it
+wire [15:0] mt32_i2s_l, mt32_i2s_r;
+wire        mt32_available;
+wire        mt32_mute = mt32_available & status[20];
+wire        mt32_use  = mt32_available & ~status[20];
+wire  [1:0] mt32_info = status[28:27];
+wire  [7:0] mt32_mode, mt32_rom, mt32_sf;
+wire        mt32_newmode, mt32_lcd_en, mt32_lcd_pix, mt32_lcd_update;
+
+mt32pi mt32pi
+(
+	.CLK_AUDIO(CLK_AUDIO),
+	.CLK_VIDEO(clk_mem),
+	.CE_PIXEL(CE_PIXEL),
+	.VGA_VS(VGA_VS),
+	.VGA_DE(VGA_DE),
+	.USER_IN(USER_IN),
+	.USER_OUT(USER_OUT),
+	.reset(cpu_reset_m),
+	.midi_tx(modem_txd | mt32_mute),
+	.midi_rx(mt32_midi_rx),
+	.mt32_i2s_r(mt32_i2s_r),
+	.mt32_i2s_l(mt32_i2s_l),
+	.mt32_available(mt32_available),
+	.mt32_mode_req(status[21]),
+	.mt32_rom_req(status[23:22]),
+	.mt32_sf_req({5'd0, status[26:24]}),
+	.mt32_mode(mt32_mode),
+	.mt32_rom(mt32_rom),
+	.mt32_sf(mt32_sf),
+	.mt32_newmode(mt32_newmode),
+	.mt32_lcd_en(mt32_lcd_en),
+	.mt32_lcd_pix(mt32_lcd_pix),
+	.mt32_lcd_update(mt32_lcd_update)
+);
+
+// Show Info: Yes pops the mode up (the I, strings) when the Pi changes it
+reg mt32_newmode_q;
+always @(posedge clk_mem) begin
+	mt32_newmode_q <= mt32_newmode;
+	mt32_info_req <= (mt32_newmode_q ^ mt32_newmode) && (mt32_info == 2'd1);
+	mt32_info_disp <= (mt32_mode == 8'hA2) ? (4'd1 + mt32_sf[2:0]) :
+	                  (mt32_mode == 8'hA1 && mt32_rom == 8'd0) ? 4'd9 :
+	                  (mt32_mode == 8'hA1 && mt32_rom == 8'd1) ? 4'd10 :
+	                  (mt32_mode == 8'hA1 && mt32_rom == 8'd2) ? 4'd11 : 4'd12;
+end
+
+// the Pi's LCD over the picture: LCD-On always, LCD-Auto for 2 s after it changes
+reg        mt32_lcd_on;
+reg [27:0] mt32_lcd_to;
+reg        mt32_lcd_q;
+always @(posedge clk_mem) begin
+	mt32_lcd_q <= mt32_lcd_update;
+	if (mt32_lcd_to != 0) mt32_lcd_to <= mt32_lcd_to - 1'd1;
+	if (mt32_info == 2'd2) mt32_lcd_on <= 1;
+	else if (mt32_info != 2'd3) mt32_lcd_on <= 0;
+	else begin
+		if (mt32_lcd_to == 0) mt32_lcd_on <= 0;
+		if (mt32_lcd_q ^ mt32_lcd_update) begin
+			mt32_lcd_on <= 1;
+			mt32_lcd_to <= 28'd200_000_000;
+		end
+	end
+end
+
+// AWACS, the CD and the Pi's synthesiser, saturated
+wire signed [17:0] mix_cl = $signed({{2{snd_left[15]}}, snd_left}) + $signed({{2{cd_left[15]}}, cd_left});
+wire signed [17:0] mix_cr = $signed({{2{snd_right[15]}}, snd_right}) + $signed({{2{cd_right[15]}}, cd_right});
+wire signed [17:0] mix_l  = mix_cl + $signed(mt32_use ? {{2{mt32_i2s_l[15]}}, mt32_i2s_l} : 18'd0);
+wire signed [17:0] mix_r  = mix_cr + $signed(mt32_use ? {{2{mt32_i2s_r[15]}}, mt32_i2s_r} : 18'd0);
+assign AUDIO_L = (mix_l > 18'sd32767) ? 16'h7FFF : (mix_l < -18'sd32768) ? 16'h8000 : mix_l[15:0];
+assign AUDIO_R = (mix_r > 18'sd32767) ? 16'h7FFF : (mix_r < -18'sd32768) ? 16'h8000 : mix_r[15:0];
 
 ///////////////////////   THE MACHINE   ///////////////////////////////
 
@@ -455,14 +583,15 @@ PPCMac_system #(.CPU_HZ(CPU_MHZ * 1000000), .TB_HZ(12500000), .SDRAM_MB(128)) sy
 	.b_req, .b_we, .b_line, .b_addr, .b_be, .b_wdata, .b_ack, .b_rdata,
 
 	.cpu_req, .cpu_we, .cpu_line, .cpu_addr, .cpu_be, .cpu_wdata, .cpu_ack, .cpu_rdata, .cpu_irq, .cpu_tb_tick,
-	.modem_txd, .modem_rxd, .snd_left, .snd_right,
+	.modem_txd, .modem_rxd, .modem_cts, .modem_rts, .snd_left, .snd_right,
 	.nv_ld_we, .nv_ld_re, .nv_ld_addr, .nv_ld_data, .nv_ld_rack, .nv_ld_q, .nv_wr_cpu,
 	.mon_std(mon_c[1][8:6]), .mon_ext(mon_c[1][5:0]),
-	.ps2_key, .ps2_mouse,                 // in the memory clock: PPCMac_adb synchronises them
+	.ps2_key, .ps2_mouse, .joy,           // in the memory clock: PPCMac_adb synchronises them
 	.clock_ok, .clock_secs,
-	.img_mounted(img_mounted[1:0]), .img_size, .img_readonly,   // the disks' side runs in the memory clock
-	.sd_lba(disk_lba), .sd_rd(disk_rd), .sd_wr(disk_wr), .sd_ack(sd_ack[1:0]),
+	.img_mounted, .img_size, .img_readonly,   // the targets' side runs in the memory clock
+	.sd_lba(disk_lba), .sd_rd(disk_rd), .sd_wr(disk_wr), .sd_blk_cnt(disk_blk_cnt), .sd_ack,
 	.sd_buff_addr, .sd_buff_dout, .sd_buff_din(disk_buff_din), .sd_buff_wr, .disk_busy,
+	.cd_left, .cd_right,
 	.ddr_busy(DDRAM_BUSY), .ddr_burstcnt(DDRAM_BURSTCNT), .ddr_addr(DDRAM_ADDR), .ddr_dout(DDRAM_DOUT),
 	.ddr_dout_ready(DDRAM_DOUT_READY), .ddr_rd(DDRAM_RD), .ddr_din(DDRAM_DIN), .ddr_be(DDRAM_BE), .ddr_we(DDRAM_WE),
 	.vid_ce(mac_ce), .vid_r(mac_r), .vid_g(mac_g), .vid_b(mac_b), .vid_hs(mac_hs), .vid_vs(mac_vs),
@@ -594,9 +723,14 @@ video_freak video_freak
 	.SCALE({1'b0, status[10:9]})
 );
 assign VGA_VS    = show_dbg ? vsync : mac_vs;
-assign VGA_R     = show_dbg ? dbg_r : mac_r;
-assign VGA_G     = show_dbg ? dbg_g : mac_g;
-assign VGA_B     = show_dbg ? dbg_b : mac_b;
+// the MT32-pi's LCD: the picture dimmed in its box, the text pixel on top
+wire       mt32_lcd = mt32_lcd_en & mt32_lcd_on;
+wire [7:0] pic_r    = show_dbg ? dbg_r : mac_r;
+wire [7:0] pic_g    = show_dbg ? dbg_g : mac_g;
+wire [7:0] pic_b    = show_dbg ? dbg_b : mac_b;
+assign VGA_R     = mt32_lcd ? {{2{mt32_lcd_pix}}, pic_r[7:2]} : pic_r;
+assign VGA_G     = mt32_lcd ? {{2{mt32_lcd_pix}}, pic_g[7:2]} : pic_g;
+assign VGA_B     = mt32_lcd ? {{2{mt32_lcd_pix}}, pic_b[7:2]} : pic_b;
 
 assign LED_USER  = led_user;
 

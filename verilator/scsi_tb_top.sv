@@ -32,18 +32,21 @@ module scsi_tb_top
 	input  logic         dm_ack,
 	input  logic [255:0] dm_rdata,
 
-	// the disks' hps_io side
+	// the targets' hps_io side
 	input  logic         clk_h,
-	input  logic [1:0]   img_mounted,
+	input  logic [5:0]   img_mounted,
 	input  logic [63:0]  img_size,
 	output logic [31:0]  sd_lba,
-	output logic [1:0]   sd_rd,
-	output logic [1:0]   sd_wr,
-	input  logic [1:0]   sd_ack,
+	output logic [5:0]   sd_rd,
+	output logic [5:0]   sd_wr,
+	output logic [5:0]   sd_blk_cnt,
+	input  logic [5:0]   sd_ack,
 	input  logic [13:0]  sd_buff_addr,
 	input  logic [7:0]   sd_buff_dout,
 	output logic [7:0]   sd_buff_din,
 	input  logic         sd_buff_wr,
+	output logic [15:0]  cd_left,
+	output logic [15:0]  cd_right,
 
 	// the bus, to watch
 	output logic         bus_bsy, bus_sel, bus_req, bus_ack, bus_atn,
@@ -91,7 +94,7 @@ PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
 	.clk, .reset, .via_tick(1'b0), .rtxc_tick(1'b0), .scsi_tick, .us_tick(1'b0), .snd_tick(1'b0),
 	.sel, .we, .addr, .be, .wdata, .rdata, .irq,
 	.cuda_treq(1'b1), .cuda_cb1(1'b1), .cb2(1'b1), .via_tip(), .via_byteack(), .via_cb2_oe(), .via_cb2_out(),
-	.modem_txd(), .modem_rxd(1'b1), .nv_ld_we(1'b0), .nv_ld_re(1'b0), .nv_ld_addr(13'h0), .nv_ld_data(8'h0),
+	.modem_txd(), .modem_rxd(1'b1), .modem_cts(1'b0), .modem_rts(), .nv_ld_we(1'b0), .nv_ld_re(1'b0), .nv_ld_addr(13'h0), .nv_ld_data(8'h0),
 	.nv_ld_rack(), .nv_ld_q(), .nv_wr_cpu(),
 	.ctl_irq(1'b0), .nmi(1'b0),
 	.mesh_rst, .mesh_bsy, .mesh_sel, .mesh_atn, .mesh_ack, .mesh_req, .mesh_msg, .mesh_cd, .mesh_io, .mesh_db,
@@ -106,8 +109,8 @@ PPCMac_scsidisk #(.CLK_HZ(CPU_HZ)) disks (
 	.t_bsy, .t_req, .t_msg, .t_cd, .t_io, .t_db,
 	.b_rst(scsi_rst), .b_bsy(scsi_bsy), .b_sel(scsi_sel), .b_atn(scsi_atn), .b_ack(scsi_ack), .b_db(scsi_db),
 	.clk_h, .img_mounted, .img_size, .img_readonly(1'b0),
-	.sd_lba, .sd_rd, .sd_wr, .sd_ack, .sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr,
-	.busy()
+	.sd_lba, .sd_rd, .sd_wr, .sd_blk_cnt, .sd_ack, .sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr,
+	.busy(), .cd_left, .cd_right
 );
 /* verilator lint_on PINCONNECTEMPTY */
 

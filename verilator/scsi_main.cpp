@@ -14,7 +14,13 @@
 //      after command done), the last 2 by programmed I/O;
 //   4. READ(10) of 3 blocks wholly by DMA (two descriptors and a STOP);
 //   5. WRITE(10) of 2 blocks by DMA out from memory, then read back by DMA;
-//   6. an INQUIRY, a READ CAPACITY, a selection of an absent ID (timeout).
+//   6. an INQUIRY, a READ CAPACITY, a selection of an absent ID (timeout);
+//   7-10. the CD-ROM at ID 3 against a model of the Main's Mac CD layer:
+//      INQUIRY from its window, READ CAPACITY, a 2048-byte READ(10), MODE
+//      SELECT accepted (to the command window) and refused, PLAY (the audio
+//      plays), STOP, an eject and TEST UNIT READY with no disc;
+//   11. the BlueSCSI Toolbox on ID 0: MODE SENSE page 31, LIST, SEND DATA.
+// --stock: the official Main instead (no CD drive, nothing written to slot 4).
 //
 // Every byte the drivers take is checked against the image; every step's
 // registers (interrupt, exception, bus phase) against what the reference
@@ -55,13 +61,78 @@ void disk_read(uint32_t lba, uint8_t* out) {
 	for (int k = 0; k < 512; k++) out[k] = disk_byte(lba, k);
 }
 
-// ---- hps_io's block side, in clk_h ------------------------------------------------------------
+// ---- the CD (slot 4) and the Toolbox (slot 3) as the Main's Mac layer serves them -------------
+const uint32_t CD_BLOCKS = 8192;                        // 512-byte blocks: 2048 CD sectors
+uint8_t cd_byte(uint32_t lba, uint32_t k) { return (uint8_t)(lba * 11 + k * 3 + 0x40); }
+std::vector<uint8_t> cd_cmds;                           // the command window's opcodes, in order
+uint8_t cd_cdb0 = 0;                                    // ... the last one's CDB byte 0 (at 496)
+bool cd_playing = false;
+int cd_frames = 0;
+bool stock = false;                                     // --stock: a Main without the Mac CD layer
+int slot4_writes = 0;
+std::vector<uint8_t> tb_req(512);                       // the Toolbox's last request block
+std::map<uint32_t, std::vector<uint8_t>> tb_tail;       // ... and its tail blocks
+
+void host_fill(int slot, uint32_t lba, uint8_t* out, int n) {
+	std::memset(out, 0, n);
+	if (slot < 2) { disk_read(lba, out); return; }
+	if (stock) {                                        // the generic path: an ISO's blocks, zeros past its end
+		if (slot == 4 && lba < CD_BLOCKS) for (int k = 0; k < 512; k++) out[k] = cd_byte(lba, k);
+		return;
+	}
+	if (slot == 4) {
+		if (lba == 0x7E120000u) {
+			static const uint8_t inq[8] = {0x05, 0x80, 0x02, 0x02, 0x31, 0, 0, 0};
+			std::memcpy(out, inq, 8);
+			std::memcpy(out + 8, "SONY    CD-ROM CDU-8004 1.9a", 28);
+		}
+		else if ((lba & 0xFFFF0000u) == 0x7E1A0000u) { out[0] = 11; out[3] = 8; out[10] = 8; }
+		else if (lba == 0x7FFF0000u) { std::memcpy(out, "MCDA", 4); out[4] = 2; out[12] = 1; }
+		else if (lba == 0x7ECC0000u) out[0] = cd_playing ? 0 : 5;
+		else if (lba == 0x7C000000u) {
+			if (cd_playing) {
+				for (int s = 0; s < 588; s++) {
+					int16_t v = (int16_t)(8000 * ((s / 20) % 2 ? 1 : -1));
+					out[4 * s] = v & 0xFF; out[4 * s + 1] = v >> 8; out[4 * s + 2] = v & 0xFF; out[4 * s + 3] = v >> 8;
+				}
+				out[2352] = 0; out[2353] = 1; out[2354] = 7;
+				cd_frames++;
+			}
+			else out[2352] = 5;
+		}
+		else if (lba < CD_BLOCKS) for (int k = 0; k < 512; k++) out[k] = cd_byte(lba, k);
+		return;
+	}
+	if (slot == 3) {
+		if (lba == 0) { out[1] = 0xB5; out[3] = 100; }      // a LIST: GOOD, 100 bytes
+		else if (lba == 1) for (int k = 0; k < 100; k++) out[k] = (uint8_t)(k ^ 0x5A);
+	}
+}
+
+void host_write(int slot, uint32_t lba, const uint8_t* in) {
+	if (slot < 2) { written[lba] = std::vector<uint8_t>(in, in + 512); return; }
+	if (slot == 4) slot4_writes++;
+	if (slot == 4 && (lba & 0xFF000000u) == 0x7D000000u) {
+		uint8_t op = (uint8_t)(lba >> 16);
+		cd_cmds.push_back(op);
+		cd_cdb0 = in[496];
+		if (op == 0x47) cd_playing = true;
+		if (op == 0x4E || op == 0x1B || op == 0xFE) cd_playing = false;
+	}
+	if (slot == 3) {
+		if (lba == 0) tb_req.assign(in, in + 512);
+		else tb_tail[lba] = std::vector<uint8_t>(in, in + 512);
+	}
+}
+
+// ---- hps_io's block side, in clk_h: every slot, as the Main serves them -----------------------------
 struct Host {
-	int st = 0, slot = 0, k = 0, sub = 0;
+	int st = 0, slot = 0, k = 0, sub = 0, n = 512;
 	bool we = false;
 	uint32_t lba = 0, wait = 0;
-	uint8_t buf[512];
+	uint8_t buf[2560];
 	unsigned mounted = 0, ack = 0, addr = 0, dout = 0;
+	uint64_t size = 0;
 	bool wr = false;
 	uint64_t clocks = 0;
 	int reads = 0, writes = 0;
@@ -71,13 +142,17 @@ void host_edge() {
 	host.clocks++;
 	host.mounted = 0;
 	host.wr = false;
-	if (host.clocks == 20) host.mounted = 1;            // disk 0 mounted (ID 0)
+	if (host.clocks == 20) { host.mounted = 0x01; host.size = (uint64_t)BLOCKS * 512; }      // disk 0 (ID 0)
+	if (host.clocks == 30) { host.mounted = 0x10; host.size = (uint64_t)CD_BLOCKS * 512; }   // the CD
+	if (host.clocks == 40 && !stock) { host.mounted = 0x28; host.size = 0; }                 // the Toolbox slots announced
 	switch (host.st) {
 		case 0:
-			if ((dut->sd_rd | dut->sd_wr) & 3) {
-				host.slot = ((dut->sd_rd | dut->sd_wr) & 1) ? 0 : 1;
+			if (dut->sd_rd | dut->sd_wr) {
+				unsigned m = dut->sd_rd | dut->sd_wr;
+				host.slot = __builtin_ctz(m);
 				host.we = (dut->sd_wr >> host.slot) & 1;
 				host.lba = dut->sd_lba;
+				host.n = 512 * ((dut->sd_blk_cnt & 0x3F) + 1);
 				host.wait = 300 + (host.lba % 7) * 50;  // the ARM's file read, some hundreds of clocks
 				host.st = 1;
 			}
@@ -86,23 +161,23 @@ void host_edge() {
 			if (host.wait) { host.wait--; break; }
 			host.ack = 1u << host.slot;
 			host.k = 0; host.sub = 0;
-			if (!host.we) disk_read(host.lba, host.buf);
+			if (!host.we) host_fill(host.slot, host.lba, host.buf, host.n);
 			host.st = 2;
 			break;
 		case 2:
 			if (!host.we) {
 				if (host.sub == 0) { host.addr = host.k; host.dout = host.buf[host.k]; host.wr = true; host.sub = 1; }
-				else { host.sub = 0; if (++host.k == 512) host.st = 3; }
+				else { host.sub = 0; if (++host.k == host.n) host.st = 3; }
 			} else {
 				if (host.sub == 0) { host.addr = host.k; host.sub = 1; }
 				else if (host.sub == 1) host.sub = 2;
-				else { host.buf[host.k] = (uint8_t)dut->sd_buff_din; host.sub = 0; if (++host.k == 512) host.st = 3; }
+				else { host.buf[host.k] = (uint8_t)dut->sd_buff_din; host.sub = 0; if (++host.k == host.n) host.st = 3; }
 			}
 			break;
 		default:
-			if (host.we) { written[host.lba] = std::vector<uint8_t>(host.buf, host.buf + 512); host.writes++; }
+			if (host.we) { host_write(host.slot, host.lba, host.buf); host.writes++; }
 			else host.reads++;
-			if (verbose) std::printf("  hps: %s block %u\n", host.we ? "wrote" : "read", host.lba);
+			if (verbose) std::printf("  hps: slot %d %s block %08X\n", host.slot, host.we ? "wrote" : "read", host.lba);
 			host.ack = 0;
 			host.st = 0;
 			break;
@@ -155,7 +230,7 @@ void drive() {
 	dut->dm_ack = mem_ack;
 	for (int k = 0; k < 8; k++) dut->dm_rdata[k] = mem_rd[k];
 	dut->img_mounted = host.mounted;
-	dut->img_size = (uint64_t)BLOCKS * 512;
+	dut->img_size = host.size;
 	dut->sd_ack = host.ack;
 	dut->sd_buff_addr = host.addr;
 	dut->sd_buff_dout = host.dout;
@@ -335,6 +410,7 @@ int main(int argc, char** argv) {
 		std::string a = argv[i];
 		if (a == "--verbose") verbose = true;
 		else if (a == "--disk" && i + 1 < argc) disk_f = std::fopen(argv[++i], "rb");
+		else if (a == "--stock") stock = true;
 	}
 	auto ctx = std::make_unique<VerilatedContext>();
 	dut = std::make_unique<Vscsi_tb_top>(ctx.get());
@@ -481,7 +557,7 @@ int main(int argc, char** argv) {
 	finish(0x00);
 
 	// ---- 6: INQUIRY, READ CAPACITY, an absent ID ----
-	std::printf("6. INQUIRY, READ CAPACITY, a selection of ID 3 (nothing there)\n");
+	std::printf("6. INQUIRY, READ CAPACITY, a selection of ID 2 (nothing there)\n");
 	arbitrate_select(0, false);
 	send_cdb({0x12, 0, 0, 0, 36, 0});
 	wait_phase();
@@ -498,10 +574,114 @@ int main(int argc, char** argv) {
 	finish(0x00);
 	{
 		uint8_t s = command(0x01, "arbitrate");
-		mw(0xC, 3);
+		mw(0xC, 2);
 		mw(0xF, 0x01);                                  // 10 ms
-		s = command(0x02, "select ID 3");
+		s = command(0x02, "select ID 2");
 		check(s == 0x03 && (mr(7) & 1), "select of an absent ID: interrupt %02X, exception %02X", s, mr(7));
+	}
+
+	// ---- 7: the CD-ROM at ID 3 through the Main's windows ----
+	if (stock) {
+		std::printf("7. a Main without the Mac CD layer: no drive at ID 3, nothing written to the CD's slot\n");
+		run(20000);
+		uint8_t s = command(0x01, "arbitrate");
+		mw(0xC, 3);
+		mw(0xF, 0x01);
+		s = command(0x02, "select ID 3");
+		check(s == 0x03 && (mr(7) & 1), "select of ID 3 with a stock Main: interrupt %02X, exception %02X", s, mr(7));
+		run(20000);
+		check(slot4_writes == 0, "%d blocks written to the CD's slot", slot4_writes);
+	}
+	else {
+	std::printf("7. the CD-ROM (ID 3): INQUIRY from the Main's window, READ CAPACITY, READ(10) of a 2048-byte block\n");
+		auto cmd_in = [&](int id, std::vector<uint8_t> cdb, int n, uint8_t* out, uint8_t want) {
+			arbitrate_select(id, false);
+			send_cdb(cdb);
+			uint8_t p = wait_phase();
+			check(p == 1, "%02X: phase %d after the command, DATA IN expected", cdb[0], p);
+			pio_in(out, n);
+			finish(want);
+		};
+		auto cmd_none = [&](int id, std::vector<uint8_t> cdb, uint8_t want) {
+			arbitrate_select(id, false);
+			send_cdb(cdb);
+			uint8_t p = wait_phase();
+			check(p == 3, "%02X: phase %d after the command, STATUS expected", cdb[0], p);
+			finish(want);
+		};
+		auto pio_out = [&](std::vector<uint8_t> d) {
+			mw(1, 0); mw(0, (uint8_t)d.size());
+			mw(3, 0x05);
+			for (uint8_t b : d) mw(2, b);
+			uint8_t s = wait_int(0x07, "data out done");
+			mw(0xA, s);
+			check(s == 0x01, "data out: interrupt %02X", s);
+		};
+		run(20000);                                     // the probe has read the INQUIRY window
+		cmd_in(3, {0x12, 0, 0, 0, 54, 0}, 54, buf, 0x00);
+		check(buf[0] == 0x05 && buf[1] == 0x80 && std::memcmp(buf + 8, "SONY", 4) == 0,
+			"CD INQUIRY: %02X %02X %.8s", buf[0], buf[1], (const char*)buf + 8);
+		cmd_in(3, {0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0}, 8, buf, 0x00);
+		check(buf[2] == 0x07 && buf[3] == 0xFF && buf[6] == 0x08, "CD READ CAPACITY: %02X%02X%02X%02X %02X%02X%02X%02X",
+			buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7]);
+		uint8_t sec[2048];
+		cmd_in(3, {0x28, 0, 0, 0, 0, 5, 0, 0, 1, 0}, 2048, sec, 0x00);
+		for (int k = 0; k < 2048; k++)
+			if (sec[k] != cd_byte(20 + k / 512, k % 512)) { check(false, "CD READ: byte %d is %02X", k, sec[k]); break; }
+
+		std::printf("8. the CD: MODE SELECT of 2048-byte blocks (to the command window), of 512 (refused)\n");
+		size_t before = cd_cmds.size();
+		arbitrate_select(3, false);
+		send_cdb({0x15, 0x10, 0, 0, 12, 0});
+		check(wait_phase() == 0, "MODE SELECT: no DATA OUT");
+		pio_out({0, 0, 0, 8, 0, 0, 0, 0, 0, 0x00, 0x08, 0x00});
+		finish(0x00);
+		check(cd_cmds.size() == before + 1 && cd_cmds.back() == 0x15 && cd_cdb0 == 0x15,
+			"MODE SELECT: the command window has %zu writes (last %02X, CDB %02X)", cd_cmds.size() - before,
+			cd_cmds.empty() ? 0 : cd_cmds.back(), cd_cdb0);
+		arbitrate_select(3, false);
+		send_cdb({0x15, 0x10, 0, 0, 12, 0});
+		wait_phase();
+		pio_out({0, 0, 0, 8, 0, 0, 0, 0, 0, 0x00, 0x02, 0x00});
+		finish(0x02);
+
+		std::printf("9. the CD: PLAY AUDIO MSF forwarded, the audio plays, STOP\n");
+		cmd_none(3, {0x47, 0, 0, 0, 2, 0, 0, 10, 0, 0}, 0x00);
+		check(!cd_cmds.empty() && cd_cmds.back() == 0x47, "PLAY: not in the command window");
+		bool sound = false;
+		for (int i = 0; i < 3000 && !sound; i++) { run(1000); sound = dut->cd_left != 0; }
+		check(sound, "PLAY: no sound after 3 million clocks (%d frames served)", cd_frames);
+		cmd_none(3, {0x4E, 0, 0, 0, 0, 0, 0, 0, 0, 0}, 0x00);
+		check(cd_cmds.back() == 0x4E, "STOP: not in the command window");
+
+		std::printf("10. the CD: eject (START STOP UNIT, LoEj), then TEST UNIT READY: no disc\n");
+		cmd_none(3, {0x1B, 0, 0, 0, 0x02, 0}, 0x00);
+		check(cd_cmds.back() == 0x1B, "eject: not in the command window");
+		cmd_none(3, {0x00, 0, 0, 0, 0, 0}, 0x02);
+
+		std::printf("11. the Toolbox on ID 0: MODE SENSE page 31, LIST (D0), SEND DATA (D4) of a block\n");
+		cmd_in(0, {0x1A, 0, 0x31, 0, 56, 0}, 56, buf, 0x00);
+		check(buf[12] == 0x31 && std::memcmp(buf + 14, "BlueSCSI is the BEST", 20) == 0, "page 31: %.20s", (const char*)buf + 14);
+		cmd_in(0, {0xD0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, 100, buf, 0x00);
+		for (int k = 0; k < 100; k++)
+			if (buf[k] != (uint8_t)(k ^ 0x5A)) { check(false, "LIST: byte %d is %02X", k, buf[k]); break; }
+		check(tb_req[0] == 0xD0 && tb_req[10] == 0, "LIST: the request block %02X, direction %d", tb_req[0], tb_req[10]);
+		for (int k = 0; k < 512; k++) mem[0x50000 + k] = (uint8_t)(k * 5 + 1);
+		arbitrate_select(0, false);
+		send_cdb({0xD4, 0, 0, 0, 0, 0, 1, 0, 0, 0});
+		check(wait_phase() == 0, "SEND DATA: no DATA OUT");
+		put_cmd(0x700, 1, 0x00, 512, 0x50000);
+		put_cmd(0x710, 7, 0x00, 0, 0);
+		mw(0, 0x00); mw(1, 0x02);
+		mw(3, 0x85);
+		dw(3, 0x700); dw(0, 0x80008000);
+		{ uint8_t s = wait_int(0x07, "SEND DATA by DMA"); mw(0xA, s); dw(0, 0x80000000); }
+		finish(0x00);
+		check(tb_req[0] == 0xD4 && tb_req[10] == 1, "SEND DATA: the request block %02X, direction %d", tb_req[0], tb_req[10]);
+		bool ok = tb_tail.count(1) != 0;
+		for (int k = 0; ok && k < 512; k++)
+			ok = (k < 496 ? tb_req[16 + k] : tb_tail[1][k - 496]) == (uint8_t)(k * 5 + 1);
+		check(ok, "SEND DATA: the payload is not under the CDB and in tail block 1");
 	}
 
 	std::printf("%llu cycles; DMA: %d lines, %d words; the card: %d blocks read, %d written\n",

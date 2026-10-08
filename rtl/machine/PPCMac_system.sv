@@ -59,6 +59,8 @@ module PPCMac_system
 	// the modem port (the ESCC's channel A), 1 when idle; asynchronous in
 	output logic         modem_txd,
 	input  logic         modem_rxd,
+	input  logic         modem_cts,       // asynchronous: 0 clear to send
+	output logic         modem_rts,       // 1 while a received byte waits
 
 	// the sound AWACS plays, signed, in the CPU's clock, changing at its
 	// frame rate (the framework's audio input takes a value seen twice)
@@ -81,29 +83,35 @@ module PPCMac_system
 	input  logic [2:0]   mon_std,
 	input  logic [5:0]   mon_ext,
 
-	// the keyboard and the mouse, as hps_io gives them (the ADB devices
-	// synchronise them)
+	// the keyboard, the mouse and the game controller, as hps_io gives them
+	// (the ADB devices synchronise them)
 	input  logic [10:0]  ps2_key,
 	input  logic [24:0]  ps2_mouse,
+	input  logic [51:0]  joy,
 
 	// the date and time for Cuda's clock (seconds since 1904), steady in the
 	// CPU's clock while clock_ok; set once as the machine starts
 	input  logic         clock_ok,
 	input  logic [31:0]  clock_secs,
 
-	// the disk images: hps_io's block devices, slots 0 and 1, in the memory's clock
-	input  logic [1:0]   img_mounted,
+	// the SCSI targets' images: hps_io's block devices (0, 1 the disks, 3 the
+	// Toolbox, 4 the CD-ROM, 5 the CD changer; 2 not driven here), in the
+	// memory's clock
+	input  logic [5:0]   img_mounted,
 	input  logic [63:0]  img_size,
 	input  logic         img_readonly,
 	output logic [31:0]  sd_lba,
-	output logic [1:0]   sd_rd,
-	output logic [1:0]   sd_wr,
-	input  logic [1:0]   sd_ack,
+	output logic [5:0]   sd_rd,
+	output logic [5:0]   sd_wr,
+	output logic [5:0]   sd_blk_cnt,
+	input  logic [5:0]   sd_ack,
 	input  logic [13:0]  sd_buff_addr,
 	input  logic [7:0]   sd_buff_dout,
 	output logic [7:0]   sd_buff_din,
 	input  logic         sd_buff_wr,
 	output logic         disk_busy,
+	output logic signed [15:0] cd_left,  // the CD's audio, in the CPU's clock
+	output logic signed [15:0] cd_right,
 
 	// the VRAM's accesses as the picture side answers them, in the memory's
 	// clock (for the test bench)
@@ -219,12 +227,12 @@ PPCMac_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_FAST
 	.m_req, .m_we, .m_line, .m_addr, .m_be, .m_wdata, .m_ack, .m_rdata,
 	.ext_irq, .tb_tick, .cpu_reset(cuda_reset),
 	.snoop_req, .snoop_we, .snoop_addr, .snoop_ack,
-	.img_mounted, .img_size, .img_readonly, .sd_lba, .sd_rd, .sd_wr, .sd_ack,
-	.sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr, .disk_busy,
+	.img_mounted, .img_size, .img_readonly, .sd_lba, .sd_rd, .sd_wr, .sd_blk_cnt, .sd_ack,
+	.sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr, .disk_busy, .cd_left, .cd_right,
 	.dma_wr, .dma_wr_line, .dma_wr_addr, .dma_wr_be, .dma_wr_data,
-	.modem_txd, .modem_rxd, .snd_left, .snd_right,
+	.modem_txd, .modem_rxd, .modem_cts, .modem_rts, .snd_left, .snd_right,
 	.nv_ld_we, .nv_ld_re, .nv_ld_addr, .nv_ld_data, .nv_ld_rack, .nv_ld_q, .nv_wr_cpu,
-	.mon_std, .mon_ext, .ps2_key, .ps2_mouse, .clock_ok, .clock_secs,
+	.mon_std, .mon_ext, .ps2_key, .ps2_mouse, .joy, .clock_ok, .clock_secs,
 	.v_req, .v_we, .v_line, .v_addr, .v_be, .v_wdata, .v_ack, .v_rdata,
 	.timing_on, .sw_params, .fb_base, .row_words, .hs_pos, .vs_pos, .dac_cr, .dbl_buf_cr,
 	.cursor_x, .cursor_clut, .athens_d2, .athens_n2, .athens_p2, .vbl_start_tog, .vbl_end_tog,

@@ -128,19 +128,23 @@ module PPCMac_machine
 	output logic [31:5]  snoop_addr,
 	input  logic         snoop_ack,
 
-	// the disk images: hps_io's block devices, slots 0 and 1, in clk_v
-	input  logic [1:0]   img_mounted,
+	// the SCSI targets' images: hps_io's block devices (0, 1 the disks, 3 the
+	// Toolbox, 4 the CD-ROM, 5 the CD changer; 2 not driven here), in clk_v
+	input  logic [5:0]   img_mounted,
 	input  logic [63:0]  img_size,
 	input  logic         img_readonly,
 	output logic [31:0]  sd_lba,
-	output logic [1:0]   sd_rd,
-	output logic [1:0]   sd_wr,
-	input  logic [1:0]   sd_ack,
+	output logic [5:0]   sd_rd,
+	output logic [5:0]   sd_wr,
+	output logic [5:0]   sd_blk_cnt,
+	input  logic [5:0]   sd_ack,
 	input  logic [13:0]  sd_buff_addr,
 	input  logic [7:0]   sd_buff_dout,
 	output logic [7:0]   sd_buff_din,
 	input  logic         sd_buff_wr,
 	output logic         disk_busy,
+	output logic signed [15:0] cd_left,  // the CD's audio, in this clock
+	output logic signed [15:0] cd_right,
 
 	// a DMA write to RAM, for the test bench (its reference has no DMA): one
 	// clock, as it goes into memory
@@ -150,9 +154,11 @@ module PPCMac_machine
 	output logic [3:0]   dma_wr_be,
 	output logic [255:0] dma_wr_data,
 
-	// the modem port (the ESCC's channel A), 1 when idle
+	// the modem port (the ESCC's channel A), 1 when idle; its CTS and RTS
 	output logic         modem_txd,
 	input  logic         modem_rxd,
+	input  logic         modem_cts,
+	output logic         modem_rts,
 
 	// the sound AWACS plays (signed, changing at its frame rate)
 	output logic [15:0]  snd_left,
@@ -172,9 +178,10 @@ module PPCMac_machine
 	input  logic [2:0]   mon_std,
 	input  logic [5:0]   mon_ext,
 
-	// the keyboard and the mouse, as hps_io gives them (PPCMac_adb)
+	// the keyboard, the mouse and the game controller, as hps_io gives them (PPCMac_adb)
 	input  logic [10:0]  ps2_key,
 	input  logic [24:0]  ps2_mouse,
+	input  logic [51:0]  joy,
 
 	// the date and time for Cuda's clock: seconds since 1904, steady in this clock
 	input  logic         clock_ok,
@@ -538,7 +545,7 @@ PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
 	.sel(present & is_gc), .we(c_we), .addr(dev_a[16:2]), .be(dev_be), .wdata(dev_wd),
 	.rdata(gc_rdata), .irq(gc_irq),
 	.cuda_treq, .cuda_cb1, .cb2(cb2_line), .via_tip, .via_byteack, .via_cb2_oe, .via_cb2_out,
-	.modem_txd, .modem_rxd, .nv_ld_we, .nv_ld_re, .nv_ld_addr, .nv_ld_data, .nv_ld_rack, .nv_ld_q, .nv_wr_cpu,
+	.modem_txd, .modem_rxd, .modem_cts, .modem_rts, .nv_ld_we, .nv_ld_re, .nv_ld_addr, .nv_ld_data, .nv_ld_rack, .nv_ld_q, .nv_wr_cpu,
 	.ctl_irq, .nmi(cuda_nmi),
 	.mesh_rst, .mesh_bsy, .mesh_sel, .mesh_atn, .mesh_ack, .mesh_req, .mesh_msg, .mesh_cd, .mesh_io, .mesh_db,
 	.scsi_rst, .scsi_bsy, .scsi_sel, .scsi_atn, .scsi_ack, .scsi_req, .scsi_msg, .scsi_cd, .scsi_io, .scsi_db,
@@ -550,14 +557,14 @@ PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
 
 assign ext_irq = gc_irq;
 
-// ---- the internal bus's disks: IDs 0 and 1, the SD card's images (hps_io slots 0 and 1) ----------
+// ---- the internal bus's targets: disks at IDs 0 and 1, the CD-ROM at 3 (hps_io's slots) ----------
 PPCMac_scsidisk #(.CLK_HZ(CPU_HZ)) disks (
 	.clk, .reset(board_reset),
 	.t_bsy, .t_req, .t_msg, .t_cd, .t_io, .t_db,
 	.b_rst(scsi_rst), .b_bsy(scsi_bsy), .b_sel(scsi_sel), .b_atn(scsi_atn), .b_ack(scsi_ack), .b_db(scsi_db),
 	.clk_h(clk_v), .img_mounted, .img_size, .img_readonly,
-	.sd_lba, .sd_rd, .sd_wr, .sd_ack, .sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr,
-	.busy(disk_busy)
+	.sd_lba, .sd_rd, .sd_wr, .sd_blk_cnt, .sd_ack, .sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr,
+	.busy(disk_busy), .cd_left, .cd_right
 );
 
 // ---- Cuda ------------------------------------------------------------------------------------
@@ -569,7 +576,7 @@ wire         iic_sda = ~(iic_sda_low | athens_sda_low);
 
 PPCMac_adb adb (
 	.clk, .reset, .tick(cuda_tick), .host_low(adb_low), .dev_low(adb_dev_low),
-	.ps2_key, .ps2_mouse
+	.ps2_key, .ps2_mouse, .joy
 );
 
 PPCMac_athens athens (

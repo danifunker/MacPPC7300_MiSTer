@@ -30,7 +30,9 @@
 //    mode (1, 16, 32 or 64). The source is RTxC, 3.6864 MHz on these
 //    machines (rtxc_tick); PCLK as the source is taken to be RTxC too. Open
 //    Firmware's driver (FCode image 6 in the ROM) sets time constant 1 from
-//    RTxC in x16 mode: 38,400 baud, 8 data bits, 2 stop bits.
+//    RTxC in x16 mode: 38,400 baud, 8 data bits, 2 stop bits. WR11's TRxC
+//    source (2026-10-08) is a MIDI interface's 1 MHz clock, always there
+//    (trxc_tick), as the Quadra 800 core does: x32, 31,250 bit/s.
 //
 //  - Interrupts (2026-10-08), as the Z85C30's manual has them on a bus
 //    without interrupt acknowledge cycles (Grand Central has none, so no
@@ -58,10 +60,15 @@
 //  - Grand Central's LocalTalk helper registers (MacRISC 8-B: recovery
 //    count, Start A and B, Detect AB) as dingusppc's escc.cpp has them.
 //
+//  - The modem port's CTS (2026-10-08) is the MiSTer UART's (cts_a, the
+//    other end's RTS), uninverted as the Quadra 800 core found on the board
+//    with an ImageWriter: RR0 bit 5 = 0 is clear to send to the Mac's
+//    drivers. rts_a holds the other end off while a received byte waits.
+//
 //  Left out (docs/PPCMac_stubs.md): receiving in the synchronous modes (no
 //  frame ever arrives), DMA, the DPLL and the encodings, the CRC's value,
-//  zero insertion, abort and break, the modem lines (RR0 reads 44 with the
-//  transmitter idle in asynchronous mode, as escc.cpp's), the baud-rate
+//  zero insertion, abort and break, the other modem lines (DCD reads 0, the
+//  printer port's CTS 0), WR5's RTS and DTR pins, the baud-rate
 //  generator's zero count, and the read registers dingusppc does not keep
 //  (all but RR0, RR1, RR2, RR3 and RR8 read 0).
 //
@@ -76,6 +83,7 @@ module PPCMac_escc
 	input  logic       clk,
 	input  logic       reset,
 	input  logic       rtxc_tick,      // one clock at RTxC's rate, 3,686,400 Hz
+	input  logic       trxc_tick,      // one clock a microsecond: TRxC
 	input  logic       sel,            // an access, for one cycle
 	input  logic       we,
 	input  logic [3:0] rn,             // MacRISC register number
@@ -83,6 +91,8 @@ module PPCMac_escc
 	output logic [7:0] rq,             // what a read of rn returns now (the caller registers it)
 	output logic       txd_a,          // the modem port: transmit (1 when idle)
 	input  logic       rxd_a,          //   and receive, asynchronous (1 when idle)
+	input  logic       cts_a,          //   CTS, asynchronous (0: clear to send)
+	output logic       rts_a,          //   1 while a received byte waits
 	output logic       irq_a,          // channel A's interrupt (Grand Central's source 0F)
 	output logic       irq_b           // channel B's (10)
 );
@@ -120,24 +130,28 @@ wire       cmd_b = ptr_wr & ~chan_a;
 
 logic [7:0] rr0_a, rr1_a, rd_a, rr0_b, rr1_b, rd_b;
 logic       txd_b;
-logic [1:0] rxd_s;                     // the modem port's receive line, synchronised
+logic [1:0] rxd_s, cts_s;              // the modem port's receive line and CTS, synchronised
 logic       rx_ip_a, tx_ip_a, ext_ip_a, sp_a, rx_ip_b, tx_ip_b, ext_ip_b, sp_b;
 
-always_ff @(posedge clk) rxd_s <= {rxd_s[0], rxd_a};
+always_ff @(posedge clk) begin
+	rxd_s <= {rxd_s[0], rxd_a};
+	cts_s <= {cts_s[0], cts_a};
+end
+assign rts_a = rr0_a[0];
 
 PPCMac_escc_ch ch_a (
-	.clk, .hw_rst, .ch_rst(rst_a), .rtxc_tick,
+	.clk, .hw_rst, .ch_rst(rst_a), .rtxc_tick, .trxc_tick,
 	.wr_en(wr_a), .wr_n(ptr), .wr_v(wdata), .tx_wr(tx_a), .rx_rd(rx_a),
 	.cmd_en(cmd_a), .cmd(wdata[5:3]), .crc_cmd(wdata[7:6]),
-	.rr0(rr0_a), .rr1(rr1_a), .rx_data(rd_a), .txd(txd_a), .rxd(rxd_s[1]),
+	.rr0(rr0_a), .rr1(rr1_a), .rx_data(rd_a), .txd(txd_a), .rxd(rxd_s[1]), .cts(cts_s[1]),
 	.rx_ip(rx_ip_a), .tx_ip(tx_ip_a), .ext_ip(ext_ip_a), .special(sp_a)
 );
 
 PPCMac_escc_ch ch_b (
-	.clk, .hw_rst, .ch_rst(rst_b), .rtxc_tick,
+	.clk, .hw_rst, .ch_rst(rst_b), .rtxc_tick, .trxc_tick,
 	.wr_en(wr_b), .wr_n(ptr), .wr_v(wdata), .tx_wr(tx_b), .rx_rd(rx_b),
 	.cmd_en(cmd_b), .cmd(wdata[5:3]), .crc_cmd(wdata[7:6]),
-	.rr0(rr0_b), .rr1(rr1_b), .rx_data(rd_b), .txd(txd_b), .rxd(1'b1),
+	.rr0(rr0_b), .rr1(rr1_b), .rx_data(rd_b), .txd(txd_b), .rxd(1'b1), .cts(1'b0),
 	.rx_ip(rx_ip_b), .tx_ip(tx_ip_b), .ext_ip(ext_ip_b), .special(sp_b)
 );
 
@@ -229,6 +243,7 @@ module PPCMac_escc_ch
 	input  logic       hw_rst,         // reset, or WR9's hardware reset
 	input  logic       ch_rst,         // WR9's reset of this channel
 	input  logic       rtxc_tick,
+	input  logic       trxc_tick,
 	input  logic       wr_en,          // write register wr_n
 	input  logic [3:0] wr_n,
 	input  logic [7:0] wr_v,
@@ -242,6 +257,7 @@ module PPCMac_escc_ch
 	output logic [7:0] rx_data,
 	output logic       txd,
 	input  logic       rxd,            // synchronised
+	input  logic       cts,            // RR0 bit 5, synchronised
 	output logic       rx_ip,          // the interrupt pending bits
 	output logic       tx_ip,
 	output logic       ext_ip,
@@ -263,6 +279,9 @@ wire [2:0]  mode_sh = wr4[7:6] == 2'b00 ? 3'd0 : wr4[7:6] == 2'b01 ? 3'd4 : wr4[
 wire        sync_md = wr4[3:2] == 2'b00;
 wire [23:0] tx_bit  = sync_md ? (tx_brg ? {6'd0, brg_div} : 24'd16) : ({6'd0, tx_brg ? brg_div : 18'd1} << mode_sh);
 wire [23:0] rx_bit  = {6'd0, rx_brg ? brg_div : 18'd1} << mode_sh;
+// counted in TRxC's clocks when WR11 takes it (one a TRxC clock times the clock mode)
+wire        tx_tck  = wr11[4:3] == 2'b01 ? trxc_tick : rtxc_tick;
+wire        rx_tck  = wr11[6:5] == 2'b01 ? trxc_tick : rtxc_tick;
 
 // ---- the transmitter ------------------------------------------------------------------------
 logic [7:0]  tx_buf;
@@ -305,7 +324,7 @@ logic        rx_ovr;
 wire  [3:0]  rx_dbits = wr3[7:6] == 2'b00 ? 4'd5 : wr3[7:6] == 2'b01 ? 4'd7 : wr3[7:6] == 2'b10 ? 4'd6 : 4'd8;
 wire         rx_on    = wr3[0];
 wire  [7:0]  rx_byte  = rx_sh >> (4'd8 - rx_dbits);              // the first bit received at bit 0
-wire         rx_mid   = rtxc_tick & (rx_cnt <= 24'd1);
+wire         rx_mid   = rx_tck & (rx_cnt <= 24'd1);
 wire         rx_push  = rx_state == 2'd3 & rx_mid;
 wire         rx_pop   = rx_rd & (rx_n != 2'd0);
 wire         rx_take  = rx_push & ~(rx_n == 2'd3 & ~rx_pop);     // room for it
@@ -320,7 +339,7 @@ wire  [1:0]  rx_at    = rx_n - {1'b0, rx_pop};                   // where it goe
 // /SYNC pin, 0 as dingusppc reads it. RR1's all sent is 1 in the
 // synchronous modes (the manual).
 wire         sync_hunt = sync_md;
-assign rr0     = {1'b0, eom, 1'b0, sync_hunt, 1'b0, ~tx_full, 1'b0, rx_n != 2'd0};
+assign rr0     = {1'b0, eom, cts, sync_hunt, 1'b0, ~tx_full, 1'b0, rx_n != 2'd0};
 assign rr1     = {2'b00, rx_ovr, 2'b00, 2'b11, sync_md | (~tx_full & tx_idle)};
 assign rx_data = rx_f0;
 assign txd     = tx_idle | tx_sh[0];
@@ -397,7 +416,7 @@ always_ff @(posedge clk) begin
 			eom     <= 1'b1;
 		end
 	end
-	else if (rtxc_tick) begin
+	else if (tx_tck) begin
 		if (tx_cnt <= 24'd1) begin
 			tx_sh   <= {1'b1, tx_sh[11:1]};
 			tx_left <= tx_left - 5'd1;
@@ -413,7 +432,7 @@ always_ff @(posedge clk) begin
 			rx_state <= 2'd1;
 			rx_cnt   <= {1'b0, rx_bit[23:1]};
 		end
-		2'd1: if (rtxc_tick) begin
+		2'd1: if (rx_tck) begin
 			if (rx_cnt <= 24'd1) begin                            // the middle of the start bit
 				rx_state <= rxd ? 2'd0 : 2'd2;                    // high again: a glitch
 				rx_left  <= rx_dbits;
@@ -421,7 +440,7 @@ always_ff @(posedge clk) begin
 			end
 			else rx_cnt <= rx_cnt - 24'd1;
 		end
-		2'd2: if (rtxc_tick) begin
+		2'd2: if (rx_tck) begin
 			if (rx_cnt <= 24'd1) begin                            // the middle of a data bit
 				rx_sh   <= {rxd, rx_sh[7:1]};
 				rx_left <= rx_left - 4'd1;
@@ -430,7 +449,7 @@ always_ff @(posedge clk) begin
 			end
 			else rx_cnt <= rx_cnt - 24'd1;
 		end
-		default: if (rtxc_tick) begin                             // the stop bit (parity is not received)
+		default: if (rx_tck) begin                                // the stop bit (parity is not received)
 			if (rx_cnt <= 24'd1) rx_state <= 2'd0;
 			else rx_cnt <= rx_cnt - 24'd1;
 		end

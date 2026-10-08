@@ -29,6 +29,7 @@ module cuda_tb_top
 
 	input  logic [10:0] ps2_key,
 	input  logic [24:0] ps2_mouse,
+	input  logic [51:0] joy,
 
 	output logic        dbg_cen,
 	output logic [12:0] dbg_addr,
@@ -67,7 +68,7 @@ PPCMac_cuda #(.CLK_HZ(CLK_HZ)) cuda (
 
 PPCMac_adb adb (
 	.clk, .reset, .tick, .host_low(adb_low), .dev_low(adb_dev_low),
-	.ps2_key, .ps2_mouse
+	.ps2_key, .ps2_mouse, .joy
 );
 
 endmodule

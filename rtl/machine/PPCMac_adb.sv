@@ -46,6 +46,18 @@
 //  ps2_mouse[24] toggle once an event, its data steady long before, and are
 //  synchronised here.
 //
+//  A game controller from the MiSTer's joystick 0, as the Quadra 800 core
+//  has them (its rtl/adb.sv; formats from tashnotes' macintosh/adb/
+//  protocols): the Gravis MouseStick II or Firebird, or the SideWinder 3D
+//  Pro's mouse half (joy: address 3, handler 01, a mouse until its driver
+//  sets 23, 4E or 02), the Gravis Mac GamePad (pad: address 2, handler 02,
+//  arrow keys until its driver sets 34) or the SideWinder's joystick (pad:
+//  address 4, handler 5D). Devices sharing an address: Talk 3's lowest
+//  (keyboard, mouse, joy, pad) answers and the others note the collision,
+//  which stops Listen 3's FE moving them. "Stick moves pointer": the stick
+//  drives joy in handlers 01 and 02, or, with the GamePad (its analog stick)
+//  or no controller, the mouse.
+//
 //============================================================================
 
 module PPCMac_adb
@@ -57,7 +69,11 @@ module PPCMac_adb
 	output logic        dev_low,         // a device pulls the line low
 
 	input  logic [10:0] ps2_key,         // [10] toggles, [9] pressed, [8] extended, [7:0] the code
-	input  logic [24:0] ps2_mouse        // [24] toggles, [23:16] Y, [15:8] X, [5] Y sign, [4] X sign, [0] left button
+	input  logic [24:0] ps2_mouse,       // [24] toggles, [23:16] Y, [15:8] X, [5] Y sign, [4] X sign, [0] left button
+	// {stick moves pointer, controller (0 none, 1 MouseStick II, 2 Firebird, 3 GamePad,
+	// 4 SideWinder), right stick {Y, X}, left stick {Y, X}, joystick_0[15:0]}; sticks signed,
+	// up and left negative
+	input  logic [51:0] joy
 );
 
 // ---- timing, in 4,194,304 Hz ticks ----------------------------------------------------------
@@ -225,7 +241,6 @@ end
 
 logic signed [9:0] mx, my;            // movement not yet reported, ADB's sense (Y down)
 logic        btn, btn_rep;            // the button now, and as last reported
-wire         mouse_has = mx != 0 || my != 0 || btn != btn_rep;
 
 function automatic logic signed [6:0] clamp7(input logic signed [9:0] v);
 	if (v > 10'sd63)       clamp7 = 7'sd63;
@@ -233,17 +248,160 @@ function automatic logic signed [6:0] clamp7(input logic signed [9:0] v);
 	else                   clamp7 = v[6:0];
 endfunction
 
-wire signed [6:0] mx7 = clamp7(mx), my7 = clamp7(my);
-
 function automatic logic signed [9:0] sat10(input logic signed [10:0] v);
 	if (v > 11'sd511)       sat10 = 10'sd511;
 	else if (v < -11'sd512) sat10 = 10'h200;        // -512
 	else                    sat10 = v[9:0];
 endfunction
 
-// the accumulators and PS/2's 9-bit movement, sign-extended to 11 bits
+// ---- the game controller -------------------------------------------------------------------
+logic [51:0] js1, js2, js3, jr;       // taken once seen the same twice
+always_ff @(posedge clk) begin
+	js1 <= joy; js2 <= js1; js3 <= js2;
+	if (js2 == js3) jr <= js3;
+end
+wire [2:0] j_mode = jr[50:48];
+wire       j_ptr  = jr[51];
+wire       m_ms = j_mode == 3'd1, m_fb = j_mode == 3'd2, m_gp = j_mode == 3'd3, m_sw = j_mode == 3'd4;
+wire       joy_on = m_ms | m_fb | m_sw;
+wire       pad_on = m_gp | m_sw;
+wire [3:0] pad_home = m_gp ? 4'd2 : 4'd4;
+wire [7:0] pad_hid0 = m_gp ? 8'h02 : 8'h5D;
+
+logic [3:0] joy_addr, pad_addr;
+logic [7:0] joy_hid, pad_hid;
+logic       joy_srq_en, pad_srq_en;
+logic       kbd_col, mouse_col, joy_col, pad_col;   // lost the last Talk 3
+
+// the D-pad overrides the left stick
+wire       jd_r = jr[0], jd_l = jr[1], jd_d = jr[2], jd_u = jr[3];
+wire       jd_any = jd_r | jd_l | jd_d | jd_u;
+wire [7:0] an_x = jr[23:16], an_y = jr[31:24];
+wire [7:0] joy_x = jd_any ? (jd_r ? 8'd127 : jd_l ? 8'h81 : 8'd0) : an_x;
+wire [7:0] joy_y = jd_any ? (jd_d ? 8'd127 : jd_u ? 8'h81 : 8'd0) : an_y;
+wire [7:0] joy_rx = jr[39:32];        // right stick X: the SideWinder's twist
+wire [7:0] joy_t  = jr[47:40];        // right stick Y: the throttle
+wire [7:0] joy_b  = jr[11:4];         // buttons 1-8
+
+// the stick as a pointer: rate control past a dead zone, up to 13 counts a report
+wire       mouse_stick = j_ptr && (j_mode == 3'd0 || (m_gp && pad_hid == 8'h02));
+wire [7:0] pt_x  = m_gp ? an_x : joy_x;
+wire [7:0] pt_y  = m_gp ? an_y : joy_y;
+wire [7:0] pt_xa = pt_x[7] ? -pt_x : pt_x;
+wire [7:0] pt_ya = pt_y[7] ? -pt_y : pt_y;
+wire       pt_xo = pt_xa > 8'd24, pt_yo = pt_ya > 8'd24;
+wire [7:0] pt_xs = pt_xa - 8'd24, pt_ys = pt_ya - 8'd24;
+wire [6:0] pt_xm = pt_xo ? {2'b00, pt_xs[7:3]} : 7'd0;
+wire [6:0] pt_ym = pt_yo ? {2'b00, pt_ys[7:3]} : 7'd0;
+wire [6:0] ptr_dx = pt_x[7] ? -pt_xm : pt_xm;
+wire [6:0] ptr_dy = pt_y[7] ? -pt_ym : pt_ym;
+
+// joy: change detection on the top seven bits (no service requests for jitter)
+logic [6:0] js_lx, js_ly, js_lt;
+logic [7:0] js_lb;
+logic       js_force, js_btn;
+wire        joy_ptrmode = joy_hid == 8'h01 || joy_hid == 8'h02;
+wire        joy_moved = js_force || joy_x[7:1] != js_lx || joy_y[7:1] != js_ly ||
+                        (joy_hid == 8'h4E && joy_t[7:1] != js_lt) || joy_b != js_lb;
+wire        joy_has = joy_on && (joy_ptrmode ? (j_ptr && (pt_xo || pt_yo || joy_b[0] != js_btn)) : joy_moved);
+
+// MouseStick II (23): a still mouse word, X and Y x 75 / 16 (about +-600), buttons active low
+// {1, 1, 1, right top (5), left top (4), trigger (1), bottom (3), top (2)}
+wire [15:0] jxe = {{8{joy_x[7]}}, joy_x};
+wire [15:0] jye = {{8{joy_y[7]}}, joy_y};
+wire [15:0] jx72 = (jxe << 6) + (jxe << 3), jx3 = (jxe << 1) + jxe;
+wire [15:0] jy72 = (jye << 6) + (jye << 3), jy3 = (jye << 1) + jye;
+wire [15:0] jx75 = jx72 + jx3, jy75 = jy72 + jy3;
+wire [15:0] ms_x = {{4{jx75[15]}}, jx75[15:4]};
+wire [15:0] ms_y = {{4{jy75[15]}}, jy75[15:4]};
+wire  [7:0] ms_btn = {3'b111, ~joy_b[4], ~joy_b[3], ~joy_b[0], ~joy_b[2], ~joy_b[1]};
+// Firebird (4E): FF, the buttons, X, Y, throttle (0 left, up), trim and rudder centred
+wire  [7:0] fb_b1 = {2'b11, ~joy_b[7], 2'b11, ~joy_b[4], ~joy_b[5], ~joy_b[6]};
+wire  [7:0] fb_b2 = {1'b1, ~joy_b[1], ~joy_b[2], 2'b11, ~joy_b[0], ~joy_b[3], 1'b1};
+
+logic [63:0] joy_rep;                 // Talk 0, from its first byte
+logic [3:0]  joy_n;
+always_comb begin
+	if (joy_ptrmode) begin
+		joy_n = 4'd2; joy_rep = {~joy_b[0], ptr_dy, 1'b1, ptr_dx, 48'd0};
+	end
+	else if (joy_hid == 8'h4E) begin
+		joy_n = 4'd8; joy_rep = {8'hFF, fb_b1, fb_b2, joy_x ^ 8'h80, joy_y ^ 8'h80, joy_t ^ 8'h80, 16'h8080};
+	end
+	else begin
+		joy_n = 4'd7; joy_rep = {16'h8080, ms_x, ms_y, ms_btn, 8'd0};
+	end
+end
+
+// pad: the GamePad's directions, the D-pad or the stick past half way (the D-pad alone while
+// the stick drives the pointer)
+wire       p_up = mouse_stick ? jd_u : $signed(joy_y) < -8'sd63;
+wire       p_dn = mouse_stick ? jd_d : $signed(joy_y) >  8'sd63;
+wire       p_lt = mouse_stick ? jd_l : $signed(joy_x) < -8'sd63;
+wire       p_rt = mouse_stick ? jd_r : $signed(joy_x) >  8'sd63;
+wire [3:0] p_dir = {p_up, p_rt, p_dn, p_lt};
+logic [6:0] ps_lx, ps_ly, ps_lt, ps_lr;
+logic [7:0] ps_lb;
+logic [3:0] ps_ld;
+logic       ps_force;
+wire        pad_moved = ps_force || (m_gp ? ({joy_b[3:0], p_dir} != {ps_lb[3:0], ps_ld}) :
+                        (joy_x[7:1] != ps_lx || joy_y[7:1] != ps_ly || joy_t[7:1] != ps_lt ||
+                         joy_rx[7:1] != ps_lr || joy_b != ps_lb));
+
+// the GamePad's handler 02: its directions are arrow keys, two events a Talk
+logic [3:0] pk_state;                 // the arrows reported down {up, right, down, left}
+wire  [3:0] pk_chg  = p_dir ^ pk_state;
+wire  [1:0] pk_i0   = pk_chg[0] ? 2'd0 : pk_chg[1] ? 2'd1 : pk_chg[2] ? 2'd2 : 2'd3;
+wire  [3:0] pk_rest = pk_chg & ~(4'b0001 << pk_i0);
+wire  [1:0] pk_i1   = pk_rest[0] ? 2'd0 : pk_rest[1] ? 2'd1 : pk_rest[2] ? 2'd2 : 2'd3;
+function automatic logic [6:0] arrow(input logic [1:0] i);   // left, down, right, up
+	case (i)
+		2'd0:    arrow = 7'h3B;
+		2'd1:    arrow = 7'h3D;
+		2'd2:    arrow = 7'h3C;
+		default: arrow = 7'h3E;
+	endcase
+endfunction
+wire  [7:0] pk_ev0  = {~p_dir[pk_i0], arrow(pk_i0)};
+wire  [7:0] pk_ev1  = |pk_rest ? {~p_dir[pk_i1], arrow(pk_i1)} : 8'hFF;
+wire  [3:0] pk_sent = (4'b0001 << pk_i0) | (|pk_rest ? (4'b0001 << pk_i1) : 4'b0000);
+wire        pad_keys = m_gp && pad_hid == 8'h02;
+wire        pad_has  = pad_on && (pad_keys ? |pk_chg : pad_moved);
+
+// SideWinder 3D Pro (5D): X, Y and the throttle 10 bits, twist 9 (0 left, up, anticlockwise)
+wire  [7:0] sw_xo = joy_x ^ 8'h80, sw_yo = joy_y ^ 8'h80, sw_to = joy_t ^ 8'h80, sw_ro = joy_rx ^ 8'h80;
+wire  [9:0] sw_x10 = {sw_xo, sw_xo[7:6]};
+wire  [9:0] sw_y10 = {sw_yo, sw_yo[7:6]};
+wire  [9:0] sw_t10 = {sw_to, sw_to[7:6]};
+wire  [8:0] sw_r9  = {sw_ro, sw_ro[7]};
+
+logic [63:0] pad_rep;
+logic [3:0]  pad_n;
+always_comb begin
+	if (pad_keys) begin
+		pad_n = 4'd2; pad_rep = {pk_ev0, pk_ev1, 48'd0};
+	end
+	else if (m_gp) begin                // 34: {yellow, green, red, blue, up, right, down, left} low, FF
+		pad_n = 4'd2; pad_rep = {~joy_b[1], ~joy_b[0], ~joy_b[3], ~joy_b[2], ~p_dir, 8'hFF, 48'd0};
+	end
+	else begin
+		pad_n = 4'd7;
+		pad_rep = {~joy_b[6], ~joy_b[7], ~joy_b[5], ~joy_b[4], sw_x10[9:6], sw_x10[5:0], sw_y10[9:8],
+		           sw_y10[7:0], 7'd0, sw_r9[8], sw_r9[7:0],
+		           ~joy_b[3], ~joy_b[2], ~joy_b[1], ~joy_b[0], 2'b00, sw_t10[9:8], sw_t10[7:0], 8'd0};
+	end
+end
+
+// ---- the mouse, with the stick's motion while it drives the mouse ----------------------------
 wire signed [10:0] mx_wide = {mx[9], mx};
 wire signed [10:0] my_wide = {my[9], my};
+wire signed [10:0] st_dx   = mouse_stick ? {{4{ptr_dx[6]}}, ptr_dx} : 11'd0;
+wire signed [10:0] st_dy   = mouse_stick ? {{4{ptr_dy[6]}}, ptr_dy} : 11'd0;
+wire signed [9:0]  smx     = sat10(mx_wide + st_dx), smy = sat10(my_wide + st_dy);
+wire signed [6:0]  mx7     = clamp7(smx), my7 = clamp7(smy);
+wire               btn_now = btn | (mouse_stick & joy_b[0]);
+wire               mouse_has = smx != 0 || smy != 0 || btn_now != btn_rep;
+// PS/2's 9-bit movement, sign-extended to 11 bits
 wire signed [10:0] ps2_dx  = {{2{md_s2[9]}},  md_s2[9],  md_s2[8:1]};
 wire signed [10:0] ps2_dy  = {{2{md_s2[18]}}, md_s2[18], md_s2[17:10]};
 
@@ -259,10 +417,10 @@ logic [13:0] dur;                     // ticks since its last edge
 logic [13:0] tmr;
 logic [7:0]  cmd;
 logic [3:0]  nbit;
-logic [17:0] frame;                   // the answer: start bit, two bytes, stop bit
-logic [4:0]  fbits;
+logic [65:0] frame;                   // the answer: start bit, up to eight bytes, stop bit
+logic [6:0]  fbits;
 logic [15:0] lrx;                     // a Listen's data
-logic        l_mouse;                 // the Listen is the mouse's (else the keyboard's)
+logic [3:0]  l_hit;                   // the Listen's devices {pad, joy, mouse, keyboard}
 logic [1:0]  l_reg;
 logic        reset_seen;              // the current low has already reset the devices
 
@@ -274,10 +432,24 @@ wire [3:0] c_addr = cmd[7:4];
 wire [1:0] c_type = cmd[3:2];
 wire [1:0] c_reg  = cmd[1:0];
 
+// the devices at the command's address
+wire kh = c_addr == kbd_addr;
+wire mh = c_addr == mouse_addr;
+wire jh = joy_on && c_addr == joy_addr;
+wire ph = pad_on && c_addr == pad_addr;
+
 // the command as its last bit comes in, for the service request
 wire [7:0] cmd_full = {cmd[6:0], dur > T_BIT};
 wire       srq_want = (!kq_empty && kbd_srq_en && cmd_full[7:4] != kbd_addr) ||
-                      (mouse_has && mouse_srq_en && cmd_full[7:4] != mouse_addr);
+                      (mouse_has && mouse_srq_en && cmd_full[7:4] != mouse_addr) ||
+                      (joy_has && joy_srq_en && cmd_full[7:4] != joy_addr) ||
+                      (pad_has && pad_srq_en && cmd_full[7:4] != pad_addr);
+
+// the handlers a Listen 3 may set
+wire [7:0] l_hid   = lrx[7:0];
+wire       joy_acc = l_hid == 8'h01 || ((m_ms | m_fb) && l_hid == 8'h23) || (m_fb && l_hid == 8'h4E) ||
+                     (m_sw && l_hid == 8'h02);
+wire       pad_acc = (m_gp && (l_hid == 8'h02 || l_hid == 8'h34)) || (m_sw && l_hid == 8'h5D);
 
 // register 2 of the keyboard (dingusppc's: 0 where a key is down)
 wire [15:0] kbd_reg2 = {1'b1, ~dn_del, ~caps_on, 1'b1, ~dn_ctrl, ~dn_shift, ~dn_opt, ~dn_cmd,
@@ -297,6 +469,14 @@ always_comb begin
 	end
 end
 
+task automatic joys_reset;
+	joy_addr <= ADDR_MOUSE;  joy_hid <= 8'h01;    joy_srq_en <= 1'b1;
+	pad_addr <= pad_home;    pad_hid <= pad_hid0; pad_srq_en <= 1'b1;
+	{kbd_col, mouse_col, joy_col, pad_col} <= '0;
+	js_force <= 1'b1; ps_force <= 1'b1;
+	pk_state <= '0;
+endtask
+
 task automatic devices_reset;
 	kbd_addr     <= ADDR_KBD;
 	mouse_addr   <= ADDR_MOUSE;
@@ -308,7 +488,15 @@ task automatic devices_reset;
 	kq_rd        <= kq_wr;
 	rescan       <= {dn_cmd, dn_opt, dn_ctrl, dn_shift};
 	mx <= '0; my <= '0;
-	btn_rep      <= btn;
+	btn_rep      <= btn_now;
+	joys_reset();
+endtask
+
+// a Talk's answer of n bytes, d from its first byte
+task automatic say(input logic [3:0] n, input logic [63:0] d);
+	frame <= {1'b1, d, 1'b0};
+	fbits <= {n, 3'b000} + 7'd2;
+	st    <= S_TLT;
 endtask
 
 always_ff @(posedge clk) begin
@@ -381,70 +569,104 @@ always_ff @(posedge clk) begin
 				2'b00: begin
 					if (c_reg == 2'd0) devices_reset();                     // SendReset
 					else if (c_reg == 2'd1) begin                           // Flush
-						if (c_addr == kbd_addr) kq_rd <= kq_wr;
-						else if (c_addr == mouse_addr) begin mx <= '0; my <= '0; btn_rep <= btn; end
+						if (kh) kq_rd <= kq_wr;
+						if (mh) begin mx <= '0; my <= '0; btn_rep <= btn_now; end
+						if (jh) begin
+							js_lx <= joy_x[7:1]; js_ly <= joy_y[7:1]; js_lt <= joy_t[7:1];
+							js_lb <= joy_b; js_btn <= joy_b[0]; js_force <= 1'b0;
+						end
+						if (ph) begin
+							ps_lx <= joy_x[7:1]; ps_ly <= joy_y[7:1]; ps_lt <= joy_t[7:1]; ps_lr <= joy_rx[7:1];
+							ps_lb <= joy_b; ps_ld <= p_dir; ps_force <= 1'b0; pk_state <= p_dir;
+						end
 					end
 				end
 				2'b10: begin                                                // Listen
-					if ((c_addr == kbd_addr && (c_reg == 2'd2 || c_reg == 2'd3)) ||
-					    (c_addr == mouse_addr && c_reg == 2'd3)) begin
-						l_mouse <= c_addr != kbd_addr;
-						l_reg   <= c_reg;
-						st      <= S_LRX_WAIT;
+					if ((c_reg == 2'd3 && (kh | mh | jh | ph)) || (c_reg == 2'd2 && kh)) begin
+						l_hit <= {ph, jh, mh, kh};
+						l_reg <= c_reg;
+						st    <= S_LRX_WAIT;
 					end
 				end
 				2'b11: begin                                                // Talk
-					fbits <= 5'd18;
-					tmr   <= D_TLT;
-					if (c_addr == kbd_addr) begin
-						case (c_reg)
-							2'd0: if (!kq_empty) begin
-								// one event an answer (the second byte FF), the power key in
-								// both bytes (7F 7F down, FF FF up). A keyboard may send two;
-								// MacsBug's own polling seems to take only the first, and the
-								// MiSTer delivers a key's down and up within one poll
-								// (2026-10-08: keys typed at MacsBug came doubled or dropped)
-								frame <= {1'b1, kq[kq_rd], (kq[kq_rd][6:0] == 7'h7F) ? kq[kq_rd] : 8'hFF, 1'b0};
-								kq_rd <= kq_rd + 3'd1;
-								st    <= S_TLT;
+					tmr <= D_TLT;
+					case (c_reg)
+						// the first device here with something to say
+						2'd0: if (kh && !kq_empty) begin
+							// one event an answer (the second byte FF), the power key in
+							// both bytes (7F 7F down, FF FF up). A keyboard may send two;
+							// MacsBug's own polling seems to take only the first, and the
+							// MiSTer delivers a key's down and up within one poll
+							// (2026-10-08: keys typed at MacsBug came doubled or dropped)
+							say(4'd2, {kq[kq_rd], (kq[kq_rd][6:0] == 7'h7F) ? kq[kq_rd] : 8'hFF, 48'd0});
+							kq_rd <= kq_rd + 3'd1;
+						end
+						else if (mh && mouse_has) begin
+							say(4'd2, {~btn_now, my7, 1'b1, mx7, 48'd0});
+							mx      <= smx - {{3{mx7[6]}}, mx7};
+							my      <= smy - {{3{my7[6]}}, my7};
+							btn_rep <= btn_now;
+						end
+						else if (jh && joy_has) begin
+							say(joy_n, joy_rep);
+							js_lx <= joy_x[7:1]; js_ly <= joy_y[7:1]; js_lt <= joy_t[7:1];
+							js_lb <= joy_b; js_btn <= joy_b[0]; js_force <= 1'b0;
+						end
+						else if (ph && pad_has) begin
+							say(pad_n, pad_rep);
+							ps_lx <= joy_x[7:1]; ps_ly <= joy_y[7:1]; ps_lt <= joy_t[7:1]; ps_lr <= joy_rx[7:1];
+							ps_lb <= joy_b; ps_ld <= p_dir; ps_force <= 1'b0;
+							if (pad_keys) pk_state <= pk_state ^ pk_sent;
+						end
+						// the controllers' protocol (the Apple keyboard and mouse have none)
+						2'd1: if (jh && joy_hid == 8'h23)      say(4'd2, {16'h0300, 48'd0});
+						      else if (jh && joy_hid == 8'h4E) say(4'd3, {24'h0A0130, 40'd0});
+						      else if (ph && m_gp)             say(4'd2, {16'h0300, 48'd0});
+						2'd2: if (kh)                          say(4'd2, {kbd_reg2, 48'd0});
+						      else if (ph && m_gp)             say(4'd2, {16'hFFFF, 48'd0});
+						// {0, exceptional event, SRQ enable, 0, address}, the handler: the
+						// lowest device answers, the others here lose the collision
+						2'd3: begin
+							if (kh) begin
+								say(4'd2, {2'b01, kbd_srq_en, 1'b0, kbd_addr, kbd_hid, 48'd0});
+								kbd_col <= 1'b0;
 							end
-							2'd2: begin frame <= {1'b1, kbd_reg2, 1'b0}; st <= S_TLT; end
-							2'd3: begin frame <= {1'b1, 1'b0, 1'b1, kbd_srq_en, 1'b0, kbd_addr, kbd_hid, 1'b0}; st <= S_TLT; end
-							default: ;
-						endcase
-					end
-					else if (c_addr == mouse_addr) begin
-						case (c_reg)
-							2'd0: if (mouse_has) begin
-								frame   <= {1'b1, ~btn, my7, 1'b1, mx7, 1'b0};
-								mx      <= mx - {{3{mx7[6]}}, mx7};
-								my      <= my - {{3{my7[6]}}, my7};
-								btn_rep <= btn;
-								st      <= S_TLT;
+							else if (mh) begin
+								say(4'd2, {2'b01, mouse_srq_en, 1'b0, mouse_addr, mouse_hid, 48'd0});
+								mouse_col <= 1'b0;
 							end
-							2'd3: begin frame <= {1'b1, 1'b0, 1'b1, mouse_srq_en, 1'b0, mouse_addr, mouse_hid, 1'b0}; st <= S_TLT; end
-							default: ;
-						endcase
-					end
+							else if (jh) begin
+								say(4'd2, {2'b01, joy_srq_en, 1'b0, joy_addr, joy_hid, 48'd0});
+								joy_col <= 1'b0;
+							end
+							else if (ph) begin
+								say(4'd2, {2'b01, pad_srq_en, 1'b0, pad_addr, pad_hid, 48'd0});
+								pad_col <= 1'b0;
+							end
+							if (mh && kh)              mouse_col <= 1'b1;
+							if (jh && (kh | mh))       joy_col   <= 1'b1;
+							if (ph && (kh | mh | jh))  pad_col   <= 1'b1;
+						end
+					endcase
 				end
 				default: ;                                                  // reserved
 			endcase
 		end
 		S_TLT: if (tmr == 0) begin
 			dev_low <= 1'b1;
-			tmr     <= frame[17] ? D_SHORT : D_LONG;
+			tmr     <= frame[65] ? D_SHORT : D_LONG;
 			st      <= S_SEND_L;
 		end
 		S_SEND_L: if (tmr == 0) begin
 			dev_low <= 1'b0;
-			if (fbits == 5'd1) st <= S_IDLE;                          // the stop bit's low is out
-			else begin tmr <= frame[17] ? D_LONG : D_SHORT; st <= S_SEND_H; end
+			if (fbits == 7'd1) st <= S_IDLE;                          // the stop bit's low is out
+			else begin tmr <= frame[65] ? D_LONG : D_SHORT; st <= S_SEND_H; end
 		end
 		S_SEND_H: if (tmr == 0) begin
-			frame   <= {frame[16:0], 1'b0};
-			fbits   <= fbits - 5'd1;
+			frame   <= {frame[64:0], 1'b0};
+			fbits   <= fbits - 7'd1;
 			dev_low <= 1'b1;
-			tmr     <= frame[16] ? D_SHORT : D_LONG;
+			tmr     <= frame[64] ? D_SHORT : D_LONG;
 			st      <= S_SEND_L;
 		end
 		// a Listen's data: the start bit's low, its high, then a bit at each fall
@@ -458,21 +680,39 @@ always_ff @(posedge clk) begin
 		S_LRX_DONE: begin
 			st <= S_IDLE;
 			if (l_reg == 2'd2) kbd_led <= lrx[2:0];
-			else if (!l_mouse) begin
-				case (lrx[7:0])
-					8'h01, 8'h02: kbd_hid <= lrx[7:0];
-					8'h00: begin kbd_addr <= lrx[11:8]; kbd_srq_en <= lrx[13]; end
-					8'hFE: kbd_addr <= lrx[11:8];
-					default: ;                                          // 3 and the rest refused
-				endcase
-			end
 			else begin
-				case (lrx[7:0])
-					8'h01, 8'h02: mouse_hid <= lrx[7:0];
-					8'h00: begin mouse_addr <= lrx[11:8]; mouse_srq_en <= lrx[13]; end
-					8'hFE: mouse_addr <= lrx[11:8];
-					default: ;
-				endcase
+				// 00 moves the device and sets its SRQ enable; FE moves it unless it lost
+				// the last Talk 3; else a handler it takes
+				if (l_hit[0]) begin
+					case (l_hid)
+						8'h01, 8'h02: kbd_hid <= l_hid;
+						8'h00: begin kbd_addr <= lrx[11:8]; kbd_srq_en <= lrx[13]; end
+						8'hFE: if (!kbd_col) kbd_addr <= lrx[11:8];
+						default: ;                                      // 3 and the rest refused
+					endcase
+					kbd_col <= 1'b0;
+				end
+				if (l_hit[1]) begin
+					case (l_hid)
+						8'h01, 8'h02: mouse_hid <= l_hid;
+						8'h00: begin mouse_addr <= lrx[11:8]; mouse_srq_en <= lrx[13]; end
+						8'hFE: if (!mouse_col) mouse_addr <= lrx[11:8];
+						default: ;
+					endcase
+					mouse_col <= 1'b0;
+				end
+				if (l_hit[2]) begin
+					if (l_hid == 8'h00) begin joy_addr <= lrx[11:8]; joy_srq_en <= lrx[13]; end
+					else if (l_hid == 8'hFE) begin if (!joy_col) joy_addr <= lrx[11:8]; end
+					else if (joy_acc) begin joy_hid <= l_hid; js_force <= 1'b1; end
+					joy_col <= 1'b0;
+				end
+				if (l_hit[3]) begin
+					if (l_hid == 8'h00) begin pad_addr <= lrx[11:8]; pad_srq_en <= lrx[13]; end
+					else if (l_hid == 8'hFE) begin if (!pad_col) pad_addr <= lrx[11:8]; end
+					else if (pad_acc) begin pad_hid <= l_hid; ps_force <= 1'b1; pk_state <= '0; end
+					pad_col <= 1'b0;
+				end
 			end
 		end
 		default: st <= S_IDLE;
@@ -500,6 +740,9 @@ always_ff @(posedge clk) begin
 		kbd_srq_en <= 1'b1; mouse_srq_en <= 1'b1;
 		kbd_led <= 3'b111;
 		mx <= '0; my <= '0; btn_rep <= 1'b0;
+		joys_reset();
+		js_lx <= '0; js_ly <= '0; js_lt <= '0; js_lb <= '0; js_btn <= 1'b0;
+		ps_lx <= '0; ps_ly <= '0; ps_lt <= '0; ps_lr <= '0; ps_lb <= '0; ps_ld <= '0;
 	end
 end
 
@@ -509,7 +752,8 @@ always_ff @(posedge clk) begin
 	if (mouse_ev) $display("adb: mouse event x %0d y %0d button %0d", $signed({md_s2[9], md_s2[8:1]}),
 	                       $signed({md_s2[18], md_s2[17:10]}), md_s2[0]);
 	if (k_push) $display("adb: key %02X %s", k_code, k_up ? "up" : "down");
-	if (st == S_ACT) $display("adb: command %02X (keyboard at %0d, mouse at %0d)", cmd, kbd_addr, mouse_addr);
+	if (st == S_ACT) $display("adb: command %02X (keyboard at %0d, mouse at %0d, joy at %0d, pad at %0d)", cmd,
+	                          kbd_addr, mouse_addr, joy_addr, pad_addr);
 	if (!hl && !hl_q && dur >= T_RESET && !reset_seen) $display("adb: reset pulse");
 end
 `endif

@@ -22,7 +22,8 @@ to the card and the core's UART.
                                                  on block slot 2 (config/PPCMac.s2): the core loads
                                                  it at its start and keeps the NVRAM in it
     python syn\\mister.py cfg [--ram MB] [--boot rom|memtest] [--uart modem|debug]
-                              [--picture mac|debug] [--monitor 16|13]
+                              [--picture mac|debug] [--monitor 16|13|12]
+                              [--joy none|mousestick|firebird|gamepad|sidewinder] [--ptr]
                                                  writes config/PPCMac.CFG
     python syn\\mister.py load                    loads _Unstable/PPCMac.rbf (Remote: /api/launch)
     python syn\\mister.py menu                    loads the menu core again (/api/launch/menu)
@@ -196,6 +197,10 @@ def main():
         return ssh("rm -f /media/fat/config/PPCMac.s%d" % int(a[1]))
     if cmd == "cfg":
         ram, boot, uart, picture, monitor = 16, "rom", "modem", "mac", 16
+        joys = ["none", "mousestick", "firebird", "gamepad", "sidewinder"]   # PPCMac.sv: O[13:11]
+        joy = a[a.index("--joy") + 1] if "--joy" in a else "none"
+        if joy not in joys:
+            sys.exit("--joy one of %s" % ", ".join(joys))
         for i in range(1, len(a) - 1):
             if a[i] == "--ram":
                 ram = int(a[i + 1])
@@ -208,12 +213,13 @@ def main():
             if a[i] == "--monitor":
                 monitor = int(a[i + 1])
         if (ram not in RAM_OPTION or boot not in ("rom", "memtest") or uart not in ("modem", "debug")
-                or picture not in ("mac", "debug") or monitor not in (16, 13)):
+                or picture not in ("mac", "debug") or monitor not in (16, 13, 12)):
             sys.exit("--ram one of %s, --boot rom or memtest, --uart modem or debug, --picture mac or debug, "
-                     "--monitor 16 or 13" % sorted(RAM_OPTION))
+                     "--monitor 16, 13 or 12" % sorted(RAM_OPTION))
         status = ((RAM_OPTION[ram] << 1) | ((boot == "memtest") << 4) | ((uart == "debug") << 6)
-                  | ((picture == "debug") << 7) | ((monitor == 13) << 8))
-        data = "\\x%02x\\x%02x" % (status & 0xFF, status >> 8) + "\\x00" * 14
+                  | ((picture == "debug") << 7) | (joys.index(joy) << 11)
+                  | (("--ptr" in a) << 14) | ({16: 0, 13: 1, 12: 2}[monitor] << 15))
+        data = "".join("\\x%02x" % ((status >> (8 * i)) & 0xFF) for i in range(4)) + "\\x00" * 12
         return ssh("printf '%s' > /media/fat/config/PPCMac.CFG && xxd /media/fat/config/PPCMac.CFG" % data)
     if cmd == "load":
         api("POST", "/api/launch", {"path": CORE[len("/media/fat/"):]})

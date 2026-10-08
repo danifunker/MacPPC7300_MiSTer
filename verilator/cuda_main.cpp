@@ -320,6 +320,11 @@ int main(int argc, char** argv) {
 	std::vector<std::pair<uint16_t, uint8_t>> rtl_writes;
 	// the PS/2 keyboard and mouse as hps_io gives them (a toggle an event)
 	uint32_t ps2_key = 0, ps2_mouse = 0;
+	// the game controller (PPCMac_adb's joy): {pointer, mode, right stick, left stick, joystick_0}
+	uint64_t joy = 0;
+	auto J = [](int ptr, int mode, int ly, int lx, int js) -> int64_t {
+		return (int64_t)ptr << 51 | (int64_t)mode << 48 | (int64_t)(ly & 0xFF) << 24 | (int64_t)(lx & 0xFF) << 16 | js;
+	};
 
 	auto drive = [&]() {
 		dut->via_tip = via.tip();
@@ -329,6 +334,7 @@ int main(int argc, char** argv) {
 		dut->cb2 = line;
 		dut->ps2_key = ps2_key;
 		dut->ps2_mouse = ps2_mouse;
+		dut->joy = joy;
 		dut->iic_scl = !dut->iic_scl_low;
 		dut->iic_sda = !dut->iic_sda_low;
 	};
@@ -341,8 +347,8 @@ int main(int argc, char** argv) {
 
 	// the script: packet, what the reply must start with (empty: just print it),
 	// and a PS/2 event made just before the packet goes (1: A pressed;
-	// 2: the mouse moved right 5 and up 3)
-	struct Step { const char* what; std::vector<uint8_t> pkt; std::vector<uint8_t> want; size_t max; int inject = 0; };
+	// 2: the mouse moved right 5 and up 3), and the controller from then on
+	struct Step { const char* what; std::vector<uint8_t> pkt; std::vector<uint8_t> want; size_t max; int inject = 0; int64_t joy = -1; };
 	std::vector<Step> script = {
 		{"READ_MCU_MEM 0F00 (the ROM's copyright)", {0x01, 0x02, 0x0F, 0x00}, {0x01, 0x00, 0x02, 0x28, 0x63, 0x29, 0x20, 0x31, 0x39, 0x38, 0x39}, 12},
 		{"GET_REAL_TIME", {0x01, 0x03}, {0x01, 0x00, 0x03}, 7},
@@ -366,6 +372,49 @@ int main(int argc, char** argv) {
 		{"ADB talk 2 of address 2: modifiers and LEDs", {0x00, 0x2E}, {0x00, 0x00, 0x2E, 0xFF, 0xFF}, 8},
 		{"ADB reset (SendReset)", {0x00, 0x00}, {0x00, 0x00, 0x00}, 8},
 		{"ADB talk 3 of address 3: the mouse, back home", {0x00, 0x3F}, {0x00, 0x00, 0x3F, 0x63, 0x01}, 8},
+		// a MouseStick II on the mouse's address: ADBReInit's collisions, its handlers
+		{"ADB with a MouseStick II: SendReset", {0x00, 0x00}, {0x00, 0x00, 0x00}, 8, 0, J(0, 1, 0, 0, 0)},
+		{"ADB talk 3 of address 3: the mouse wins", {0x00, 0x3F}, {0x00, 0x00, 0x3F, 0x63, 0x01}, 8},
+		{"ADB listen 3 of address 3: to 9 (FE), the mouse", {0x00, 0x3B, 0x09, 0xFE}, {0x00, 0x00, 0x3B}, 8},
+		{"ADB talk 3 of address 3: the MouseStick", {0x00, 0x3F}, {0x00, 0x00, 0x3F, 0x63, 0x01}, 8},
+		{"ADB listen 3 of address 3: to 10 (FE), the MouseStick", {0x00, 0x3B, 0x0A, 0xFE}, {0x00, 0x00, 0x3B}, 8},
+		{"ADB talk 3 of address 3: nothing there now", {0x00, 0x3F}, {0x00, 0x02, 0x3F}, 8},
+		{"ADB talk 3 of address 9: the mouse", {0x00, 0x9F}, {0x00, 0x00, 0x9F, 0x69, 0x01}, 8},
+		{"ADB talk 0 of address 10: stick right, pointer off", {0x00, 0xAC}, {0x00, 0x02, 0xAC}, 8, 0, J(0, 1, 0, 0x7F, 0)},
+		{"ADB talk 0 of address 10: stick right, pointer on", {0x00, 0xAC}, {0x00, 0x00, 0xAC, 0x80, 0x8C}, 8, 0, J(1, 1, 0, 0x7F, 0)},
+		{"ADB listen 3 of address 10: handler 23", {0x00, 0xAB, 0x0A, 0x23}, {0x00, 0x00, 0xAB}, 8, 0, J(0, 1, 0, 0, 0)},
+		{"ADB talk 3 of address 10: handler 23", {0x00, 0xAF}, {0x00, 0x00, 0xAF, 0x6A, 0x23}, 8},
+		{"ADB talk 1 of address 10: the 7-byte protocol", {0x00, 0xAD}, {0x00, 0x00, 0xAD, 0x03, 0x00}, 8},
+		{"ADB talk 0 of address 10: right, up, the trigger", {0x00, 0xAC},
+			{0x00, 0x00, 0xAC, 0x80, 0x80, 0x02, 0x53, 0xFD, 0xAC, 0xFB}, 12, 0, J(0, 1, 0x81, 0x7F, 0x10)},
+		{"ADB talk 0 of address 10: nothing new", {0x00, 0xAC}, {0x00, 0x02, 0xAC}, 8},
+		// a GamePad on the keyboard's address: arrow keys, then its driver's handler
+		{"ADB with a GamePad: SendReset", {0x00, 0x00}, {0x00, 0x00, 0x00}, 8, 0, J(0, 3, 0, 0, 0)},
+		{"ADB talk 3 of address 2: the keyboard wins", {0x00, 0x2F}, {0x00, 0x00, 0x2F, 0x62, 0x02}, 8},
+		{"ADB listen 3 of address 2: to 11 (FE), the keyboard", {0x00, 0x2B, 0x0B, 0xFE}, {0x00, 0x00, 0x2B}, 8},
+		{"ADB talk 3 of address 2: the GamePad", {0x00, 0x2F}, {0x00, 0x00, 0x2F, 0x62, 0x02}, 8},
+		{"ADB talk 0 of address 2: D-pad left, an arrow down", {0x00, 0x2C}, {0x00, 0x00, 0x2C, 0x3B, 0xFF}, 8, 0, J(0, 3, 0, 0, 0x02)},
+		{"ADB talk 0 of address 2: D-pad released", {0x00, 0x2C}, {0x00, 0x00, 0x2C, 0xBB, 0xFF}, 8, 0, J(0, 3, 0, 0, 0)},
+		{"ADB listen 3 of address 2: handler 34", {0x00, 0x2B, 0x02, 0x34}, {0x00, 0x00, 0x2B}, 8},
+		{"ADB talk 1 of address 2: 03 00", {0x00, 0x2D}, {0x00, 0x00, 0x2D, 0x03, 0x00}, 8},
+		{"ADB talk 0 of address 2: handler 34, up, button 1", {0x00, 0x2C}, {0x00, 0x00, 0x2C, 0xB7, 0xFF}, 8, 0, J(0, 3, 0, 0, 0x18)},
+		// a Firebird (eight bytes) and a SideWinder 3D Pro (its joystick at 4)
+		{"ADB with a Firebird: SendReset", {0x00, 0x00}, {0x00, 0x00, 0x00}, 8, 0, J(0, 2, 0, 0, 0)},
+		{"ADB talk 3 of address 3: the mouse wins", {0x00, 0x3F}, {0x00, 0x00, 0x3F, 0x63, 0x01}, 8},
+		{"ADB listen 3 of address 3: to 9 (FE), the mouse", {0x00, 0x3B, 0x09, 0xFE}, {0x00, 0x00, 0x3B}, 8},
+		{"ADB listen 3 of address 3: handler 4E", {0x00, 0x3B, 0x03, 0x4E}, {0x00, 0x00, 0x3B}, 8},
+		{"ADB talk 1 of address 3: 0A 01 30", {0x00, 0x3D}, {0x00, 0x00, 0x3D, 0x0A, 0x01, 0x30}, 8},
+		{"ADB talk 0 of address 3: stick left", {0x00, 0x3C},
+			{0x00, 0x00, 0x3C, 0xFF, 0xFF, 0xFF, 0x01, 0x80, 0x80, 0x80, 0x80}, 12, 0, J(0, 2, 0, 0x81, 0)},
+		{"ADB with a SideWinder: SendReset", {0x00, 0x00}, {0x00, 0x00, 0x00}, 8, 0, J(0, 4, 0, 0, 0)},
+		{"ADB talk 3 of address 4: the joystick", {0x00, 0x4F}, {0x00, 0x00, 0x4F, 0x64, 0x5D}, 8},
+		{"ADB talk 0 of address 4: centred", {0x00, 0x4C}, {0x00, 0x00, 0x4C, 0xF8, 0x0A, 0x02, 0x01, 0x01, 0xF2, 0x02}, 12},
+		// no controller, the stick moving the pointer through the mouse
+		{"ADB with the stick as the mouse: SendReset", {0x00, 0x00}, {0x00, 0x00, 0x00}, 8, 0, J(1, 0, 0, 0, 0)},
+		{"ADB talk 0 of address 3: D-pad down, button 1", {0x00, 0x3C}, {0x00, 0x00, 0x3C, 0x0C, 0x80}, 8, 0, J(1, 0, 0, 0, 0x14)},
+		{"ADB talk 0 of address 3: released", {0x00, 0x3C}, {0x00, 0x00, 0x3C, 0x80, 0x80}, 8, 0, J(1, 0, 0, 0, 0)},
+		{"ADB talk 0 of address 3: nothing new", {0x00, 0x3C}, {0x00, 0x02, 0x3C}, 8},
+		{"ADB reset (SendReset)", {0x00, 0x00}, {0x00, 0x00, 0x00}, 8, 0, J(0, 0, 0, 0, 0)},
 	};
 	size_t script_i = 0;
 	bool script_sent = false;
@@ -428,6 +477,8 @@ int main(int argc, char** argv) {
 						ps2_key = ((ps2_key ^ 0x400) & 0x400) | 0x200 | 0x1C;
 					else if (script[script_i].inject == 2)
 						ps2_mouse = ((ps2_mouse ^ 0x1000000) & 0x1000000) | 3u << 16 | 5u << 8 | 0x08;
+					if (script[script_i].joy >= 0)
+						joy = (uint64_t)script[script_i].joy;
 					host.send(script[script_i].pkt);
 					host.max_reply = script[script_i].max;
 					script_sent = true;
