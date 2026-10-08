@@ -75,13 +75,19 @@
 //
 //  Left out (docs/PPCMac_stubs.md): STORE_QUAD and LOAD_QUAD to device
 //  registers (only memory is reached), the keys other than 0 (KEY_STREAM0),
-//  and the device's own status bits in s7-s0. An INPUT_LAST ends before its
-//  count when the device marks a byte as a frame's last (di_last: MACE's
-//  receive, 2026-10-08), resCount telling what was left.
+//  and the device's own status bits in s7-s0 but one: with S6_EOF, s6 reads
+//  1 while an INPUT_LAST that the device ended finishes. An INPUT_LAST ends
+//  before its count when the device marks a byte as a frame's last (di_last:
+//  MACE's receive, 2026-10-08), resCount telling what was left.
 //
 //============================================================================
 
 module PPCMac_dbdma
+#(
+	// s6 reads 1 while an INPUT_LAST the device ended is finishing (Grand Central's
+	// Ethernet receive channel: Mac OS's interrupt select and NetBSD's if_mc test it)
+	parameter bit S6_EOF = 1'b0
+)
 (
 	input  logic         clk,
 	input  logic         reset,
@@ -118,7 +124,13 @@ module PPCMac_dbdma
 	output logic         drained,
 	output logic         active,          // ChannelStatus's ACTIVE
 
-	output logic         irq              // the interrupt condition met: one clock
+	output logic         irq,             // the interrupt condition met: one clock
+
+	// for PPCMac_trace, one clock: fin_dec 0 a command finished, and what it was; 1 fetched,
+	// fin_info then {pointer, command word, address, cmdDep}; 2 RUN cleared, and the state
+	output logic         fin,
+	output logic [1:0]   fin_dec,
+	output logic [127:0] fin_info
 );
 
 // status bits
@@ -126,11 +138,13 @@ localparam int RUN = 15, PAUSE = 14, FLUSH = 13, WAKE = 12, DEAD = 11, ACTIVE = 
 
 logic [15:0] stat;
 logic [31:0] cmd_ptr, int_sel, br_sel, wait_sel;
+logic        in_end;                    // the device ended the INPUT_LAST's frame
 assign active = stat[ACTIVE];
+wire  [15:0] st_d = stat | ((S6_EOF && in_end) ? 16'h0040 : 16'h0000);   // with the device's bits
 
 always_comb begin
 	case (rn)
-		3'd1:    rle = {16'h0, stat};
+		3'd1:    rle = {16'h0, st_d};
 		3'd3:    rle = cmd_ptr;
 		3'd4:    rle = int_sel;
 		3'd5:    rle = br_sel;
@@ -175,7 +189,6 @@ logic irq_pend;                         // ... with the stopped command's interr
 logic flush_req;                        // FLUSH asked with an INPUT running
 logic flushing;                         // the write-back in hand is a flush's
 logic pausing;                          // PAUSE: hold where we are
-logic in_end;                           // the device ended the INPUT_LAST's frame
 
 wire  is_in  = (cmd == 4'd2) || (cmd == 4'd3);
 wire  go     = stat[ACTIVE] & ~pausing & ~stop_req;       // may start something new
@@ -208,7 +221,7 @@ always_comb begin
 end
 
 // xferStatus as written back: the status with ACTIVE
-wire [15:0] xstat = stat | 16'h0400;
+wire [15:0] xstat = st_d | 16'h0400;
 
 // the control register's write
 wire [15:0] c_mask = wle[31:16];
@@ -217,6 +230,7 @@ wire        c_wr   = sel & we & (rn == 3'd0);
 
 always_ff @(posedge clk) begin
 	irq <= 1'b0;
+	fin <= 1'b0;
 	if (dm_ack) dm_req <= 1'b0;
 
 	// ---- the registers ------------------------------------------------------------------
@@ -245,8 +259,13 @@ always_ff @(posedge clk) begin
 			else begin
 				if (s != S_IDLE) begin
 					stop_req <= 1'b1;
-					irq_pend <= stat[ACTIVE] && cmd < 4'd7 && cond(cmd_bits[5:4], int_sel, stat);
+					irq_pend <= stat[ACTIVE] && cmd < 4'd7 && cond(cmd_bits[5:4], int_sel, st_d);
 				end
+				fin      <= 1'b1;               // the trace: where it was stopped
+				fin_dec  <= 2'd2;
+				fin_info <= {cmd_ptr, cmd, 1'b0, key, cmd_bits, req_count, res_count, st_d,
+				             4'(s), 25'd0, cond(cmd_bits[1:0], wait_sel, st_d), cond(cmd_bits[3:2], br_sel, st_d),
+				             cond(cmd_bits[5:4], int_sel, st_d)};
 				stat[RUN]    <= 1'b0;
 				stat[ACTIVE] <= 1'b0;
 				stat[DEAD]   <= 1'b0;
@@ -298,6 +317,9 @@ always_ff @(posedge clk) begin
 		end
 
 		S_DECODE: begin
+			fin       <= 1'b1;
+			fin_dec   <= 2'd1;
+			fin_info  <= {cmd_ptr, cmd, 1'b0, key, cmd_bits, req_count, addr, cmd_arg};
 			res_count <= req_count;
 			lv        <= 32'h0;
 			lb_ok     <= 1'b0;
@@ -440,8 +462,8 @@ always_ff @(posedge clk) begin
 		// ---- the end of a command --------------------------------------------------------------
 		S_WAIT: begin                       // the wait condition holds; then the branch
 			if (stop_req) s <= S_IDLE;
-			else if (go && !cond(cmd_bits[1:0], wait_sel, stat)) begin
-				stat[BT] <= cond(cmd_bits[3:2], br_sel, stat);
+			else if (go && !cond(cmd_bits[1:0], wait_sel, st_d)) begin
+				stat[BT] <= cond(cmd_bits[3:2], br_sel, st_d);
 				s <= S_WB;
 			end
 		end
@@ -470,7 +492,11 @@ always_ff @(posedge clk) begin
 		S_FINISH: begin
 			stat[BT] <= 1'b0;
 			cmd_ptr  <= stat[BT] ? cmd_arg : cmd_ptr + 32'd16;
-			if (cond(cmd_bits[5:4], int_sel, stat)) irq <= 1'b1;
+			if (cond(cmd_bits[5:4], int_sel, st_d)) irq <= 1'b1;
+			fin      <= 1'b1;
+			fin_dec  <= 2'd0;
+			fin_info <= {cmd_ptr, cmd, 1'b0, key, cmd_bits, req_count, res_count, st_d,
+			             int_sel[23:16], int_sel[7:0], 15'd0, cond(cmd_bits[5:4], int_sel, st_d)};
 			s <= stop_req ? S_IDLE : S_FETCH;
 		end
 		default: s <= S_IDLE;

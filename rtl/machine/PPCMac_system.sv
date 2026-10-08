@@ -130,6 +130,8 @@ module PPCMac_system
 
 	// the network bridge chosen (the OSD's Ethernet, taken under reset), in the memory's clock
 	input  logic         net_on,
+	// the trace also takes MESH's accesses (quasi-static, in the CPU's clock)
+	input  logic         tr_mesh,
 
 	// the VRAM and the network's rings in DDR3 (the framework's DDRAM port), in the memory's clock
 	input  logic         ddr_busy,
@@ -228,6 +230,8 @@ logic [7:0]   net_tx_wa, net_rx_ra;
 logic [63:0]  net_tx_wd, net_rx_q;
 logic [10:0]  net_tx_len, net_rx_len;
 logic [47:0]  net_mac;
+logic         scsi_tr_ev;
+logic [255:0] scsi_tr_rec;
 
 PPCMac_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_FAST_BOOT(CUDA_FAST_BOOT)) machine (
 	.clk, .reset, .ram_mb, .boot_memtest,
@@ -247,7 +251,8 @@ PPCMac_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_FAST
 	.timing_on, .sw_params, .fb_base, .row_words, .hs_pos, .vs_pos, .dac_cr, .dbl_buf_cr,
 	.cursor_x, .cursor_clut, .athens_d2, .athens_n2, .athens_p2, .vbl_start_tog, .vbl_end_tog,
 	.clk_v(clk_b), .clut_index, .clut_rgb,
-	.dbg_status, .dbg_passes, .dbg_errors, .dbg_first
+	.dbg_status, .dbg_passes, .dbg_errors, .dbg_first,
+	.tr_mesh, .tr_ev(scsi_tr_ev), .tr_rec(scsi_tr_rec)
 );
 
 DSPPC604_memcdc vcdc (
@@ -274,11 +279,34 @@ PPCMac_ddrarb ddrarb (
 	.ddr_busy, .ddr_burstcnt, .ddr_addr, .ddr_dout_ready, .ddr_rd, .ddr_din, .ddr_be, .ddr_we
 );
 
+// ---- B: the network's rings first, then the trace ----
+logic        ne_busy, ne_dout_ready, ne_rd, ne_we, tr_busy, tr_dout_ready, tr_rd, tr_we;
+logic [7:0]  ne_burstcnt, ne_be, tr_burstcnt, tr_be;
+logic [28:0] ne_addr, tr_addr;
+logic [63:0] ne_din, tr_din;
+
+PPCMac_ddrarb ddrarb_b (
+	.clk(clk_b), .reset(reset_b),
+	.a_busy(ne_busy), .a_burstcnt(ne_burstcnt), .a_addr(ne_addr), .a_dout_ready(ne_dout_ready),
+	.a_rd(ne_rd), .a_din(ne_din), .a_be(ne_be), .a_we(ne_we),
+	.b_busy(tr_busy), .b_burstcnt(tr_burstcnt), .b_addr(tr_addr), .b_dout_ready(tr_dout_ready),
+	.b_rd(tr_rd), .b_din(tr_din), .b_be(tr_be), .b_we(tr_we),
+	.ddr_busy(na_busy), .ddr_burstcnt(na_burstcnt), .ddr_addr(na_addr), .ddr_dout_ready(na_dout_ready),
+	.ddr_rd(na_rd), .ddr_din(na_din), .ddr_be(na_be), .ddr_we(na_we)
+);
+
+PPCMac_trace trace (
+	.clk, .ev(scsi_tr_ev), .rec(scsi_tr_rec),
+	.clk_h(clk_b), .reset_h(reset_b),
+	.ddr_busy(tr_busy), .ddr_burstcnt(tr_burstcnt), .ddr_addr(tr_addr), .ddr_rd(tr_rd), .ddr_din(tr_din),
+	.ddr_be(tr_be), .ddr_we(tr_we)
+);
+
 // ---- the network bridge: MACE's frames to and from the Main, through DDR3 ----
 PPCMac_enet enet (
 	.clk_h(clk_b), .reset_h(reset_b), .on(net_on),
-	.ddr_busy(na_busy), .ddr_burstcnt(na_burstcnt), .ddr_addr(na_addr), .ddr_dout, .ddr_dout_ready(na_dout_ready),
-	.ddr_rd(na_rd), .ddr_din(na_din), .ddr_be(na_be), .ddr_we(na_we),
+	.ddr_busy(ne_busy), .ddr_burstcnt(ne_burstcnt), .ddr_addr(ne_addr), .ddr_dout, .ddr_dout_ready(ne_dout_ready),
+	.ddr_rd(ne_rd), .ddr_din(ne_din), .ddr_be(ne_be), .ddr_we(ne_we),
 	.clk, .tx_we(net_tx_we), .tx_wa(net_tx_wa), .tx_wd(net_tx_wd), .tx_go(net_tx_go), .tx_len(net_tx_len),
 	.tx_done(net_tx_done), .rx_ra(net_rx_ra), .rx_q(net_rx_q), .rx_avail(net_rx_avail), .rx_len(net_rx_len),
 	.rx_done(net_rx_done), .link(net_link), .mac(net_mac), .mac_ok(net_mac_ok)

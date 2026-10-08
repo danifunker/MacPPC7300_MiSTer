@@ -239,7 +239,12 @@ module PPCMac_machine
 	output logic [31:0]  dbg_status,
 	output logic [31:0]  dbg_passes,
 	output logic [31:0]  dbg_errors,
-	output logic [31:0]  dbg_first
+	output logic [31:0]  dbg_first,
+
+	// the records for PPCMac_trace; tr_mesh adds MESH's and channel A's accesses
+	input  logic         tr_mesh,
+	output logic         tr_ev,
+	output logic [255:0] tr_rec
 );
 
 import PPCMac_pkg::*;
@@ -556,6 +561,10 @@ wire        scsi_cd  = mesh_cd  | t_cd;
 wire        scsi_io  = mesh_io  | t_io;
 wire [7:0]  scsi_db  = mesh_db  | t_db;
 
+logic         dfin, dfin_ch;
+logic [1:0]   dfin_type;
+logic [127:0] dfin_info;
+
 PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
 	.clk, .reset(board_reset), .via_tick, .rtxc_tick, .scsi_tick, .us_tick, .snd_tick,
 	.sel(present & is_gc), .we(c_we), .addr(dev_a[16:2]), .be(dev_be), .wdata(dev_wd),
@@ -571,19 +580,23 @@ PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
 	.dm_req(gdm_req), .dm_we(gdm_we), .dm_line(gdm_line), .dm_addr(gdm_addr), .dm_be(gdm_be),
 	.dm_wdata(gdm_wdata), .dm_ack(gdm_ack), .dm_rdata(gdm_rdata),
 	.snd_left, .snd_right,
-	.dac_cr, .dbl_buf_cr, .cursor_x, .cursor_clut, .clk_v, .clut_index, .clut_rgb
+	.dac_cr, .dbl_buf_cr, .cursor_x, .cursor_clut, .clk_v, .clut_index, .clut_rgb,
+	.dfin, .dfin_ch, .dfin_type, .dfin_info
 );
 
 assign ext_irq = gc_irq;
 
 // ---- the internal bus's targets: disks at IDs 0 and 1, the CD-ROM at 3 (hps_io's slots) ----------
+logic         sd_tr_ev;
+logic [255:0] sd_tr_rec;
+
 PPCMac_scsidisk #(.CLK_HZ(CPU_HZ)) disks (
 	.clk, .reset(board_reset),
 	.t_bsy, .t_req, .t_msg, .t_cd, .t_io, .t_db,
 	.b_rst(scsi_rst), .b_bsy(scsi_bsy), .b_sel(scsi_sel), .b_atn(scsi_atn), .b_ack(scsi_ack), .b_db(scsi_db),
 	.clk_h(clk_v), .img_mounted, .img_size, .img_readonly,
 	.sd_lba, .sd_rd, .sd_wr, .sd_blk_cnt, .sd_ack, .sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr,
-	.busy(disk_busy), .cd_left, .cd_right
+	.busy(disk_busy), .cd_left, .cd_right, .tr_ev(sd_tr_ev), .tr_rec(sd_tr_rec)
 );
 
 // ---- Cuda ------------------------------------------------------------------------------------
@@ -593,9 +606,12 @@ logic        adb_low, adb_dev_low, cuda_tick, iic_scl_low, iic_sda_low, athens_s
 wire         iic_scl = ~iic_scl_low;
 wire         iic_sda = ~(iic_sda_low | athens_sda_low);
 
+logic        adb_tr_ev;
+logic [31:0] adb_tr_info;
+
 PPCMac_adb adb (
 	.clk, .reset, .tick(cuda_tick), .host_low(adb_low), .dev_low(adb_dev_low),
-	.ps2_key, .ps2_mouse, .joy
+	.ps2_key, .ps2_mouse, .joy, .tr_ev(adb_tr_ev), .tr_info(adb_tr_info)
 );
 
 PPCMac_athens athens (
@@ -726,6 +742,41 @@ always_comb begin
 	if (dev_sel_q[1]) dev_rdata = dbg_rdata;
 	if (dev_sel_q[0]) dev_rdata = boot_rdata;
 end
+
+// ---- the trace: the targets' records, and (kind 4) the CPU's accesses to MESH and its DMA channel ----
+logic        bt_pend, bt_we;
+logic [31:0] bt_a, bt_wd, bt_us = 32'd0;
+logic [3:0]  bt_be;
+logic [15:0] bt_div = 16'd0;
+// MACE (F3011000-F30111FF) and its DMA channels 2 and 3 (F3008200, 8300); MESH (F3010000)
+// and its channel A (F3008A00) with tr_mesh. Not the interrupt registers: the NanoKernel
+// reads and rewrites them thousands of times a second
+wire         bt_hit = is_gc && (a[16:9] == 8'h88 || a[16:8] == 9'h082 || a[16:8] == 9'h083 ||
+                                (tr_mesh && (a[16:8] == 9'h100 || a[16:8] == 9'h08A)));
+always_ff @(posedge clk) begin
+	if (bt_div == 16'(CPU_HZ / 1_000_000 - 1)) begin
+		bt_div <= 16'd0;
+		bt_us  <= bt_us + 32'd1;
+	end
+	else bt_div <= bt_div + 16'd1;
+	if (dev_take & ~c_line) begin
+		bt_pend <= bt_hit;
+		bt_a    <= a;
+		bt_we   <= c_we;
+		bt_wd   <= c_wdata[31:0];
+		bt_be   <= c_be;
+	end
+	else if (dev_ack) bt_pend <= 1'b0;
+	if (reset) bt_pend <= 1'b0;
+end
+wire bt_ev = dev_ack & bt_pend;
+// kind 5: a command of DMA channel 2 or 3 finished (8 fetched, 9 stopped); 6: the ADB keyboard
+assign tr_ev  = sd_tr_ev | bt_ev | dfin | adb_tr_ev;
+assign tr_rec = sd_tr_ev ? sd_tr_rec :
+                bt_ev    ? {128'd0, bt_we ? bt_wd : dev_rdata, bt_a, bt_us, 19'd0, bt_we, bt_be, 8'd4} :
+                dfin     ? {64'd0, dfin_info, bt_us, 16'd0, 7'd1, dfin_ch,
+                            (dfin_type == 2'd0) ? 8'd5 : (dfin_type == 2'd1) ? 8'd8 : 8'd9} :
+                           {160'd0, adb_tr_info, bt_us, 24'd0, 8'd6};
 
 assign c_ack   = cpu_m_ack | dev_ack | v_ack;
 assign c_rdata = v_ack    ? v_swl(v_rdata, v_swap) :

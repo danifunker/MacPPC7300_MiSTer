@@ -113,7 +113,11 @@ module PPCMac_scsidisk
 
 	output logic        busy,           // a block is moving to or from the card (the disk light)
 	output logic signed [15:0] cd_left, // the CD's audio, in this clock
-	output logic signed [15:0] cd_right
+	output logic signed [15:0] cd_right,
+
+	// a record for PPCMac_trace: each command's end, a bus reset, a CD mount
+	output logic        tr_ev,
+	output logic [255:0] tr_rec
 );
 
 localparam logic [31:0] WIN_RESP = 32'h7E00_0000, WIN_CMD = 32'h7D00_0000;
@@ -307,6 +311,7 @@ logic [3:0]  cp;                        // a copy's byte
 logic [2:0]  pk_i;                      // a peek's step
 logic [7:0]  pk [5];                    // bytes 0-4 of the read buffer
 logic [16:0] tbo_p, tbo_left;           // a Toolbox SEND: its payload's next byte, bytes still to come
+logic [23:0] tb_pos;                    // ... the upload's next 512-byte block (the client's chunked D4 counts chunks)
 logic [1:0]  tb_dir;                    // 0 data in, 1 data out, 2 none
 logic [2:0]  tb_slot;
 logic        tb_dbg;                    // TOGGLE DEBUG's flag
@@ -908,10 +913,15 @@ always_ff @(posedge clk) begin
 		T_TB_CP: if (!t_rq) begin           // block 0: the CDB, the direction, the payload's length
 			wb_we <= 1'b1;
 			wb_a  <= {6'd0, cp};
-			wb_d  <= (cp < 4'd10) ? cdb[cp] : (cp == 4'd10) ? {6'd0, tb_dir} :
+			wb_d  <= (op == 8'hD4 && cdb[6] > 8'd1 && cp == 4'd3) ? tb_pos[23:16] :
+			         (op == 8'hD4 && cdb[6] > 8'd1 && cp == 4'd4) ? tb_pos[15:8] :
+			         (op == 8'hD4 && cdb[6] > 8'd1 && cp == 4'd5) ? tb_pos[7:0] :
+			         (cp < 4'd10) ? cdb[cp] : (cp == 4'd10) ? {6'd0, tb_dir} :
 			         (cp == 4'd11) ? tb_send[15:8] : tb_send[7:0];
 			cp    <= cp + 4'd1;
 			if (cp == 4'd12) begin
+				if (op == 8'hD3) tb_pos <= 24'd0;
+				else if (op == 8'hD4) tb_pos <= tb_pos + ((cdb[6] == 8'd0) ? 24'd1 : {16'd0, cdb[6]});
 				t_rq <= 1'b1; t_we <= 1'b1; t_slot <= tb_slot; t_half <= 1'b0; t_lba <= 32'd0;
 				ts <= T_TB_W;
 			end
@@ -1011,6 +1021,7 @@ always_ff @(posedge clk) begin
 		wb_we   <= 1'b0;
 		dout_keep  <= 1'b0;
 		tb_dbg     <= 1'b0;
+		tb_pos     <= 24'd0;
 		cd_ejected <= 1'b0;
 		cd_prevent <= 1'b0;
 		probe_pend <= 1'b1;
@@ -1021,6 +1032,48 @@ always_ff @(posedge clk) begin
 			sense_key[i] <= 4'h0;
 			sense_asc[i] <= 8'h00;
 		end
+	end
+end
+
+// ---- the trace: kind 1 a command's status, 2 a bus reset, 3 a mount on the CD's slot ----
+logic [31:0] tr_us = 32'd0;
+logic [15:0] tr_div = 16'd0;
+logic [31:0] tr_bytes;                  // data bytes the command moved
+logic        tr_rst_q = 1'b0;
+t_t          tr_ts_q;
+wire  [7:0]  tr_id   = is_cd ? 8'd3 : {6'd0, cur};
+wire  [7:0]  tr_flag = {cd_ok, cd_ejected, cd_prevent, m_valid[2], m_tb, m_cdc, m_valid[1:0] != 2'b00, hk_on};
+always_ff @(posedge clk) begin
+	tr_ev    <= 1'b0;
+	tr_ts_q  <= ts;
+	tr_rst_q <= b_rst;
+	if (tr_div == 16'(CLK_HZ / 1_000_000 - 1)) begin
+		tr_div <= 16'd0;
+		tr_us  <= tr_us + 32'd1;
+	end
+	else tr_div <= tr_div + 16'd1;
+	if (ts == T_EXEC) tr_bytes <= 32'd0;
+	else if (ts == T_ACK && ph[2:1] == 2'b00) tr_bytes <= tr_bytes + 32'd1;
+	if (ts == T_STATUS && tr_ts_q != T_STATUS) begin
+		tr_ev  <= 1'b1;
+		tr_rec <= {8'd0, 8'(cdb_len), 3'd0, tb_dir, tb_slot, pk[4], pk[3], pk[2], pk[1], pk[0],
+		           tr_bytes, tr_flag, sense_asc[cur], cdb[9], cdb[8],
+		           cdb[7], cdb[6], cdb[5], cdb[4], cdb[3], cdb[2], cdb[1], cdb[0],
+		           tr_us, 4'd0, sense_key[cur], status, tr_id, 8'd1};
+	end
+	else if (ts == T_EXEC) begin                // kind 7: a command starts
+		tr_ev  <= 1'b1;
+		tr_rec <= {64'd0, 32'd0, tr_flag, 8'd0, cdb[9], cdb[8],
+		           cdb[7], cdb[6], cdb[5], cdb[4], cdb[3], cdb[2], cdb[1], cdb[0],
+		           tr_us, 16'd0, tr_id, 8'd7};
+	end
+	else if (b_rst && !tr_rst_q) begin
+		tr_ev  <= 1'b1;
+		tr_rec <= {96'd0, tr_flag, 88'd0, tr_us, 24'd0, 8'd2};
+	end
+	else if (cd_mev) begin
+		tr_ev  <= 1'b1;
+		tr_rec <= {96'd0, tr_flag, 88'd0, tr_us, 24'd0, 8'd3};
 	end
 end
 

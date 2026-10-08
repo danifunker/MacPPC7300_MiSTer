@@ -169,7 +169,14 @@ module PPCMac_gc
 	output logic [191:0] cursor_clut,
 	input  logic         clk_v,
 	input  logic [7:0]   clut_index,
-	output logic [23:0]  clut_rgb
+	output logic [23:0]  clut_rgb,
+
+	// for PPCMac_trace: DMA channel 2 or 3 (dfin_ch) finished (dfin_type 0), fetched (1) or
+	// was stopped (2) a command
+	output logic         dfin,
+	output logic         dfin_ch,
+	output logic [1:0]   dfin_type,
+	output logic [127:0] dfin_info
 );
 
 import PPCMac_pkg::*;
@@ -317,7 +324,7 @@ PPCMac_dbdma dma_a (
 	.di_valid(mi_valid), .di_data(mi_data), .di_take(mi_take), .di_flush(mi_flush), .di_last(1'b0),
 	.do_ready(mo_ready), .do_data(mo_data), .do_put(mo_put),
 	/* verilator lint_off PINCONNECTEMPTY */
-	.do_last(), .xfer_in(), .xfer_out(), .active(),
+	.do_last(), .xfer_in(), .xfer_out(), .active(), .fin(), .fin_dec(), .fin_info(),
 	/* verilator lint_on PINCONNECTEMPTY */
 	.drained(dma_drained),
 	.irq(dma_a_irq)
@@ -346,7 +353,7 @@ PPCMac_dbdma dma_8 (
 	.di_valid(1'b0), .di_data(8'h00), .di_flush(1'b0), .di_last(1'b0),
 	.do_ready(s8_ready), .do_data(s8_data), .do_put(s8_put),
 	/* verilator lint_off PINCONNECTEMPTY */
-	.do_last(), .di_take(), .xfer_in(), .xfer_out(), .drained(),
+	.do_last(), .di_take(), .xfer_in(), .xfer_out(), .drained(), .fin(), .fin_dec(), .fin_info(),
 	/* verilator lint_on PINCONNECTEMPTY */
 	.active(s8_active),
 	.irq(s8_irq)
@@ -360,7 +367,7 @@ PPCMac_dbdma dma_9 (
 	.di_valid(s9_valid), .di_data(s9_data), .di_take(s9_take), .di_flush(1'b0), .di_last(1'b0),
 	.do_ready(1'b0),
 	/* verilator lint_off PINCONNECTEMPTY */
-	.do_data(), .do_put(), .do_last(), .xfer_in(), .xfer_out(), .drained(),
+	.do_data(), .do_put(), .do_last(), .xfer_in(), .xfer_out(), .drained(), .fin(), .fin_dec(), .fin_info(),
 	/* verilator lint_on PINCONNECTEMPTY */
 	.active(s9_active),
 	.irq(s9_irq)
@@ -370,7 +377,9 @@ PPCMac_dbdma dma_9 (
 // ---- and its DMA channels, 2 out and 3 in ----
 logic [7:0]  mace_rq;
 logic [31:0] dma_2_rle, dma_3_rle;
-logic        e2_ready, e2_put, e2_last, e2_irq, e3_irq;
+logic        e2_ready, e2_put, e2_last, e2_irq, e3_irq, e2_fin, e3_fin;
+logic [1:0]  e2_fin_dec, e3_fin_dec;
+logic [127:0] e2_fin_info, e3_fin_info;
 logic [7:0]  e2_data, e3_data;
 logic        e3_valid, e3_last, e3_take, e3_xin;
 wire         dma_2_sel = sel & dma & (addr[14:8] == 7'd2) & (addr[7:5] == 3'd0);
@@ -398,10 +407,10 @@ PPCMac_dbdma dma_2 (
 	/* verilator lint_off PINCONNECTEMPTY */
 	.di_take(), .xfer_in(), .xfer_out(), .drained(), .active(),
 	/* verilator lint_on PINCONNECTEMPTY */
-	.irq(e2_irq)
+	.irq(e2_irq), .fin(e2_fin), .fin_dec(e2_fin_dec), .fin_info(e2_fin_info)
 );
 
-PPCMac_dbdma dma_3 (
+PPCMac_dbdma #(.S6_EOF(1'b1)) dma_3 (
 	.clk, .reset,
 	.sel(dma_3_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_3_rle),
 	.dm_req(e3_req), .dm_we(e3_we), .dm_line(e3_line), .dm_addr(e3_addr), .dm_be(e3_be), .dm_wdata(e3_wdata),
@@ -412,8 +421,13 @@ PPCMac_dbdma dma_3 (
 	/* verilator lint_off PINCONNECTEMPTY */
 	.do_data(), .do_put(), .do_last(), .xfer_out(), .drained(), .active(),
 	/* verilator lint_on PINCONNECTEMPTY */
-	.irq(e3_irq)
+	.irq(e3_irq), .fin(e3_fin), .fin_dec(e3_fin_dec), .fin_info(e3_fin_info)
 );
+
+assign dfin      = e2_fin | e3_fin;
+assign dfin_ch   = e3_fin;
+assign dfin_type = e3_fin ? e3_fin_dec : e2_fin_dec;
+assign dfin_info = e3_fin ? e3_fin_info : e2_fin_info;
 
 // ---- SWIM3 (PPCMac_swim3): byte registers at (offset >> 4) & F (grandcentral.cpp:205) ----
 logic [7:0] swim_rq;

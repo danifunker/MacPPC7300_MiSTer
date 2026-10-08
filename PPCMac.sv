@@ -399,9 +399,11 @@ always @(posedge clk_mem)
 // synchronises the controller's bus
 reg  [2:0]  joy_mode = 0;
 reg         net_on = 0;
+reg         tr_mesh_m = 0;                  // the trace also takes MESH (status[29]: no menu entry)
 always @(posedge clk_mem) if (cpu_reset_m) begin
-	joy_mode <= (status[13:11] > 3'd4) ? 3'd0 : status[13:11];
-	net_on   <= status[17];
+	joy_mode  <= (status[13:11] > 3'd4) ? 3'd0 : status[13:11];
+	net_on    <= status[17];
+	tr_mesh_m <= status[29];
 end
 wire [51:0] joy = {status[14], joy_mode, joystick_r_analog_0, joystick_l_analog_0, joystick_0[15:0]};
 
@@ -410,6 +412,7 @@ reg [2:0] cpu_reset_s = 3'b111;
 reg [7:0] ram_mb_c [2];
 reg [1:0] boot_memtest_c;
 reg [8:0] mon_c [2];
+reg [1:0] tr_mesh_c;
 always @(posedge clk_cpu) begin
 	cpu_reset_s    <= {cpu_reset_s[1:0], cpu_reset_m};
 	ram_mb_c[0]    <= ram_mb;
@@ -417,6 +420,7 @@ always @(posedge clk_cpu) begin
 	boot_memtest_c <= {boot_memtest_c[0], boot_memtest};
 	mon_c[0]       <= {mon_std, mon_ext};
 	mon_c[1]       <= mon_c[0];
+	tr_mesh_c      <= {tr_mesh_c[0], tr_mesh_m};
 end
 wire cpu_reset = cpu_reset_s[2];
 
@@ -600,7 +604,7 @@ PPCMac_system #(.CPU_HZ(CPU_MHZ * 1000000), .TB_HZ(12500000), .SDRAM_MB(128)) sy
 	.sd_lba(disk_lba), .sd_rd(disk_rd), .sd_wr(disk_wr), .sd_blk_cnt(disk_blk_cnt), .sd_ack,
 	.sd_buff_addr, .sd_buff_dout, .sd_buff_din(disk_buff_din), .sd_buff_wr, .disk_busy,
 	.cd_left, .cd_right,
-	.net_on,
+	.net_on, .tr_mesh(tr_mesh_c[1]),
 	.ddr_busy(DDRAM_BUSY), .ddr_burstcnt(DDRAM_BURSTCNT), .ddr_addr(DDRAM_ADDR), .ddr_dout(DDRAM_DOUT),
 	.ddr_dout_ready(DDRAM_DOUT_READY), .ddr_rd(DDRAM_RD), .ddr_din(DDRAM_DIN), .ddr_be(DDRAM_BE), .ddr_we(DDRAM_WE),
 	.vid_ce(mac_ce), .vid_r(mac_r), .vid_g(mac_g), .vid_b(mac_b), .vid_hs(mac_hs), .vid_vs(mac_vs),

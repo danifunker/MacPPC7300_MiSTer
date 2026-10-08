@@ -68,7 +68,10 @@ PPCMac_cuda #(.CLK_HZ(CLK_HZ)) cuda (
 
 PPCMac_adb adb (
 	.clk, .reset, .tick, .host_low(adb_low), .dev_low(adb_dev_low),
-	.ps2_key, .ps2_mouse, .joy
+	.ps2_key, .ps2_mouse, .joy,
+	/* verilator lint_off PINCONNECTEMPTY */
+	.tr_ev(), .tr_info()
+	/* verilator lint_on PINCONNECTEMPTY */
 );
 
 endmodule

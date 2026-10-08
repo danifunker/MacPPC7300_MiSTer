@@ -104,7 +104,8 @@ PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
 	.scsi_rst, .scsi_bsy, .scsi_sel, .scsi_atn, .scsi_ack, .scsi_req, .scsi_msg, .scsi_cd, .scsi_io, .scsi_db,
 	.dm_req, .dm_we, .dm_line, .dm_addr, .dm_be, .dm_wdata, .dm_ack, .dm_rdata,
 	.snd_left(), .snd_right(),
-	.dac_cr(), .dbl_buf_cr(), .cursor_x(), .cursor_clut(), .clk_v(clk_h), .clut_index(8'h0), .clut_rgb()
+	.dac_cr(), .dbl_buf_cr(), .cursor_x(), .cursor_clut(), .clk_v(clk_h), .clut_index(8'h0), .clut_rgb(),
+	.dfin(), .dfin_ch(), .dfin_type(), .dfin_info()
 );
 
 PPCMac_scsidisk #(.CLK_HZ(CPU_HZ)) disks (
@@ -113,7 +114,7 @@ PPCMac_scsidisk #(.CLK_HZ(CPU_HZ)) disks (
 	.b_rst(scsi_rst), .b_bsy(scsi_bsy), .b_sel(scsi_sel), .b_atn(scsi_atn), .b_ack(scsi_ack), .b_db(scsi_db),
 	.clk_h, .img_mounted, .img_size, .img_readonly(1'b0),
 	.sd_lba, .sd_rd, .sd_wr, .sd_blk_cnt, .sd_ack, .sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr,
-	.busy(), .cd_left, .cd_right
+	.busy(), .cd_left, .cd_right, .tr_ev(), .tr_rec()
 );
 /* verilator lint_on PINCONNECTEMPTY */
 

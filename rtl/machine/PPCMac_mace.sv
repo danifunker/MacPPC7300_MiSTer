@@ -37,7 +37,8 @@
 //                  for registers 21 (PADR, 6 bytes) and 20 (LADRF, 8 bytes),
 //                  each clearing after its last byte; ADDRCHG (80) clears
 //    24  MPC       frames missed (no DMA to take them); cleared by a read
-//    29  UTR       stored
+//    29  UTR       stored; LOOP (bits 2-1) sends frames back to the receiver
+//                  instead of the wire (any loopback mode, as the internal)
 //  Others read 0 and ignore writes.
 //
 //  Transmit: Grand Central's DMA channel 2 (Ethernet out) puts the frame's
@@ -62,7 +63,7 @@
 //  not mask, as the chip's INTR pin.
 //
 //  Left out (docs/PPCMac_stubs.md): the FIFOs' contents and watermarks,
-//  transmit by programmed I/O, the loopback modes, collisions, CERR (the
+//  transmit by programmed I/O, external loopback, collisions, CERR (the
 //  heartbeat), LADRF's hash (any bit lets every multicast in), the FCS's
 //  value.
 //
@@ -118,6 +119,11 @@ logic        ladr_any;                 // a bit of LADRF set
 logic [11:0] f_len;                    // bytes of the frame being taken
 logic        f_held;                   // a whole frame waits for the wire
 logic        f_wire;                   // ... and is on it (or in the bridge)
+logic        f_loop;                   // ... in UTR's loopback: back to the receiver, not the wire
+logic [63:0] lbb [256];                // the transmitted frame, for the loopback
+logic [63:0] lb_q;
+logic        lb_pend;                  // a looped-back frame waits for the receiver
+logic [10:0] lb_len;
 logic [11:0] f_us;                     // microseconds left on the wire
 logic [63:0] t_word;                   // the frame's word being gathered
 logic        tx_seen;
@@ -165,18 +171,38 @@ logic        r_fcs;                    // ... and four of FCS
 logic [11:0] r_p, r_tot;               // the next byte, and all of them (with the status)
 logic [11:0] r_us;                     // microseconds waited for the DMA
 logic        r_ok;                     // the frame went (RCVINT)
+logic        r_lb;                     // the frame is the looped-back one
+wire  [63:0] r_q    = r_lb ? lb_q : rx_q;
+wire  [10:0] r_len  = r_lb ? lb_len : rx_len;
 wire  [11:0] r_cnt  = {1'b0, r_n} + (r_fcs ? 12'd4 : 12'd0);   // the bytes before the status
-wire  [15:0] r_type = {rx_q[39:32], rx_q[47:40]};               // bytes 12 and 13
+wire  [15:0] r_type = {r_q[39:32], r_q[47:40]};                 // bytes 12 and 13
 wire         r_pad  = {padr[5], padr[4], padr[3], padr[2], padr[1], padr[0]} == r_dst;
 wire         r_want = mac_cc[0] && (mac_cc[7] || r_pad || r_dst == 48'hFFFF_FFFF_FFFF || (r_dst[0] && ladr_any));
-wire  [11:0] r_n802 = (r_type + 16'd14 < {5'd0, rx_len}) ? 12'(r_type + 16'd14) : {1'b0, rx_len};
+wire  [11:0] r_n802 = (r_type + 16'd14 < {5'd0, r_len}) ? 12'(r_type + 16'd14) : {1'b0, r_len};
 
 assign rx_ra    = (rs == R_DST) ? 8'd0 : (rs == R_TYPE) ? 8'd1 : r_p[10:3];
 assign di_valid = rs == R_SEND && r_wt == 2'd0;
 assign di_last  = r_p == r_tot - 12'd1;
+
+always_ff @(posedge clk) begin
+	if (tx_we) lbb[tx_wa] <= tx_wd;
+	lb_q <= lbb[rx_ra];
+end
+
+// the FCS: Ethernet's CRC-32 of the bytes delivered, low byte first
+function automatic logic [31:0] crc_byte(input logic [31:0] c, input logic [7:0] d);
+	logic [31:0] x;
+	x = c ^ {24'd0, d};
+	for (int i = 0; i < 8; i++) x = x[0] ? ((x >> 1) ^ 32'hEDB8_8320) : (x >> 1);
+	return x;
+endfunction
+logic [31:0] r_crc;
+wire  [31:0] r_fcs_v = ~r_crc;
+wire  [11:0] r_fi    = r_p - {1'b0, r_n};
+
 always_comb begin
-	if (r_p < {1'b0, r_n})  di_data = rx_q[8 * r_p[2:0] +: 8];
-	else if (r_p < r_cnt)   di_data = 8'h00;                       // the FCS
+	if (r_p < {1'b0, r_n})  di_data = r_q[8 * r_p[2:0] +: 8];
+	else if (r_p < r_cnt)   di_data = r_fcs_v[8 * r_fi[1:0] +: 8];  // the FCS
 	else case (r_p - r_cnt)
 		12'd0:   di_data = r_cnt[7:0];                             // RFS0, RFS1: the count
 		12'd1:   di_data = {4'h0, r_cnt[11:8]};
@@ -199,12 +225,13 @@ always_ff @(posedge clk) begin
 	if (f_held && !f_wire && mac_cc[1]) begin
 		f_wire <= 1'b1;
 		f_us   <= f_time;
-		if (link) begin
+		f_loop <= utr[2:1] != 2'b00;
+		if (link && utr[2:1] == 2'b00) begin
 			tx_len <= f_len[10:0];
 			tx_go  <= ~tx_go;
 		end
 	end
-	if (f_wire && link && tx_done != tx_seen) begin
+	if (f_wire && !f_loop && link && tx_done != tx_seen) begin
 		tx_seen     <= tx_done;
 		f_wire      <= 1'b0;
 		f_held      <= 1'b0;
@@ -212,13 +239,17 @@ always_ff @(posedge clk) begin
 		xmt_fs      <= 8'h80;                // XMTSV
 		int_stat[0] <= 1'b1;                 // XMTINT
 	end
-	else if (f_wire && !link && us_tick) begin
+	else if (f_wire && (f_loop || !link) && us_tick) begin
 		if (f_us == 12'd0) begin
 			f_wire      <= 1'b0;
 			f_held      <= 1'b0;
 			f_len       <= 12'd0;
-			xmt_fs      <= 8'h82;                // XMTSV | LCAR
+			xmt_fs      <= f_loop ? 8'h80 : 8'h82;   // XMTSV, with LCAR unplugged
 			int_stat[0] <= 1'b1;                 // XMTINT
+			if (f_loop) begin
+				lb_pend <= 1'b1;
+				lb_len  <= f_len[10:0];
+			end
 		end
 		else f_us <= f_us - 12'd1;
 	end
@@ -226,12 +257,13 @@ always_ff @(posedge clk) begin
 	// ---- the receiver ----
 	if (r_wt != 2'd0) r_wt <= r_wt - 2'd1;
 	case (rs)
-		R_IDLE: if (rx_avail != rx_seen) begin
+		R_IDLE: if (lb_pend || rx_avail != rx_seen) begin
+			r_lb <= lb_pend;
 			r_wt <= 2'd2;
 			rs   <= R_DST;
 		end
 		R_DST: if (r_wt == 2'd0) begin
-			r_dst <= rx_q[47:0];
+			r_dst <= r_q[47:0];
 			r_wt  <= 2'd2;
 			rs    <= R_TYPE;
 		end
@@ -239,7 +271,7 @@ always_ff @(posedge clk) begin
 			if (!r_want) begin r_ok <= 1'b0; rs <= R_DONE; end
 			else begin
 				r_fcs <= !(r_type < 16'd1536 && rcv_fc[0]);
-				r_n   <= (r_type < 16'd1536 && rcv_fc[0]) ? r_n802[10:0] : rx_len;
+				r_n   <= (r_type < 16'd1536 && rcv_fc[0]) ? r_n802[10:0] : r_len;
 				r_us  <= 12'd2000;
 				rs    <= R_DMA;
 			end
@@ -247,6 +279,7 @@ always_ff @(posedge clk) begin
 		R_DMA: begin                                   // the channel ready to take it, or missed
 			r_p <= 12'd0;
 			r_tot <= r_cnt + 12'd4;
+			r_crc <= 32'hFFFF_FFFF;
 			if (rx_dma) begin r_wt <= 2'd2; rs <= R_SEND; end
 			else if (us_tick) begin
 				if (r_us == 12'd0) begin
@@ -259,12 +292,16 @@ always_ff @(posedge clk) begin
 		end
 		R_SEND: if (di_take) begin
 			r_p  <= r_p + 12'd1;
+			if (r_p < {1'b0, r_n}) r_crc <= crc_byte(r_crc, di_data);
 			r_wt <= 2'd2;
 			if (di_last) begin r_ok <= 1'b1; rs <= R_DONE; end
 		end
 		R_DONE: begin
-			rx_seen <= rx_avail;
-			rx_done <= ~rx_done;
+			if (r_lb) lb_pend <= 1'b0;
+			else begin
+				rx_seen <= rx_avail;
+				rx_done <= ~rx_done;
+			end
 			if (r_ok) int_stat[1] <= 1'b1;                 // RCVINT
 			rs <= R_IDLE;
 		end
@@ -329,13 +366,16 @@ always_ff @(posedge clk) begin
 		f_len     <= 12'd0;
 		f_held    <= 1'b0;
 		f_wire    <= 1'b0;
+		f_loop    <= 1'b0;
 		f_us      <= 12'd0;
 		t_word    <= 64'd0;
 		tx_seen   <= tx_done;
 		r_wt      <= 2'd0;
 		r_ok      <= 1'b0;
+		lb_pend   <= 1'b0;
+		r_lb      <= 1'b0;
 		// a frame in hand is given back (the bridge waits for it)
-		if (rs != R_IDLE) begin rx_seen <= rx_avail; rx_done <= ~rx_done; end
+		if (rs != R_IDLE && !r_lb) begin rx_seen <= rx_avail; rx_done <= ~rx_done; end
 		rs        <= R_IDLE;
 	end
 end

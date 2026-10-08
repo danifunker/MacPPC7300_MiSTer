@@ -15,8 +15,11 @@ Test builds of the Power Macintosh 7300/7600 core for the MiSTer
 2. Optional: replace `/media/fat/MiSTer` with `MiSTer` from here (keep a
    copy of yours), then reboot the MiSTer. Any recent official Main works.
 3. The ROM: the core needs a Power Macintosh 7300 or 7600 ROM image (4 MB:
-   `077D.34F2` from a 7300, or `077D.28F2` from a 7600), dumped from your
-   own machine, as `/media/fat/games/PPCMac/boot.rom`. It is not included.
+   `077D.34F2` from a 7300, or `077D.28F2` from a 7600) as
+   `/media/fat/games/PPCMac/boot.rom`. `boot0.rom` here is the 7300's
+   (`077D.34F2`, md5 `edcf3422d712f61f83c07efc2401cbb8`); copy it into
+   `/media/fat/games/PPCMac/` (the Main loads `boot0.rom` and `boot.rom`
+   alike).
 4. A disk: a SCSI hard disk image (`.hda` or `.vhd`, 512-byte blocks, an
    Apple partition map; the BlueSCSI-style images of Mac OS 7.5.3 to 9.1
    work as images) in `/media/fat/games/PPCMac/`, mounted from the OSD:

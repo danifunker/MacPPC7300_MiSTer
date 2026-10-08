@@ -13,10 +13,10 @@ to the card and the core's UART.
                                                  core start (default syn\\nvram_of_prompt.bin)
     python syn\\mister.py rm-nvram                removes boot1.rom (the NVRAM starts blank)
     python syn\\mister.py put-disk FILE [NAME]    a disk image -> games/PPCMac/NAME
-    python syn\\mister.py mount 0|1 PATH          the image (PATH from /media/fat) mounted as SCSI
-                                                 disk 0 or 1 at the core's next start
-                                                 (config/PPCMac.s0 or .s1, as the OSD writes it)
-    python syn\\mister.py umount 0|1|2            ... no longer
+    python syn\\mister.py mount 0|1|4 PATH        the image (PATH from /media/fat) mounted as SCSI
+                                                 disk 0 or 1, or the CD-ROM (4), at the core's
+                                                 next start (config/PPCMac.sN, as the OSD writes it)
+    python syn\\mister.py umount 0|1|2|4          ... no longer
     python syn\\mister.py make-nvr [PATH]         an empty 8 KB NVRAM image (default
                                                  games/PPCMac/PPCMac.nvr) if there is none, mounted
                                                  on block slot 2 (config/PPCMac.s2): the core loads
@@ -24,7 +24,9 @@ to the card and the core's UART.
     python syn\\mister.py cfg [--ram MB] [--boot rom|memtest] [--uart modem|debug]
                               [--picture mac|debug] [--monitor 16|13|12]
                               [--joy none|mousestick|firebird|gamepad|sidewinder] [--ptr]
-                                                 writes config/PPCMac.CFG
+                              [--eth] [--net eth0|eth1|wlan0|tap0] [--trace-mesh]
+                                                 writes config/PPCMac.CFG (--trace-mesh: the trace
+                                                 also takes MESH's accesses; no OSD entry)
     python syn\\mister.py load                    loads _Unstable/PPCMac.rbf (Remote: /api/launch)
     python syn\\mister.py menu                    loads the menu core again (/api/launch/menu)
     python syn\\mister.py shot [OUT.png]          a screenshot of the core's output, fetched
@@ -44,6 +46,16 @@ to the card and the core's UART.
     (Both leave Open Firmware's escape sequences and carriage returns out
     unless --raw.)
     python syn\\mister.py run CMD                 any shell command on the MiSTer
+    python syn\\mister.py trace [--last N] [--from K]
+                                                 the SCSI targets' trace (PPCMac_trace, DDR3
+                                                 0x30500000): every command with its status,
+                                                 sense, bytes moved and the Toolbox's answer;
+                                                 bus resets; CD mounts (the last 40 unless asked)
+    python syn\\mister.py trace-capture [SECONDS]  copies every new record on the MiSTer
+                                                 (syn\\trstream.py, in the background) for longer
+                                                 than the ring holds
+    python syn\\mister.py trace-fetch OUT          ... brings the capture back; then
+    python syn\\mister.py trace --file OUT         decodes it
 
 For a terminal of your own on the modem port, from a shell on the MiSTer:
 stty -F /dev/ttyS1 38400 raw -echo, then cat /dev/ttyS1 and write to it.
@@ -179,8 +191,9 @@ def main():
         # (menu.cpp, store_name): the path from /media/fat, read back and
         # mounted at the core's next start (user_io.cpp)
         slot, path = int(a[1]), a[2]
-        if slot not in (0, 1, 2) or "'" in path:
-            sys.exit("mount 0|1|2 PATH (from /media/fat, e.g. games/PPCMac/os761.hda; 2: the NVRAM image)")
+        if slot not in (0, 1, 2, 4) or "'" in path:
+            sys.exit("mount 0|1|2|4 PATH (from /media/fat, e.g. games/PPCMac/os761.hda; 2: the NVRAM image; "
+                     "4: a CD image, which needs the Main branch)")
         return ssh("test -f '/media/fat/%s' && printf '%%s\\0' '%s' > /media/fat/config/PPCMac.s%d && "
                    "xxd /media/fat/config/PPCMac.s%d" % (path, path, slot, slot))
     if cmd == "make-nvr":
@@ -216,9 +229,14 @@ def main():
                 or picture not in ("mac", "debug") or monitor not in (16, 13, 12)):
             sys.exit("--ram one of %s, --boot rom or memtest, --uart modem or debug, --picture mac or debug, "
                      "--monitor 16, 13 or 12" % sorted(RAM_OPTION))
+        nets = ["eth0", "eth1", "wlan0", "tap0"]                                # PPCMac.sv: O[19:18]
+        net = a[a.index("--net") + 1] if "--net" in a else "eth0"
+        if net not in nets:
+            sys.exit("--net one of %s" % ", ".join(nets))
         status = ((RAM_OPTION[ram] << 1) | ((boot == "memtest") << 4) | ((uart == "debug") << 6)
                   | ((picture == "debug") << 7) | (joys.index(joy) << 11)
-                  | (("--ptr" in a) << 14) | ({16: 0, 13: 1, 12: 2}[monitor] << 15))
+                  | (("--ptr" in a) << 14) | ({16: 0, 13: 1, 12: 2}[monitor] << 15)
+                  | (("--eth" in a) << 17) | (nets.index(net) << 18) | (("--trace-mesh" in a) << 29))
         data = "".join("\\x%02x" % ((status >> (8 * i)) & 0xFF) for i in range(4)) + "\\x00" * 12
         return ssh("printf '%s' > /media/fat/config/PPCMac.CFG && xxd /media/fat/config/PPCMac.CFG" % data)
     if cmd == "load":
@@ -249,7 +267,16 @@ def main():
     if cmd == "ws":
         return ws(a[1:])
     if cmd == "keys":
-        return ws(["text:" + " ".join(a[1:])])
+        # a key's down and up as two steps, as a hand types (kbdRaw sends both at once)
+        sys.path.insert(0, os.path.join(ROOT, "tools", "misterdeploy"))
+        import ws_send
+        steps = []
+        for s in ws_send.expand_text(" ".join(a[1:])):
+            if s.startswith("kbdRaw:"):
+                steps += ["kbdRawDown:" + s[7:], "kbdRawUp:" + s[7:]]
+            else:
+                steps.append(s)
+        return ws(steps)
     if cmd == "mouse":
         dx, dy = int(a[1]), int(a[2])
         n = int(a[3]) if len(a) > 3 else max(1, (max(abs(dx), abs(dy)) + 19) // 20)
@@ -294,8 +321,141 @@ def main():
         return ssh(remote, timeout=int(total) + 40) if raw else ssh_clean(remote, int(total) + 40)
     if cmd == "run":
         return ssh(" ".join(a[1:]))
+    if cmd == "trace-capture":
+        # trstream.py on the MiSTer for SECONDS, in the background; `trace-fetch OUT` brings it back
+        secs = int(a[1]) if len(a) > 1 else 60
+        if scp(os.path.join(HERE, "trstream.py"), "root@%s:/tmp/trstream.py" % host()):
+            return 1
+        return ssh("nohup python3 /tmp/trstream.py %d /tmp/trace.bin > /tmp/trstream.log 2>&1 &" % secs)
+    if cmd == "trace-fetch":
+        out = a[1] if len(a) > 1 else "trace.bin"
+        ssh("cat /tmp/trstream.log")
+        return scp("root@%s:/tmp/trace.bin" % host(), out)
+    if cmd == "trace":
+        last = int(a[a.index("--last") + 1]) if "--last" in a else 40
+        first = int(a[a.index("--from") + 1]) if "--from" in a else None
+        fname = a[a.index("--file") + 1] if "--file" in a else None
+        return trace(last, first, fname)
     print(__doc__)
     return 2
+
+
+TRACE_BASE, TRACE_RECS = 0x30500000, 2048
+SCSI_OPS = {0x00: "TEST UNIT READY", 0x03: "REQUEST SENSE", 0x08: "READ(6)", 0x0A: "WRITE(6)",
+            0x12: "INQUIRY", 0x15: "MODE SELECT", 0x1A: "MODE SENSE", 0x1B: "START STOP",
+            0x1E: "PREVENT", 0x25: "READ CAPACITY", 0x28: "READ(10)", 0x2A: "WRITE(10)",
+            0x42: "READ SUB-CHANNEL", 0x43: "READ TOC", 0xC0: "EJECT", 0xC1: "READ TOC (Apple)",
+            0xC2: "READ Q SUBCODE", 0xCC: "AUDIO STATUS", 0xD0: "TB LIST", 0xD1: "TB GET",
+            0xD2: "TB COUNT", 0xD3: "TB SEND PREP", 0xD4: "TB SEND DATA", 0xD5: "TB SEND END",
+            0xD6: "TB DEBUG", 0xD7: "TB LIST CDS", 0xD8: "TB SET NEXT CD", 0xD9: "TB DEVICES",
+            0xDA: "TB COUNT CDS"}
+MESH_REGS = ["count lo", "count hi", "FIFO", "sequence", "bus st 0", "bus st 1", "FIFO count", "exception",
+             "error", "int mask", "interrupt", "source ID", "dest ID", "sync", "MESH ID", "sel timeout"]
+MACE_REGS = {0: "RCVFIFO", 1: "XMTFIFO", 2: "XMTFC", 3: "XMTFS", 4: "XMTRC", 5: "RCVFC", 6: "RCVFS",
+             7: "FIFOFC", 8: "IR", 9: "IMR", 10: "PR", 11: "BIUCC", 12: "FIFOCC", 13: "MACCC", 14: "PLSCC",
+             15: "PHYCC", 16: "CHIPID lo", 17: "CHIPID hi", 18: "IAC", 20: "LADRF", 21: "PADR", 24: "MPC",
+             26: "RNTPC", 27: "RCVCC", 29: "UTR", 30: "RTR1", 31: "RTR2"}
+DMA_REGS = {0x00: "control", 0x04: "status", 0x08: "cmdptr hi", 0x0C: "cmdptr", 0x10: "int sel",
+            0x14: "branch sel", 0x18: "wait sel"}
+
+
+def trace(last, first, fname=None):
+    if fname:
+        # a capture of tools' trstream.py: records each after its 4-byte index
+        raw = open(fname, "rb").read()
+        recs = [(int.from_bytes(raw[k:k + 4], "little"), raw[k + 4:k + 36]) for k in range(0, len(raw) - 35, 36)]
+        n, drops = (recs[-1][0] + 1 if recs else 0), 0
+    else:
+        # the region read on the MiSTer through /dev/mem (read() refuses addresses
+        # above the kernel's memory; mmap does not)
+        size = 64 + TRACE_RECS * 32
+        script = ("import mmap,os,base64,sys;f=os.open('/dev/mem',os.O_RDONLY|os.O_SYNC);"
+                  "m=mmap.mmap(f,%d,mmap.MAP_SHARED,mmap.PROT_READ,offset=%d);"
+                  "sys.stdout.write(base64.b64encode(m[:%d]).decode())" % (size, TRACE_BASE, size))
+        args = ["ssh"] + ssh_args() + ["root@" + host(), "python3 -c \"%s\"" % script]
+        raw = base64.b64decode(subprocess.check_output(args, timeout=60))
+        w = lambda off: int.from_bytes(raw[off:off + 8], "little")
+        head = w(0)
+        if head >> 32 != 0x54524345:
+            print("no trace (header %016x): a core without PPCMac_trace, or nothing written yet" % head)
+            return 1
+        n, drops = head & 0xFFFFFFFF, w(8)
+        lo = max(0, n - TRACE_RECS) if first is None else max(first, n - TRACE_RECS)
+        if first is None:
+            lo = max(lo, n - last)
+        recs = [(i, raw[64 + (i % TRACE_RECS) * 32:][:32]) for i in range(lo, n)]
+    for i, r in recs:
+        kind, tid, st, key = r[0], r[1], r[2], r[3] & 15
+        us = int.from_bytes(r[4:8], "little")
+        flags = r[19]
+        t = "%5d %9.3f" % (i, us / 1e6)
+        fl = "flags %02x" % flags
+        if kind == 1:
+            cdb = r[8:18][:max(6, r[30])]
+            op = cdb[0]
+            nbytes = int.from_bytes(r[20:24], "little")
+            line = "%s ID%d %-16s %s st %02x" % (t, tid, SCSI_OPS.get(op, "op %02x" % op),
+                                                 " ".join("%02x" % b for b in cdb), st)
+            if st:
+                line += " sense %x/%02x" % (key, r[18])
+            line += " bytes %d" % nbytes
+            if 0xD0 <= op <= 0xDA and op not in (0xD6, 0xD9):
+                line += " main %s slot %d" % (r[24:29].hex(), r[29] & 7)
+            print(line + "  " + fl)
+        elif kind == 7:
+            cdb = r[8:18]
+            print("%s ID%d start %-15s %s" % (t, tid, SCSI_OPS.get(cdb[0], "op %02x" % cdb[0]),
+                                              " ".join("%02x" % b for b in cdb)))
+        elif kind == 2:
+            print("%s bus reset  %s" % (t, fl))
+        elif kind == 3:
+            print("%s CD mount  %s" % (t, fl))
+        elif kind == 4:
+            be, we = r[1] & 15, (r[1] >> 4) & 1
+            addr = int.from_bytes(r[8:12], "little")
+            data = int.from_bytes(r[12:16], "little")
+            blk = (addr >> 8) & 0x1FF
+            if blk in (0x100, 0x110, 0x111):
+                reg = ("MESH " + MESH_REGS[(addr >> 4) & 15] if blk == 0x100 else
+                       "MACE " + MACE_REGS.get((addr >> 4) & 31, "%d" % ((addr >> 4) & 31)))
+                if be == 8:
+                    data >>= 24
+            elif blk == 0:
+                reg = "GC int " + {0x20: "events", 0x24: "mask", 0x28: "clear", 0x2C: "levels"}.get(addr & 0xFC, "?")
+            else:
+                reg = "DMA-%X " % (blk & 15) + DMA_REGS.get(addr & 0xFF, "%02x" % (addr & 0xFF))
+            print("%s %-14s %s %0*x  (be %x)" % (t, reg, "w" if we else "r", 2 if be == 8 else 8, data, be))
+        elif kind == 6:
+            info = int.from_bytes(r[8:12], "little")
+            sub = info >> 24
+            if sub == 1:
+                print("%s ADB key %02x %s%s" % (t, info & 0x7F, "up" if (info >> 8) & 1 else "down",
+                                                "  DROPPED (queue full)" if (info >> 16) & 1 else ""))
+            else:
+                c = (info >> 16) & 0xFF
+                kindc = {0: "reset/flush", 2: "listen", 3: "talk"}.get((c >> 2) & 3, "?")
+                print("%s ADB cmd %02x (addr %d %s r%d) answer %02x queue %d" % (
+                    t, c, c >> 4, kindc, c & 3, (info >> 8) & 0xFF, info & 7))
+        elif kind in (5, 8, 9):
+            # PPCMac_dbdma fin_info: {cmd_ptr, cmd key bits reqCount, ..., ...}
+            w1, w2 = int.from_bytes(r[8:16], "little"), int.from_bytes(r[16:24], "little")
+            fi = w1 | (w2 << 64)
+            ptr, cmdw, x, y = fi >> 96, (fi >> 64) & 0xFFFFFFFF, (fi >> 32) & 0xFFFFFFFF, fi & 0xFFFFFFFF
+            cmd, key, bits, req = cmdw >> 28, (cmdw >> 24) & 7, (cmdw >> 16) & 0xFF, cmdw & 0xFFFF
+            c = "@%08x cmd %d key %d i%d b%d w%d req %d" % (ptr, cmd, key, (bits >> 4) & 3, (bits >> 2) & 3,
+                                                           bits & 3, req)
+            if kind == 5:
+                print("%s DMA-%d done %s res %d status %04x intsel %04x irq %d"
+                      % (t, r[1], c, x >> 16, x & 0xFFFF, y >> 16, y & 1))
+            elif kind == 8:
+                print("%s DMA-%d fetch %s addr %08x dep %08x" % (t, r[1], c, x, y))
+            else:
+                print("%s DMA-%d STOPPED in state %d %s res %d status %04x conds w%d b%d i%d"
+                      % (t, r[1], y >> 28, c, x >> 16, x & 0xFFFF, (y >> 2) & 1, (y >> 1) & 1, y & 1))
+        else:
+            print("%s kind %d %s" % (t, kind, r.hex()))
+    print("%d records, %d dropped (flags: cd_ok ejected prevent cd_valid tb cdc disks hk)" % (n, drops))
+    return 0
 
 
 if __name__ == "__main__":

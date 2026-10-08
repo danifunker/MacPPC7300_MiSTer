@@ -43,8 +43,9 @@
 //  devices' own pulses never read as commands.
 //
 //  The PS/2 inputs are hps_io's, from another clock: ps2_key[10] and
-//  ps2_mouse[24] toggle once an event, its data steady long before, and are
-//  synchronised here.
+//  ps2_mouse[24] toggle once an event and are synchronised here. hps_io
+//  writes ps2_key's data in the clock it toggles it (the mouse's data comes
+//  before), so the toggle is taken a stage after the data.
 //
 //  A game controller from the MiSTer's joystick 0, as the Quadra 800 core
 //  has them (its rtl/adb.sv; formats from tashnotes' macintosh/adb/
@@ -73,7 +74,11 @@ module PPCMac_adb
 	// {stick moves pointer, controller (0 none, 1 MouseStick II, 2 Firebird, 3 GamePad,
 	// 4 SideWinder), right stick {Y, X}, left stick {Y, X}, joystick_0[15:0]}; sticks signed,
 	// up and left negative
-	input  logic [51:0] joy
+	input  logic [51:0] joy,
+
+	// for PPCMac_trace: a key queued (or dropped), a command to the keyboard or to all
+	output logic        tr_ev,
+	output logic [31:0] tr_info
 );
 
 // ---- timing, in 4,194,304 Hz ticks ----------------------------------------------------------
@@ -201,18 +206,20 @@ function automatic logic [6:0] adb_code(input logic [8:0] sc);
 endfunction
 
 // ---- the PS/2 inputs, synchronised --------------------------------------------------------
-logic [2:0]  kt_s, mt_s;
+// The toggle a stage after the data: a key's data bit caught a clock after its toggle held
+// the last event's value (keys lost or changed, 2026-10-08)
+logic [3:0]  kt_s, mt_s;
 logic [9:0]  kd_s1, kd_s2;
 logic [18:0] md_s1, md_s2;            // {Y sign, Y, X sign, X, left button}
 always_ff @(posedge clk) begin
-	kt_s  <= {kt_s[1:0], ps2_key[10]};
-	mt_s  <= {mt_s[1:0], ps2_mouse[24]};
+	kt_s  <= {kt_s[2:0], ps2_key[10]};
+	mt_s  <= {mt_s[2:0], ps2_mouse[24]};
 	kd_s1 <= ps2_key[9:0];      kd_s2 <= kd_s1;
 	md_s1 <= {ps2_mouse[5], ps2_mouse[23:16], ps2_mouse[4], ps2_mouse[15:8], ps2_mouse[0]};
 	md_s2 <= md_s1;
 end
-wire key_ev   = kt_s[2] != kt_s[1];
-wire mouse_ev = mt_s[2] != mt_s[1];
+wire key_ev   = kt_s[3] != kt_s[2];
+wire mouse_ev = mt_s[3] != mt_s[2];
 
 // ---- the devices' state ------------------------------------------------------------------
 logic [3:0]  kbd_addr, mouse_addr;
@@ -500,6 +507,16 @@ task automatic say(input logic [3:0] n, input logic [63:0] d);
 endtask
 
 always_ff @(posedge clk) begin
+	tr_ev <= 1'b0;
+	// {1: key: dropped, up, code | 2: command, the byte answered (Talk 0), the queue's fill}
+	if (k_push) begin
+		tr_ev   <= 1'b1;
+		tr_info <= {8'd1, 7'd0, kq_n == 3'd7, 7'd0, k_up, 1'b0, k_code};
+	end
+	else if (st == S_ACT && (kh || c_type == 2'b00)) begin
+		tr_ev   <= 1'b1;
+		tr_info <= {8'd2, cmd, (c_type == 2'b11 && c_reg == 2'd0 && !kq_empty) ? kq[kq_rd] : 8'hFF, 5'd0, kq_n};
+	end
 	hl_q <= hl;
 	if (fall || rise) dur <= '0;
 	else if (tick && dur != 14'h3FFF) dur <= dur + 14'd1;
