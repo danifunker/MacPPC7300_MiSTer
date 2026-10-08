@@ -781,7 +781,7 @@ for this work (it is in build mode: no edits, commits, pushes or fetches).
 | Printer and the disk write buffer (Main branch `mac-printer-writebuffer`) | the write buffer serves slots 0 and 1 once ppcmac is in the Mac family (the branch above); the modem port's CTS and RTS as the Quadra's (build 8), so the ImageWriter on the modem port through the Main's printer daemon |
 | ALSA audio through the HPS, composite and Y/C video (`yc_out`) | on already (the framework's defaults: `MISTER_DISABLE_ALSA` and `MISTER_DISABLE_YC` not set in `PPCMac.qsf`) |
 | Aspect ratio and Scale (Normal, V-Integer, HV-Integer) through `video_freak` | done (2026-10-08) |
-| A second, smaller monitor choice (12-inch 512 x 384) | in the source 2026-10-08 (after build 8; the Monitor option moved to O[16:15]): Apple's 12-inch RGB (sense 2, extended 21, 512 x 384 at 60.15 Hz, dingusppc's `displayid.cpp`); whether the 7300 ROM's Control driver drives it is for the board; the 21-inch later || Speedometer against a real machine | Speedometer on the 7300 and the core |
+| A second, smaller monitor choice (12-inch 512 x 384) | done 2026-10-08 (build 9; the Monitor option moved to O[16:15]): Apple's 12-inch RGB (sense 2, extended 21, 512 x 384 at 60.15 Hz, dingusppc's `displayid.cpp`); on the board Mac OS 7.6.1 comes up at 512 x 384; the 21-inch later || Speedometer against a real machine | Speedometer on the 7300 and the core |
 
 ## Decisions needed
 

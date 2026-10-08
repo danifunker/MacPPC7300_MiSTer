@@ -67,7 +67,8 @@ framework), Quartus 17.0, slow 100 C model; this is the number that counts:
 | With the ESCC's synchronous mode, the NVRAM on the SD card, the Scale option (2026-10-08, build 5) | 31,680 (76%) | 168 | 46 | 59.6 MHz (slack -1.469 ns); memory and video meet 100 MHz. Runs on the board at 65 MHz: Mac OS 7.6.1 to the Finder |
 | With the board reset with the CPU (build 6) | 32,301 (77%) | 168 | 46 | 60.6 MHz (slack -1.108 ns). Runs on the board at 65 MHz: Restart works |
 | With the ADB game controllers (build 7, 2026-10-08) | 31,898 (76%) | 168 | 46 | 62.1 MHz (slack -0.729 ns). On the board: the keyboard and mouse beside a GamePad and a MouseStick |
-| With serial MIDI, the MT32-pi, CTS and RTS, the CD-ROM and its audio, the BlueSCSI Toolbox (build 8) | 33,762 (81%) | 178 | 48 | 63.1 MHz (slack -0.472 ns). On the board with the official Main: Mac OS 7.6.1 from disk 0 as before (no CD drive), Open Firmware boots it with a blank NVRAM |
+| With serial MIDI, the MT32-pi, CTS and RTS, the CD-ROM and its audio, the BlueSCSI Toolbox (build 8) | 33,762 (81%) | 178 | 48 | 63.1 MHz (slack -0.472 ns). On the board with the official Main: Mac OS 7.6.1 from disk 0 as before (no CD drive), Open Firmware boots it with a blank NVRAM; 256 colours, thousands and millions all shown right at 832 x 624 |
+| With the 12-inch monitor (build 9) | 33,460 (80%) | 178 | 48 | 60.3 MHz (slack -1.287 ns; placement). On the board Mac OS 7.6.1 at 512 x 384 |
 
 On the board (DE10-Nano, 128 MB SDRAM) the memory test passes at every RAM
 size the OSD offers (6 to 96 MB, three or more passes each, no error) at
