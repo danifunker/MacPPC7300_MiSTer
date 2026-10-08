@@ -125,6 +125,10 @@ struct Options {
 	std::string disk[2];           // disk images for SCSI IDs 0 and 1 (hps_io slots 0 and 1)
 	unsigned disk_latency = 2000;  // memory clocks from a block request to hps_io's acknowledge
 	bool disk_log = false;         // print every block moved
+	std::string exc_log;           // every exception the CPU takes, and every rfi
+	std::vector<uint64_t> dump_at; // after these instruction counts, print the registers ...
+	std::vector<std::pair<uint32_t, uint32_t>> dump_mem;   // ... and these ranges of RAM (start, length)
+	std::string dump_bin;          // ... and all of RAM, raw, to this file with the count appended
 };
 
 // A frame as a PNG, stored (uncompressed) deflate blocks: no zlib needed.
@@ -330,6 +334,14 @@ void usage() {
 		"                   is not changed)\n"
 		"  --disk-latency N memory clocks from a block request to its answer (default 2000)\n"
 		"  --disk-log       print every block moved\n"
+		"  --exc-log FILE   write every exception the CPU takes (E count vector pc-before srr0\n"
+		"                   srr1 dar dsisr) and every rfi (R count pc srr0 srr1); the counts by\n"
+		"                   vector go with the progress lines and the summary\n"
+		"  --dump-at N      after N instructions, print the registers (repeat for more counts)\n"
+		"  --dump-mem START:LEN   ... and this range of RAM (hex; repeat for more): the\n"
+		"                   reference's RAM in lockstep (exact), else the bench's memory (what the\n"
+		"                   caches have written back)\n"
+		"  --dump-bin FILE  ... and all of RAM, raw, to FILE.<count>\n"
 #else
 		"usage: core_tb --prog FILE [options]\n"
 		"  --irq-every N    raise the external interrupt every N cycles; a store to\n"
@@ -643,6 +655,14 @@ int main(int argc, char** argv) {
 		else if (a == "--disk1") opt.disk[1] = next();
 		else if (a == "--disk-latency") opt.disk_latency = (unsigned)std::atoi(next().c_str());
 		else if (a == "--disk-log") opt.disk_log = true;
+		else if (a == "--exc-log") opt.exc_log = next();
+		else if (a == "--dump-at") opt.dump_at.push_back(std::strtoull(next().c_str(), nullptr, 0));
+		else if (a == "--dump-bin") opt.dump_bin = next();
+		else if (a == "--dump-mem") {
+			unsigned long long s = 0, l = 0;
+			if (std::sscanf(next().c_str(), "%llx:%llx", &s, &l) != 2) { usage(); return 2; }
+			opt.dump_mem.push_back({(uint32_t)s, (uint32_t)l});
+		}
 		else { usage(); return a == "--help" ? 0 : 2; }
 	}
 #ifdef PPCMAC_MACHINE
@@ -789,6 +809,7 @@ int main(int argc, char** argv) {
 	long checked = 0, failed = 0;
 	bool done = false, diverged = false;
 	int cacheop_dsi_notes = 0;      // DSIs at cache instructions handed to the reference (both benches)
+	int rc_notes = 0;               // PTE R/C bits taken from the core
 
 #ifdef PPCMAC_MACHINE
 	// ---- two clocks: the CPU's (and the machine's), and the memory's ----
@@ -817,6 +838,25 @@ int main(int argc, char** argv) {
 		vlog = std::fopen(opt.vram_log.c_str(), "w");
 		if (!vlog) { std::fprintf(stderr, "cannot write %s\n", opt.vram_log.c_str()); return 2; }
 	}
+	// the exceptions the CPU takes: an instruction retiring at a vector
+	// (offset 100-1300 of 00000000 or FFF00000, as MSR[IP] puts them) that
+	// does not follow the one before it; SRR0, SRR1, DAR and DSISR as the
+	// CPU holds them when the handler's first instruction retires
+	FILE* xlog = nullptr;
+	if (!opt.exc_log.empty()) {
+		xlog = std::fopen(opt.exc_log.c_str(), "w");
+		if (!xlog) { std::fprintf(stderr, "cannot write %s\n", opt.exc_log.c_str()); return 2; }
+	}
+	uint32_t prev_pc = 0xFFFFFFFFu;
+	uint64_t exc_count[20] = {0};         // by vector / 0x100
+	std::sort(opt.dump_at.begin(), opt.dump_at.end());
+	size_t dump_next = 0;
+	auto exc_summary = [&](const char* head) {
+		std::printf("%s", head);
+		for (int v = 1; v < 20; v++)
+			if (exc_count[v]) std::printf(" %X:%llu", v * 0x100, (unsigned long long)exc_count[v]);
+		std::printf("\n");
+	};
 
 	auto drive = [&]() {
 		dut->ps2_mouse = ps2_mouse;
@@ -1087,8 +1127,9 @@ int main(int argc, char** argv) {
 				}
 				if (opt.lockstep) devq.q.push_back(a);
 				else if (devq.log) {
-					if (a.we) std::fprintf(devq.log, "A %llu %08X W 4 %08X %08X be %X\n", (unsigned long long)retired, 0u, addr, a.wdata, a.be);
-					else std::fprintf(devq.log, "A %llu %08X R 4 %08X %08X be %X\n", (unsigned long long)retired, 0u, addr, a.rdata, a.be);
+					// (the pc is the last instruction retired, not the access's own)
+					if (a.we) std::fprintf(devq.log, "A %llu %08X W 4 %08X %08X be %X\n", (unsigned long long)retired, (uint32_t)dut->trace_pc, addr, a.wdata, a.be);
+					else std::fprintf(devq.log, "A %llu %08X R 4 %08X %08X be %X\n", (unsigned long long)retired, (uint32_t)dut->trace_pc, addr, a.rdata, a.be);
 				}
 				if (a.addr - VWIN < VWIN_SIZE) {
 					if (vlog) {
@@ -1320,6 +1361,61 @@ int main(int argc, char** argv) {
 				retired++;
 #ifdef PPCMAC_MACHINE
 				last_retire_cycle = cycles;
+				{
+					uint32_t off = pc & 0xFFFFF, hi = pc & 0xFFF00000u;
+					bool at_vector = (hi == 0 || hi == 0xFFF00000u) && (off & 0xFF) == 0 && off >= 0x100 && off <= 0x1300;
+					if (at_vector && prev_pc + 4 != pc) {
+						exc_count[off >> 8]++;
+						if (xlog)
+							std::fprintf(xlog, "E %llu %X %08X %08X %08X %08X %08X\n", (unsigned long long)retired, off, prev_pc,
+								(uint32_t)dut->rootp->PPCMac_system__DOT__cpu__DOT__srr0,
+								(uint32_t)dut->rootp->PPCMac_system__DOT__cpu__DOT__srr1,
+								(uint32_t)dut->rootp->PPCMac_system__DOT__cpu__DOT__dar,
+								(uint32_t)dut->rootp->PPCMac_system__DOT__cpu__DOT__dsisr);
+					}
+					if (xlog && insn == 0x4C000064u)
+						std::fprintf(xlog, "R %llu %08X %08X %08X\n", (unsigned long long)retired, pc,
+							(uint32_t)dut->rootp->PPCMac_system__DOT__cpu__DOT__srr0,
+							(uint32_t)dut->rootp->PPCMac_system__DOT__cpu__DOT__srr1);
+					prev_pc = pc;
+				}
+				// the registers (the bench's copy of the GPRs, kept from the
+				// retirement trace) and memory after a given instruction
+				while (dump_next < opt.dump_at.size() && retired >= opt.dump_at[dump_next]) {
+					std::printf("dump after %llu instructions: pc %08X insn %08X msr %08X cr %08X xer %08X lr %08X ctr %08X\n",
+						(unsigned long long)retired, pc, insn, (uint32_t)dut->trace_msr, (uint32_t)dut->trace_cr,
+						(uint32_t)dut->trace_xer, (uint32_t)dut->trace_lr, (uint32_t)dut->trace_ctr);
+					std::printf("  srr0 %08X srr1 %08X dar %08X dsisr %08X\n",
+						(uint32_t)dut->rootp->PPCMac_system__DOT__cpu__DOT__srr0,
+						(uint32_t)dut->rootp->PPCMac_system__DOT__cpu__DOT__srr1,
+						(uint32_t)dut->rootp->PPCMac_system__DOT__cpu__DOT__dar,
+						(uint32_t)dut->rootp->PPCMac_system__DOT__cpu__DOT__dsisr);
+					for (int r = 0; r < 32; r += 8)
+						std::printf("  r%-2d %08X %08X %08X %08X %08X %08X %08X %08X\n", r, gpr[r], gpr[r + 1], gpr[r + 2],
+							gpr[r + 3], gpr[r + 4], gpr[r + 5], gpr[r + 6], gpr[r + 7]);
+					const uint8_t* src = nullptr;
+					uint32_t limit = RAM_SIZE;
+#ifdef WITH_REF
+					if (opt.lockstep) src = ref_ram();
+#endif
+					if (!src) { src = mem.data(); limit = (uint32_t)mem.size(); }
+					if (!opt.dump_bin.empty()) {
+						std::string name = opt.dump_bin + "." + std::to_string((unsigned long long)retired);
+						FILE* f = std::fopen(name.c_str(), "wb");
+						if (f) { std::fwrite(src, 1, RAM_SIZE, f); std::fclose(f); }
+						std::printf("  RAM (%s) written to %s\n", src == mem.data() ? "the bench's memory" : "the reference's RAM", name.c_str());
+					}
+					for (const auto& dm : opt.dump_mem) {
+						std::printf("  memory %08X-%08X (%s):\n", dm.first, dm.first + dm.second,
+							src == mem.data() ? "the bench's memory" : "the reference's RAM");
+						for (uint32_t a = dm.first; a < dm.first + dm.second && a < limit; a += 32) {
+							std::printf("  M %08X", a);
+							for (uint32_t i = 0; i < 32 && a + i < limit; i++) std::printf("%s%02X", (i % 4) ? "" : " ", src[a + i]);
+							std::printf("\n");
+						}
+					}
+					dump_next++;
+				}
 				bool show = opt.trace || (opt.trace_count && retired > opt.trace_from && retired <= opt.trace_from + opt.trace_count);
 				if (show) {
 					std::printf("%10llu %10llu  %08X: %08X  msr=%08X cr=%08X lr=%08X ctr=%08X",
@@ -1340,6 +1436,7 @@ int main(int argc, char** argv) {
 							(unsigned)dut->rootp->PPCMac_system__DOT__machine__DOT__disks__DOT__h_mtog,
 							(unsigned)dut->rootp->PPCMac_system__DOT__machine__DOT__disks__DOT__m_blocks[0],
 							(unsigned)dut->rootp->PPCMac_system__DOT__machine__DOT__disks__DOT__ts);
+					if (xlog) { exc_summary("exceptions:"); std::fflush(xlog); }
 					std::fflush(stdout);
 				}
 				if (opt.max_instr && retired >= opt.max_instr) done = true;
@@ -1584,6 +1681,34 @@ int main(int argc, char** argv) {
 					bool same = rc == 0 && s.cr == dut->trace_cr && s.xer == dut->trace_xer &&
 					            s.lr == dut->trace_lr && s.ctr == dut->trace_ctr && s.msr == dut->trace_msr;
 					for (int r = 0; r < 32 && same; r++) same = s.gpr[r] == gpr[r];
+					// The page table's R and C bits are the core's: a 604 sets R in
+					// the PTE when it loads it and C at the first store through it;
+					// dingusppc's MMU does not always. A word loaded that differs
+					// only in those bits (the NanoKernel reads PTEs for the VM) is
+					// taken from the core, into the reference's register and RAM.
+					if (!same && rc == 0 && s.cr == dut->trace_cr && s.xer == dut->trace_xer && s.lr == dut->trace_lr &&
+					    s.ctr == dut->trace_ctr && s.msr == dut->trace_msr) {
+						unsigned op = insn >> 26, xo = (insn >> 1) & 0x3FF;
+						unsigned rd = (insn >> 21) & 31, ra = (insn >> 16) & 31, rb = (insn >> 11) & 31;
+						bool lw = op == 32 || op == 33 || (op == 31 && (xo == 23 || xo == 55));
+						int diff = -1;
+						for (int r = 0; r < 32; r++) if (s.gpr[r] != gpr[r]) diff = diff < 0 ? r : 99;
+						if (lw && diff == (int)rd && ((s.gpr[rd] ^ gpr[rd]) & ~0x180u) == 0) {
+							uint32_t ea = (ra ? before.gpr[ra] : 0) +
+							              (op == 31 ? before.gpr[rb] : (uint32_t)(int32_t)(int16_t)(insn & 0xFFFF));
+							uint32_t pa = 0;
+							if (ref_translate_dbg(ea, &pa) == 0 && pa + 4 <= RAM_SIZE) {
+								uint8_t* rr = ref_ram();
+								for (int i = 0; i < 4; i++) rr[(pa & ~3u) + i] = (uint8_t)(gpr[rd] >> (24 - 8 * i));
+							}
+							if (rc_notes++ < 10)
+								std::printf("note: a PTE's R/C bits differ after %llu instructions (%08X at %08X: reference %08X, core %08X): the core's taken\n",
+									(unsigned long long)retired, insn, ea, s.gpr[rd], gpr[rd]);
+							s.gpr[rd] = gpr[rd];
+							ref_set_state(&s);
+							same = true;
+						}
+					}
 					if (!same) {
 						std::printf("MISMATCH after %llu instructions at %08X insn=%08X (reference step returned %X; r0=%08X r1=%08X r2=%08X)\n",
 							(unsigned long long)retired, pc, insn, rc, gpr[0], gpr[1], gpr[2]);
@@ -1630,6 +1755,7 @@ int main(int argc, char** argv) {
 			(unsigned long long)devq.reads, (unsigned long long)devq.writes, (unsigned long long)devq.lines,
 			(unsigned long long)devq.line_writes, (unsigned long long)devq.hits);
 	if (vlog) std::fclose(vlog);
+	if (xlog) { exc_summary("exceptions taken, by vector:"); std::fclose(xlog); }
 	if (sd.reads || sd.writes)
 		std::printf("disks: %llu blocks read, %llu written\n", (unsigned long long)sd.reads, (unsigned long long)sd.writes);
 	if (opt.vram_check)

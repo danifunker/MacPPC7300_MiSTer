@@ -391,14 +391,20 @@ wire [31:2] dev_a   = c_line ? {c_addr[31:5], pres_k} : c_addr;
 wire  [3:0] dev_be  = c_line ? 4'hF : c_be;
 wire [31:0] dev_wd  = c_line ? c_wdata[255 - 32 * pres_k -: 32] : c_wdata[31:0];
 
-// ---- the time base, the VIA's clock, the ESCC's and the SCSI controllers' ----------------
-logic [31:0] tb_acc, via_acc, rtxc_acc, scsi_acc;
-logic        via_tick, rtxc_tick, scsi_tick;
+// ---- the time base, the VIA's clock, the ESCC's and the SCSI controllers', the microsecond ----
+logic [31:0] tb_acc, via_acc, rtxc_acc, scsi_acc, us_acc;
+logic        via_tick, rtxc_tick, scsi_tick, us_tick;
 always_ff @(posedge clk) begin
 	tb_tick   <= 1'b0;
 	via_tick  <= 1'b0;
 	rtxc_tick <= 1'b0;
 	scsi_tick <= 1'b0;
+	us_tick   <= 1'b0;
+	if (us_acc + 32'd1_000_000 >= CPU_HZ) begin
+		us_acc  <= us_acc + 32'd1_000_000 - CPU_HZ;
+		us_tick <= 1'b1;
+	end
+	else us_acc <= us_acc + 32'd1_000_000;
 	if (scsi_acc + SCSI_HZ >= CPU_HZ) begin
 		scsi_acc  <= scsi_acc + SCSI_HZ - CPU_HZ;
 		scsi_tick <= 1'b1;
@@ -424,10 +430,12 @@ always_ff @(posedge clk) begin
 		via_acc   <= 32'h0;
 		rtxc_acc  <= 32'h0;
 		scsi_acc  <= 32'h0;
+		us_acc    <= 32'h0;
 		tb_tick   <= 1'b0;
 		via_tick  <= 1'b0;
 		rtxc_tick <= 1'b0;
 		scsi_tick <= 1'b0;
+		us_tick   <= 1'b0;
 	end
 end
 
@@ -498,7 +506,7 @@ wire        scsi_io  = mesh_io  | t_io;
 wire [7:0]  scsi_db  = mesh_db  | t_db;
 
 PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
-	.clk, .reset, .via_tick, .rtxc_tick, .scsi_tick,
+	.clk, .reset, .via_tick, .rtxc_tick, .scsi_tick, .us_tick,
 	.sel(present & is_gc), .we(c_we), .addr(dev_a[16:2]), .be(dev_be), .wdata(dev_wd),
 	.rdata(gc_rdata), .irq(gc_irq),
 	.cuda_treq, .cuda_cb1, .cb2(cb2_line), .via_tip, .via_byteack, .via_cb2_oe, .via_cb2_out,

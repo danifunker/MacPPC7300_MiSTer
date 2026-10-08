@@ -88,7 +88,7 @@ assign bus_db = scsi_db;
 
 /* verilator lint_off PINCONNECTEMPTY */
 PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
-	.clk, .reset, .via_tick(1'b0), .rtxc_tick(1'b0), .scsi_tick,
+	.clk, .reset, .via_tick(1'b0), .rtxc_tick(1'b0), .scsi_tick, .us_tick(1'b0),
 	.sel, .we, .addr, .be, .wdata, .rdata, .irq,
 	.cuda_treq(1'b1), .cuda_cb1(1'b1), .cb2(1'b1), .via_tip(), .via_byteack(), .via_cb2_oe(), .via_cb2_out(),
 	.modem_txd(), .modem_rxd(1'b1), .nv_ld_we(1'b0), .nv_ld_addr(13'h0), .nv_ld_data(8'h0),

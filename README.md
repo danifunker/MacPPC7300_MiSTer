@@ -37,7 +37,8 @@ the OSD chooses, a debug readout of rows of squares.
 | Interrupts | Grand Central's events, mask and levels as MAME's and dingusppc's; the VIA is the first source (2026-10-07): the 7300's ROM runs 100 million instructions in lockstep with Mac OS's timer interrupts, its device traffic matching dingusppc's through Mac OS's start-up to where Mac OS probes MESH ([docs/PPCMac_plan.md](docs/PPCMac_plan.md), milestone I) |
 | Serial console | the ESCC (a Z85C30's asynchronous mode, `rtl/machine/PPCMac_escc.sv`); its modem port is the MiSTer's UART, Open Firmware's console: with an NVRAM image that sets `auto-boot?` false, Open Firmware's prompt over the UART, in simulation (in lockstep, the banner byte for byte dingusppc's) and on the board (2026-10-07) |
 | SCSI controllers, with empty buses | MESH (`rtl/machine/PPCMac_mesh.sv`) and Curio's 53CF94 (`PPCMac_sc53c94.sv`) as dingusppc models them, with no targets: Mac OS reads MESH's ID, sets both up and selects every target on both buses, each selection ending in a timeout and an interrupt; in simulation the 7300's ROM runs 450 million instructions in lockstep through that probing, its SCSI traffic matching dingusppc's, and on the board Mac OS runs through it as in the simulation (milestone E, 2026-10-07; [docs/PPCMac_plan.md](docs/PPCMac_plan.md)) |
-| Disks (milestone S, in progress) | MESH's information phases, FIFO and DMA; DBDMA (`PPCMac_dbdma.sv`, MESH's channel A) through the CPU's snoop port; SCSI disks on IDs 0 and 1 (`PPCMac_scsidisk.sv`) from the SD card's images through hps_io's block devices (the OSD's `SC0`/`SC1`, the Mac SCSI family's slot layout). `python verilator\run_scsi.py` drives them the way the ROM and Mac OS's driver do (programmed I/O and DMA reads, DMA writes, the card's blocks checked): passes. On the board the ROM selects the disk and runs its first commands |
+| Disks (milestone S, in progress) | MESH's information phases, FIFO and DMA; DBDMA (`PPCMac_dbdma.sv`, MESH's channel A) through the CPU's snoop port; SCSI disks on IDs 0 and 1 (`PPCMac_scsidisk.sv`) from the SD card's images through hps_io's block devices (the OSD's `SC0`/`SC1`, the Mac SCSI family's slot layout). `python verilator\run_scsi.py` drives them the way the ROM and Mac OS's driver do (programmed I/O and DMA reads, DMA writes, the card's blocks checked): passes. On the board Mac OS 7.6.1 boots from its image through "Welcome to Mac OS" to "Starting Up..." and stops there with the machine alive (2026-10-07); the bus error it showed at the welcome screen was the floppy controller's stub (below), found with the bench's exception log and MacsBug on the board |
+| Floppy controller | the SWIM3 (`rtl/machine/PPCMac_swim3.sv`) as dingusppc models it, with an empty Superdrive: the ROM's .Sony driver finds the chip and installs, which Mac OS 7.6.1's System requires (it dereferences the driver's variables while loading: with the chip stubbed to read 0 that was the "bus error" at the welcome screen). No disk is ever read |
 | Video | the Control video controller (registers, Swatch's timing), RaDACal (colour table, hardware cursor), the Athens clock chip on Cuda's I2C, the 4 MB VRAM in the HPS's DDR3, the scan-out through the framework's scaler; the monitor an OSD choice (Apple's 16-inch, 832 x 624, or 13-inch, 640 x 480). In simulation the ROM runs in lockstep through Mac OS's video driver, every video access as dingusppc's, and the frames match dingusppc's pixel for pixel at both sizes; on the board Mac OS's screen (milestone V, 2026-10-07) |
 | Keyboard and mouse | an ADB keyboard and mouse on Cuda's line (`rtl/machine/PPCMac_adb.sv`), from the MiSTer's keyboard and mouse: Cuda's own firmware talks to them in `run_cuda.py` (registers 0, 2 and 3, a key, a mouse move, an address and handler change, SendReset); on the board the pointer follows the mouse over Mac OS's screen and Open Firmware takes typed lines from the keyboard (milestone K, 2026-10-07) |
 | Machine (disks, sound, ...) | not started |
@@ -55,7 +56,8 @@ framework), Quartus 17.0, slow 100 C model; this is the number that counts:
 | With the ESCC and the NVRAM loader | 26,019 (62%) | 153 | 41 | 62.31 MHz (slack -0.666 ns); memory 104.1 MHz. Runs on the board at 65 MHz |
 | With MESH and Curio | 24,489 (58%) | 153 | 42 | 63.03 MHz (slack -0.481 ns); memory 109.5 MHz. Runs on the board at 65 MHz |
 | With the Control video | 26,874 (64%) | 165 | 46 | 64.47 MHz (slack -0.127 ns); memory and video 113.0 MHz. Runs on the board at 65 MHz |
-| With the ADB keyboard and mouse (the committed tree) | 26,869 (64%) | 166 | 46 | 64.81 MHz (slack -0.046 ns); memory and video 109.9 MHz. Runs on the board at 65 MHz |
+| With the ADB keyboard and mouse | 26,869 (64%) | 166 | 46 | 64.81 MHz (slack -0.046 ns); memory and video 109.9 MHz. Runs on the board at 65 MHz |
+| With the disks (MESH's data phases, DBDMA, the SD card's images) and the SWIM3 (the committed tree, 2026-10-07) | 28,437 (68%) | 168 | 46 | 60.4 MHz (slack -1.172 ns); memory and video 98.4 MHz (slack -0.167 ns). Runs on the board at 65 MHz |
 
 On the board (DE10-Nano, 128 MB SDRAM) the memory test passes at every RAM
 size the OSD offers (6 to 96 MB, three or more passes each, no error) at
@@ -443,6 +445,22 @@ instructions; `--vram-check` keeps a copy of every byte the CPU writes into
 Control's VRAM and checks every CPU read of it, and every read the picture
 side answers against the DDR3 model; `--vram-log FILE` writes every CPU
 access to the VRAM.
+
+For a fault inside Mac OS: `--exc-log FILE` writes every exception the CPU
+takes (`E count vector pc-before srr0 srr1 dar dsisr`) and every `rfi`
+(`R count pc srr0 srr1`), with the counts by vector in the progress lines;
+`--dump-at N` prints the registers after N instructions (repeatable),
+`--dump-mem START:LEN` a range of RAM with them (hex; the reference's RAM in
+lockstep, which has every store, else the bench's memory, which lacks what
+the caches hold), `--dump-bin FILE` all of RAM raw to `FILE.N`. In the 68k
+emulator r24 is the 68k PC, r8-r15 D0-D7, r16-r22 A0-A6, r1 A7; a DSI from
+the emulator whose rfi goes to 6806D358 is a bus error handed to the 68k
+code (the NanoKernel's own faulting access at FFF11518 or FFF11A10 comes
+first). The 7.6.1 bus error at "Welcome to Mac OS" was found this way
+(2026-10-07): the exception log gave the fault's count and address, the
+dump the 68k registers and SonyVars, the trace the 68k instructions, and
+MacsBug on the board (`games/PPCMac/os761mb.hda`, the image with MacsBug
+6.6.3 in its System Folder) the same fault to the byte.
 
 ```
 python verilator\fpmodel.py check

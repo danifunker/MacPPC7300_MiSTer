@@ -45,7 +45,7 @@ the NanoKernel starts it at 27.96 million instructions:
 | 86.8 million | Curio, the external SCSI controller: set up, and from 355 million selection of every target | E |
 | 101 million | AWACS and the sound DMA channels (out and in) | A |
 | 119.9 million | the Control video's registers and RaDACal's colour table: the video driver; 127,304 reads of Control's status from 134 million | V |
-| 225.7 million | SWIM3, the floppy controller | no drive |
+| 225.7 million | SWIM3, the floppy controller: the .Sony driver's probe (the phase lines written and read back) | the chip with an empty drive (`PPCMac_swim3`): the driver must install, or the 7.6.1 System crashes while loading (S) |
 | throughout | the NVRAM, the VIA and Cuda | built |
 
 Before Mac OS the start-up code plays the startup chime by DMA from the ROM
@@ -613,6 +613,43 @@ written kept in memory) and copies DMA writes into the reference's RAM. On
 the board the stock Main mounts an image remembered in `config/PPCMac.s0`
 (`python syn\mister.py mount 0 games/PPCMac/os761.hda`).
 
+**The bus error at "Welcome to Mac OS" (2026-10-07, the targeted
+session).** On the board and in the lockstep simulation alike, Mac OS 7.6.1
+booted from its image to the welcome screen and bombed with "bus error"
+about 30 s in. Found with an exception log added to the machine bench
+(`--exc-log`: every exception's vector, SRR0, SRR1, DAR and DSISR, and
+every `rfi`), register and RAM dumps at a given instruction
+(`--dump-at`, `--dump-mem`, `--dump-bin`), and MacsBug 6.6.3 put into a
+copy of the image with rb-cli (the two agree to the byte): at 497.8
+million instructions the 68k emulator takes a DSI at 084BF6D6 from
+`CMPM.W (A2)+,(A0)+` in System code loaded at 000FAFA4 (the board: 00110C64),
+a few instructions after `MOVEA.L SonyVars,A1` and `MOVEA.L -4(A1),A2`.
+SonyVars (low memory 0134) was FFFFFFFF, the ROM's value for "no floppy
+driver": the ROM's .Sony driver probes the SWIM3 at 313 million
+instructions (interrupt mask <- 0, mode set 01, mode clear 18, phase <- 5,
+phase read back) and installs only if the phase lines read back; the stub
+read 0. The 7.6.1 System's loading code assumes the driver is there,
+takes the long before the Sony variables from the top of the ROM and
+dereferences it. The fix is the chip: `PPCMac_swim3.sv`, dingusppc's
+`swim3.cpp` register for register with an empty Superdrive
+(`superdrive.cpp`), on Grand Central's interrupt source 13, with a
+microsecond tick from `PPCMac_machine` for its timer and its steps. Found
+on the way and recorded in `PPCMac_stubs.md`: the image runs with Virtual
+Memory on (a 65 MB "VM Storage" file, logical memory 0x04100000), so the
+NanoKernel's page faults from 466.66 million on are the VM's, handled by the
+68k VM code without disk I/O; the lockstep's only difference up to the bus
+error is the PTEs' R bit, which the core sets and dingusppc does not (now
+an accommodation of the bench); MacsBug's own keyboard polling doubles and
+drops keys typed through the Remote (an ADB keyboard detail, open). The
+other images on the board before the fix: Mac OS 7.5.3 stops at "Starting
+up..." with its progress bar at the start, 8.6 and 9.1 on the grey screen
+before any welcome screen. With the SWIM3 built (the board, 2026-10-07,
+28,437 ALMs), 7.6.1 passes the welcome screen and stops at that same
+"Starting Up..." screen, the bar at its start for minutes, the pointer
+following the mouse and the debug readout showing the 68k emulator running
+with the device writes growing: Mac OS loops, waiting for something; the
+next session's problem (`RESUME_disk.md`).
+
 ### A: sound
 
 What it needs: AWACS (`awacs.cpp`; the 7300/7600 codec, whose status the
@@ -654,8 +691,9 @@ driving it.
 ## Not planned
 
 - Ethernet (MACE): reads 0; nothing waits for it.
-- SWIM3 floppy: reads 0, no drive; Mac OS probes it at 226 million
-  instructions and carries on.
+- Floppy disks: the SWIM3 is modelled with an empty drive (2026-10-07,
+  because Mac OS 7.6.1's System crashes while loading if the ROM's .Sony
+  driver has not installed); floppy images are not planned.
 - The ESCC's channel B (the printer port), the second CPU, the L2 cache.
 
 ## Decisions needed
@@ -673,4 +711,5 @@ driving it.
 | from E on | Answered 2026-10-07: the user can still run probe disks on the real 7300 (booted from Open Firmware over the modem port, as `cudadump`); where only the real machine can say (MESH's and Curio's selection timeout, the VIA's access time), the session builds such a disk and follows the emulators meanwhile, the guess written in the stubs list. |
 | from K on | Asked by the user, 2026-10-07: Verilator as little as possible (the whole machine simulates at 0.6 MHz, 0.9% of real time); features are proven on the board, with unit benches where they take seconds (`run_cuda.py`) and whole-machine runs only to explain something the board shows. The board is driven through the MiSTer Remote (mrext, port 8182), as the user's other cores are (`tools\misterdeploy`): `syn\mister.py load`, `shot`, `keys`, `mouse`, `click`; SSH only copies files and reads the UART. |
 | S | Decided by the session, 2026-10-07: DMA reaches memory through one DMA port in `PPCMac_machine`: each access's line through the CPU's snoop port, then the memory port, which the DMA takes before any new CPU access; a write's line is snooped again after it, to drop a copy fetched in between (holding the CPU's reads during the snoop deadlocked the board: a cache can need a fill to finish before it answers a snoop). DBDMA gathers data in into lines (a whole line written as a line, else the words with bytes, with byte enables). MESH's bus is modelled at the signal level with the targets as their own module (`PPCMac_scsidisk`), so programmed I/O, DMA and the bus-status registers see the same lines; the information phases as Linux's `mesh.c` uses them where dingusppc has no model (DMA out), a DMA data in's command done only once the FIFO and the channel have emptied (Mac OS's driver does not wait for the FIFO; Linux waits up to 50 us). The disks answer INQUIRY as "QUANTUM " (dingusppc's vendor) "MiSTer PPCMac HD", no synchronous transfers, an extended message answered with MESSAGE REJECT; a new phase's first REQ 10 us after the phase lines change, as a disk is slow to change phase (the ROM's SIM waits after the status byte for REQ to drop, FFEB8D98, and hung on the board while the disk asked at once); one block per hps_io request (`sd_blk_cnt` 0), two buffered each way; hps_io `WIDE` 0 (the ROM upload is byte-wide), `VDNUM` 6 (the Mac SCSI family's slots), `SC0`/`SC1` so the Main remembers the images; the images kept in registers the machine's reset does not touch, so no mount replay is needed. Reason: rule 2 (one way into memory, coherent); the real chip over an emulator's shortcut where the shortcut is visible (dingusppc's Mac OS cannot write its disk); the stock Main's block interface works on the board as it is. |
+| S | Decided by the session, 2026-10-07 (the bus error at "Welcome to Mac OS"): the SWIM3 floppy controller is built as a device (`PPCMac_swim3.sv`), dingusppc's `swim3.cpp` register for register with one internal Superdrive that has no disk (its status lines as `superdrive.cpp` answers an empty drive), on Grand Central's interrupt source 13, with a 1 MHz tick from `PPCMac_machine` for the chip's timer and its 80 us steps; no disk is ever read. Reason: the ROM's .Sony driver installs only if the chip answers its probe, and Mac OS 7.6.1's System dereferences the driver's variables (SonyVars, low memory 0134, -1 without the driver) while loading: the bus error. A chip that answers but holds no disk is what a 7300 with an empty drive is. Also decided: the lockstep bench takes the core's R and C bits in a word loaded from the page table (dingusppc's MMU sets them differently), and MacsBug 6.6.3 (put into a copy of the image with rb-cli: `Scratch\disks\os761mb.hda`, on the card as `games/PPCMac/os761mb.hda`) is the board-side debugger from now on; its keyboard reading doubles keys typed through the Remote, noted in the stubs list under ADB. |
 | K | Decided by the session, 2026-10-07: the ADB devices (`PPCMac_adb.sv`) at the wire level, the Mac LC core's structure and PS/2 table with dingusppc's registers: keyboard handler 2 (1 and 2 settable, 3 refused, so the right-hand modifiers give the left-hand codes), mouse handler 1 (1 and 2; not the extended protocol 4, which dingusppc's mouse takes: the Apple Mouse II has none), SRQ enabled from reset, a true service request (the stop bit held low to 300 us); Alt is Command, the Windows keys Option, Caps Lock locks. The line's timing is ADB's own, counted in Cuda's 4,194,304 Hz ticks so it keeps step when the bench runs Cuda fast; the answer 160 us after the stop bit. Reason: Cuda's own firmware is the judge, and its receive (1CF3-1D88) waits 283 us for the start bit and 79 us at most for any low. On the way, Cuda's PA6 turned out to be the line's level, not its inverse (corrected in `PPCMac_cuda.sv`; MAME agrees once its devices' ASSERT is read as high); with it inverted, every ADB command reported a service request and no device could answer. |

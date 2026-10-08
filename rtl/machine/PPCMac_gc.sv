@@ -17,7 +17,7 @@
 //                 NanoKernel runs it so, and reads the levels to follow the
 //                 line both ways); the CPU's interrupt is any event that is
 //                 unmasked. Sources so far: Curio (0C), MESH (0D), the VIA
-//                 (12), the Control video's VBL (1A, through Chaos)
+//                 (12), SWIM3 (13), the Control video's VBL (1A, through Chaos)
 //    08000-0FFFF  DMA channel registers, 256 bytes per channel
 //                 (grandcentral.cpp:250-305; dbdma.cpp:307-380): channel A,
 //                 MESH's, is a DBDMA engine (PPCMac_dbdma) on the DMA port
@@ -32,7 +32,9 @@
 //                                        the rate software sets; channel B
 //                                        without a line
 //    14000        AWACS sound            awacs.cpp:189-257
-//    15000        SWIM3 floppy           reads 0
+//    15000        SWIM3 floppy           PPCMac_swim3: the chip with an
+//                                        empty Superdrive (swim3.cpp,
+//                                        superdrive.cpp)
 //    16000-17FFF  VIA                    viacuda.cpp:142-322, the timers
 //                                        counting at 783,360 Hz; port B and
 //                                        the shift register wired to Cuda
@@ -69,6 +71,7 @@ module PPCMac_gc
 	input  logic        via_tick,      // one clock at 783,360 Hz
 	input  logic        rtxc_tick,     // one clock at 3,686,400 Hz, the ESCC's RTxC
 	input  logic        scsi_tick,     // one clock at SCSI_HZ: MESH's time, Curio's chip clock
+	input  logic        us_tick,       // one clock a microsecond: the SWIM3's timer and steps
 	input  logic        sel,
 	input  logic        we,
 	input  logic [16:2] addr,          // offset in the 128 KB window
@@ -142,9 +145,9 @@ wire        single = (be == 4'b1000) | (be == 4'b0100) | (be == 4'b0010) | (be =
 // each line as last seen: the levels register, and the edge detector.
 logic [31:0] int_mask, int_events, int_lines_q;
 logic        via_irq;                           // the VIA's IRQ: an enabled flag is set
-logic        curio_irq, mesh_irq;
+logic        curio_irq, mesh_irq, swim_irq;
 logic        dma_a_lvl;                         // MESH's DMA channel's interrupt, until cleared
-wire  [31:0] int_lines  = {5'h0, ctl_irq, 7'h0, via_irq, 4'h0, mesh_irq, curio_irq, 1'b0, dma_a_lvl, 10'h0};
+wire  [31:0] int_lines  = {5'h0, ctl_irq, 6'h0, swim_irq, via_irq, 4'h0, mesh_irq, curio_irq, 1'b0, dma_a_lvl, 10'h0};
 wire  [31:0] int_levels = int_lines_q | 32'h0000_0800;   // dingusppc ORs in bit 11 (grandcentral.cpp:306)
 wire         int_68k    = int_mask[31];         // MACIO_INT_MODE: an event at either edge
 wire  [31:0] int_chg    = int_lines ^ int_lines_q;
@@ -244,6 +247,15 @@ PPCMac_dbdma dma_a (
 	.irq(dma_a_irq)
 );
 
+// ---- SWIM3 (PPCMac_swim3): byte registers at (offset >> 4) & F (grandcentral.cpp:205) ----
+logic [7:0] swim_rq;
+
+PPCMac_swim3 swim3 (
+	.clk, .reset, .us_tick,
+	.sel(sel & devs & (sub == 4'h5)), .we, .rn(off[7:4]), .wdata(wb),
+	.rq(swim_rq), .irq(swim_irq)
+);
+
 // ---- AWACS (awacs.cpp:189-257) ---------------------------------------------------------
 logic [31:0] snd_ctrl, codec_ctrl, clip_count, frame_count;
 logic        byte_swap;
@@ -340,6 +352,7 @@ always_comb begin
 		case (sub)
 			4'h0:       rq = byte_reg_rdata(be, curio_rq);
 			4'h8:       rq = byte_reg_rdata(be, mesh_rq);
+			4'h5:       rq = byte_reg_rdata(be, swim_rq);
 			4'h2, 4'h3: if (scc_compat | scc_risc) rq = byte_reg_rdata(be, scc_rq);
 			4'h4: begin
 				case (off[7:0])
