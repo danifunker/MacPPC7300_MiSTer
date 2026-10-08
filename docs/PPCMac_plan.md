@@ -686,7 +686,10 @@ to the Finder with all its extensions on the board (build 5 of
 2026-10-08, 31,680 ALMs, the untouched image `os761ot.hda`): milestone S's
 proof. Shut Down works from the keyboard's power key (the Menu key) and
 its dialog. The user, separately, reached the Finder with Open Transport's
-extensions moved out (`os761mb.hda`).
+extensions moved out (`os761mb.hda`). Build 6 (32,301 ALMs) resets the
+board's devices with every CPU reset Cuda makes, as a real restart does:
+Restart from the power key's dialog blanks the screen and boots Mac OS
+back to the Finder on the board.
 
 ### A: sound
 

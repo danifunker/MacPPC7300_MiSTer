@@ -62,6 +62,7 @@ framework), Quartus 17.0, slow 100 C model; this is the number that counts:
 | With the disks (MESH's data phases, DBDMA, the SD card's images) and the SWIM3 (the committed tree, 2026-10-07) | 28,437 (68%) | 168 | 46 | 60.4 MHz (slack -1.172 ns); memory and video 98.4 MHz (slack -0.167 ns). Runs on the board at 65 MHz |
 | With AWACS, DMA channels 2, 3, 8, 9, MACE, the ESCC's interrupts, the NMI, the clock, the sense lines as wires (2026-10-08) | 31,825 (76%) | 168 | 46 | 61.7 MHz (slack -0.828 ns); memory and video meet 100 MHz. Runs on the board at 65 MHz |
 | With the ESCC's synchronous mode, the NVRAM on the SD card, the Scale option (2026-10-08, build 5) | 31,680 (76%) | 168 | 46 | 59.6 MHz (slack -1.469 ns); memory and video meet 100 MHz. Runs on the board at 65 MHz: Mac OS 7.6.1 to the Finder |
+| With the board reset with the CPU (build 6) | 32,301 (77%) | 168 | 46 | 60.6 MHz (slack -1.108 ns). Runs on the board at 65 MHz: Restart works |
 
 On the board (DE10-Nano, 128 MB SDRAM) the memory test passes at every RAM
 size the OSD offers (6 to 96 MB, three or more passes each, no error) at

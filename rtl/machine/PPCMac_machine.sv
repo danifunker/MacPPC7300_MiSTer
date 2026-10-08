@@ -274,6 +274,11 @@ wire          grant_dma = port_free & (dq == DQ_MEM);
 wire          grant_cpu = port_free & ~grant_dma & (dq != DQ_MEM) & c_req & to_mem;
 wire          pres_dma  = own_dma | grant_dma;
 wire          snoop_skip = reset | cpu_reset;     // a CPU held in reset has nothing to give back
+// the board's devices (the bridges, Grand Central and all behind it, the
+// Control video, the disks' bus side) are reset with the CPU, as a
+// restart (Cuda's PC3) resets a 7600's whole board; Cuda, the ADB devices,
+// Athens and the NVRAM's contents keep theirs
+wire          board_reset = reset | cpu_reset;
 
 assign snoop_req  = (dq == DQ_SNOOP || (dq == DQ_SNOOP2 && !snoop_gap)) && !snoop_skip;
 assign snoop_we   = gdm_we;
@@ -481,7 +486,7 @@ logic [31:0] cha_rdata, ban_rdata, gc_rdata;
 logic        gc_irq;
 
 PPCMac_pcicfg #(.BRIDGE(0)) chaos (
-	.clk, .reset,
+	.clk, .reset(board_reset),
 	.sel(present & is_cha), .we(c_we), .addr(dev_a[23:2]), .be(dev_be), .wdata(dev_wd),
 	.rdata(cha_rdata), .ctl_regs_base, .ctl_vram_base
 );
@@ -490,7 +495,7 @@ logic [31:12] ban_unused_regs;            // Bandit has no Control behind it
 logic [31:26] ban_unused_vram;
 
 PPCMac_pcicfg #(.BRIDGE(1)) bandit (
-	.clk, .reset,
+	.clk, .reset(board_reset),
 	.sel(present & is_ban), .we(c_we), .addr(dev_a[23:2]), .be(dev_be), .wdata(dev_wd),
 	.rdata(ban_rdata), .ctl_regs_base(ban_unused_regs), .ctl_vram_base(ban_unused_vram)
 );
@@ -501,7 +506,7 @@ logic        ctl_irq;
 logic        cuda_nmi;                     // Cuda's NMI (PC2), Grand Central's source 14
 
 PPCMac_control control (
-	.clk, .reset,
+	.clk, .reset(board_reset),
 	.sel(present & is_ctl), .we(c_we), .addr(dev_a[8:2]), .be(dev_be), .wdata(dev_wd),
 	.rdata(ctl_rdata), .irq(ctl_irq), .mon_std, .mon_ext,
 	.sw_params, .fb_base, .row_words, .enables(ctl_enables), .timing_on, .hs_pos, .vs_pos,
@@ -529,7 +534,7 @@ wire        scsi_io  = mesh_io  | t_io;
 wire [7:0]  scsi_db  = mesh_db  | t_db;
 
 PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
-	.clk, .reset, .via_tick, .rtxc_tick, .scsi_tick, .us_tick, .snd_tick,
+	.clk, .reset(board_reset), .via_tick, .rtxc_tick, .scsi_tick, .us_tick, .snd_tick,
 	.sel(present & is_gc), .we(c_we), .addr(dev_a[16:2]), .be(dev_be), .wdata(dev_wd),
 	.rdata(gc_rdata), .irq(gc_irq),
 	.cuda_treq, .cuda_cb1, .cb2(cb2_line), .via_tip, .via_byteack, .via_cb2_oe, .via_cb2_out,
@@ -547,7 +552,7 @@ assign ext_irq = gc_irq;
 
 // ---- the internal bus's disks: IDs 0 and 1, the SD card's images (hps_io slots 0 and 1) ----------
 PPCMac_scsidisk #(.CLK_HZ(CPU_HZ)) disks (
-	.clk, .reset,
+	.clk, .reset(board_reset),
 	.t_bsy, .t_req, .t_msg, .t_cd, .t_io, .t_db,
 	.b_rst(scsi_rst), .b_bsy(scsi_bsy), .b_sel(scsi_sel), .b_atn(scsi_atn), .b_ack(scsi_ack), .b_db(scsi_db),
 	.clk_h(clk_v), .img_mounted, .img_size, .img_readonly,

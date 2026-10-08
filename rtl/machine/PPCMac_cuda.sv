@@ -50,6 +50,10 @@
 //    PA2 in   1: the power key is up        PB2 in  BYTEACK, from the VIA's PB4
 //    PA1 in   1: the power button is up     PB1 out TREQ, to the VIA's PB3
 //    PA0 in   1: the power is good          PB0 in  1: +5 V is there
+//             (always an input, as MAME makes it: the firmware sets DDRA
+//             bit 0 around its power-down and power-on paths, 1161 and
+//             1187, which MAME's authors read as a customised part's;
+//             how Cuda switches a 7300's supply off is not known here)
 //    PC3      the CPU's reset, low resets; pulled up
 //    PC2      NMI, pulled up; driven low, Grand Central's interrupt source
 //             14 (nmi): the firmware pulses it (1C2B) when the keyboard's
