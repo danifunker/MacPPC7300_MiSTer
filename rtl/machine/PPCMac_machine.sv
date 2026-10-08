@@ -14,8 +14,9 @@
 //  The map, from dingusppc's machines/machinetnt.cpp and the devices it
 //  builds (file and line for each entry):
 //
-//    00000000  installed RAM          ram_mb MB, flat from 0, as Hammerhead
-//                                     maps it whatever its bank registers say
+//    00000000  installed RAM          ram_mb MB in Hammerhead's banks, one a
+//                                     bit of ram_mb, where its bank registers
+//                                     put them (flat until they are set)
 //                                     (machinetnt.cpp:135-143,
 //                                     hammerhead.cpp:161-176); SDRAM offset 0
 //    F0000000  Chaos, video bus       16 MB: configuration space only
@@ -121,6 +122,7 @@ module PPCMac_machine
 	output logic         ext_irq,
 	output logic         tb_tick,
 	output logic         cpu_reset,                 // Cuda holds the CPU in reset
+	output logic         power_wake,                // off, and the power key pressed: reset the machine
 
 	// the CPU's snoop port: a DMA access's line, presented before it goes to memory
 	output logic         snoop_req,
@@ -257,9 +259,53 @@ import PPCMac_pkg::*;
 
 localparam logic [9:0] ROM_SDRAM = 10'((SDRAM_MB - 4) / 4);   // SDRAM offset of the ROM, in 4 MB
 
+// ---- RAM: Hammerhead's banks ----------------------------------------------------------------
+// One bank for each bit of ram_mb, the largest in bank 0 (120 MB: 64, 32, 16, 8 in banks
+// 0-3), each answering only within its size at the base the ROM programs (bits 30-22: the
+// bank's high register's bit 0, its low register), nothing above it; in the SDRAM largest
+// first. The ROM (FFF041B8-FFF04454) sizes bank k at k x 64 MB, then packs the banks from 0.
+// Until a base is programmed RAM is flat, as before (the start, the memory-test boot).
+logic [15:0] hh_bank [26];
+logic [8:0]  bk_base [7];                  // by size bit n: its bank's base
+logic        banked;
+always_ff @(posedge clk) begin
+	logic [4:0] j;                         // size bit n's bank: the larger parts present
+	logic       any;
+	any = 1'b0;
+	for (int n = 0; n < 7; n++) begin
+		j = 5'd0;
+		for (int m = n + 1; m < 7; m++) if (ram_mb[m]) j = j + 5'd1;
+		bk_base[n] <= hh_bank[j][8:0];
+		if (ram_mb[n] && hh_bank[j][8:0] != 9'd0) any = 1'b1;
+	end
+	banked <= any;
+end
+// {hit, SDRAM byte offset} of a physical address
+function automatic logic [27:0] ram_map(input logic [31:0] x, input logic [7:0] mb,
+                                         input logic bkd, input logic [62:0] bases);
+	logic        hit, match;
+	logic [26:0] off;
+	logic [8:0]  bb;
+	hit = 1'b0;
+	off = x[26:0];
+	if (!bkd) hit = x[31:20] < {4'h0, mb};
+	else for (int n = 6; n >= 0; n--) begin
+		bb = bases[9 * n +: 9];
+		if (n >= 2) match = (x[30:22] >> (n - 2)) == (bb >> (n - 2));
+		else        match = (x[30:22] == bb) && ((x[21:20] >> n) == 2'd0);
+		if (!hit && mb[n] && !x[31] && match) begin
+			hit = 1'b1;
+			off = 27'((({24'd0, mb} >> (n + 1)) << (n + 21)) | ({5'd0, x[26:0]} & ((32'd1 << (n + 20)) - 32'd1)));
+		end
+	end
+	ram_map = {hit, off};
+endfunction
+wire [62:0] bk_bases = {bk_base[6], bk_base[5], bk_base[4], bk_base[3], bk_base[2], bk_base[1], bk_base[0]};
+
 // ---- decode -----------------------------------------------------------------------------
 wire [31:0] a       = {c_addr, 2'b00};
-wire        is_ram  = a[31:20] < {4'h0, ram_mb};
+wire [27:0] a_map   = ram_map(a, ram_mb, banked, bk_bases);
+wire        is_ram  = a_map[27];
 wire        is_rom  = a[31:22] == 10'h3FF;
 wire        to_mem  = is_ram | (is_rom & ~c_we & ~boot_memtest);
 wire        is_boot = is_rom & ~c_we & boot_memtest;
@@ -295,7 +341,8 @@ logic [31:2]  gdm_addr;
 logic [3:0]   gdm_be;
 logic [255:0] gdm_wdata, gdm_rdata;
 wire  [31:0]  da      = {gdm_addr, 2'b00};
-wire          d_ram   = da[31:20] < {4'h0, ram_mb};
+wire  [27:0]  da_map  = ram_map(da, ram_mb, banked, bk_bases);
+wire          d_ram   = da_map[27];
 wire          d_rom   = da[31:22] == 10'h3FF;
 wire          d_mem   = d_ram | (d_rom & ~gdm_we);
 
@@ -321,7 +368,8 @@ assign snoop_addr = gdm_addr[31:5];
 assign m_req   = pres_dma | ((own_cpu | grant_cpu) & c_req & to_mem);
 assign m_we    = pres_dma ? gdm_we   : c_we;
 assign m_line  = pres_dma ? gdm_line : c_line;
-assign m_addr  = pres_dma ? (d_rom ? {ROM_SDRAM, da[21:2]} : da[31:2]) : (is_rom ? {ROM_SDRAM, a[21:2]} : a[31:2]);
+assign m_addr  = pres_dma ? (d_rom ? {ROM_SDRAM, da[21:2]} : {5'd0, da_map[26:2]})
+                          : (is_rom ? {ROM_SDRAM, a[21:2]} : {5'd0, a_map[26:2]});
 assign m_be    = pres_dma ? gdm_be   : c_be;
 assign m_wdata = pres_dma ? gdm_wdata : c_wdata;
 wire   cpu_m_ack = m_ack & own_cpu;
@@ -636,9 +684,15 @@ wire         iic_sda = ~(iic_sda_low | athens_sda_low);
 logic        adb_tr_ev;
 logic [31:0] adb_tr_info;
 
+logic power_off, power_key;
+always_ff @(posedge clk) begin
+	if (power_off & power_key) power_wake <= 1'b1;
+	if (reset) power_wake <= 1'b0;
+end
+
 PPCMac_adb adb (
 	.clk, .reset, .tick(cuda_tick), .host_low(adb_low), .dev_low(adb_dev_low),
-	.ps2_key, .ps2_mouse, .joy, .tr_ev(adb_tr_ev), .tr_info(adb_tr_info)
+	.ps2_key, .ps2_mouse, .joy, .power_key, .tr_ev(adb_tr_ev), .tr_info(adb_tr_info)
 );
 
 PPCMac_athens athens (
@@ -654,7 +708,7 @@ PPCMac_cuda #(.CLK_HZ(CPU_HZ), .FAST_BOOT(CUDA_FAST_BOOT != 0)) cuda (
 	.clk, .reset,
 	.via_tip, .via_byteack, .treq(cuda_treq), .cb1(cuda_cb1),
 	.cb2_oe(cuda_cb2_oe), .cb2_out(cuda_cb2_out), .cb2(cb2_line),
-	.cpu_reset, .nmi(cuda_nmi), .clock_ok, .clock_secs,
+	.cpu_reset, .power_off, .nmi(cuda_nmi), .clock_ok, .clock_secs,
 	.adb_low, .adb_line(~(adb_low | adb_dev_low)), .tick(cuda_tick),
 	.iic_scl_low, .iic_sda_low, .iic_scl, .iic_sda,
 	.dbg_cen(cu_cen), .dbg_addr(cu_addr), .dbg_rd(cu_rd), .dbg_wr(cu_wr),
@@ -669,15 +723,14 @@ PPCMac_cuda #(.CLK_HZ(CPU_HZ), .FAST_BOOT(CUDA_FAST_BOOT != 0)) cuda (
 // the register's address (dingusppc returns it in the most significant byte
 // of an access of any size). A write takes the access's first byte, and only
 // at the register's own address. The bank base registers (1C0-4F0, two per
-// bank, high byte first) are stored and read back; RAM is mapped flat all
-// the same.
+// bank, high byte first) are stored and read back, and place the RAM's banks
+// (above: "RAM: Hammerhead's banks"; dingusppc maps RAM flat whatever they say).
 localparam logic [7:0] HH_CPU_ID     = 8'h39;   // RISC machine, extended ID, TNT
 localparam logic [7:0] HH_MB_ID      = 8'h90;   // video bus present, no second PCI bus; burst ROM (machinetnt.cpp:125-126)
 localparam logic [7:0] HH_CPU_SPEED  = 8'h60;   // bus at 50 MHz (machinetnt.cpp:127)
 localparam logic [7:0] HH_WHO_AM_I   = 8'h10;   // the primary CPU
 
 logic [7:0]  hh_arb;
-logic [15:0] hh_bank [26];
 logic [31:0] hh_rdata;
 wire  [7:0]  hh_reg   = dev_a[11:4];            // register number: offset >> 4
 wire         hh_bank_r = hh_reg >= 8'h1C && hh_reg <= 8'h4F;

@@ -21,8 +21,7 @@ to the card and the core's UART.
                                                  games/PPCMac/PPCMac.nvr) if there is none, mounted
                                                  on block slot 2 (config/PPCMac.s2): the core loads
                                                  it at its start and keeps the NVRAM in it
-    python syn\\mister.py cfg [--ram MB] [--uart modem|debug]
-                              [--picture mac|debug] [--monitor 16|13|12]
+    python syn\\mister.py cfg [--ram MB] [--monitor 16|13|12]
                               [--joy none|mousestick|firebird|gamepad|sidewinder] [--ptr]
                               [--eth] [--net eth0|eth1|wlan0|tap0] [--trace-mesh]
                                                  writes config/PPCMac.CFG (--eth or --net: Ethernet
@@ -215,7 +214,7 @@ def main():
     if cmd == "umount":
         return ssh("rm -f /media/fat/config/PPCMac.s%d" % int(a[1]))
     if cmd == "cfg":
-        ram, boot, uart, picture, monitor = 16, "rom", "modem", "mac", 16
+        ram, monitor = 16, 16
         joys = ["none", "mousestick", "firebird", "gamepad", "sidewinder"]   # PPCMac.sv: O[13:11]
         joy = a[a.index("--joy") + 1] if "--joy" in a else "none"
         if joy not in joys:
@@ -223,25 +222,17 @@ def main():
         for i in range(1, len(a) - 1):
             if a[i] == "--ram":
                 ram = int(a[i + 1])
-            if a[i] == "--boot":
-                boot = a[i + 1]
-            if a[i] == "--uart":
-                uart = a[i + 1]
-            if a[i] == "--picture":
-                picture = a[i + 1]
             if a[i] == "--monitor":
                 monitor = int(a[i + 1])
-        if (ram not in RAM_OPTION or boot != "rom" or uart not in ("modem", "debug")
-                or picture not in ("mac", "debug") or monitor not in (16, 13, 12)):
-            sys.exit("--ram one of %s, --uart modem or debug, --picture mac or debug, "
-                     "--monitor 16, 13 or 12 (the memory-test boot is gone)" % sorted(RAM_OPTION))
+        if ram not in RAM_OPTION or monitor not in (16, 13, 12):
+            sys.exit("--ram one of %s, --monitor 16, 13 or 12 (the memory-test boot and the debug "
+                     "readout are gone)" % sorted(RAM_OPTION))
         nets = ["eth0", "eth1", "wlan0", "tap0"]                                # PPCMac.sv: O[19:17], 0 off
         net = a[a.index("--net") + 1] if "--net" in a else "eth0"
         if net not in nets:
             sys.exit("--net one of %s" % ", ".join(nets))
         eth = (nets.index(net) + 1) if ("--eth" in a or "--net" in a) else 0
-        status = ((RAM_OPTION[ram] << 1) | ((uart == "debug") << 6)
-                  | ((picture == "debug") << 7) | (joys.index(joy) << 11)
+        status = ((RAM_OPTION[ram] << 1) | (joys.index(joy) << 11)
                   | (("--ptr" in a) << 14) | ({16: 0, 13: 1, 12: 2}[monitor] << 15)
                   | (eth << 17) | (("--trace-mesh" in a) << 29))
         data = "".join("\\x%02x" % ((status >> (8 * i)) & 0xFF) for i in range(4)) + "\\x00" * 12

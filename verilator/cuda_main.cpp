@@ -22,6 +22,8 @@
 //     register 3 of the keyboard and the mouse, an empty address, a key
 //     pressed and a mouse move reported, a device moved to another address
 //     and its handler changed, the keyboard's register 2, SendReset;
+//     the game controllers; POWER_DOWN last: the power goes off (PA0
+//     driven low), the CPU stays in reset, the Menu key is the power key;
 //   - with --lockstep, every instruction against MAME's 6805 core
 //     (verilator/hc05ref): registers, the writes it made, and its length in
 //     bus cycles. Reads of the registers (0000-001F) are handed to the
@@ -415,7 +417,11 @@ int main(int argc, char** argv) {
 		{"ADB talk 0 of address 3: released", {0x00, 0x3C}, {0x00, 0x00, 0x3C, 0x80, 0x80}, 8, 0, J(1, 0, 0, 0, 0)},
 		{"ADB talk 0 of address 3: nothing new", {0x00, 0x3C}, {0x00, 0x02, 0x3C}, 8},
 		{"ADB reset (SendReset)", {0x00, 0x00}, {0x00, 0x00, 0x00}, 8, 0, J(0, 0, 0, 0, 0)},
+		{"POWER_DOWN (Shut Down's, Linux's power-off)", {0x01, 0x0A}, {}, 8},
 	};
+	// the power: off only after POWER_DOWN, the CPU held; then the Menu key (the power key)
+	bool off_seen = false, off_early = false, off_held = false, wake_seen = false;
+	uint64_t off_at = 0;
 	size_t script_i = 0;
 	bool script_sent = false;
 	uint64_t script_started = 0;
@@ -467,6 +473,21 @@ int main(int argc, char** argv) {
 			std::printf("Cuda released the CPU's reset after %.3f s (%llu instructions)\n",
 				clocks / CLK_HZ, (unsigned long long)retired);
 		}
+		if (dut->power_off && !off_seen) {
+			off_seen  = true;
+			off_at    = clocks;
+			off_early = script_i + 1 < script.size();
+			std::printf("Cuda switched the power off at %.3f s%s\n", clocks / CLK_HZ, off_early ? ": too early, FAIL" : "");
+		}
+		if (off_seen && !wake_seen && clocks == off_at + (uint64_t)(0.05 * CLK_HZ)) {
+			off_held = dut->cpu_reset;
+			std::printf("50 ms later the CPU is %s; the Menu key (the power key) pressed\n", off_held ? "held in reset" : "running, FAIL");
+			ps2_key = ((ps2_key ^ 0x400) & 0x400) | 0x200 | 0x12F;
+		}
+		if (off_seen && !wake_seen && dut->power_key) {
+			wake_seen = true;
+			std::printf("the power key seen at %.3f s (the machine's reset follows: PPCMac_machine power_wake)\n", clocks / CLK_HZ);
+		}
 		if (released && clocks % host_period == 0) {
 			host.step(via, !dut->treq, clocks);
 			if (host.st == Host::IDLE && host.sync_done_at == clocks)
@@ -499,10 +520,17 @@ int main(int argc, char** argv) {
 				host.have_reply = false;
 			}
 			if (script_sent && clocks - script_started > (uint64_t)(0.5 * CLK_HZ)) {
-				std::printf("  FAIL %-52s -> no reply in 500 ms (host state %d, got %s)\n", script[script_i].what, (int)host.st,
-					hex(host.reply).c_str());
-				failures++;
-				failed = true;
+				if (script_i + 1 == script.size() && off_seen) {
+					std::printf("  ok   %-52s -> no reply: the power went off\n", script[script_i].what);
+					script_i++;
+					script_sent = false;
+				}
+				else {
+					std::printf("  FAIL %-52s -> no reply in 500 ms (host state %d, got %s)\n", script[script_i].what, (int)host.st,
+						hex(host.reply).c_str());
+					failures++;
+					failed = true;
+				}
 			}
 		}
 
@@ -583,7 +611,9 @@ int main(int argc, char** argv) {
 			time_at_get, (double)script_started / CLK_HZ);
 	if (!host.unsolicited.empty())
 		for (auto& u : host.unsolicited) std::printf("unsolicited from Cuda: %s\n", hex(u).c_str());
-	bool ok = released && host.sync_done_at && script_i == script.size() && failures == 0 && !failed;
+	if (!off_seen) std::printf("Cuda never switched the power off: FAIL\n");
+	bool ok = released && host.sync_done_at && script_i == script.size() && failures == 0 && !failed &&
+	          off_seen && !off_early && off_held && wake_seen;
 	if (opt.lockstep) std::printf("lockstep with MAME's 6805: %s\n", failures || failed ? "DIFFERENT" : "identical");
 	std::printf("%s\n", ok ? "RESULT: PASS" : "RESULT: FAIL");
 	dut->final();

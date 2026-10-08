@@ -75,6 +75,7 @@ module PPCMac_adb
 	// 4 SideWinder), right stick {Y, X}, left stick {Y, X}, joystick_0[15:0]}; sticks signed,
 	// up and left negative
 	input  logic [51:0] joy,
+	output logic        power_key,       // a clock: the power key pressed (it also wakes a machine that is off)
 
 	// for PPCMac_trace: a key queued (or dropped), a command to the keyboard or to all
 	output logic        tr_ev,
@@ -220,6 +221,7 @@ always_ff @(posedge clk) begin
 end
 wire key_ev   = kt_s[3] != kt_s[2];
 wire mouse_ev = mt_s[3] != mt_s[2];
+assign power_key = key_ev && kd_s2[9] && (kd_s2[8:0] == 9'h12F || kd_s2[8:0] == 9'h137);
 
 // ---- the devices' state ------------------------------------------------------------------
 logic [3:0]  kbd_addr, mouse_addr;

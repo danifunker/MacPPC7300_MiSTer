@@ -50,10 +50,11 @@
 //    PA2 in   1: the power key is up        PB2 in  BYTEACK, from the VIA's PB4
 //    PA1 in   1: the power button is up     PB1 out TREQ, to the VIA's PB3
 //    PA0 in   1: the power is good          PB0 in  1: +5 V is there
-//             (always an input, as MAME makes it: the firmware sets DDRA
-//             bit 0 around its power-down and power-on paths, 1161 and
-//             1187, which MAME's authors read as a customised part's;
-//             how Cuda switches a 7300's supply off is not known here)
+//             (an input to the firmware, as MAME makes it: DDRA bit 0
+//             reads 0. The power-down path drives it low (1161-1163),
+//             which switches the supply off: power_off, once it has been
+//             low 256 bus cycles (the cold start's port set-up drives it
+//             low for 65). The power-on path drives it high (1187))
 //    PC3      the CPU's reset, low resets; pulled up
 //    PC2      NMI, pulled up; driven low, Grand Central's interrupt source
 //             14 (nmi): the firmware pulses it (1C2B) when the keyboard's
@@ -82,7 +83,9 @@
 //
 //  The CPU's reset (cpu_reset): held from this module's reset until the
 //  firmware first drives PC3 low and then lets it go high; again whenever it
-//  drives PC3 low (a restart).
+//  drives PC3 low (a restart); and from a power-down (Shut Down, POWER_DOWN)
+//  until this module's reset: the machine is off (the OSD's reset or the
+//  power key, PPCMac_system, starts it again).
 //
 //============================================================================
 
@@ -110,6 +113,7 @@ module PPCMac_cuda
 
 	// the rest of the board
 	output logic        cpu_reset,       // the CPU's reset
+	output logic        power_off,       // the firmware switched the supply off: until this module's reset
 	output logic        nmi,             // PC2 driven low: the NMI (Grand Central's source 14)
 	input  logic        clock_ok,        // clock_secs holds the date and time
 	input  logic [31:0] clock_secs,      // seconds since 1904-01-01 (the Mac's clock), steady
@@ -208,7 +212,7 @@ wire  pc3 = ~ddrc[3] | pc_[3];
 logic powered;
 always_ff @(posedge clk) begin
 	if (~pc3) powered <= 1'b1;
-	cpu_reset <= ~powered | ~pc3;
+	cpu_reset <= ~powered | ~pc3 | power_off;
 	if (reset) begin
 		powered   <= 1'b0;
 		cpu_reset <= 1'b1;
@@ -226,6 +230,22 @@ assign int_cpi   = onesec[6] & onesec[4];
 wire        is_io  = addr[12:5] == 8'h00;
 wire        is_ram = addr >= 13'h0090 && addr < 13'h0200;
 wire        is_rom = addr >= 13'h0F00;
+
+// the power-down (115B) drives PA0 low (1161-1163) and waits there over a second; the port
+// set-up (1255, at every cold start) for some 65 bus cycles only
+logic       ddra0;                     // DDRA bit 0 as written (it reads 0)
+logic [8:0] pa0_low;                   // bus cycles PA0 has been driven low
+always_ff @(posedge clk) begin
+	if (cen & wr & is_io && addr[4:0] == 5'h04) ddra0 <= wdata[0];
+	if (!ddra0 || pa[0]) pa0_low <= 9'd0;
+	else if (cen && !pa0_low[8]) pa0_low <= pa0_low + 9'd1;
+	if (pa0_low[8]) power_off <= 1'b1;
+	if (reset) begin
+		ddra0     <= 1'b0;
+		pa0_low   <= 9'd0;
+		power_off <= 1'b0;
+	end
+end
 
 // ---- the clock: set once, when the CPU's reset is first released ---------------------------
 // As MAME's Cuda does (cuda.cpp pc_w): the firmware's cold start has set its

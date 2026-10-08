@@ -28,6 +28,7 @@ module PPCMac_system
 	input  logic         clk,             // the CPU's clock
 	input  logic         reset,           // in the CPU's clock: the machine's reset
 	output logic         cpu_in_reset,    // the CPU is held in reset (by reset or by Cuda)
+	output logic         power_wake,      // shut down, then the power key: the machine wants a reset
 	input  logic [31:0]  reset_pc,
 	input  logic [7:0]   ram_mb,          // installed RAM, at most SDRAM_MB - 4
 	input  logic         boot_memtest,    // the memory test in place of the ROM
@@ -244,7 +245,7 @@ PPCMac_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_FAST
 	.clk, .reset, .ram_mb, .boot_memtest,
 	.c_req, .c_we, .c_line, .c_addr, .c_be, .c_wdata, .c_ack, .c_rdata,
 	.m_req, .m_we, .m_line, .m_addr, .m_be, .m_wdata, .m_ack, .m_rdata,
-	.ext_irq, .tb_tick, .cpu_reset(cuda_reset),
+	.ext_irq, .tb_tick, .cpu_reset(cuda_reset), .power_wake,
 	.snoop_req, .snoop_we, .snoop_addr, .snoop_ack,
 	.img_mounted, .img_size, .img_readonly, .sd_lba, .sd_rd, .sd_wr, .sd_blk_cnt, .sd_ack,
 	.sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr, .disk_busy, .cd_left, .cd_right,

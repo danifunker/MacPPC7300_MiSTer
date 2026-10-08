@@ -19,6 +19,8 @@ module cuda_tb_top
 	input  logic        cb2,
 
 	output logic        cpu_reset,
+	output logic        power_off,
+	output logic        power_key,
 	output logic        adb_low,         // Cuda pulls the ADB line low
 	output logic        adb_dev_low,     // a device does
 	output logic        adb_line,        // the wire
@@ -55,7 +57,7 @@ assign adb_line = ~(adb_low | adb_dev_low);
 PPCMac_cuda #(.CLK_HZ(CLK_HZ)) cuda (
 	.clk, .reset,
 	.via_tip, .via_byteack, .treq, .cb1, .cb2_oe, .cb2_out, .cb2,
-	.cpu_reset, .adb_low, .adb_line, .tick,
+	.cpu_reset, .power_off, .adb_low, .adb_line, .tick,
 	/* verilator lint_off PINCONNECTEMPTY */
 	.nmi(),
 	/* verilator lint_on PINCONNECTEMPTY */
@@ -68,7 +70,7 @@ PPCMac_cuda #(.CLK_HZ(CLK_HZ)) cuda (
 
 PPCMac_adb adb (
 	.clk, .reset, .tick, .host_low(adb_low), .dev_low(adb_dev_low),
-	.ps2_key, .ps2_mouse, .joy,
+	.ps2_key, .ps2_mouse, .joy, .power_key,
 	/* verilator lint_off PINCONNECTEMPTY */
 	.tr_ev(), .tr_info()
 	/* verilator lint_on PINCONNECTEMPTY */

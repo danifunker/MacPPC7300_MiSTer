@@ -107,11 +107,8 @@ localparam CONF_STR = {
 	"S6,DSKIMGIMA,Insert floppy disk;",
 	"SC2,NVR,Mount NVRAM;",
 	"-;",
-	"O[3:1],RAM,16 MB,24 MB,48 MB,64 MB,96 MB,6 MB,120 MB;",
-	"O[6],UART,Modem port,Debug readout;",
-	"-;",
-	"O[7],Picture,Mac,Debug readout;",
-	"O[16:15],Monitor,16-inch 832x624,13-inch 640x480,12-inch 512x384;",
+	"O[3:1],RAM (on reset),16 MB,24 MB,48 MB,64 MB,96 MB,6 MB,120 MB;",
+	"O[16:15],Monitor (on reset),16-inch 832x624,13-inch 640x480,12-inch 512x384;",
 	"-;",
 	"O[13:11],ADB controller (on reset),None,Gravis MouseStick II,Gravis Firebird,Gravis GamePad,SideWinder 3D Pro;",
 	"O[14],Stick moves pointer,No,Yes;",
@@ -128,7 +125,6 @@ localparam CONF_STR = {
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"O[10:9],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
-	"O[5],TV Mode,NTSC,PAL;",
 	"-;",
 	"T[0],Reset;",
 	"R[0],Reset and close OSD;",
@@ -275,16 +271,16 @@ always @(posedge clk_mem) mac_secs_m <= (timestamp[31:0] == 32'd0) ? 32'd0 : tim
 
 ///////////////////////   OPTIONS AND RESET (memory clock)   ///////////////////////////////
 
-reg  [7:0] ram_mb;
+reg  [7:0] ram_opt;                         // the OSD's RAM size; taken at the next reset (ram_mb)
 always @(posedge clk_mem) begin
 	case (status[3:1])
-		3'd1:    ram_mb <= 8'd24;
-		3'd2:    ram_mb <= 8'd48;
-		3'd3:    ram_mb <= 8'd64;
-		3'd4:    ram_mb <= 8'd96;
-		3'd5:    ram_mb <= 8'd6;
-		3'd6:    ram_mb <= 8'd120;          // (124 at most: the ROM has the module's top 4 MB)
-		default: ram_mb <= 8'd16;
+		3'd1:    ram_opt <= 8'd24;
+		3'd2:    ram_opt <= 8'd48;
+		3'd3:    ram_opt <= 8'd64;
+		3'd4:    ram_opt <= 8'd96;
+		3'd5:    ram_opt <= 8'd6;
+		3'd6:    ram_opt <= 8'd120;         // (124 at most: the ROM has the module's top 4 MB)
+		default: ram_opt <= 8'd16;
 	endcase
 end
 wire boot_memtest = 1'b0;                   // the memory-test boot (PPCMac_bootrom): no menu entry since 2026-10-08
@@ -381,17 +377,12 @@ always @(posedge clk_mem) locked_m <= {locked_m[0], pll_locked};
 wire sdram_init = ~locked_m[1];
 wire sdram_ready;
 
-// a change of RAM size, boot option or monitor resets the CPU for a moment
-wire [5:0] cfg = {status[16:15], status[4:1]};
-reg  [5:0] cfg_q;
-reg  [7:0] cfg_hold = 8'hFF;
+// after a Shut Down the machine is off (Cuda's power-down) until a reset or the power key
+wire       power_wake;
+reg  [1:0] wake_m;
+always @(posedge clk_mem) wake_m <= {wake_m[0], power_wake};
 reg  [2:0] reset_in;
-always @(posedge clk_mem) begin
-	reset_in <= {reset_in[1:0], RESET | status[0] | buttons[1]};
-	cfg_q <= cfg;
-	if (cfg_q != cfg) cfg_hold <= 8'hFF;
-	else if (cfg_hold != 0) cfg_hold <= cfg_hold - 1'd1;
-end
+always @(posedge clk_mem) reset_in <= {reset_in[1:0], RESET | status[0] | buttons[1] | wake_m[1]};
 
 // the monitor's AppleSense codes (dingusppc's displayid.cpp): the 16-inch RGB
 // (7, 2D), the 13-inch (6, 2B) or the 12-inch (2, 21)
@@ -400,14 +391,19 @@ wire [5:0] mon_ext = (status[16:15] == 2'd1) ? 6'h2B : (status[16:15] == 2'd2) ?
 
 reg cpu_reset_m = 1;
 always @(posedge clk_mem)
-	cpu_reset_m <= reset_in[2] | ~sdram_ready | rom_dl | nv_dl | nvs_hold | (~boot_memtest & ~rom_loaded) | (cfg_hold != 0);
+	cpu_reset_m <= reset_in[2] | ~sdram_ready | rom_dl | nv_dl | nvs_hold | (~boot_memtest & ~rom_loaded);
 
-// the ADB game controller and the Ethernet bridge, taken under reset (no hot plug); PPCMac_adb
+// the options a running Mac cannot follow, taken under reset (a change waits for the next):
+// the RAM size, the monitor, the ADB game controller, the Ethernet bridge; PPCMac_adb
 // synchronises the controller's bus
+reg  [7:0]  ram_mb = 8'd16;
+reg  [8:0]  mon_m = 9'h1ED;                 // the 16-inch's sense codes
 reg  [2:0]  joy_mode = 0;
 reg         net_on = 0;
 reg         tr_mesh_m = 0;                  // the trace also takes MESH (status[29]: no menu entry)
 always @(posedge clk_mem) if (cpu_reset_m) begin
+	ram_mb    <= ram_opt;
+	mon_m     <= {mon_std, mon_ext};
 	joy_mode  <= (status[13:11] > 3'd4) ? 3'd0 : status[13:11];
 	net_on    <= status[19:17] != 3'd0;     // the Main's mac_eth.cpp takes the interface from it too
 	tr_mesh_m <= status[29];
@@ -425,7 +421,7 @@ always @(posedge clk_cpu) begin
 	ram_mb_c[0]    <= ram_mb;
 	ram_mb_c[1]    <= ram_mb_c[0];
 	boot_memtest_c <= {boot_memtest_c[0], boot_memtest};
-	mon_c[0]       <= {mon_std, mon_ext};
+	mon_c[0]       <= mon_m;
 	mon_c[1]       <= mon_c[0];
 	tr_mesh_c      <= {tr_mesh_c[0], tr_mesh_m};
 end
@@ -471,23 +467,20 @@ end
 assign nv_ack = nv_ack_c;
 assign nv_c_q = nv_q_c;
 
-// the UART: the modem port, or the debug readout (status[6]); the modem port
+// the UART: the modem port (Open Firmware's console when it is told so); it
 // also drives the MT32-pi's MIDI in, and in the Main's MIDI mode the user
 // port's MIDI joins what it receives (both lines idle high)
-wire uart_debug = status[6];
-wire modem_txd, dbg_txd;
-reg  [1:0] uart_debug_c;
-always @(posedge clk_cpu) uart_debug_c <= {uart_debug_c[0], uart_debug};
+wire modem_txd;
 wire mt32_midi_rx;
 wire midi_in   = (uart_mode == 8'd3) ? mt32_midi_rx : 1'b1;
-wire modem_rxd = uart_debug_c[1] | (UART_RXD & midi_in);
-assign UART_TXD = uart_debug ? dbg_txd : modem_txd;
+wire modem_rxd = UART_RXD & midi_in;
+assign UART_TXD = modem_txd;
 // the handshake, as the Quadra 800 core's (an ImageWriter through the Main's
 // printer daemon, PPP): CTS uninverted, RTS while a received byte waits, the
 // other end's DTR back as its DSR
 wire modem_rts;
-wire modem_cts = ~uart_debug_c[1] & UART_CTS;
-assign UART_RTS = ~uart_debug & modem_rts;
+wire modem_cts = UART_CTS;
+assign UART_RTS = modem_rts;
 assign UART_DTR = UART_DSR;
 
 // the MT32-pi on the user port (sys/mt32pi.sv), as the Quadra 800 core has it
@@ -593,6 +586,7 @@ PPCMac_system #(.CPU_HZ(CPU_MHZ * 1000000), .TB_HZ(12500000), .SDRAM_MB(128)) sy
 	.clk(clk_cpu),
 	.reset(cpu_reset),
 	.cpu_in_reset(cpu_held),
+	.power_wake,
 	.reset_pc(32'hFFF00100),
 	.ram_mb(ram_mb_c[1]),
 	.boot_memtest(boot_memtest_c[1]),
@@ -675,51 +669,24 @@ sdramclk_ddr
 	.sset(1'b0)
 );
 
-///////////////////////   THE DEBUG READOUT   ///////////////////////////////
+///////////////////////   THE LED   ///////////////////////////////
 
-wire       hblank, hsync, vblank, vsync, ce_pix;
-wire [7:0] dbg_r, dbg_g, dbg_b;
-wire       led_user;
-
-// its 20 MHz: every fifth clock of the memory clock
-reg  [2:0] ce5 = 0;
-always @(posedge clk_mem) ce5 <= (ce5 == 3'd4) ? 3'd0 : ce5 + 1'd1;
-wire ce_dbg = ce5 == 3'd0;
-
-PPCMac_debug #(.BUILD(BUILD), .CPU_HZ(CPU_MHZ * 1000000), .VID_HZ(20000000), .BAUD(115200)) debug
-(
-	.clk_cpu(clk_cpu),
-	.mach_reset(cpu_reset),
-	.cpu_reset(cpu_held),
-	.trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_msr,
-	.cpu_req, .cpu_we, .cpu_ack, .cpu_addr,
-	.mt_passes(dbg_passes), .mt_errors(dbg_errors), .mt_first(dbg_first), .mt_status(dbg_status),
-	.led(led_user),
-
-	.rom_loaded(rom_loaded),
-	.sdram_ready(sdram_ready),
-	.boot_memtest(boot_memtest),
-	.pll_locked(pll_locked),
-	.ram_mb(ram_mb),
-
-	.clk_vid(clk_mem),
-	.ce_vid(ce_dbg),
-	.pal(status[5]),
-	.scandouble(forced_scandoubler),
-	.ce_pix(ce_pix),
-	.hblank(hblank), .hsync(hsync), .vblank(vblank), .vsync(vsync),
-	.r(dbg_r), .g(dbg_g), .b(dbg_b),
-	.uart_txd(dbg_txd)
-);
+// the CPU's heartbeat: it toggles every 2^20 instructions retired (the debug
+// readout, PPCMac_debug, left the core 2026-10-08; it stays for the bench)
+reg [20:0] retired = 0;
+always @(posedge clk_cpu) begin
+	if (trace_valid & trace_last) retired <= retired + 1'd1;
+	if (cpu_reset) retired <= 0;
+end
+wire led_user = retired[20];
 
 ///////////////////////   THE PICTURE   ///////////////////////////////
 
-// the Mac's (Control's scan-out) or the debug readout's, both in the memory clock
-wire show_dbg = status[7];
+// Control's scan-out, in the memory clock
 assign CLK_VIDEO = clk_mem;
-assign CE_PIXEL  = show_dbg ? ce_pix : mac_ce;
-wire   pic_de    = show_dbg ? ~(hblank | vblank) : ~(mac_hblank | mac_vblank);
-assign VGA_HS    = show_dbg ? hsync : mac_hs;
+assign CE_PIXEL  = mac_ce;
+wire   pic_de    = ~(mac_hblank | mac_vblank);
+assign VGA_HS    = mac_hs;
 
 // Aspect ratio and integer scaling are the framework's, as in the other Mac
 // cores: video_freak turns the OSD's Scale choice into the VIDEO_ARX/ARY
@@ -743,12 +710,12 @@ video_freak video_freak
 	.CROP_OFF(5'd0),
 	.SCALE({1'b0, status[10:9]})
 );
-assign VGA_VS    = show_dbg ? vsync : mac_vs;
+assign VGA_VS    = mac_vs;
 // the MT32-pi's LCD: the picture dimmed in its box, the text pixel on top
 wire       mt32_lcd = mt32_lcd_en & mt32_lcd_on;
-wire [7:0] pic_r    = show_dbg ? dbg_r : mac_r;
-wire [7:0] pic_g    = show_dbg ? dbg_g : mac_g;
-wire [7:0] pic_b    = show_dbg ? dbg_b : mac_b;
+wire [7:0] pic_r    = mac_r;
+wire [7:0] pic_g    = mac_g;
+wire [7:0] pic_b    = mac_b;
 assign VGA_R     = mt32_lcd ? {{2{mt32_lcd_pix}}, pic_r[7:2]} : pic_r;
 assign VGA_G     = mt32_lcd ? {{2{mt32_lcd_pix}}, pic_g[7:2]} : pic_g;
 assign VGA_B     = mt32_lcd ? {{2{mt32_lcd_pix}}, pic_b[7:2]} : pic_b;
