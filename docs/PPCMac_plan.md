@@ -648,7 +648,10 @@ before any welcome screen. With the SWIM3 built (the board, 2026-10-07,
 "Starting Up..." screen, the bar at its start for minutes, the pointer
 following the mouse and the debug readout showing the 68k emulator running
 with the device writes growing: Mac OS loops, waiting for something; the
-next session's problem (`RESUME_disk.md`).
+next session's problem (`RESUME_disk.md`). The simulation reproduces it:
+"Starting Up..." by 783 million instructions and, from 700 million on, the
+CPU in native PowerPC code in RAM (user mode, 0019A5F4-0019A664), with
+timer interrupts and kernel calls only.
 
 ### A: sound
 
