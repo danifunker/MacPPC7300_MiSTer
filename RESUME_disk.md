@@ -37,7 +37,7 @@ Read these first. They are the source of truth:
 
 - **The CPU** (`rtl/DSPPC604/`) unchanged since 0869a0f. A CPU bug or feature: stop, write `RESUME_cpu.md`, commit, stop.
 - **The Main**: the branch `Mac-ppc-enhancements` in `..\Main_MiSTer` (aad7960, 7b3a601) is installed on the board as `/media/fat/MiSTer` (md5 a2546ea7d3d5a3a1338187f41d327044, built in WSL by the `mainbuild.sh` pattern: rsync to `~/.cache/ppcmac/main_ppcenh`, `make`); the official one is kept as `/media/fat/MiSTer.official` (eb1799eb). The CD and Ethernet need the branch; keep it unless I say otherwise.
-- **Works on the board** (this session, commits 714627c, 162c9b0 and the two after):
+- **Works on the board** (this session, commits 714627c, 162c9b0, 7dcfbf0):
   - Mac OS 8.5, 8.6 and 9.1 to the Finder from their own images (build 20; next steps 1).
   - CD-ROM at ID 3: ISO and CUE/BIN (data and audio; the AppleCD Audio Player numbers only audio tracks). BlueSCSI Toolbox file sharing (`games/PPCMac/shared`): download and upload (an upload is padded to whole 512-byte blocks: the protocol's block-encoded SEND carries no byte count; the Mac LC core does the same). The CD changer app finds no changer: **parked** (the user).
   - Ethernet (OSD "Ethernet (on reset)" On): DHCP, Cyberdog, ping, Fetch to FTP. It took MACE's internal loopback (the driver's self-test), a real FCS, and Grand Central's DMA status bits (s5 = MACE's XMTSV on channel 2; on channel 3 the frame's end ends an INPUT_MORE and sets s6). Build 18: the driver's LOAD_QUADs of MACE's XMTRC, XMTFS and IR through the system space (key 6) reach MACE (channels 2 and 3 only) and their values are written back into the commands; 60 pings of 1,400 bytes, none lost.
