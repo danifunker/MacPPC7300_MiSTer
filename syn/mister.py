@@ -16,7 +16,11 @@ to the card and the core's UART.
     python syn\\mister.py mount 0|1 PATH          the image (PATH from /media/fat) mounted as SCSI
                                                  disk 0 or 1 at the core's next start
                                                  (config/PPCMac.s0 or .s1, as the OSD writes it)
-    python syn\\mister.py umount 0|1              ... no longer
+    python syn\\mister.py umount 0|1|2            ... no longer
+    python syn\\mister.py make-nvr [PATH]         an empty 8 KB NVRAM image (default
+                                                 games/PPCMac/PPCMac.nvr) if there is none, mounted
+                                                 on block slot 2 (config/PPCMac.s2): the core loads
+                                                 it at its start and keeps the NVRAM in it
     python syn\\mister.py cfg [--ram MB] [--boot rom|memtest] [--uart modem|debug]
                               [--picture mac|debug] [--monitor 16|13]
                                                  writes config/PPCMac.CFG
@@ -174,10 +178,20 @@ def main():
         # (menu.cpp, store_name): the path from /media/fat, read back and
         # mounted at the core's next start (user_io.cpp)
         slot, path = int(a[1]), a[2]
-        if slot not in (0, 1) or "'" in path:
-            sys.exit("mount 0|1 PATH (from /media/fat, e.g. games/PPCMac/os761.hda)")
+        if slot not in (0, 1, 2) or "'" in path:
+            sys.exit("mount 0|1|2 PATH (from /media/fat, e.g. games/PPCMac/os761.hda; 2: the NVRAM image)")
         return ssh("test -f '/media/fat/%s' && printf '%%s\\0' '%s' > /media/fat/config/PPCMac.s%d && "
                    "xxd /media/fat/config/PPCMac.s%d" % (path, path, slot, slot))
+    if cmd == "make-nvr":
+        # an empty (all-zero) 8 KB NVRAM image, if there is none, mounted on
+        # block slot 2: the core loads it at its start and saves the NVRAM
+        # into it (PPCMac_nvsave)
+        path = a[1] if len(a) > 1 else "games/PPCMac/PPCMac.nvr"
+        if "'" in path:
+            sys.exit("make-nvr [PATH]")
+        return ssh("test -f '/media/fat/%s' || dd if=/dev/zero of='/media/fat/%s' bs=8192 count=1 2>/dev/null; "
+                   "printf '%%s\\0' '%s' > /media/fat/config/PPCMac.s2 && ls -l '/media/fat/%s'"
+                   % (path, path, path, path))
     if cmd == "umount":
         return ssh("rm -f /media/fat/config/PPCMac.s%d" % int(a[1]))
     if cmd == "cfg":

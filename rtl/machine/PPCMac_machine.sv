@@ -161,8 +161,12 @@ module PPCMac_machine
 	// Grand Central's NVRAM written from outside, a byte a cycle, while
 	// the machine is held in reset
 	input  logic         nv_ld_we,
+	input  logic         nv_ld_re,                  // ... or read from outside (PPCMac_gc)
 	input  logic [12:0]  nv_ld_addr,
 	input  logic [7:0]   nv_ld_data,
+	output logic         nv_ld_rack,
+	output logic [7:0]   nv_ld_q,
+	output logic         nv_wr_cpu,                 // the CPU wrote the NVRAM
 
 	// the monitor: its AppleSense codes (PPCMac_control MON_SENSE)
 	input  logic [2:0]   mon_std,
@@ -529,7 +533,7 @@ PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
 	.sel(present & is_gc), .we(c_we), .addr(dev_a[16:2]), .be(dev_be), .wdata(dev_wd),
 	.rdata(gc_rdata), .irq(gc_irq),
 	.cuda_treq, .cuda_cb1, .cb2(cb2_line), .via_tip, .via_byteack, .via_cb2_oe, .via_cb2_out,
-	.modem_txd, .modem_rxd, .nv_ld_we, .nv_ld_addr, .nv_ld_data,
+	.modem_txd, .modem_rxd, .nv_ld_we, .nv_ld_re, .nv_ld_addr, .nv_ld_data, .nv_ld_rack, .nv_ld_q, .nv_wr_cpu,
 	.ctl_irq, .nmi(cuda_nmi),
 	.mesh_rst, .mesh_bsy, .mesh_sel, .mesh_atn, .mesh_ack, .mesh_req, .mesh_msg, .mesh_cd, .mesh_io, .mesh_db,
 	.scsi_rst, .scsi_bsy, .scsi_sel, .scsi_atn, .scsi_ack, .scsi_req, .scsi_msg, .scsi_cd, .scsi_io, .scsi_db,

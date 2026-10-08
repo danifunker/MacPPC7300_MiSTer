@@ -66,10 +66,16 @@ module PPCMac_system
 	output logic [15:0]  snd_right,
 
 	// Grand Central's NVRAM written from outside, a byte a cycle in the
-	// CPU's clock, while reset is held
+	// CPU's clock, while reset is held; or read from outside (nv_ld_re held
+	// until nv_ld_rack, the byte in nv_ld_q then); nv_wr_cpu marks the CPU's
+	// writes (the save to the SD card)
 	input  logic         nv_ld_we,
+	input  logic         nv_ld_re,
 	input  logic [12:0]  nv_ld_addr,
 	input  logic [7:0]   nv_ld_data,
+	output logic         nv_ld_rack,
+	output logic [7:0]   nv_ld_q,
+	output logic         nv_wr_cpu,
 
 	// the monitor: its AppleSense codes
 	input  logic [2:0]   mon_std,
@@ -216,7 +222,8 @@ PPCMac_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_FAST
 	.img_mounted, .img_size, .img_readonly, .sd_lba, .sd_rd, .sd_wr, .sd_ack,
 	.sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr, .disk_busy,
 	.dma_wr, .dma_wr_line, .dma_wr_addr, .dma_wr_be, .dma_wr_data,
-	.modem_txd, .modem_rxd, .snd_left, .snd_right, .nv_ld_we, .nv_ld_addr, .nv_ld_data,
+	.modem_txd, .modem_rxd, .snd_left, .snd_right,
+	.nv_ld_we, .nv_ld_re, .nv_ld_addr, .nv_ld_data, .nv_ld_rack, .nv_ld_q, .nv_wr_cpu,
 	.mon_std, .mon_ext, .ps2_key, .ps2_mouse, .clock_ok, .clock_secs,
 	.v_req, .v_we, .v_line, .v_addr, .v_be, .v_wdata, .v_ack, .v_rdata,
 	.timing_on, .sw_params, .fb_base, .row_words, .hs_pos, .vs_pos, .dac_cr, .dbl_buf_cr,

@@ -223,6 +223,7 @@ int main(int argc, char** argv) {
 		dut->reset_pc = 0xFFF00100;
 		dut->modem_rxd = modem.txd;
 		dut->nv_ld_we = nv_ld >= 0;
+		dut->nv_ld_re = 0;
 		dut->nv_ld_addr = nv_ld >= 0 ? nv_ld : 0;
 		dut->nv_ld_data = nv_ld >= 0 ? nvimg[nv_ld] : 0;
 		dut->b_ack = mm.ack;

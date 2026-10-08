@@ -155,6 +155,7 @@ lint:
 	$(VERILATOR) --lint-only $(WARN) --top-module PPCMac_system $(RTL_SRCS) $(MACH_SRCS)
 	$(VERILATOR) --lint-only $(WARN) --top-module sdram_tb_top $(RTL)/DSPPC604_memcdc.sv $(MACH)/PPCMac_sdram.sv $(HERE)sdram_tb_top.sv
 	$(VERILATOR) --lint-only $(WARN) --top-module PPCMac_debug $(MACH)/PPCMac_debug.sv
+	$(VERILATOR) --lint-only $(WARN) --top-module PPCMac_nvsave $(MACH)/PPCMac_nvsave.sv
 	$(VERILATOR) --lint-only $(WARN) --top-module cuda_tb_top $(CUDA_SRCS)
 	$(VERILATOR) --lint-only $(WARN) --top-module scsi_tb_top $(SCSI_SRCS)
 

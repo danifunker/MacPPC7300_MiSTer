@@ -41,18 +41,29 @@
 //    (an overrun, until WR0's error reset) in all three; transmit (WR1 bit
 //    1) when the transmit buffer empties into the shift register, cleared
 //    by a byte written or WR0's "reset Tx interrupt pending"; external/
-//    status (WR1 bit 0) when a condition WR15 enables changes, which no
-//    line here ever does. RR3 (channel A) gives the six pending bits; RR2
-//    in channel B the vector modified by the highest one (WR9 bit 4: status
-//    in bits 6-4, else 3-1), in channel A WR2 as written. WR9's master
-//    enable (bit 3) gates the outputs, one a channel (Grand Central's
-//    sources 0F and 10).
+//    status (WR1 bit 0) when a condition WR15 enables changes (the Tx
+//    underrun/EOM latch, sync/hunt). RR3 (channel A) gives the six pending
+//    bits; RR2 in channel B the vector modified by the highest one (WR9 bit
+//    4: status in bits 6-4, else 3-1), in channel A WR2 as written. WR9's
+//    master enable (bit 3) gates the outputs, one a channel (Grand
+//    Central's sources 0F and 10).
+//  - The synchronous modes (2026-10-08), as far as LocalTalk on the printer
+//    port (channel B, SDLC) needs them with nothing on the line: sync/hunt
+//    reads 1 (the receiver hunts for a flag that never comes: the line is
+//    free); a byte goes out as its data bits, a bit every 16 RTxC clocks
+//    (230,400 bit/s) unless the baud-rate generator clocks it; when the
+//    transmitter underruns after WR0's "reset Tx underrun/EOM latch" it
+//    sends the CRC and the closing flag (24 bits), setting the latch (RR0
+//    bit 6) as it begins: the frame's end, an external/status interrupt.
+//  - Grand Central's LocalTalk helper registers (MacRISC 8-B: recovery
+//    count, Start A and B, Detect AB) as dingusppc's escc.cpp has them.
 //
-//  Left out (docs/PPCMac_stubs.md): the synchronous modes, DMA, the DPLL,
-//  CRC, break, the modem lines (RR0 reads 44 with the transmitter idle, as
-//  escc.cpp's), the baud-rate generator's zero count, and the read
-//  registers dingusppc does not keep (all but RR0, RR1, RR2, RR3 and RR8
-//  read 0).
+//  Left out (docs/PPCMac_stubs.md): receiving in the synchronous modes (no
+//  frame ever arrives), DMA, the DPLL and the encodings, the CRC's value,
+//  zero insertion, abort and break, the modem lines (RR0 reads 44 with the
+//  transmitter idle in asynchronous mode, as escc.cpp's), the baud-rate
+//  generator's zero count, and the read registers dingusppc does not keep
+//  (all but RR0, RR1, RR2, RR3 and RR8 read 0).
 //
 //  Registers by MacRISC number (Grand Central maps both of its addressings
 //  onto it): 0 B command, 1 B data, 2 A command, 3 A data, 4 B enhancement,
@@ -117,7 +128,7 @@ always_ff @(posedge clk) rxd_s <= {rxd_s[0], rxd_a};
 PPCMac_escc_ch ch_a (
 	.clk, .hw_rst, .ch_rst(rst_a), .rtxc_tick,
 	.wr_en(wr_a), .wr_n(ptr), .wr_v(wdata), .tx_wr(tx_a), .rx_rd(rx_a),
-	.cmd_en(cmd_a), .cmd(wdata[5:3]),
+	.cmd_en(cmd_a), .cmd(wdata[5:3]), .crc_cmd(wdata[7:6]),
 	.rr0(rr0_a), .rr1(rr1_a), .rx_data(rd_a), .txd(txd_a), .rxd(rxd_s[1]),
 	.rx_ip(rx_ip_a), .tx_ip(tx_ip_a), .ext_ip(ext_ip_a), .special(sp_a)
 );
@@ -125,10 +136,18 @@ PPCMac_escc_ch ch_a (
 PPCMac_escc_ch ch_b (
 	.clk, .hw_rst, .ch_rst(rst_b), .rtxc_tick,
 	.wr_en(wr_b), .wr_n(ptr), .wr_v(wdata), .tx_wr(tx_b), .rx_rd(rx_b),
-	.cmd_en(cmd_b), .cmd(wdata[5:3]),
+	.cmd_en(cmd_b), .cmd(wdata[5:3]), .crc_cmd(wdata[7:6]),
 	.rr0(rr0_b), .rr1(rr1_b), .rx_data(rd_b), .txd(txd_b), .rxd(1'b1),
 	.rx_ip(rx_ip_b), .tx_ip(tx_ip_b), .ext_ip(ext_ip_b), .special(sp_b)
 );
+
+// Grand Central's LocalTalk helper ("LTPC", MacRISC registers 8-B; dingusppc's
+// escc.cpp after its commit cfde7ee0): a recovery count (8 from reset),
+// Start A and B (bit 0), and Detect AB, the abort sequence seen on channel A
+// (bit 1) or B (bit 0): set when the channel's Start is written 1 (the line
+// is idle: the abort sequence is there at once), cleared with it
+logic [7:0] ltpc_rec;
+logic       ltpc_sa, ltpc_sb;
 
 // the interrupt pins: WR9's master interrupt enable (no acknowledge cycles,
 // so nothing is ever under service and every pending bit asks)
@@ -166,6 +185,10 @@ always_comb begin
 		end
 		4'd1:    rq = rd_b;
 		4'd3:    rq = rd_a;
+		4'd8:    rq = ltpc_rec;
+		4'd9:    rq = {7'h0, ltpc_sa};
+		4'd10:   rq = {7'h0, ltpc_sb};
+		4'd11:   rq = {6'h0, ltpc_sa, ltpc_sb};
 		4'd4:    rq = enh_b;
 		4'd5:    rq = enh_a;
 		default: rq = 8'h00;
@@ -181,12 +204,18 @@ always_ff @(posedge clk) begin
 	if (wr9_now) wr9 <= wdata & 8'h3F;
 	if (sel & we & rn == 4'd4) enh_b <= wdata & 8'h10;
 	if (sel & we & rn == 4'd5) enh_a <= wdata & 8'h10;
+	if (sel & we & rn == 4'd8) ltpc_rec <= wdata;
+	if (sel & we & rn == 4'd9) ltpc_sa <= wdata[0];
+	if (sel & we & rn == 4'd10) ltpc_sb <= wdata[0];
 	if (reset) begin
-		ptr   <= 4'd0;
-		wr2   <= 8'h00;
-		wr9   <= 8'hC0;
-		enh_a <= 8'h00;
-		enh_b <= 8'h00;
+		ptr      <= 4'd0;
+		wr2      <= 8'h00;
+		wr9      <= 8'hC0;
+		enh_a    <= 8'h00;
+		enh_b    <= 8'h00;
+		ltpc_rec <= 8'h08;
+		ltpc_sa  <= 1'b0;
+		ltpc_sb  <= 1'b0;
 	end
 end
 
@@ -207,6 +236,7 @@ module PPCMac_escc_ch
 	input  logic       rx_rd,          // the oldest received byte taken
 	input  logic       cmd_en,         // a WR0 command to this channel
 	input  logic [2:0] cmd,            // ... its bits 5-3
+	input  logic [1:0] crc_cmd,        // ... its bits 7-6 (3: reset the Tx underrun/EOM latch)
 	output logic [7:0] rr0,
 	output logic [7:0] rr1,
 	output logic [7:0] rx_data,
@@ -227,15 +257,21 @@ wire        brg_on  = wr14[0];
 wire        tx_brg  = brg_on & wr11[4:3] == 2'b10;
 wire        rx_brg  = brg_on & wr11[6:5] == 2'b10;
 wire [2:0]  mode_sh = wr4[7:6] == 2'b00 ? 3'd0 : wr4[7:6] == 2'b01 ? 3'd4 : wr4[7:6] == 2'b10 ? 3'd5 : 3'd6;
-wire [23:0] tx_bit  = {6'd0, tx_brg ? brg_div : 18'd1} << mode_sh;
+// the synchronous modes (WR4 bits 3-2 = 0; SDLC is bits 5-4 = 10, LocalTalk's):
+// a bit from the baud-rate generator, else 16 RTxC clocks (the DPLL's FM
+// rate from RTxC: LocalTalk's 230,400 bit/s; the clock pins are not modelled)
+wire        sync_md = wr4[3:2] == 2'b00;
+wire [23:0] tx_bit  = sync_md ? (tx_brg ? {6'd0, brg_div} : 24'd16) : ({6'd0, tx_brg ? brg_div : 18'd1} << mode_sh);
 wire [23:0] rx_bit  = {6'd0, rx_brg ? brg_div : 18'd1} << mode_sh;
 
 // ---- the transmitter ------------------------------------------------------------------------
 logic [7:0]  tx_buf;
 logic        tx_full;                  // a byte waits in the transmit buffer
 logic [11:0] tx_sh;                    // the frame going out, LSB first
-logic [3:0]  tx_left;                  // bits still to send, the current one included
+logic [4:0]  tx_left;                  // bits still to send, the current one included
 logic [23:0] tx_cnt;                   // RTxC clocks left in the current bit
+logic        eom;                      // the Tx underrun/EOM latch (RR0 bit 6), set from reset
+logic        tx_sent;                  // a byte went out in a synchronous mode since the last CRC
 wire  [3:0]  tx_dbits = wr5[6:5] == 2'b00 ? 4'd5 : wr5[6:5] == 2'b01 ? 4'd7 : wr5[6:5] == 2'b10 ? 4'd6 : 4'd8;
 wire  [7:0]  tx_dmask = wr5[6:5] == 2'b00 ? 8'h1F : wr5[6:5] == 2'b01 ? 8'h7F : wr5[6:5] == 2'b10 ? 8'h3F : 8'hFF;
 wire         tx_par   = wr4[0];
@@ -250,7 +286,12 @@ wire  [11:0] tx_frame = (~d_mask & ~p_pos) | d_field | (tx_pbit ? p_pos : 12'd0)
 wire  [3:0]  tx_ds    = tx_dbits + tx_stops;
 wire  [3:0]  tx_sp    = tx_par ? 4'd2 : 4'd1;                    // the start bit, and parity
 wire  [3:0]  tx_nbits = tx_ds + tx_sp;
-wire         tx_idle  = tx_left == 4'd0;
+wire         tx_idle  = tx_left == 5'd0;
+// in a synchronous mode a byte is its data bits alone; when the transmitter
+// underruns with the EOM latch reset it sends the CRC and the closing flag
+// (24 bits) and sets the latch as it begins (Z85C30 manual, "Transmit
+// Underrun/EOM")
+wire         tx_crc   = sync_md & tx_idle & ~tx_full & ~eom & tx_sent & wr5[3];
 
 // ---- the receiver -----------------------------------------------------------------------------
 logic [1:0]  rx_state;                 // 0 idle, 1 the start bit, 2 the data bits, 3 the stop bit
@@ -270,8 +311,17 @@ wire         rx_pop   = rx_rd & (rx_n != 2'd0);
 wire         rx_take  = rx_push & ~(rx_n == 2'd3 & ~rx_pop);     // room for it
 wire  [1:0]  rx_at    = rx_n - {1'b0, rx_pop};                   // where it goes
 
-assign rr0     = {1'b0, 1'b1, 1'b0, 1'b0, 1'b0, ~tx_full, 1'b0, rx_n != 2'd0};
-assign rr1     = {2'b00, rx_ovr, 2'b00, 2'b11, ~tx_full & tx_idle};
+// RR0: break/abort 0, Tx underrun/EOM, CTS 0, sync/hunt, DCD 0, Tx buffer
+// empty, zero count 0, Rx character available. Sync/hunt: in the
+// synchronous modes the receiver hunts for a flag and nothing is ever on the
+// line, so it reads 1 (dingusppc's escc.cpp sets it for SDLC since its
+// commit ad9a9dbf: "the LocalTalk driver [waits] forever for the line to
+// become ready for transmission" otherwise); in asynchronous mode it is the
+// /SYNC pin, 0 as dingusppc reads it. RR1's all sent is 1 in the
+// synchronous modes (the manual).
+wire         sync_hunt = sync_md;
+assign rr0     = {1'b0, eom, 1'b0, sync_hunt, 1'b0, ~tx_full, 1'b0, rx_n != 2'd0};
+assign rr1     = {2'b00, rx_ovr, 2'b00, 2'b11, sync_md | (~tx_full & tx_idle)};
 assign rx_data = rx_f0;
 assign txd     = tx_idle | tx_sh[0];
 
@@ -280,15 +330,20 @@ assign txd     = tx_idle | tx_sh[0];
 // modes 01, 10 and 11; a character available in mode 10, and in mode 01
 // the first one after the mode was chosen or the "next character" command.
 // Transmit: set as the buffer empties into the shift register, if enabled.
-// External/status: no condition WR15 watches ever changes here (the modem
-// lines are fixed, the zero count is not modelled), so it is never set.
+// External/status (WR1 bit 0): set when an RR0 condition WR15 watches
+// changes (here the Tx underrun/EOM latch and sync/hunt; the modem lines are
+// fixed and the zero count is not modelled), cleared by WR0's reset
+// ext/status interrupts.
 logic        rx_first;                 // mode 01 armed
 logic        tx_pend;
+logic        ext_pend;
+logic [7:0]  ext_q;                    // the watched RR0 bits as last seen
+wire  [7:0]  ext_now = rr0 & 8'hF8;
 wire  [1:0]  rx_mode = wr1[4:3];
 assign special = rx_mode != 2'b00 && rx_ovr;
 assign rx_ip   = special | (rx_n != 2'd0 && (rx_mode == 2'b10 || (rx_mode == 2'b01 && rx_first)));
 assign tx_ip   = tx_pend & wr1[1];
-assign ext_ip  = 1'b0;
+assign ext_ip  = ext_pend;
 wire         tx_load = tx_idle & tx_full & ~tx_wr & wr5[3];       // the buffer into the shift register
 
 always_ff @(posedge clk) begin
@@ -316,6 +371,10 @@ always_ff @(posedge clk) begin
 		rx_first <= 1'b1;
 	else if (rx_pop) rx_first <= 1'b0;
 	if (cmd_en && cmd == 3'd6) rx_ovr <= 1'b0;
+	ext_q <= ext_now;
+	if (wr1[0] && ((ext_now ^ ext_q) & wr15 & 8'hF8) != 8'h00) ext_pend <= 1'b1;
+	if (cmd_en && cmd == 3'd2) ext_pend <= 1'b0;
+	if (cmd_en && crc_cmd == 2'b11) eom <= 1'b0;
 
 	// the transmitter
 	if (tx_wr) begin
@@ -324,16 +383,24 @@ always_ff @(posedge clk) begin
 	end
 	if (tx_idle) begin
 		if (tx_load) begin
-			tx_sh   <= tx_frame;
-			tx_left <= tx_nbits;
+			tx_sh   <= sync_md ? {4'h0, tx_d} : tx_frame;
+			tx_left <= {1'b0, sync_md ? tx_dbits : tx_nbits};
 			tx_cnt  <= tx_bit;
 			tx_full <= 1'b0;
+			if (sync_md) tx_sent <= 1'b1;
+		end
+		else if (tx_crc) begin             // the underrun: CRC and the closing flag
+			tx_sh   <= 12'hFFF;
+			tx_left <= 5'd24;
+			tx_cnt  <= tx_bit;
+			tx_sent <= 1'b0;
+			eom     <= 1'b1;
 		end
 	end
 	else if (rtxc_tick) begin
 		if (tx_cnt <= 24'd1) begin
 			tx_sh   <= {1'b1, tx_sh[11:1]};
-			tx_left <= tx_left - 4'd1;
+			tx_left <= tx_left - 5'd1;
 			tx_cnt  <= tx_bit;
 		end
 		else tx_cnt <= tx_cnt - 24'd1;
@@ -411,12 +478,15 @@ always_ff @(posedge clk) begin
 	end
 	if (ch_rst | hw_rst) begin
 		tx_full  <= 1'b0;
-		tx_left  <= 4'd0;
+		tx_left  <= 5'd0;
 		rx_state <= 2'd0;
 		rx_n     <= 2'd0;
 		rx_ovr   <= 1'b0;
 		tx_pend  <= 1'b0;
 		rx_first <= 1'b0;
+		ext_pend <= 1'b0;
+		eom      <= 1'b1;
+		tx_sent  <= 1'b0;
 	end
 end
 

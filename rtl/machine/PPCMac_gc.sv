@@ -106,10 +106,17 @@ module PPCMac_gc
 	output logic        modem_txd,
 	input  logic        modem_rxd,
 
-	// the NVRAM written from outside, a byte a cycle
+	// the NVRAM written from outside, a byte a cycle (with the machine held in
+	// reset), or read from outside (nv_ld_re held until nv_ld_rack, the byte
+	// in nv_ld_q in that clock; taken in a clock the CPU does not use it);
+	// nv_wr_cpu marks each write by the CPU (milestone P: the save)
 	input  logic        nv_ld_we,
+	input  logic        nv_ld_re,
 	input  logic [12:0] nv_ld_addr,
 	input  logic [7:0]  nv_ld_data,
+	output logic        nv_ld_rack,
+	output logic [7:0]  nv_ld_q,
+	output logic        nv_wr_cpu,
 
 	// the Control video's VBL interrupt (source 1A); Cuda's NMI (14)
 	input  logic         ctl_irq,
@@ -429,12 +436,17 @@ wire  [12:0] nv_addr = 13'((nv_hi << 5) + 16'(off[8:4]));
 // halfword byte-swapped (grandcentral.cpp:358-365)
 wire  [15:0] io_w  = single ? {8'h00, wb} : (be[3] ? {wdata[23:16], wdata[31:24]} : {wdata[7:0], wdata[15:8]});
 wire         nv_wr = sel & we & devs & (sub == 4'hF);
-// one port: the load's address while it writes (only with the machine in reset)
-wire  [12:0] nv_a  = nv_ld_we ? nv_ld_addr : nv_addr;
+wire         nv_ext_rd = nv_ld_re & ~nv_ld_we & ~(sel & devs & (sub == 4'hF));
+// one port: the load's address while it writes (only with the machine in
+// reset), an outside read's in a clock the CPU leaves it free
+wire  [12:0] nv_a  = (nv_ld_we | nv_ext_rd) ? nv_ld_addr : nv_addr;
+assign nv_ld_q   = nv_q;
+assign nv_wr_cpu = nv_wr;
 
 always_ff @(posedge clk) begin
 	if (nv_wr | nv_ld_we) nvram[nv_a] <= nv_ld_we ? nv_ld_data : io_w[7:0];
 	nv_q <= nvram[nv_a];
+	nv_ld_rack <= nv_ext_rd;
 end
 
 // ---- RaDACal: IOBus device 2, registers (offset >> 4) & 1F, the first four its own ---------

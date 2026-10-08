@@ -90,10 +90,7 @@ assign BUTTONS = 0;
 
 //////////////////////////////////////////////////////////////////
 
-wire [1:0] ar = status[122:121];
-
-assign VIDEO_ARX = (!ar) ? 12'd4 : (ar - 1'd1);
-assign VIDEO_ARY = (!ar) ? 12'd3 : 12'd0;
+wire [1:0] ar = status[122:121];         // the aspect ratio (video_freak, below)
 
 `include "build_id.v"
 localparam CONF_STR = {
@@ -102,9 +99,11 @@ localparam CONF_STR = {
 	"F1,ROM,Load ROM;",
 	// the disks: SC, so the Main remembers the image and mounts it at the
 	// next start (as the other Mac cores); slots 2-5 are the Mac SCSI
-	// family's (NVRAM, BlueSCSI Toolbox, CD-ROM, CD changer), not used yet
+	// family's (NVRAM, BlueSCSI Toolbox, CD-ROM, CD changer); slot 2 holds
+	// Grand Central's NVRAM (an 8 KB .nvr file, PPCMac_nvsave), 3-5 unused yet
 	"SC0,HDAVHD,Mount SCSI disk 0;",
 	"SC1,HDAVHD,Mount SCSI disk 1;",
+	"SC2,NVR,Mount NVRAM;",
 	"-;",
 	"O[3:1],RAM,16 MB,24 MB,48 MB,64 MB,96 MB,6 MB;",
 	"O[4],Boot,ROM,Memory test;",
@@ -114,6 +113,7 @@ localparam CONF_STR = {
 	"O[8],Monitor,16-inch 832x624,13-inch 640x480;",
 	"-;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
+	"O[10:9],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
 	"O[5],TV Mode,NTSC,PAL;",
 	"-;",
 	"T[0],Reset;",
@@ -156,8 +156,11 @@ wire  [7:0] ioctl_dout;
 wire        ioctl_wait;
 
 // the block devices, as the Mac SCSI family's layout has them (VDNUM 6):
-// SCSI disks 0 and 1 on slots 0 and 1; 2-5 tied off for now
+// SCSI disks 0 and 1 on slots 0 and 1, the NVRAM image on 2; 3-5 tied off
 localparam VDNUM = 6;
+wire [31:0] nvs_lba;
+wire        nvs_rd, nvs_wr;
+wire  [7:0] nvs_din;
 wire [31:0] sd_lba[VDNUM];
 wire  [5:0] sd_blk_cnt[VDNUM];
 wire [VDNUM-1:0] sd_rd, sd_wr, sd_ack, img_mounted;
@@ -170,13 +173,13 @@ wire [31:0] disk_lba;
 wire  [7:0] disk_buff_din;
 wire  [1:0] disk_rd, disk_wr;
 assign sd_lba[0] = disk_lba;   assign sd_lba[1] = disk_lba;
-assign sd_lba[2] = 0; assign sd_lba[3] = 0; assign sd_lba[4] = 0; assign sd_lba[5] = 0;
+assign sd_lba[2] = nvs_lba; assign sd_lba[3] = 0; assign sd_lba[4] = 0; assign sd_lba[5] = 0;
 assign sd_blk_cnt[0] = 0; assign sd_blk_cnt[1] = 0; assign sd_blk_cnt[2] = 0;
 assign sd_blk_cnt[3] = 0; assign sd_blk_cnt[4] = 0; assign sd_blk_cnt[5] = 0;
-assign sd_rd = {4'b0000, disk_rd};
-assign sd_wr = {4'b0000, disk_wr};
+assign sd_rd = {3'b000, nvs_rd, disk_rd};
+assign sd_wr = {3'b000, nvs_wr, disk_wr};
 assign sd_buff_din[0] = disk_buff_din;   assign sd_buff_din[1] = disk_buff_din;
-assign sd_buff_din[2] = 0; assign sd_buff_din[3] = 0; assign sd_buff_din[4] = 0; assign sd_buff_din[5] = 0;
+assign sd_buff_din[2] = nvs_din; assign sd_buff_din[3] = 0; assign sd_buff_din[4] = 0; assign sd_buff_din[5] = 0;
 
 hps_io #(.CONF_STR(CONF_STR), .VDNUM(VDNUM), .BLKSZ(2)) hps_io
 (
@@ -247,28 +250,82 @@ always @(posedge clk_mem) begin
 	if (~ioctl_download & dl_q & rom_dl) begin rom_dl <= 0; rom_loaded <= 1; end
 end
 
-// the NVRAM image (boot1.rom, index 40): each byte handed to the CPU's clock
-// by a toggle, hps_io waiting until it is taken; the machine is in reset
-// meanwhile (the image comes before the ROM)
+// Grand Central's NVRAM from this clock: a byte channel to the CPU's clock,
+// a toggle each way (the address, data and direction steady from the
+// request's toggle until the acknowledge's, the byte read steady from the
+// acknowledge's). Two users: the NVRAM image of boot1.rom (index 40), each
+// byte written with the machine in reset (the image comes before the ROM),
+// hps_io waiting meanwhile; and PPCMac_nvsave, the image on block slot 2.
 wire nv_index = ioctl_index[7:0] == 8'h40;
 wire nv_dl    = ioctl_download & nv_index;
 reg  [12:0] nv_m_addr;
 reg  [7:0]  nv_m_data;
+reg         nv_m_we;
 reg         nv_req = 0, nv_busy = 0;
 reg  [2:0]  nv_ack_s;
-wire        nv_ack;                   // the CPU's side, toggled when a byte is written
+wire        nv_ack;                   // the CPU's side, toggled when a byte is done
+wire [7:0]  nv_c_q;                   // ... the byte read
+reg         nv_dl_pend = 0;           // an ioctl byte waiting for the channel
+reg  [12:0] nv_dl_addr;
+reg  [7:0]  nv_dl_data;
+reg         nvs_own = 0, nvs_taken = 0, nvs_done = 0;
+reg  [7:0]  nvs_q;
+wire        nvs_req, nvs_we;
+wire [12:0] nvs_addr;
+wire [7:0]  nvs_wdata;
 always @(posedge clk_mem) begin
 	nv_ack_s <= {nv_ack_s[1:0], nv_ack};
-	if (nv_dl & ioctl_wr & ~nv_busy & ioctl_addr[26:13] == 14'd0) begin
-		nv_m_addr <= ioctl_addr[12:0];
-		nv_m_data <= ioctl_dout;
-		nv_req    <= ~nv_req;
-		nv_busy   <= 1;
+	nvs_done <= 0;
+	if (!nvs_req) nvs_taken <= 0;
+	if (!nv_busy) begin
+		if (nv_dl_pend) begin
+			nv_m_addr  <= nv_dl_addr;
+			nv_m_data  <= nv_dl_data;
+			nv_m_we    <= 1;
+			nv_req     <= ~nv_req;
+			nv_busy    <= 1;
+			nvs_own    <= 0;
+			nv_dl_pend <= 0;
+		end
+		else if (nvs_req & ~nvs_taken) begin
+			nv_m_addr  <= nvs_addr;
+			nv_m_data  <= nvs_wdata;
+			nv_m_we    <= nvs_we;
+			nv_req     <= ~nv_req;
+			nv_busy    <= 1;
+			nvs_own    <= 1;
+			nvs_taken  <= 1;
+		end
 	end
-	else if (nv_busy & (nv_ack_s[2] == nv_req)) nv_busy <= 0;
+	else if (nv_ack_s[2] == nv_req) begin
+		nv_busy <= 0;
+		if (nvs_own) begin
+			nvs_done <= 1;
+			nvs_q    <= nv_c_q;
+		end
+	end
+	// (after the issue: a byte arriving in the clock a pending one is issued stays pending)
+	if (nv_dl & ioctl_wr & ioctl_addr[26:13] == 14'd0) begin
+		nv_dl_pend <= 1;
+		nv_dl_addr <= ioctl_addr[12:0];
+		nv_dl_data <= ioctl_dout;
+	end
 end
 wire sd_up_busy;
-assign ioctl_wait = sd_up_busy | nv_busy;
+assign ioctl_wait = sd_up_busy | nv_busy | nv_dl_pend;
+
+// the NVRAM image on block slot 2 (milestone P)
+reg         nv_dirty_t = 0;           // toggled in the CPU's clock at each CPU write to the NVRAM
+wire        nvs_hold;
+PPCMac_nvsave #(.CLK_HZ(100_000_000)) nvsave (
+	.clk(clk_mem), .reset(~pll_locked),
+	.img_mounted(img_mounted[2]), .img_size, .img_readonly,
+	.sd_lba(nvs_lba), .sd_rd(nvs_rd), .sd_wr(nvs_wr), .sd_ack(sd_ack[2]),
+	.sd_buff_addr, .sd_buff_dout, .sd_buff_wr(sd_buff_wr & sd_ack[2]), .sd_buff_din(nvs_din),
+	.osd_open(OSD_STATUS), .dirty_tog(nv_dirty_t), .hold(nvs_hold),
+	.b_req(nvs_req), .b_we(nvs_we), .b_addr(nvs_addr), .b_wdata(nvs_wdata),
+	.b_done(nvs_done), .b_rdata(nvs_q)
+);
 
 reg  [1:0] locked_m = 0;
 always @(posedge clk_mem) locked_m <= {locked_m[0], pll_locked};
@@ -294,7 +351,7 @@ wire [5:0] mon_ext = status[8] ? 6'h2B : 6'h2D;
 
 reg cpu_reset_m = 1;
 always @(posedge clk_mem)
-	cpu_reset_m <= reset_in[2] | ~sdram_ready | rom_dl | nv_dl | (~boot_memtest & ~rom_loaded) | (cfg_hold != 0);
+	cpu_reset_m <= reset_in[2] | ~sdram_ready | rom_dl | nv_dl | nvs_hold | (~boot_memtest & ~rom_loaded) | (cfg_hold != 0);
 
 // into the CPU's clock (the options are quasi-static: they change only with the reset held)
 reg [2:0] cpu_reset_s = 3'b111;
@@ -324,20 +381,32 @@ wire clock_ok = clock_secs != 32'd0;
 // the NVRAM image's bytes, in the CPU's clock (address and data are stable
 // from the toggle until the acknowledge returns)
 reg  [2:0]  nv_req_s;
-reg         nv_ack_c = 0, nv_ld_we = 0;
+reg         nv_ack_c = 0, nv_ld_we = 0, nv_ld_re = 0;
 reg  [12:0] nv_ld_addr;
-reg  [7:0]  nv_ld_data;
+reg  [7:0]  nv_ld_data, nv_q_c;
+wire        nv_ld_rack, nv_wr_cpu;
+wire [7:0]  nv_ld_q;
 always @(posedge clk_cpu) begin
 	nv_req_s <= {nv_req_s[1:0], nv_req};
 	nv_ld_we <= 0;
-	if (nv_req_s[2] != nv_ack_c) begin
-		nv_ld_addr <= nv_m_addr;
-		nv_ld_data <= nv_m_data;
-		nv_ld_we   <= 1;
-		nv_ack_c   <= nv_req_s[2];
+	if (nv_ld_re & nv_ld_rack) begin           // a read done: the byte, then the acknowledge
+		nv_ld_re <= 0;
+		nv_q_c   <= nv_ld_q;
+		nv_ack_c <= nv_req_s[2];
 	end
+	else if (~nv_ld_re & (nv_req_s[2] != nv_ack_c)) begin
+		nv_ld_addr <= nv_m_addr;
+		if (nv_m_we) begin
+			nv_ld_data <= nv_m_data;
+			nv_ld_we   <= 1;
+			nv_ack_c   <= nv_req_s[2];
+		end
+		else nv_ld_re <= 1;
+	end
+	if (nv_wr_cpu) nv_dirty_t <= ~nv_dirty_t;
 end
 assign nv_ack = nv_ack_c;
+assign nv_c_q = nv_q_c;
 
 // the UART: the modem port, or the debug readout (status[6])
 wire uart_debug = status[6];
@@ -386,7 +455,8 @@ PPCMac_system #(.CPU_HZ(CPU_MHZ * 1000000), .TB_HZ(12500000), .SDRAM_MB(128)) sy
 	.b_req, .b_we, .b_line, .b_addr, .b_be, .b_wdata, .b_ack, .b_rdata,
 
 	.cpu_req, .cpu_we, .cpu_line, .cpu_addr, .cpu_be, .cpu_wdata, .cpu_ack, .cpu_rdata, .cpu_irq, .cpu_tb_tick,
-	.modem_txd, .modem_rxd, .snd_left, .snd_right, .nv_ld_we, .nv_ld_addr, .nv_ld_data,
+	.modem_txd, .modem_rxd, .snd_left, .snd_right,
+	.nv_ld_we, .nv_ld_re, .nv_ld_addr, .nv_ld_data, .nv_ld_rack, .nv_ld_q, .nv_wr_cpu,
 	.mon_std(mon_c[1][8:6]), .mon_ext(mon_c[1][5:0]),
 	.ps2_key, .ps2_mouse,                 // in the memory clock: PPCMac_adb synchronises them
 	.clock_ok, .clock_secs,
@@ -498,8 +568,31 @@ PPCMac_debug #(.BUILD(BUILD), .CPU_HZ(CPU_MHZ * 1000000), .VID_HZ(20000000), .BA
 wire show_dbg = status[7];
 assign CLK_VIDEO = clk_mem;
 assign CE_PIXEL  = show_dbg ? ce_pix : mac_ce;
-assign VGA_DE    = show_dbg ? ~(hblank | vblank) : ~(mac_hblank | mac_vblank);
+wire   pic_de    = show_dbg ? ~(hblank | vblank) : ~(mac_hblank | mac_vblank);
 assign VGA_HS    = show_dbg ? hsync : mac_hs;
+
+// Aspect ratio and integer scaling are the framework's, as in the other Mac
+// cores: video_freak turns the OSD's Scale choice into the VIDEO_ARX/ARY
+// form the scaler takes (V-Integer: every Mac line the same whole number of
+// output lines; 640 x 480 becomes 960 lines on a 1080-line output, where
+// Normal's 2.25 makes uneven lines). No crop.
+video_freak video_freak
+(
+	.CLK_VIDEO(clk_mem),
+	.CE_PIXEL(CE_PIXEL),
+	.VGA_VS(VGA_VS),
+	.HDMI_WIDTH(HDMI_WIDTH),
+	.HDMI_HEIGHT(HDMI_HEIGHT),
+	.VGA_DE(VGA_DE),
+	.VIDEO_ARX(VIDEO_ARX),
+	.VIDEO_ARY(VIDEO_ARY),
+	.VGA_DE_IN(pic_de),
+	.ARX((!ar) ? 12'd4 : (ar - 1'd1)),
+	.ARY((!ar) ? 12'd3 : 12'd0),
+	.CROP_SIZE(12'd0),
+	.CROP_OFF(5'd0),
+	.SCALE({1'b0, status[10:9]})
+);
 assign VGA_VS    = show_dbg ? vsync : mac_vs;
 assign VGA_R     = show_dbg ? dbg_r : mac_r;
 assign VGA_G     = show_dbg ? dbg_g : mac_g;
