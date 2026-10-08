@@ -16,22 +16,34 @@
 //                 edge when the mask's top bit selects 68k mode (Mac OS's
 //                 NanoKernel runs it so, and reads the levels to follow the
 //                 line both ways); the CPU's interrupt is any event that is
-//                 unmasked. Sources so far: Curio (0C), MESH (0D), the VIA
-//                 (12), SWIM3 (13), the Control video's VBL (1A, through Chaos)
+//                 unmasked. Sources so far: the DMA channels 8, 9, A, Curio
+//                 (0C), MESH (0D), MACE (0E), the ESCC's channels A and B
+//                 (0F, 10), the VIA (12), SWIM3 (13), Cuda's NMI (14, the
+//                 keyboard's Command-power; AppleGrandCentral's nmiSource),
+//                 the Control video's VBL (1A, through Chaos)
 //    08000-0FFFF  DMA channel registers, 256 bytes per channel
-//                 (grandcentral.cpp:250-305; dbdma.cpp:307-380): channel A,
-//                 MESH's, is a DBDMA engine (PPCMac_dbdma) on the DMA port
-//                 (dm_*), its interrupt source 0A a level that the clear
-//                 register drops (dingusppc's ack_dma_int, clear_dma_int);
-//                 the others are stored and read back and never run
+//                 (grandcentral.cpp:250-305; dbdma.cpp:307-380): channels
+//                 2, 3 (Ethernet out, in), 8, 9 (sound out, in) and A
+//                 (MESH's) are DBDMA engines (PPCMac_dbdma) sharing the DMA
+//                 port (dm_*), one access at a time, the sound channels
+//                 first; each one's interrupt, sources 02, 03, 08, 09, 0A,
+//                 a level that the clear register drops (dingusppc's
+//                 ack_dma_int, clear_dma_int); channels 0 and 1 (Curio,
+//                 floppy) are stored and read back and never run
 //    10000        Curio SCSI             PPCMac_sc53c94: the external bus's
 //                                        53CF94, with no target
-//    11000        MACE Ethernet          reads 0
+//    11000        MACE Ethernet          PPCMac_mace: mace.cpp's registers
+//                                        (chip ID 0941), the cable
+//                                        unplugged: frames from channel 2
+//                                        end in loss of carrier
 //    12000-13FFF  ESCC serial            PPCMac_escc: channel A, the modem
 //                                        port, on modem_txd/modem_rxd at
 //                                        the rate software sets; channel B
-//                                        without a line
-//    14000        AWACS sound            awacs.cpp:189-257
+//                                        without a line; their interrupts
+//    14000        AWACS sound            PPCMac_awacs: awacs.cpp's registers,
+//                                        the frames to and from channels 8
+//                                        and 9 at the sample rate, the
+//                                        samples out on snd_left/snd_right
 //    15000        SWIM3 floppy           PPCMac_swim3: the chip with an
 //                                        empty Superdrive (swim3.cpp,
 //                                        superdrive.cpp)
@@ -72,6 +84,7 @@ module PPCMac_gc
 	input  logic        rtxc_tick,     // one clock at 3,686,400 Hz, the ESCC's RTxC
 	input  logic        scsi_tick,     // one clock at SCSI_HZ: MESH's time, Curio's chip clock
 	input  logic        us_tick,       // one clock a microsecond: the SWIM3's timer and steps
+	input  logic        snd_tick,      // one clock at 88,200 Hz: AWACS's frames
 	input  logic        sel,
 	input  logic        we,
 	input  logic [16:2] addr,          // offset in the 128 KB window
@@ -98,8 +111,9 @@ module PPCMac_gc
 	input  logic [12:0] nv_ld_addr,
 	input  logic [7:0]  nv_ld_data,
 
-	// the Control video's VBL interrupt (source 1A)
+	// the Control video's VBL interrupt (source 1A); Cuda's NMI (14)
 	input  logic         ctl_irq,
+	input  logic         nmi,
 
 	// the internal SCSI bus: what MESH drives, and the lines (1 = asserted)
 	output logic         mesh_rst, mesh_bsy, mesh_sel, mesh_atn, mesh_ack, mesh_req, mesh_msg, mesh_cd, mesh_io,
@@ -117,6 +131,10 @@ module PPCMac_gc
 	output logic [255:0] dm_wdata,
 	input  logic         dm_ack,
 	input  logic [255:0] dm_rdata,
+
+	// the sound AWACS plays, signed, at its frame rate
+	output logic [15:0]  snd_left,
+	output logic [15:0]  snd_right,
 
 	// RaDACal to the scan-out: its state, and its colour table in the video clock
 	output logic [7:0]   dac_cr,
@@ -145,37 +163,26 @@ wire        single = (be == 4'b1000) | (be == 4'b0100) | (be == 4'b0010) | (be =
 // each line as last seen: the levels register, and the edge detector.
 logic [31:0] int_mask, int_events, int_lines_q;
 logic        via_irq;                           // the VIA's IRQ: an enabled flag is set
-logic        curio_irq, mesh_irq, swim_irq;
-logic        dma_a_lvl;                         // MESH's DMA channel's interrupt, until cleared
-wire  [31:0] int_lines  = {5'h0, ctl_irq, 6'h0, swim_irq, via_irq, 4'h0, mesh_irq, curio_irq, 1'b0, dma_a_lvl, 10'h0};
+logic        curio_irq, mesh_irq, swim_irq, mace_irq, scc_a_irq, scc_b_irq;
+logic [10:0] dma_lvl;                           // the DMA channels' interrupts, until cleared
+wire  [31:0] int_lines  = {5'h0, ctl_irq, 5'h0, nmi, swim_irq, via_irq, 1'b0, scc_b_irq, scc_a_irq, mace_irq, mesh_irq, curio_irq, 1'b0, dma_lvl};
 wire  [31:0] int_levels = int_lines_q | 32'h0000_0800;   // dingusppc ORs in bit 11 (grandcentral.cpp:306)
 wire         int_68k    = int_mask[31];         // MACIO_INT_MODE: an event at either edge
 wire  [31:0] int_chg    = int_lines ^ int_lines_q;
 assign irq = |(int_events & int_mask & 32'h7FFF_FFFF);
 
-// ---- DMA channels: 0-3 Curio, floppy, Ethernet out and in; 8 sound out; A MESH ----
-// (4-7, the serial channels, and 9, sound in, read 0 and ignore writes).
-// Channel A is PPCMac_dbdma (below); the others' registers are kept here.
-localparam int NCH = 6;
+// ---- DMA channels: 0-3 Curio, floppy, Ethernet out and in; 8, 9 sound out and in; A MESH ----
+// (4-7, the serial channels, read 0 and ignore writes, as in dingusppc).
+// Channels 2, 3, 8, 9 and A are PPCMac_dbdma (below); 0's and 1's
+// registers are kept here.
+localparam int NCH = 2;
 logic [15:0] ch_stat [NCH];
 logic [31:0] ch_cmd  [NCH];
 logic [31:0] ch_isel [NCH];
 logic [31:0] ch_bsel [NCH];
 logic [31:0] ch_wsel [NCH];
-logic [2:0]  ch;
-logic        ch_ok;
-always_comb begin
-	ch_ok = 1'b1;
-	case (addr[14:8])
-		7'd0:  ch = 3'd0;
-		7'd1:  ch = 3'd1;
-		7'd2:  ch = 3'd2;
-		7'd3:  ch = 3'd3;
-		7'd8:  ch = 3'd4;
-		7'd10: ch = 3'd5;
-		default: begin ch = 3'd0; ch_ok = 1'b0; end
-	endcase
-end
+wire         ch    = addr[8];
+wire         ch_ok = addr[14:9] == 6'd0;
 wire [31:0] wle = bswap32(wdata);               // dingusppc swaps a written word (dbdma.cpp:348)
 
 // ---- ESCC (PPCMac_escc) ----------------------------------------------------------------
@@ -203,7 +210,7 @@ logic [7:0] scc_rq;
 PPCMac_escc escc (
 	.clk, .reset, .rtxc_tick,
 	.sel(sel & devs & (scc_compat | scc_risc)), .we, .rn(scc_rn), .wdata(wb),
-	.rq(scc_rq), .txd_a(modem_txd), .rxd_a(modem_rxd)
+	.rq(scc_rq), .txd_a(modem_txd), .rxd_a(modem_rxd), .irq_a(scc_a_irq), .irq_b(scc_b_irq)
 );
 
 // ---- the SCSI controllers: byte registers at (offset >> 4) & F (grandcentral.cpp:188, 211) ----
@@ -219,6 +226,47 @@ logic       mi_valid, mi_take, mi_flush, mo_ready, mo_put, dma_drained, dma_a_ir
 logic [7:0] mi_data, mo_data;
 logic [31:0] dma_a_rle;
 wire        dma_a_sel = sel & dma & (addr[14:8] == 7'd10) & (addr[7:5] == 3'd0);   // its first 32 bytes
+
+// ---- the DBDMA engines' way to memory: one access at a time ---------------------------------
+// Each engine holds its request until acknowledged; the port is granted to
+// one (sound out, sound in, MESH, Ethernet out, Ethernet in, in that order:
+// the sound channels stream in real time and move little) and released in
+// the cycle of its acknowledge.
+logic         a_req, a_we, a_line, s8_req, s8_we, s8_line, s9_req, s9_we, s9_line;
+logic         e2_req, e2_we, e2_line, e3_req, e3_we, e3_line;
+logic [31:2]  a_addr, s8_addr, s9_addr, e2_addr, e3_addr;
+logic [3:0]   a_be, s8_be, s9_be, e2_be, e3_be;
+logic [255:0] a_wdata, s8_wdata, s9_wdata, e2_wdata, e3_wdata;
+logic         g_busy;
+logic [2:0]   g_own;                           // 0 MESH (A), 1 sound out (8), 2 sound in (9), 3 Ethernet out (2), 4 in (3)
+always_comb begin
+	case (g_own)
+		3'd1:    begin dm_req = g_busy & s8_req; dm_we = s8_we; dm_line = s8_line; dm_addr = s8_addr; dm_be = s8_be; dm_wdata = s8_wdata; end
+		3'd2:    begin dm_req = g_busy & s9_req; dm_we = s9_we; dm_line = s9_line; dm_addr = s9_addr; dm_be = s9_be; dm_wdata = s9_wdata; end
+		3'd3:    begin dm_req = g_busy & e2_req; dm_we = e2_we; dm_line = e2_line; dm_addr = e2_addr; dm_be = e2_be; dm_wdata = e2_wdata; end
+		3'd4:    begin dm_req = g_busy & e3_req; dm_we = e3_we; dm_line = e3_line; dm_addr = e3_addr; dm_be = e3_be; dm_wdata = e3_wdata; end
+		default: begin dm_req = g_busy & a_req;  dm_we = a_we;  dm_line = a_line;  dm_addr = a_addr;  dm_be = a_be;  dm_wdata = a_wdata;  end
+	endcase
+end
+wire a_ack  = dm_ack & g_busy & (g_own == 3'd0);
+wire s8_ack = dm_ack & g_busy & (g_own == 3'd1);
+wire s9_ack = dm_ack & g_busy & (g_own == 3'd2);
+wire e2_ack = dm_ack & g_busy & (g_own == 3'd3);
+wire e3_ack = dm_ack & g_busy & (g_own == 3'd4);
+always_ff @(posedge clk) begin
+	if (dm_ack) g_busy <= 1'b0;
+	else if (!g_busy) begin
+		if (s8_req)      begin g_busy <= 1'b1; g_own <= 3'd1; end
+		else if (s9_req) begin g_busy <= 1'b1; g_own <= 3'd2; end
+		else if (a_req)  begin g_busy <= 1'b1; g_own <= 3'd0; end
+		else if (e2_req) begin g_busy <= 1'b1; g_own <= 3'd3; end
+		else if (e3_req) begin g_busy <= 1'b1; g_own <= 3'd4; end
+	end
+	if (reset) begin
+		g_busy <= 1'b0;
+		g_own  <= 3'd0;
+	end
+end
 
 PPCMac_mesh #(.TICK_HZ(SCSI_HZ)) mesh (
 	.clk, .reset, .tick(scsi_tick),
@@ -237,14 +285,100 @@ PPCMac_mesh #(.TICK_HZ(SCSI_HZ)) mesh (
 PPCMac_dbdma dma_a (
 	.clk, .reset,
 	.sel(dma_a_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_a_rle),
-	.dm_req, .dm_we, .dm_line, .dm_addr, .dm_be, .dm_wdata, .dm_ack, .dm_rdata,
+	.dm_req(a_req), .dm_we(a_we), .dm_line(a_line), .dm_addr(a_addr), .dm_be(a_be), .dm_wdata(a_wdata),
+	.dm_ack(a_ack), .dm_rdata,
 	.di_valid(mi_valid), .di_data(mi_data), .di_take(mi_take), .di_flush(mi_flush),
 	.do_ready(mo_ready), .do_data(mo_data), .do_put(mo_put),
 	/* verilator lint_off PINCONNECTEMPTY */
-	.xfer_in(), .xfer_out(),
+	.do_last(), .xfer_in(), .xfer_out(), .active(),
 	/* verilator lint_on PINCONNECTEMPTY */
 	.drained(dma_drained),
 	.irq(dma_a_irq)
+);
+
+// ---- AWACS (PPCMac_awacs) and its DMA channels, 8 out and 9 in -------------------------------
+logic [31:0] awacs_rq, dma_8_rle, dma_9_rle;
+logic        s8_ready, s8_put, s8_active, s8_irq, s9_valid, s9_take, s9_active, s9_irq;
+logic [7:0]  s8_data, s9_data;
+wire         dma_8_sel = sel & dma & (addr[14:8] == 7'd8) & (addr[7:5] == 3'd0);
+wire         dma_9_sel = sel & dma & (addr[14:8] == 7'd9) & (addr[7:5] == 3'd0);
+
+PPCMac_awacs awacs (
+	.clk, .reset, .snd_tick,
+	.sel(sel & devs & (sub == 4'h4) & (off[3:0] == 4'h0)), .we, .rn(off[7:4]), .wdata, .rq(awacs_rq),
+	.out_active(s8_active), .do_ready(s8_ready), .do_data(s8_data), .do_put(s8_put),
+	.in_active(s9_active), .di_valid(s9_valid), .di_data(s9_data), .di_take(s9_take),
+	.left(snd_left), .right(snd_right)
+);
+
+PPCMac_dbdma dma_8 (
+	.clk, .reset,
+	.sel(dma_8_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_8_rle),
+	.dm_req(s8_req), .dm_we(s8_we), .dm_line(s8_line), .dm_addr(s8_addr), .dm_be(s8_be), .dm_wdata(s8_wdata),
+	.dm_ack(s8_ack), .dm_rdata,
+	.di_valid(1'b0), .di_data(8'h00), .di_flush(1'b0),
+	.do_ready(s8_ready), .do_data(s8_data), .do_put(s8_put),
+	/* verilator lint_off PINCONNECTEMPTY */
+	.do_last(), .di_take(), .xfer_in(), .xfer_out(), .drained(),
+	/* verilator lint_on PINCONNECTEMPTY */
+	.active(s8_active),
+	.irq(s8_irq)
+);
+
+PPCMac_dbdma dma_9 (
+	.clk, .reset,
+	.sel(dma_9_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_9_rle),
+	.dm_req(s9_req), .dm_we(s9_we), .dm_line(s9_line), .dm_addr(s9_addr), .dm_be(s9_be), .dm_wdata(s9_wdata),
+	.dm_ack(s9_ack), .dm_rdata,
+	.di_valid(s9_valid), .di_data(s9_data), .di_take(s9_take), .di_flush(1'b0),
+	.do_ready(1'b0),
+	/* verilator lint_off PINCONNECTEMPTY */
+	.do_data(), .do_put(), .do_last(), .xfer_in(), .xfer_out(), .drained(),
+	/* verilator lint_on PINCONNECTEMPTY */
+	.active(s9_active),
+	.irq(s9_irq)
+);
+
+// ---- MACE (PPCMac_mace): byte registers at (offset >> 4) & 1F (grandcentral.cpp:190), ----
+// ---- and its DMA channels, 2 out and 3 in ----
+logic [7:0]  mace_rq;
+logic [31:0] dma_2_rle, dma_3_rle;
+logic        e2_ready, e2_put, e2_last, e2_irq, e3_irq;
+wire         dma_2_sel = sel & dma & (addr[14:8] == 7'd2) & (addr[7:5] == 3'd0);
+wire         dma_3_sel = sel & dma & (addr[14:8] == 7'd3) & (addr[7:5] == 3'd0);
+
+PPCMac_mace mace (
+	.clk, .reset, .us_tick,
+	.sel(sel & devs & (sub == 4'h1)), .we, .rn(off[8:4]), .wdata(wb),
+	.rq(mace_rq),
+	.do_ready(e2_ready), .do_put(e2_put), .do_last(e2_last),
+	.irq(mace_irq)
+);
+
+PPCMac_dbdma dma_2 (
+	.clk, .reset,
+	.sel(dma_2_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_2_rle),
+	.dm_req(e2_req), .dm_we(e2_we), .dm_line(e2_line), .dm_addr(e2_addr), .dm_be(e2_be), .dm_wdata(e2_wdata),
+	.dm_ack(e2_ack), .dm_rdata,
+	.di_valid(1'b0), .di_data(8'h00), .di_flush(1'b0),
+	.do_ready(e2_ready), .do_put(e2_put), .do_last(e2_last),
+	/* verilator lint_off PINCONNECTEMPTY */
+	.do_data(), .di_take(), .xfer_in(), .xfer_out(), .drained(), .active(),
+	/* verilator lint_on PINCONNECTEMPTY */
+	.irq(e2_irq)
+);
+
+PPCMac_dbdma dma_3 (
+	.clk, .reset,
+	.sel(dma_3_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_3_rle),
+	.dm_req(e3_req), .dm_we(e3_we), .dm_line(e3_line), .dm_addr(e3_addr), .dm_be(e3_be), .dm_wdata(e3_wdata),
+	.dm_ack(e3_ack), .dm_rdata,
+	.di_valid(1'b0), .di_data(8'h00), .di_flush(1'b0),
+	.do_ready(1'b0),
+	/* verilator lint_off PINCONNECTEMPTY */
+	.do_data(), .do_put(), .do_last(), .di_take(), .xfer_in(), .xfer_out(), .drained(), .active(),
+	/* verilator lint_on PINCONNECTEMPTY */
+	.irq(e3_irq)
 );
 
 // ---- SWIM3 (PPCMac_swim3): byte registers at (offset >> 4) & F (grandcentral.cpp:205) ----
@@ -255,10 +389,6 @@ PPCMac_swim3 swim3 (
 	.sel(sel & devs & (sub == 4'h5)), .we, .rn(off[7:4]), .wdata(wb),
 	.rq(swim_rq), .irq(swim_irq)
 );
-
-// ---- AWACS (awacs.cpp:189-257) ---------------------------------------------------------
-logic [31:0] snd_ctrl, codec_ctrl, clip_count, frame_count;
-logic        byte_swap;
 
 // ---- VIA (viacuda.cpp; port B and the shift register as a 6522 and Cuda have them) -------
 // Port B is a 6522's: the output register holds all eight bits and a read
@@ -337,6 +467,10 @@ always_comb begin
 	end
 	else if (dma) begin
 		if (addr[14:8] == 7'd10) rq = (off[7:5] == 3'd0) ? bswap32(dma_a_rle) : 32'h0;
+		else if (addr[14:8] == 7'd8) rq = (off[7:5] == 3'd0) ? bswap32(dma_8_rle) : 32'h0;
+		else if (addr[14:8] == 7'd9) rq = (off[7:5] == 3'd0) ? bswap32(dma_9_rle) : 32'h0;
+		else if (addr[14:8] == 7'd2) rq = (off[7:5] == 3'd0) ? bswap32(dma_2_rle) : 32'h0;
+		else if (addr[14:8] == 7'd3) rq = (off[7:5] == 3'd0) ? bswap32(dma_3_rle) : 32'h0;
 		else if (ch_ok) begin
 			case (off[7:2])
 				6'd1:    rq = bswap32({16'h0, ch_stat[ch]});
@@ -351,20 +485,11 @@ always_comb begin
 	else begin
 		case (sub)
 			4'h0:       rq = byte_reg_rdata(be, curio_rq);
+			4'h1:       rq = byte_reg_rdata(be, mace_rq);
 			4'h8:       rq = byte_reg_rdata(be, mesh_rq);
 			4'h5:       rq = byte_reg_rdata(be, swim_rq);
 			4'h2, 4'h3: if (scc_compat | scc_risc) rq = byte_reg_rdata(be, scc_rq);
-			4'h4: begin
-				case (off[7:0])
-					8'h00:   rq = snd_ctrl;
-					8'h10:   rq = codec_ctrl;
-					8'h20:   rq = 32'h0031_4000;   // available, Crystal, Screamer
-					8'h30:   rq = clip_count;
-					8'h40:   rq = {31'h0, ~byte_swap};
-					8'h50:   rq = frame_count;
-					default: rq = 32'h0;
-				endcase
-			end
+			4'h4:    rq = (off[3:0] == 4'h0) ? awacs_rq : 32'h0;
 			4'h6, 4'h7: begin
 				case (via_reg)
 					4'd0:        rq = byte_reg_rdata(be, via_pb_rd);
@@ -464,9 +589,13 @@ always_ff @(posedge clk) begin
 	rad_rd_q <= rad_sel & ~we;
 	if (sel) rdata_q <= rq;
 
-	// MESH's DMA channel's interrupt: a level until the clear register drops
-	// it (clear_dma_int; its falling edge is a new event in 68k mode)
-	if (dma_a_irq) dma_a_lvl <= 1'b1;
+	// the DMA channels' interrupts: each a level until the clear register
+	// drops it (clear_dma_int; its falling edge is a new event in 68k mode)
+	if (s8_irq)    dma_lvl[8]  <= 1'b1;
+	if (s9_irq)    dma_lvl[9]  <= 1'b1;
+	if (dma_a_irq) dma_lvl[10] <= 1'b1;
+	if (e2_irq)    dma_lvl[2]  <= 1'b1;
+	if (e3_irq)    dma_lvl[3]  <= 1'b1;
 
 	if (sel & ints & we) begin
 		case (off[7:0])
@@ -475,7 +604,7 @@ always_ff @(posedge clk) begin
 				// with MACIO_INT_MODE in the mask, MACIO_INT_CLR clears everything
 				if (int_mask[31] & wle[31]) int_events <= 32'h0;
 				else int_events <= int_events & ~(wle & 32'h7FFF_FFFF);
-				if (wle[10]) dma_a_lvl <= 1'b0;
+				dma_lvl <= dma_lvl & ~wle[10:0];
 			end
 			default: ;
 		endcase
@@ -489,7 +618,7 @@ always_ff @(posedge clk) begin
 		if (int_chg[i]) int_events[i] <= int_68k | int_lines[i];
 	int_lines_q <= int_lines;
 
-	if (sel & dma & we & ch_ok & (ch != 3'd5)) begin
+	if (sel & dma & we & ch_ok) begin
 		case (off[7:2])
 			6'd0: begin
 				// ChannelControl: the top half masks the bottom half
@@ -509,16 +638,6 @@ always_ff @(posedge clk) begin
 
 	if (sel & devs) begin
 		case (sub)
-			4'h4: begin
-				case (off[7:0])
-					8'h00: if (we) snd_ctrl <= wle;
-					8'h10: if (we) codec_ctrl <= wdata | {8'h0, wdata[15:14], 22'h0};
-					8'h30: clip_count <= we ? wle : 32'h0;
-					8'h40: if (we) byte_swap <= wdata != 32'h0;
-					8'h50: if (we) frame_count <= wle;
-					default: ;
-				endcase
-			end
 			4'h6, 4'h7: begin
 				case (via_reg)
 					4'd0:        if (we) via_orb <= wb;
@@ -566,7 +685,7 @@ always_ff @(posedge clk) begin
 		int_mask    <= 32'h0;
 		int_events  <= 32'h0;
 		int_lines_q <= 32'h0;
-		dma_a_lvl   <= 1'b0;
+		dma_lvl     <= 11'h0;
 		for (int i = 0; i < NCH; i++) begin
 			ch_stat[i] <= 16'h0;
 			ch_cmd[i]  <= 32'h0;
@@ -574,11 +693,6 @@ always_ff @(posedge clk) begin
 			ch_bsel[i] <= 32'h0;
 			ch_wsel[i] <= 32'h0;
 		end
-		snd_ctrl    <= 32'h0;
-		codec_ctrl  <= 32'h0;
-		clip_count  <= 32'h0;
-		frame_count <= 32'h0;
-		byte_swap   <= 1'b0;
 		via_orb     <= 8'h0;
 		via_porta   <= 8'h0;
 		sr_cnt      <= 5'd15;

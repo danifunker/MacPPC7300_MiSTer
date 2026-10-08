@@ -60,6 +60,11 @@ module PPCMac_system
 	output logic         modem_txd,
 	input  logic         modem_rxd,
 
+	// the sound AWACS plays, signed, in the CPU's clock, changing at its
+	// frame rate (the framework's audio input takes a value seen twice)
+	output logic [15:0]  snd_left,
+	output logic [15:0]  snd_right,
+
 	// Grand Central's NVRAM written from outside, a byte a cycle in the
 	// CPU's clock, while reset is held
 	input  logic         nv_ld_we,
@@ -74,6 +79,11 @@ module PPCMac_system
 	// synchronise them)
 	input  logic [10:0]  ps2_key,
 	input  logic [24:0]  ps2_mouse,
+
+	// the date and time for Cuda's clock (seconds since 1904), steady in the
+	// CPU's clock while clock_ok; set once as the machine starts
+	input  logic         clock_ok,
+	input  logic [31:0]  clock_secs,
 
 	// the disk images: hps_io's block devices, slots 0 and 1, in the memory's clock
 	input  logic [1:0]   img_mounted,
@@ -206,8 +216,8 @@ PPCMac_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_FAST
 	.img_mounted, .img_size, .img_readonly, .sd_lba, .sd_rd, .sd_wr, .sd_ack,
 	.sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr, .disk_busy,
 	.dma_wr, .dma_wr_line, .dma_wr_addr, .dma_wr_be, .dma_wr_data,
-	.modem_txd, .modem_rxd, .nv_ld_we, .nv_ld_addr, .nv_ld_data,
-	.mon_std, .mon_ext, .ps2_key, .ps2_mouse,
+	.modem_txd, .modem_rxd, .snd_left, .snd_right, .nv_ld_we, .nv_ld_addr, .nv_ld_data,
+	.mon_std, .mon_ext, .ps2_key, .ps2_mouse, .clock_ok, .clock_secs,
 	.v_req, .v_we, .v_line, .v_addr, .v_be, .v_wdata, .v_ack, .v_rdata,
 	.timing_on, .sw_params, .fb_base, .row_words, .hs_pos, .vs_pos, .dac_cr, .dbl_buf_cr,
 	.cursor_x, .cursor_clut, .athens_d2, .athens_n2, .athens_p2, .vbl_start_tog, .vbl_end_tog,

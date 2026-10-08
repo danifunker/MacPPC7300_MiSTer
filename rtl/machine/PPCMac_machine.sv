@@ -72,9 +72,10 @@
 //  Also made here: tb_tick for the CPU's time base and decrementer, at
 //  TB_HZ on average from any CPU clock (the 604 counts every fourth bus
 //  clock; the 7600's bus is 50 MHz), the VIA's 783,360 Hz clock, the
-//  ESCC's RTxC at 3,686,400 Hz and the SCSI controllers' 25 MHz (MESH's
-//  delays and selection timeout, Curio's chip clock); all by phase
-//  accumulation. ext_irq is Grand
+//  ESCC's RTxC at 3,686,400 Hz, the SCSI controllers' 25 MHz (MESH's
+//  delays and selection timeout, Curio's chip clock), a microsecond tick
+//  (the SWIM3) and twice 44,100 Hz (AWACS's frames, whose samples come
+//  out as snd_left and snd_right); all by phase accumulation. ext_irq is Grand
 //  Central's interrupt output. The ESCC's channel A, the modem port, comes
 //  out as modem_txd and modem_rxd; Grand Central's NVRAM can be written
 //  from outside through nv_ld_* (an image loaded while reset is held).
@@ -153,6 +154,10 @@ module PPCMac_machine
 	output logic         modem_txd,
 	input  logic         modem_rxd,
 
+	// the sound AWACS plays (signed, changing at its frame rate)
+	output logic [15:0]  snd_left,
+	output logic [15:0]  snd_right,
+
 	// Grand Central's NVRAM written from outside, a byte a cycle, while
 	// the machine is held in reset
 	input  logic         nv_ld_we,
@@ -166,6 +171,10 @@ module PPCMac_machine
 	// the keyboard and the mouse, as hps_io gives them (PPCMac_adb)
 	input  logic [10:0]  ps2_key,
 	input  logic [24:0]  ps2_mouse,
+
+	// the date and time for Cuda's clock: seconds since 1904, steady in this clock
+	input  logic         clock_ok,
+	input  logic [31:0]  clock_secs,
 
 	// the VRAM, by VRAM byte address, to its clock crossing (the CPU port's
 	// protocol, VRAM's byte order)
@@ -391,15 +400,22 @@ wire [31:2] dev_a   = c_line ? {c_addr[31:5], pres_k} : c_addr;
 wire  [3:0] dev_be  = c_line ? 4'hF : c_be;
 wire [31:0] dev_wd  = c_line ? c_wdata[255 - 32 * pres_k -: 32] : c_wdata[31:0];
 
-// ---- the time base, the VIA's clock, the ESCC's and the SCSI controllers', the microsecond ----
-logic [31:0] tb_acc, via_acc, rtxc_acc, scsi_acc, us_acc;
-logic        via_tick, rtxc_tick, scsi_tick, us_tick;
+// ---- the time base, the VIA's clock, the ESCC's and the SCSI controllers', the microsecond, ----
+// ---- AWACS's twice 44,100 Hz ----
+logic [31:0] tb_acc, via_acc, rtxc_acc, scsi_acc, us_acc, snd_acc;
+logic        via_tick, rtxc_tick, scsi_tick, us_tick, snd_tick;
 always_ff @(posedge clk) begin
 	tb_tick   <= 1'b0;
 	via_tick  <= 1'b0;
 	rtxc_tick <= 1'b0;
 	scsi_tick <= 1'b0;
 	us_tick   <= 1'b0;
+	snd_tick  <= 1'b0;
+	if (snd_acc + 32'd88_200 >= CPU_HZ) begin
+		snd_acc  <= snd_acc + 32'd88_200 - CPU_HZ;
+		snd_tick <= 1'b1;
+	end
+	else snd_acc <= snd_acc + 32'd88_200;
 	if (us_acc + 32'd1_000_000 >= CPU_HZ) begin
 		us_acc  <= us_acc + 32'd1_000_000 - CPU_HZ;
 		us_tick <= 1'b1;
@@ -431,6 +447,8 @@ always_ff @(posedge clk) begin
 		rtxc_acc  <= 32'h0;
 		scsi_acc  <= 32'h0;
 		us_acc    <= 32'h0;
+		snd_acc   <= 32'h0;
+		snd_tick  <= 1'b0;
 		tb_tick   <= 1'b0;
 		via_tick  <= 1'b0;
 		rtxc_tick <= 1'b0;
@@ -476,6 +494,7 @@ PPCMac_pcicfg #(.BRIDGE(1)) bandit (
 // ---- Control's registers, at its second BAR (4 KB: the 512 bytes repeated) ------------------
 logic [31:0] ctl_rdata;
 logic        ctl_irq;
+logic        cuda_nmi;                     // Cuda's NMI (PC2), Grand Central's source 14
 
 PPCMac_control control (
 	.clk, .reset,
@@ -506,16 +525,17 @@ wire        scsi_io  = mesh_io  | t_io;
 wire [7:0]  scsi_db  = mesh_db  | t_db;
 
 PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
-	.clk, .reset, .via_tick, .rtxc_tick, .scsi_tick, .us_tick,
+	.clk, .reset, .via_tick, .rtxc_tick, .scsi_tick, .us_tick, .snd_tick,
 	.sel(present & is_gc), .we(c_we), .addr(dev_a[16:2]), .be(dev_be), .wdata(dev_wd),
 	.rdata(gc_rdata), .irq(gc_irq),
 	.cuda_treq, .cuda_cb1, .cb2(cb2_line), .via_tip, .via_byteack, .via_cb2_oe, .via_cb2_out,
 	.modem_txd, .modem_rxd, .nv_ld_we, .nv_ld_addr, .nv_ld_data,
-	.ctl_irq,
+	.ctl_irq, .nmi(cuda_nmi),
 	.mesh_rst, .mesh_bsy, .mesh_sel, .mesh_atn, .mesh_ack, .mesh_req, .mesh_msg, .mesh_cd, .mesh_io, .mesh_db,
 	.scsi_rst, .scsi_bsy, .scsi_sel, .scsi_atn, .scsi_ack, .scsi_req, .scsi_msg, .scsi_cd, .scsi_io, .scsi_db,
 	.dm_req(gdm_req), .dm_we(gdm_we), .dm_line(gdm_line), .dm_addr(gdm_addr), .dm_be(gdm_be),
 	.dm_wdata(gdm_wdata), .dm_ack(gdm_ack), .dm_rdata(gdm_rdata),
+	.snd_left, .snd_right,
 	.dac_cr, .dbl_buf_cr, .cursor_x, .cursor_clut, .clk_v, .clut_index, .clut_rgb
 );
 
@@ -556,7 +576,7 @@ PPCMac_cuda #(.CLK_HZ(CPU_HZ), .FAST_BOOT(CUDA_FAST_BOOT != 0)) cuda (
 	.clk, .reset,
 	.via_tip, .via_byteack, .treq(cuda_treq), .cb1(cuda_cb1),
 	.cb2_oe(cuda_cb2_oe), .cb2_out(cuda_cb2_out), .cb2(cb2_line),
-	.cpu_reset,
+	.cpu_reset, .nmi(cuda_nmi), .clock_ok, .clock_secs,
 	.adb_low, .adb_line(~(adb_low | adb_dev_low)), .tick(cuda_tick),
 	.iic_scl_low, .iic_sda_low, .iic_scl, .iic_sda,
 	.dbg_cen(cu_cen), .dbg_addr(cu_addr), .dbg_rd(cu_rd), .dbg_wr(cu_wr),

@@ -55,6 +55,10 @@ PPCMac_cuda #(.CLK_HZ(CLK_HZ)) cuda (
 	.clk, .reset,
 	.via_tip, .via_byteack, .treq, .cb1, .cb2_oe, .cb2_out, .cb2,
 	.cpu_reset, .adb_low, .adb_line, .tick,
+	/* verilator lint_off PINCONNECTEMPTY */
+	.nmi(),
+	/* verilator lint_on PINCONNECTEMPTY */
+	.clock_ok(1'b0), .clock_secs(32'h0),
 	.iic_scl_low, .iic_sda_low, .iic_scl, .iic_sda,
 	.dbg_cen, .dbg_addr, .dbg_rd, .dbg_wr, .dbg_wdata, .dbg_rdata,
 	.tr_valid, .tr_int, .tr_pc, .tr_op, .tr_a, .tr_x, .tr_sp, .tr_cc,

@@ -104,6 +104,7 @@ struct Options {
 	uint64_t max_instr = 0;        // stop after this many instructions (0: no limit)
 	uint64_t progress = 0;         // a line every N instructions
 	std::string dev_log;           // every device access, in machref's log format
+	uint64_t dev_log_from = 0;     // ... from this instruction on (no lockstep)
 	uint64_t trace_from = 0, trace_count = 0;
 	uint64_t stuck = 1ull << 24;   // cycles without a retirement that count as stuck
 	bool memtest = false;          // boot the memory test in place of the ROM
@@ -129,6 +130,8 @@ struct Options {
 	std::vector<uint64_t> dump_at; // after these instruction counts, print the registers ...
 	std::vector<std::pair<uint32_t, uint32_t>> dump_mem;   // ... and these ranges of RAM (start, length)
 	std::string dump_bin;          // ... and all of RAM, raw, to this file with the count appended
+	std::string wav;               // the sound AWACS plays, 16-bit stereo at 44,100 Hz of the machine's time
+	uint32_t clock_secs = 0;       // Cuda's clock as the machine starts, seconds since 1904 (0: the firmware's own)
 };
 
 // A frame as a PNG, stored (uncompressed) deflate blocks: no zlib needed.
@@ -304,6 +307,8 @@ void usage() {
 		"  --max-instr N    stop after N instructions\n"
 		"  --progress N     print where the CPU is every N instructions\n"
 		"  --dev-log FILE   log every device access (machref's format)\n"
+		"  --dev-log-from N ... from the Nth instruction on (without lockstep: a fast run to a\n"
+		"                   late problem)\n"
 		"  --trace-from N --trace-count M   print M retired instructions from the Nth\n"
 		"  --stuck N        cycles without a retirement that end the run (default 2^24)\n"
 		"  --boot memtest   run the memory-test boot program instead of the ROM (no --rom)\n"
@@ -342,6 +347,10 @@ void usage() {
 		"                   reference's RAM in lockstep (exact), else the bench's memory (what the\n"
 		"                   caches have written back)\n"
 		"  --dump-bin FILE  ... and all of RAM, raw, to FILE.<count>\n"
+		"  --wav FILE       write the sound AWACS plays (16-bit stereo, 44,100 Hz of the\n"
+		"                   machine's time) to FILE\n"
+		"  --clock SECS     set Cuda's clock as the machine starts (seconds since 1904, as the\n"
+		"                   MiSTer's RTC does; default: the firmware's cold-start 1956)\n"
 #else
 		"usage: core_tb --prog FILE [options]\n"
 		"  --irq-every N    raise the external interrupt every N cycles; a store to\n"
@@ -622,6 +631,7 @@ int main(int argc, char** argv) {
 		else if (a == "--max-instr") opt.max_instr = std::strtoull(next().c_str(), nullptr, 0);
 		else if (a == "--progress") opt.progress = std::strtoull(next().c_str(), nullptr, 0);
 		else if (a == "--dev-log") opt.dev_log = next();
+		else if (a == "--dev-log-from") opt.dev_log_from = std::strtoull(next().c_str(), nullptr, 0);
 		else if (a == "--trace-from") opt.trace_from = std::strtoull(next().c_str(), nullptr, 0);
 		else if (a == "--trace-count") opt.trace_count = std::strtoull(next().c_str(), nullptr, 0);
 		else if (a == "--stuck") opt.stuck = std::strtoull(next().c_str(), nullptr, 0);
@@ -658,6 +668,8 @@ int main(int argc, char** argv) {
 		else if (a == "--exc-log") opt.exc_log = next();
 		else if (a == "--dump-at") opt.dump_at.push_back(std::strtoull(next().c_str(), nullptr, 0));
 		else if (a == "--dump-bin") opt.dump_bin = next();
+		else if (a == "--wav") opt.wav = next();
+		else if (a == "--clock") opt.clock_secs = (uint32_t)std::strtoul(next().c_str(), nullptr, 0);
 		else if (a == "--dump-mem") {
 			unsigned long long s = 0, l = 0;
 			if (std::sscanf(next().c_str(), "%llx:%llx", &s, &l) != 2) { usage(); return 2; }
@@ -720,6 +732,22 @@ int main(int argc, char** argv) {
 		if (!term.log) { std::fprintf(stderr, "cannot write %s\n", opt.serial_log.c_str()); return 2; }
 	}
 	int nv_ld = -1;                    // the NVRAM byte being loaded, while reset is held
+	// the sound: a WAV file whose sizes are written at the end
+	FILE* wav = nullptr;
+	uint64_t wav_acc = 0, wav_frames = 0;
+	const uint64_t wav_hz = (uint64_t)(opt.cpu_mhz * 1e6 + 0.5);
+	auto wav_le = [&](uint32_t v, int n) { for (int i = 0; i < n; i++) std::fputc((v >> (8 * i)) & 0xFF, wav); };
+	auto wav_header = [&]() {
+		uint32_t data = (uint32_t)(wav_frames * 4);
+		std::fwrite("RIFF", 1, 4, wav); wav_le(36 + data, 4); std::fwrite("WAVEfmt ", 1, 8, wav);
+		wav_le(16, 4); wav_le(1, 2); wav_le(2, 2); wav_le(44100, 4); wav_le(44100 * 4, 4); wav_le(4, 2); wav_le(16, 2);
+		std::fwrite("data", 1, 4, wav); wav_le(data, 4);
+	};
+	if (!opt.wav.empty()) {
+		wav = std::fopen(opt.wav.c_str(), "wb");
+		if (!wav) { std::fprintf(stderr, "cannot write %s\n", opt.wav.c_str()); return 2; }
+		wav_header();
+	}
 	DevQueue devq;
 	if (!opt.dev_log.empty()) {
 		devq.log = std::fopen(opt.dev_log.c_str(), "w");
@@ -872,6 +900,8 @@ int main(int argc, char** argv) {
 		for (int i = 0; i < 8; i++) dut->b_rdata[i] = mm.rdata[i];
 		dut->mon_std = opt.monitor == 16 ? 7 : 6;
 		dut->mon_ext = opt.monitor == 16 ? 0x2D : 0x2B;
+		dut->clock_ok = opt.clock_secs != 0;
+		dut->clock_secs = opt.clock_secs;
 		dut->ddr_busy = ddr.busy;
 		dut->ddr_dout_ready = ddr.ready;
 		dut->ddr_dout = ddr.dout;
@@ -1094,6 +1124,15 @@ int main(int argc, char** argv) {
 			}
 		}
 		cycles++;
+		if (wav) {
+			wav_acc += 44100;
+			if (wav_acc >= wav_hz) {
+				wav_acc -= wav_hz;
+				wav_le(dut->snd_left, 2);
+				wav_le(dut->snd_right, 2);
+				wav_frames++;
+			}
+		}
 #ifdef WITH_REF
 		// a DMA write to RAM goes into the reference's RAM too (it has no DMA)
 		if (opt.lockstep && dut->dma_wr) {
@@ -1126,7 +1165,7 @@ int main(int argc, char** argv) {
 						a.we ? "write" : "read", a.addr, (unsigned long long)retired, line_notes == 10 ? " (no more notes)" : "");
 				}
 				if (opt.lockstep) devq.q.push_back(a);
-				else if (devq.log) {
+				else if (devq.log && retired >= opt.dev_log_from) {
 					// (the pc is the last instruction retired, not the access's own)
 					if (a.we) std::fprintf(devq.log, "A %llu %08X W 4 %08X %08X be %X\n", (unsigned long long)retired, (uint32_t)dut->trace_pc, addr, a.wdata, a.be);
 					else std::fprintf(devq.log, "A %llu %08X R 4 %08X %08X be %X\n", (unsigned long long)retired, (uint32_t)dut->trace_pc, addr, a.rdata, a.be);
@@ -1740,6 +1779,13 @@ int main(int argc, char** argv) {
 #ifdef PPCMAC_MACHINE
 	dut->final();
 	if (devq.log) std::fclose(devq.log);
+	if (wav) {
+		std::fseek(wav, 0, SEEK_SET);
+		wav_header();
+		std::fclose(wav);
+		std::printf("sound: %llu frames (%.2f s) written to %s\n", (unsigned long long)wav_frames,
+			wav_frames / 44100.0, opt.wav.c_str());
+	}
 	if (!term.line.empty()) term.flush_line();
 	if (term.log) std::fclose(term.log);
 	if (term.chars || !term.script.empty())

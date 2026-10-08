@@ -51,7 +51,12 @@
 //    PA1 in   1: the power button is up     PB1 out TREQ, to the VIA's PB3
 //    PA0 in   1: the power is good          PB0 in  1: +5 V is there
 //    PC3      the CPU's reset, low resets; pulled up
-//    PC2      NMI, pulled up; PC1, PC0 in: 1
+//    PC2      NMI, pulled up; driven low, Grand Central's interrupt source
+//             14 (nmi): the firmware pulses it (1C2B) when the keyboard's
+//             Command and power keys are down together (its key table at
+//             1B7D: Control, Command, power, Option; 1DB1 picks the NMI or,
+//             with Control too, the reset at 1BF6)
+//    PC1, PC0 in: 1
 //
 //  The straps are MAME's (cuda.cpp pa_r, pb_r, pc_r) but for PA5, which
 //  MAME reads as 0. MAME has no RTI, so its Cuda never runs the timer
@@ -101,6 +106,9 @@ module PPCMac_cuda
 
 	// the rest of the board
 	output logic        cpu_reset,       // the CPU's reset
+	output logic        nmi,             // PC2 driven low: the NMI (Grand Central's source 14)
+	input  logic        clock_ok,        // clock_secs holds the date and time
+	input  logic [31:0] clock_secs,      // seconds since 1904-01-01 (the Mac's clock), steady
 	output logic        adb_low,         // pull the ADB line low
 	input  logic        adb_line,        // the ADB line's level
 	output logic        tick,            // the 4,194,304 Hz time base (for the ADB devices' timing)
@@ -189,6 +197,7 @@ assign cb2_oe      = ddrb[5];
 assign cb2_out     = pb[5];
 assign iic_sda_low = ddrb[6] & ~pb[6];
 assign iic_scl_low = ddrb[7] & ~pb[7];
+assign nmi         = ddrc[2] & ~pc_[2];
 
 // the CPU's reset follows PC3, once the firmware has first pulled it low
 wire  pc3 = ~ddrc[3] | pc_[3];
@@ -214,6 +223,19 @@ wire        is_io  = addr[12:5] == 8'h00;
 wire        is_ram = addr >= 13'h0090 && addr < 13'h0200;
 wire        is_rom = addr >= 13'h0F00;
 
+// ---- the clock: set once, when the CPU's reset is first released ---------------------------
+// As MAME's Cuda does (cuda.cpp pc_w): the firmware's cold start has set its
+// clock (RAM AB-AE, seconds since 1904, the high byte first) to 630BD178;
+// the date and time go there as the machine starts, a byte a clock when the
+// firmware is not writing RAM itself. Not again until this module's reset.
+logic [2:0] clk_ld;                    // bytes left: AE at 4 ... AB at 1
+logic       clk_set, rst_q;
+wire  [7:0] clk_byte = clock_secs[8 * (3'd4 - clk_ld) +: 8];
+wire        cpu_ram_we = cen & wr & is_ram;
+wire        ram_we     = cpu_ram_we | (clk_ld != 3'd0);
+wire  [8:0] ram_wa     = cpu_ram_we ? addr[8:0] : 9'h0AA + 9'(clk_ld);
+wire  [7:0] ram_wd     = cpu_ram_we ? wdata : clk_byte;
+
 logic [7:0] ram [0:511];
 logic [7:0] ram_q, rom_q, io_q;
 logic [1:0] sel_q;                     // 0 nothing, 1 registers, 2 RAM, 3 ROM
@@ -236,7 +258,21 @@ always_ff @(posedge clk) begin
 		5'h12:   io_q <= onesec;
 		default: io_q <= 8'h00;
 	endcase
-	if (cen & wr & is_ram) ram[addr[8:0]] <= wdata;
+	if (ram_we) ram[ram_wa] <= ram_wd;
+end
+
+always_ff @(posedge clk) begin
+	rst_q <= cpu_reset;
+	if (rst_q && !cpu_reset && !clk_set && clock_ok) begin
+		clk_set <= 1'b1;
+		clk_ld  <= 3'd4;
+	end
+	else if (clk_ld != 3'd0 && !cpu_ram_we) clk_ld <= clk_ld - 3'd1;
+	if (reset) begin
+		clk_set <= 1'b0;
+		clk_ld  <= 3'd0;
+		rst_q   <= 1'b1;
+	end
 end
 
 assign rdata = sel_q == 2'd3 ? rom_q : sel_q == 2'd2 ? ram_q : sel_q == 2'd1 ? io_q : 8'h00;

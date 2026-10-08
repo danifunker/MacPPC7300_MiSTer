@@ -653,6 +653,33 @@ next session's problem (`RESUME_disk.md`). The simulation reproduces it:
 CPU in native PowerPC code in RAM (user mode, 0019A5F4-0019A664), with
 timer interrupts and kernel calls only.
 
+**"Starting Up..." (2026-10-08, the stubs session).** Two causes, one under
+the other. First, the native code was Mac OS 7.6.1's Control video driver
+(r17 'ndrv') probing for a DDC monitor: it bit-bangs I2C on the monitor
+sense lines (line 1 the clock, line 2 the data; addresses A0 and A1, the
+EDID EEPROM's), and between up to four tries waits up to 1.7 s for the data
+line to change (002164C8, 002163C8; the time from `UpTime`, the 64-bit
+arithmetic at 0019A504 its conversions). Our MON_SENSE, dingusppc's, answered
+any drive pattern but the three extended-sense ones with the standard code,
+so a line the driver drove low read back high; the sense lines are now
+wires (`PPCMac_control`), found with a device log from 705 million (17,537
+reads of MON_SENSE), the trace and RAM dump at 750 million, and the driver
+disassembled from the dump (`llvm-objdump` in WSL). Second, with that fixed
+the board still stopped at "Starting Up...", the CPU in the 68k emulator:
+Cuda's NMI, wired this session (Command-Menu), put MacsBug 6.6.3 at a 68k
+loop (`TST.B $03A6(A2)` / `BNE.S`, 002F272C, a System heap block) whose
+stack crawl runs from OpenAppleTalkServices through OTCreateATalkConfigurator,
+the stream modules and TDLPIModule::ProcessUpperMessage into the fragment
+OTLib$ATMM and the classic AppleTalk 68k link code: Open Transport bringing
+up AppleTalk (the image's AppleTalk Preferences: 'neta' "OTOn", the default
+port, the printer port's LocalTalk on the ESCC's channel B). With Shift
+held through the start-up (extensions off: no Open Transport) Mac OS 7.6.1
+reaches the Finder on the board (build of 2026-10-08, 31,825 ALMs):
+"About This Computer" shows System Software 7.6.1 and 16,384K, the pointer
+follows the mouse. Next: what the LocalTalk link waits for (the ESCC's
+synchronous mode, its DMA channels 6 and 7, Grand Central's LocalTalk
+registers at 80-B0 in the ESCC's window).
+
 ### A: sound
 
 What it needs: AWACS (`awacs.cpp`; the 7300/7600 codec, whose status the
@@ -693,7 +720,14 @@ driving it.
 
 ## Not planned
 
-- Ethernet (MACE): reads 0; nothing waits for it.
+- A network for Ethernet. MACE is modelled with its cable unplugged
+  (2026-10-08, `PPCMac_mace.sv`: registers, transmit through DMA channel 2
+  ending in loss of carrier, nothing received). A network would reuse the
+  Quadra 800 core's path: Main's `support/mac/mac_eth.cpp` bridge and a DDR3
+  mailbox like `sonic_mbx.sv`'s, with a MACE personality that only carries
+  frames (the Quadra's SONIC model runs on the ARM; MACE's registers and
+  Grand Central's DMA are already in the FPGA). The DDR3 window must stay
+  clear of the VRAM.
 - Floppy disks: the SWIM3 is modelled with an empty drive (2026-10-07,
   because Mac OS 7.6.1's System crashes while loading if the ROM's .Sony
   driver has not installed); floppy images are not planned.
@@ -715,4 +749,5 @@ driving it.
 | from K on | Asked by the user, 2026-10-07: Verilator as little as possible (the whole machine simulates at 0.6 MHz, 0.9% of real time); features are proven on the board, with unit benches where they take seconds (`run_cuda.py`) and whole-machine runs only to explain something the board shows. The board is driven through the MiSTer Remote (mrext, port 8182), as the user's other cores are (`tools\misterdeploy`): `syn\mister.py load`, `shot`, `keys`, `mouse`, `click`; SSH only copies files and reads the UART. |
 | S | Decided by the session, 2026-10-07: DMA reaches memory through one DMA port in `PPCMac_machine`: each access's line through the CPU's snoop port, then the memory port, which the DMA takes before any new CPU access; a write's line is snooped again after it, to drop a copy fetched in between (holding the CPU's reads during the snoop deadlocked the board: a cache can need a fill to finish before it answers a snoop). DBDMA gathers data in into lines (a whole line written as a line, else the words with bytes, with byte enables). MESH's bus is modelled at the signal level with the targets as their own module (`PPCMac_scsidisk`), so programmed I/O, DMA and the bus-status registers see the same lines; the information phases as Linux's `mesh.c` uses them where dingusppc has no model (DMA out), a DMA data in's command done only once the FIFO and the channel have emptied (Mac OS's driver does not wait for the FIFO; Linux waits up to 50 us). The disks answer INQUIRY as "QUANTUM " (dingusppc's vendor) "MiSTer PPCMac HD", no synchronous transfers, an extended message answered with MESSAGE REJECT; a new phase's first REQ 10 us after the phase lines change, as a disk is slow to change phase (the ROM's SIM waits after the status byte for REQ to drop, FFEB8D98, and hung on the board while the disk asked at once); one block per hps_io request (`sd_blk_cnt` 0), two buffered each way; hps_io `WIDE` 0 (the ROM upload is byte-wide), `VDNUM` 6 (the Mac SCSI family's slots), `SC0`/`SC1` so the Main remembers the images; the images kept in registers the machine's reset does not touch, so no mount replay is needed. Reason: rule 2 (one way into memory, coherent); the real chip over an emulator's shortcut where the shortcut is visible (dingusppc's Mac OS cannot write its disk); the stock Main's block interface works on the board as it is. |
 | S | Decided by the session, 2026-10-07 (the bus error at "Welcome to Mac OS"): the SWIM3 floppy controller is built as a device (`PPCMac_swim3.sv`), dingusppc's `swim3.cpp` register for register with one internal Superdrive that has no disk (its status lines as `superdrive.cpp` answers an empty drive), on Grand Central's interrupt source 13, with a 1 MHz tick from `PPCMac_machine` for the chip's timer and its 80 us steps; no disk is ever read. Reason: the ROM's .Sony driver installs only if the chip answers its probe, and Mac OS 7.6.1's System dereferences the driver's variables (SonyVars, low memory 0134, -1 without the driver) while loading: the bus error. A chip that answers but holds no disk is what a 7300 with an empty drive is. Also decided: the lockstep bench takes the core's R and C bits in a word loaded from the page table (dingusppc's MMU sets them differently), and MacsBug 6.6.3 (put into a copy of the image with rb-cli: `Scratch\disks\os761mb.hda`, on the card as `games/PPCMac/os761mb.hda`) is the board-side debugger from now on; its keyboard reading doubles keys typed through the Remote, noted in the stubs list under ADB. |
+| S | Decided by the session, 2026-10-08, at the user's request ("fill in all the stubbed areas now that we are actually trying to boot Mac OS"): the devices Mac OS's start-up meets are built as the chips behave, not as register stubs. AWACS (`PPCMac_awacs.sv`) plays DMA channel 8's frames at the control register's rate to the MiSTer's audio and feeds channel 9 silence, the registers as dingusppc's; the rate code read as dingusppc and Linux read it (Screamer's table: the ROM's chime at 22,050 Hz; MAME's AWACS would play it at 44,100), to be checked by ear against a real 7300; the frame count counts (dingusppc's does not). DMA channels 2, 3, 8 and 9 are `PPCMac_dbdma` engines beside MESH's, through one arbiter in Grand Central (sound first). MACE (`PPCMac_mace.sv`) has its cable unplugged (the user's choice): dingusppc's registers, and every frame sent ends in loss of carrier with its transmit interrupt, as an Am79C940 reports in the link fail state (dingusppc's MACE cannot transmit at all). The ESCC gets the Z85C30's interrupts on a bus without acknowledge cycles (RR3, RR2's status in channel B, WR0's resets, WR9's master enable), one line a channel (0F, 10). Cuda's NMI (PC2) is Grand Central's source 14, and the PC keyboard's Menu key is ADB's power key, so Command-Menu enters MacsBug and Control-Command-Menu restarts (Cuda's firmware decides both). Cuda's clock is set from the MiSTer's RTC (hps_io's TIMESTAMP + 2,082,844,800) when Cuda first releases the CPU, as MAME does (RAM AB-AE). Reason: Mac OS's drivers wait on these chips' interrupts and status, and a stub that never answers looks like a hang; dingusppc where it models the chip, the chips' manuals and MAME where it does not. |
 | K | Decided by the session, 2026-10-07: the ADB devices (`PPCMac_adb.sv`) at the wire level, the Mac LC core's structure and PS/2 table with dingusppc's registers: keyboard handler 2 (1 and 2 settable, 3 refused, so the right-hand modifiers give the left-hand codes), mouse handler 1 (1 and 2; not the extended protocol 4, which dingusppc's mouse takes: the Apple Mouse II has none), SRQ enabled from reset, a true service request (the stop bit held low to 300 us); Alt is Command, the Windows keys Option, Caps Lock locks. The line's timing is ADB's own, counted in Cuda's 4,194,304 Hz ticks so it keeps step when the bench runs Cuda fast; the answer 160 us after the stop bit. Reason: Cuda's own firmware is the judge, and its receive (1CF3-1D88) waits 283 us for the start bit and 79 us at most for any low. On the way, Cuda's PA6 turned out to be the line's level, not its inverse (corrected in `PPCMac_cuda.sv`; MAME agrees once its devices' ASSERT is read as high); with it inverted, every ADB command reported a service request and no device could answer. |

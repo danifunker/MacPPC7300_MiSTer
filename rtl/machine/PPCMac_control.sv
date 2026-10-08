@@ -19,9 +19,20 @@
 //    13  GBASE          the framebuffer's offset in VRAM, 32-byte aligned
 //    14  ROW_WORDS      the framebuffer's pitch, 32-byte aligned
 //    15  MON_SENSE      bits 5-3 the sense lines' directions (0 driven), 2-0
-//                       their levels; reads give the monitor's answer in 8-6
-//                       (displayid.cpp read_monitor_sense, AppleSense codes:
-//                       mon_std and mon_ext, the machine's choice of monitor)
+//                       their levels; reads give the lines in 8-6, as wires
+//                       (2026-10-08): a line reads low if Control drives it
+//                       low, if the monitor grounds it (mon_std, the
+//                       AppleSense standard code) or if the monitor's strap
+//                       joins it to a line driven low (mon_ext, the extended
+//                       code: what the other two read with each line driven
+//                       low alone). For the three extended-sense patterns
+//                       that is dingusppc's table (displayid.cpp
+//                       read_monitor_sense); dingusppc answers every other
+//                       pattern with the standard code, so a line driven
+//                       low read back high, and Mac OS 7.6.1's Control
+//                       driver, bit-banging a DDC probe on lines 1 (clock)
+//                       and 2 (data), retried with 1.7 s waits for minutes
+//                       ("Starting Up...")
 //    16  MISC_ENABLES   12 bits (0 progressive scan, 6 VRAM wide mode, ...)
 //    17  GSC_DIVIDE     2 bits
 //    18  REFRESH_COUNT  ignored, reads 0
@@ -104,15 +115,20 @@ assign irq    = vbl & int_enable[2];
 assign hs_pos = swatch_ctrl[6];
 assign vs_pos = swatch_ctrl[2];
 
-// MON_SENSE: what the monitor answers for the lines as driven
-// (displayid.cpp read_monitor_sense, the AppleSense case)
+// MON_SENSE: the lines as wires, pulled up; low where Control drives one
+// low, the monitor grounds one (a 0 in its standard code), or the monitor's
+// strap joins one to a line driven low (a 0 in its extended code: bits 5-4
+// lines 1 and 0 with line 2 driven low, 3-2 lines 2 and 0 with line 1, 1-0
+// lines 2 and 1 with line 0). With one line driven low and the other two
+// free this is displayid.cpp's AppleSense table.
 function automatic logic [2:0] sense(input logic [2:0] dirs, input logic [2:0] levels);
-	case ({dirs, levels})
-		6'b100_011: sense = {1'b0, mon_ext[5:4]};
-		6'b010_101: sense = {mon_ext[3], 1'b0, mon_ext[2]};
-		6'b001_110: sense = {mon_ext[1:0], 1'b0};
-		default:    sense = mon_std;
-	endcase
+	logic [2:0] dl, low;
+	dl  = dirs & ~levels;
+	low = dl | ~mon_std;
+	if (dl[2]) low = low | {1'b0, ~mon_ext[5], ~mon_ext[4]};
+	if (dl[1]) low = low | {~mon_ext[3], 1'b0, ~mon_ext[2]};
+	if (dl[0]) low = low | {~mon_ext[1], ~mon_ext[0], 1'b0};
+	sense = ~low;
 endfunction
 
 wire [2:0] w_dirs   = wle[5:3] ^ 3'b111;

@@ -47,7 +47,7 @@ def main():
         # file arguments are Windows paths here; hand WSL its own spelling
         conv = []
         for i, a in enumerate(args):
-            if i > 0 and args[i - 1] in ("--rom", "--dev-log", "--nvram", "--serial-log", "--frame-out", "--vram-log", "--disk0", "--disk1", "--exc-log") and (":" in a or os.path.exists(a)):
+            if i > 0 and args[i - 1] in ("--rom", "--dev-log", "--nvram", "--serial-log", "--frame-out", "--vram-log", "--disk0", "--disk1", "--exc-log", "--dump-bin", "--wav") and (":" in a or os.path.exists(a)):
                 a = to_wsl(a)
             conv.append(a)
         return subprocess.call(["wsl", "--cd", HERE, "--", "python3", "run_machine.py"] + conv)

@@ -27,7 +27,7 @@ the OSD chooses, a debug readout of rows of squares.
 | Caches | two 16 KB four-way caches with 32-byte lines (the 604's shape), write-back, one line port to memory, a snoop port for DMA; directed tests and the whole suite through them |
 | Clock crossing to the SDRAM controller | done, checked at several clock ratios; the controller itself comes with the machine |
 | Timing and area pass | in progress: 55 to 64-65 MHz so far with eleven cuts that cost no cycles, plus the FPU operand register on (2 % of floating-point cycles) to take its forwarding path off the list; the slowest families now sit at the 66 MHz line and move across it with the fitter's placement; what remains and what it would cost is in [the plan](docs/DSPPC604_plan.md) |
-| Machine: the 7600's address map and device stubs | `rtl/machine/`: Hammerhead, Bandit and Chaos configuration space, Grand Central (interrupt and DMA registers, VIA with timers, NVRAM, board register, SCC and sound registers) as register stubs that answer as dingusppc's devices do; [docs/PPCMac_stubs.md](docs/PPCMac_stubs.md) lists every stub and what it leaves out |
+| Machine: the 7600's address map and device stubs | `rtl/machine/`: Hammerhead, Bandit and Chaos configuration space, Grand Central (interrupt and DMA registers, VIA with timers, NVRAM, board register) and its devices, each built as the chip behaves where Mac OS needs it (below) and otherwise answering as dingusppc's devices do; [docs/PPCMac_stubs.md](docs/PPCMac_stubs.md) lists every stub and what it leaves out |
 | The ROM in simulation | the 7300's (the reference) and the 7600's each run from the reset vector in lockstep with dingusppc, Cuda answering, for 60 million instructions with no difference (2026-10-07): through Open Firmware (which waits for Cuda at 18.3 million and gets its answer), the NanoKernel's start-up and into Mac OS's 68k emulator, running in user mode from 28 million on. Before Cuda existed, 150 million instructions to Open Firmware's endless poll for it |
 | Memory-test boot program | selectable in place of the ROM; passes in the bench over 1 and 6 MB and finds an injected fault |
 | SDRAM controller | `rtl/machine/PPCMac_sdram.sv`, adapted from Sorgelig's; passes its bench against a model of the 128 MB board that checks every command and timing |
@@ -37,11 +37,12 @@ the OSD chooses, a debug readout of rows of squares.
 | Interrupts | Grand Central's events, mask and levels as MAME's and dingusppc's; the VIA is the first source (2026-10-07): the 7300's ROM runs 100 million instructions in lockstep with Mac OS's timer interrupts, its device traffic matching dingusppc's through Mac OS's start-up to where Mac OS probes MESH ([docs/PPCMac_plan.md](docs/PPCMac_plan.md), milestone I) |
 | Serial console | the ESCC (a Z85C30's asynchronous mode, `rtl/machine/PPCMac_escc.sv`); its modem port is the MiSTer's UART, Open Firmware's console: with an NVRAM image that sets `auto-boot?` false, Open Firmware's prompt over the UART, in simulation (in lockstep, the banner byte for byte dingusppc's) and on the board (2026-10-07) |
 | SCSI controllers, with empty buses | MESH (`rtl/machine/PPCMac_mesh.sv`) and Curio's 53CF94 (`PPCMac_sc53c94.sv`) as dingusppc models them, with no targets: Mac OS reads MESH's ID, sets both up and selects every target on both buses, each selection ending in a timeout and an interrupt; in simulation the 7300's ROM runs 450 million instructions in lockstep through that probing, its SCSI traffic matching dingusppc's, and on the board Mac OS runs through it as in the simulation (milestone E, 2026-10-07; [docs/PPCMac_plan.md](docs/PPCMac_plan.md)) |
-| Disks (milestone S, in progress) | MESH's information phases, FIFO and DMA; DBDMA (`PPCMac_dbdma.sv`, MESH's channel A) through the CPU's snoop port; SCSI disks on IDs 0 and 1 (`PPCMac_scsidisk.sv`) from the SD card's images through hps_io's block devices (the OSD's `SC0`/`SC1`, the Mac SCSI family's slot layout). `python verilator\run_scsi.py` drives them the way the ROM and Mac OS's driver do (programmed I/O and DMA reads, DMA writes, the card's blocks checked): passes. On the board Mac OS 7.6.1 boots from its image through "Welcome to Mac OS" to "Starting Up..." and stops there with the machine alive (2026-10-07); the bus error it showed at the welcome screen was the floppy controller's stub (below), found with the bench's exception log and MacsBug on the board |
+| Disks (milestone S, in progress) | MESH's information phases, FIFO and DMA; DBDMA (`PPCMac_dbdma.sv`, MESH's channel A) through the CPU's snoop port; SCSI disks on IDs 0 and 1 (`PPCMac_scsidisk.sv`) from the SD card's images through hps_io's block devices (the OSD's `SC0`/`SC1`, the Mac SCSI family's slot layout). `python verilator\run_scsi.py` drives them the way the ROM and Mac OS's driver do (programmed I/O and DMA reads, DMA writes, the card's blocks checked): passes. On the board Mac OS 7.6.1 boots from its image to the Finder with extensions off (Shift held, 2026-10-08); with extensions on it stops at "Starting Up..." in Open Transport's AppleTalk start-up (LocalTalk on the printer port, next). On the way: the bus error at the welcome screen was the floppy controller's stub, and the first "Starting Up..." stop the monitor sense lines (the Control driver's DDC probe read its own driven lines back high) |
+| Sound | AWACS (`rtl/machine/PPCMac_awacs.sv`) and its DMA channels 8 and 9: the startup chime plays from the ROM by DMA, bit-exact in simulation (`--wav`), to the MiSTer's audio outputs |
+| Serial, Ethernet, NMI, clock | the ESCC's interrupts (both channels); MACE (`PPCMac_mace.sv`) with its cable unplugged (frames sent by DMA end in loss of carrier); Cuda's NMI on Grand Central's source 14 (Command-Menu: MacsBug, or the ROM's debugger); Cuda's clock set from the MiSTer's RTC |
 | Floppy controller | the SWIM3 (`rtl/machine/PPCMac_swim3.sv`) as dingusppc models it, with an empty Superdrive: the ROM's .Sony driver finds the chip and installs, which Mac OS 7.6.1's System requires (it dereferences the driver's variables while loading: with the chip stubbed to read 0 that was the "bus error" at the welcome screen). No disk is ever read |
 | Video | the Control video controller (registers, Swatch's timing), RaDACal (colour table, hardware cursor), the Athens clock chip on Cuda's I2C, the 4 MB VRAM in the HPS's DDR3, the scan-out through the framework's scaler; the monitor an OSD choice (Apple's 16-inch, 832 x 624, or 13-inch, 640 x 480). In simulation the ROM runs in lockstep through Mac OS's video driver, every video access as dingusppc's, and the frames match dingusppc's pixel for pixel at both sizes; on the board Mac OS's screen (milestone V, 2026-10-07) |
 | Keyboard and mouse | an ADB keyboard and mouse on Cuda's line (`rtl/machine/PPCMac_adb.sv`), from the MiSTer's keyboard and mouse: Cuda's own firmware talks to them in `run_cuda.py` (registers 0, 2 and 3, a key, a mouse move, an address and handler change, SendReset); on the board the pointer follows the mouse over Mac OS's screen and Open Firmware takes typed lines from the keyboard (milestone K, 2026-10-07) |
-| Machine (disks, sound, ...) | not started |
 
 The first full build of the core (2026-10-06: the CPU at 65 MHz, the
 machine, the SDRAM controller at 100 MHz, the debug readout, the MiSTer
@@ -58,6 +59,7 @@ framework), Quartus 17.0, slow 100 C model; this is the number that counts:
 | With the Control video | 26,874 (64%) | 165 | 46 | 64.47 MHz (slack -0.127 ns); memory and video 113.0 MHz. Runs on the board at 65 MHz |
 | With the ADB keyboard and mouse | 26,869 (64%) | 166 | 46 | 64.81 MHz (slack -0.046 ns); memory and video 109.9 MHz. Runs on the board at 65 MHz |
 | With the disks (MESH's data phases, DBDMA, the SD card's images) and the SWIM3 (the committed tree, 2026-10-07) | 28,437 (68%) | 168 | 46 | 60.4 MHz (slack -1.172 ns); memory and video 98.4 MHz (slack -0.167 ns). Runs on the board at 65 MHz |
+| With AWACS, DMA channels 2, 3, 8, 9, MACE, the ESCC's interrupts, the NMI, the clock, the sense lines as wires (2026-10-08) | 31,825 (76%) | 168 | 46 | 61.7 MHz (slack -0.828 ns); memory and video meet 100 MHz. Runs on the board at 65 MHz |
 
 On the board (DE10-Nano, 128 MB SDRAM) the memory test passes at every RAM
 size the OSD offers (6 to 96 MB, three or more passes each, no error) at
@@ -461,6 +463,20 @@ first). The 7.6.1 bus error at "Welcome to Mac OS" was found this way
 dump the 68k registers and SonyVars, the trace the 68k instructions, and
 MacsBug on the board (`games/PPCMac/os761mb.hda`, the image with MacsBug
 6.6.3 in its System Folder) the same fault to the byte.
+
+For a hang: `--dev-log-from N` starts the device log at the Nth instruction
+(the run is at full speed before it), and on the board Command-Menu (Alt
+and the PC keyboard's Menu key; through the Remote `ws kbdRawDown:56
+kbdRaw:127 kbdRawUp:56`) is the NMI: MacsBug's `sc` (the calling chain,
+with Open Transport's and the CFM fragments' names) and `wh ADDR`, or
+without MacsBug the ROM's debugger. Native code can be read out of a
+`--dump-bin` image with `llvm-objdump-18 --triple=powerpc` in WSL after
+`objcopy -I binary`. The "Starting Up..." stop of 2026-10-08 (the video
+driver's DDC probe, then Open Transport's AppleTalk) was found this way.
+`--wav FILE` records the sound AWACS plays; `--clock SECS` sets Cuda's
+clock as the machine starts (seconds since 1904; the MiSTer gives its RTC).
+Never reload the core on the board while Mac OS has its disk mounted: shut
+it down from the Finder's Special menu first.
 
 ```
 python verilator\fpmodel.py check

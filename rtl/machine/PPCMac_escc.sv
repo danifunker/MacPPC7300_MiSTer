@@ -32,10 +32,27 @@
 //    Firmware's driver (FCode image 6 in the ROM) sets time constant 1 from
 //    RTxC in x16 mode: 38,400 baud, 8 data bits, 2 stop bits.
 //
-//  Left out (docs/PPCMac_stubs.md): interrupts, the synchronous modes,
-//  DMA, the DPLL, CRC, break, the modem lines (RR0 reads 44 with the
-//  transmitter idle, as escc.cpp's), and the read registers dingusppc does
-//  not keep (RR2 reads WR2; all but RR0, RR1 and RR8 read 0).
+//  - Interrupts (2026-10-08), as the Z85C30's manual has them on a bus
+//    without interrupt acknowledge cycles (Grand Central has none, so no
+//    interrupt is ever under service): each channel's receive, transmit and
+//    external/status pending bits; receive (WR1 bits 4-3) on the first
+//    character after the mode is chosen or WR0's "enable on next Rx
+//    character" (01), on every character (10), and on a special condition
+//    (an overrun, until WR0's error reset) in all three; transmit (WR1 bit
+//    1) when the transmit buffer empties into the shift register, cleared
+//    by a byte written or WR0's "reset Tx interrupt pending"; external/
+//    status (WR1 bit 0) when a condition WR15 enables changes, which no
+//    line here ever does. RR3 (channel A) gives the six pending bits; RR2
+//    in channel B the vector modified by the highest one (WR9 bit 4: status
+//    in bits 6-4, else 3-1), in channel A WR2 as written. WR9's master
+//    enable (bit 3) gates the outputs, one a channel (Grand Central's
+//    sources 0F and 10).
+//
+//  Left out (docs/PPCMac_stubs.md): the synchronous modes, DMA, the DPLL,
+//  CRC, break, the modem lines (RR0 reads 44 with the transmitter idle, as
+//  escc.cpp's), the baud-rate generator's zero count, and the read
+//  registers dingusppc does not keep (all but RR0, RR1, RR2, RR3 and RR8
+//  read 0).
 //
 //  Registers by MacRISC number (Grand Central maps both of its addressings
 //  onto it): 0 B command, 1 B data, 2 A command, 3 A data, 4 B enhancement,
@@ -54,7 +71,9 @@ module PPCMac_escc
 	input  logic [7:0] wdata,
 	output logic [7:0] rq,             // what a read of rn returns now (the caller registers it)
 	output logic       txd_a,          // the modem port: transmit (1 when idle)
-	input  logic       rxd_a           //   and receive, asynchronous (1 when idle)
+	input  logic       rxd_a,          //   and receive, asynchronous (1 when idle)
+	output logic       irq_a,          // channel A's interrupt (Grand Central's source 0F)
+	output logic       irq_b           // channel B's (10)
 );
 
 logic [3:0] ptr;                       // the register pointer, shared
@@ -82,23 +101,54 @@ wire       tx_b   = (sel & we & rn == 4'd1) | (wr_b & ptr == 4'd8);
 wire       rx_a   = (sel & ~we & rn == 4'd3) | (reg_rd & chan_a & ptr == 4'd8);
 wire       rx_b   = (sel & ~we & rn == 4'd1) | (reg_rd & ~chan_a & ptr == 4'd8);
 
+// WR0's commands (bits 5-3) to the channel addressed: 2 reset ext/status
+// interrupts, 4 enable interrupt on next Rx character, 5 reset Tx interrupt
+// pending, 6 error reset (7, reset highest IUS, has nothing to reset)
+wire       cmd_a = ptr_wr & chan_a;
+wire       cmd_b = ptr_wr & ~chan_a;
+
 logic [7:0] rr0_a, rr1_a, rd_a, rr0_b, rr1_b, rd_b;
 logic       txd_b;
 logic [1:0] rxd_s;                     // the modem port's receive line, synchronised
+logic       rx_ip_a, tx_ip_a, ext_ip_a, sp_a, rx_ip_b, tx_ip_b, ext_ip_b, sp_b;
 
 always_ff @(posedge clk) rxd_s <= {rxd_s[0], rxd_a};
 
 PPCMac_escc_ch ch_a (
 	.clk, .hw_rst, .ch_rst(rst_a), .rtxc_tick,
 	.wr_en(wr_a), .wr_n(ptr), .wr_v(wdata), .tx_wr(tx_a), .rx_rd(rx_a),
-	.rr0(rr0_a), .rr1(rr1_a), .rx_data(rd_a), .txd(txd_a), .rxd(rxd_s[1])
+	.cmd_en(cmd_a), .cmd(wdata[5:3]),
+	.rr0(rr0_a), .rr1(rr1_a), .rx_data(rd_a), .txd(txd_a), .rxd(rxd_s[1]),
+	.rx_ip(rx_ip_a), .tx_ip(tx_ip_a), .ext_ip(ext_ip_a), .special(sp_a)
 );
 
 PPCMac_escc_ch ch_b (
 	.clk, .hw_rst, .ch_rst(rst_b), .rtxc_tick,
 	.wr_en(wr_b), .wr_n(ptr), .wr_v(wdata), .tx_wr(tx_b), .rx_rd(rx_b),
-	.rr0(rr0_b), .rr1(rr1_b), .rx_data(rd_b), .txd(txd_b), .rxd(1'b1)
+	.cmd_en(cmd_b), .cmd(wdata[5:3]),
+	.rr0(rr0_b), .rr1(rr1_b), .rx_data(rd_b), .txd(txd_b), .rxd(1'b1),
+	.rx_ip(rx_ip_b), .tx_ip(tx_ip_b), .ext_ip(ext_ip_b), .special(sp_b)
 );
+
+// the interrupt pins: WR9's master interrupt enable (no acknowledge cycles,
+// so nothing is ever under service and every pending bit asks)
+assign irq_a = wr9[3] & (rx_ip_a | tx_ip_a | ext_ip_a);
+assign irq_b = wr9[3] & (rx_ip_b | tx_ip_b | ext_ip_b);
+
+// RR3: the pending bits; RR2 in channel B: the vector with the highest
+// pending source's status (the manual's table; none pending: 011)
+wire [7:0] rr3 = {2'b00, rx_ip_a, tx_ip_a, ext_ip_a, rx_ip_b, tx_ip_b, ext_ip_b};
+logic [2:0] vst;
+always_comb begin
+	if (rx_ip_a)       vst = sp_a ? 3'b111 : 3'b110;
+	else if (tx_ip_a)  vst = 3'b100;
+	else if (ext_ip_a) vst = 3'b101;
+	else if (rx_ip_b)  vst = sp_b ? 3'b011 : 3'b010;
+	else if (tx_ip_b)  vst = 3'b000;
+	else if (ext_ip_b) vst = 3'b001;
+	else               vst = 3'b011;
+end
+wire [7:0] rr2_b = wr9[4] ? {wr2[7], vst[0], vst[1], vst[2], wr2[3:0]} : {wr2[7:4], vst, wr2[0]};
 
 // what a read returns
 always_comb begin
@@ -108,7 +158,8 @@ always_comb begin
 			case (ptr)
 				4'd0:    rq = chan_a ? rr0_a : rr0_b;
 				4'd1:    rq = chan_a ? rr1_a : rr1_b;
-				4'd2:    rq = wr2;
+				4'd2:    rq = chan_a ? wr2 : rr2_b;
+				4'd3:    rq = chan_a ? rr3 : 8'h00;
 				4'd8:    rq = chan_a ? rd_a : rd_b;
 				default: rq = 8'h00;
 			endcase
@@ -154,11 +205,17 @@ module PPCMac_escc_ch
 	input  logic [7:0] wr_v,
 	input  logic       tx_wr,          // a byte for the transmitter
 	input  logic       rx_rd,          // the oldest received byte taken
+	input  logic       cmd_en,         // a WR0 command to this channel
+	input  logic [2:0] cmd,            // ... its bits 5-3
 	output logic [7:0] rr0,
 	output logic [7:0] rr1,
 	output logic [7:0] rx_data,
 	output logic       txd,
-	input  logic       rxd             // synchronised
+	input  logic       rxd,            // synchronised
+	output logic       rx_ip,          // the interrupt pending bits
+	output logic       tx_ip,
+	output logic       ext_ip,
+	output logic       special         // the receive interrupt is a special condition's
 );
 
 logic [7:0] wr1, wr3, wr4, wr5, wr10, wr11, wr12, wr13, wr14, wr15;
@@ -218,6 +275,22 @@ assign rr1     = {2'b00, rx_ovr, 2'b00, 2'b11, ~tx_full & tx_idle};
 assign rx_data = rx_f0;
 assign txd     = tx_idle | tx_sh[0];
 
+// ---- the interrupt pending bits ------------------------------------------------------------
+// Receive: a special condition (an overrun, kept until the error reset) in
+// modes 01, 10 and 11; a character available in mode 10, and in mode 01
+// the first one after the mode was chosen or the "next character" command.
+// Transmit: set as the buffer empties into the shift register, if enabled.
+// External/status: no condition WR15 watches ever changes here (the modem
+// lines are fixed, the zero count is not modelled), so it is never set.
+logic        rx_first;                 // mode 01 armed
+logic        tx_pend;
+wire  [1:0]  rx_mode = wr1[4:3];
+assign special = rx_mode != 2'b00 && rx_ovr;
+assign rx_ip   = special | (rx_n != 2'd0 && (rx_mode == 2'b10 || (rx_mode == 2'b01 && rx_first)));
+assign tx_ip   = tx_pend & wr1[1];
+assign ext_ip  = 1'b0;
+wire         tx_load = tx_idle & tx_full & ~tx_wr & wr5[3];       // the buffer into the shift register
+
 always_ff @(posedge clk) begin
 	// the registers
 	if (wr_en) begin
@@ -236,13 +309,21 @@ always_ff @(posedge clk) begin
 		endcase
 	end
 
+	// the interrupt pending bits and WR0's commands
+	if (tx_load & wr1[1]) tx_pend <= 1'b1;
+	if (tx_wr || (cmd_en && cmd == 3'd5)) tx_pend <= 1'b0;
+	if ((cmd_en && cmd == 3'd4) || (wr_en && wr_n == 4'd1 && wr_v[4:3] == 2'b01 && rx_mode != 2'b01))
+		rx_first <= 1'b1;
+	else if (rx_pop) rx_first <= 1'b0;
+	if (cmd_en && cmd == 3'd6) rx_ovr <= 1'b0;
+
 	// the transmitter
 	if (tx_wr) begin
 		tx_buf  <= wr_v;
 		tx_full <= 1'b1;
 	end
 	if (tx_idle) begin
-		if (tx_full & ~tx_wr & wr5[3]) begin
+		if (tx_load) begin
 			tx_sh   <= tx_frame;
 			tx_left <= tx_nbits;
 			tx_cnt  <= tx_bit;
@@ -334,6 +415,8 @@ always_ff @(posedge clk) begin
 		rx_state <= 2'd0;
 		rx_n     <= 2'd0;
 		rx_ovr   <= 1'b0;
+		tx_pend  <= 1'b0;
+		rx_first <= 1'b0;
 	end
 end
 

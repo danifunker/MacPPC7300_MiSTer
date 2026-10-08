@@ -66,9 +66,12 @@
 //  FLUSH asks.
 //
 //  The device side moves a byte a clock: di_valid / di_data / di_take from
-//  the device to memory, do_ready / do_data / do_put the other way; xfer_in
+//  the device to memory, do_ready / do_data / do_put the other way (do_last
+//  marks an OUTPUT_LAST's last byte: Grand Central's end of frame for
+//  MACE); xfer_in
 //  and xfer_out say a data command is running and can move a byte now;
-//  drained says no input byte is held here.
+//  drained says no input byte is held here; active is ChannelStatus's
+//  ACTIVE (a device that streams, as AWACS, runs while it is set).
 //
 //  Left out (docs/PPCMac_stubs.md): STORE_QUAD and LOAD_QUAD to device
 //  registers (only memory is reached), the keys other than 0 (KEY_STREAM0),
@@ -107,9 +110,11 @@ module PPCMac_dbdma
 	input  logic         do_ready,        // the device takes a byte
 	output logic [7:0]   do_data,
 	output logic         do_put,          // ... put in this clock
+	output logic         do_last,         // ... and it is an OUTPUT_LAST's last byte (a frame's end)
 	output logic         xfer_in,
 	output logic         xfer_out,
 	output logic         drained,
+	output logic         active,          // ChannelStatus's ACTIVE
 
 	output logic         irq              // the interrupt condition met: one clock
 );
@@ -119,6 +124,7 @@ localparam int RUN = 15, PAUSE = 14, FLUSH = 13, WAKE = 12, DEAD = 11, ACTIVE = 
 
 logic [15:0] stat;
 logic [31:0] cmd_ptr, int_sel, br_sel, wait_sel;
+assign active = stat[ACTIVE];
 
 always_comb begin
 	case (rn)
@@ -176,6 +182,7 @@ assign drained  = (lv == 32'h0);
 
 assign di_take = xfer_in & di_valid;
 assign do_put  = xfer_out & do_ready;
+assign do_last = do_put & (cmd == 4'd1) & (res_count == 16'd1);
 assign do_data = lb[8 * (31 - addr[4:0]) +: 8];
 
 // the quad commands' size: 4 if bit 2, else 2 if bit 1, else 1

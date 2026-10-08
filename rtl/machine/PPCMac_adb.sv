@@ -12,8 +12,10 @@
 //
 //    keyboard  handler 2 (Apple Extended Keyboard); 1 and 2 may be set,
 //              3 (left and right modifiers apart) is refused; Talk 0 gives
-//              two key events (the second FF when there is one), Talk 2 the
-//              modifier keys and the LEDs, Listen 2 sets the LEDs
+//              one key event (the second byte FF; the power key, 7F, in
+//              both bytes: the PC keyboard's Menu key or an ACPI Power
+//              key), Talk 2 the modifier keys and the LEDs, Listen 2 sets
+//              the LEDs
 //    mouse     handler 1 (100 counts an inch); 1 and 2 may be set (the
 //              Apple Mouse II's; not the extended protocol, 4); Talk 0
 //              gives the button and the movement since the last report,
@@ -209,6 +211,17 @@ wire  [2:0]  kq_n     = kq_wr - kq_rd;
 
 logic        caps_on;                 // Caps Lock locks, as the Apple keyboard's key does
 logic        dn_del, dn_ctrl, dn_shift, dn_opt, dn_cmd, dn_clear, dn_f14;
+// after a reset the keyboard reports the modifier keys still held as new
+// presses (its state was cleared; its next scan finds them down): Shift held
+// through the start-up is how Mac OS is told to load no extensions
+logic [3:0]  rescan;                  // command, option, control, shift still to report
+logic [6:0]  rs_code;
+always_comb begin
+	if (rescan[0])      rs_code = 7'h38;
+	else if (rescan[1]) rs_code = 7'h36;
+	else if (rescan[2]) rs_code = 7'h3A;
+	else                rs_code = 7'h37;
+end
 
 logic signed [9:0] mx, my;            // movement not yet reported, ADB's sense (Y down)
 logic        btn, btn_rep;            // the button now, and as last reported
@@ -276,7 +289,8 @@ logic        k_up, k_push;
 always_comb begin
 	k_code = adb_code(kd_s2[8:0]);
 	k_up   = ~kd_s2[9];
-	k_push = key_ev && k_code != 7'h7F;
+	// the power key (7F): the PC keyboard's Menu key or its ACPI Power key
+	k_push = key_ev && (k_code != 7'h7F || kd_s2[8:0] == 9'h12F || kd_s2[8:0] == 9'h137);
 	if (k_code == 7'h39) begin                       // Caps Lock: a press toggles it
 		k_push = key_ev && kd_s2[9];
 		k_up   = caps_on;
@@ -292,6 +306,7 @@ task automatic devices_reset;
 	mouse_srq_en <= 1'b1;
 	kbd_led      <= 3'b111;
 	kq_rd        <= kq_wr;
+	rescan       <= {dn_cmd, dn_opt, dn_ctrl, dn_shift};
 	mx <= '0; my <= '0;
 	btn_rep      <= btn;
 endtask
@@ -319,6 +334,14 @@ always_ff @(posedge clk) begin
 			7'h39: caps_on  <= ~caps_on;
 			default: ;
 		endcase
+	end
+	else if (rescan != 4'h0 && kq_n != 3'd7) begin
+		kq[kq_wr] <= {1'b0, rs_code};
+		kq_wr     <= kq_wr + 3'd1;
+		if (rescan[0])      rescan[0] <= 1'b0;
+		else if (rescan[1]) rescan[1] <= 1'b0;
+		else if (rescan[2]) rescan[2] <= 1'b0;
+		else                rescan[3] <= 1'b0;
 	end
 
 	// ---- the mouse's events: PS/2 Y is up, ADB's down ----
@@ -376,8 +399,13 @@ always_ff @(posedge clk) begin
 					if (c_addr == kbd_addr) begin
 						case (c_reg)
 							2'd0: if (!kq_empty) begin
-								frame <= {1'b1, kq[kq_rd], kq_n >= 3'd2 ? kq[kq_rd + 3'd1] : 8'hFF, 1'b0};
-								kq_rd <= kq_n >= 3'd2 ? kq_rd + 3'd2 : kq_rd + 3'd1;
+								// one event an answer (the second byte FF), the power key in
+								// both bytes (7F 7F down, FF FF up). A keyboard may send two;
+								// MacsBug's own polling seems to take only the first, and the
+								// MiSTer delivers a key's down and up within one poll
+								// (2026-10-08: keys typed at MacsBug came doubled or dropped)
+								frame <= {1'b1, kq[kq_rd], (kq[kq_rd][6:0] == 7'h7F) ? kq[kq_rd] : 8'hFF, 1'b0};
+								kq_rd <= kq_rd + 3'd1;
 								st    <= S_TLT;
 							end
 							2'd2: begin frame <= {1'b1, kbd_reg2, 1'b0}; st <= S_TLT; end
@@ -463,6 +491,7 @@ always_ff @(posedge clk) begin
 		hl_q <= 1'b1;
 		dur <= '0; tmr <= '0; reset_seen <= 1'b0;
 		kq_wr <= '0; kq_rd <= '0;
+		rescan <= 4'h0;
 		caps_on <= 1'b0;
 		{dn_del, dn_ctrl, dn_shift, dn_opt, dn_cmd, dn_clear, dn_f14} <= '0;
 		btn <= 1'b0;

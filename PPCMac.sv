@@ -72,9 +72,13 @@ assign HDMI_FREEZE = 0;
 assign HDMI_BLACKOUT = 0;
 assign HDMI_BOB_DEINT = 0;
 
-assign AUDIO_S = 0;
-assign AUDIO_L = 0;
-assign AUDIO_R = 0;
+// AWACS's samples, signed; they change in the CPU's clock at the sample
+// rate, and the framework's audio input keeps a value only once it has seen
+// it twice in its own clock
+wire [15:0] snd_left, snd_right;
+assign AUDIO_S = 1;
+assign AUDIO_L = snd_left;
+assign AUDIO_R = snd_right;
 assign AUDIO_MIX = 0;
 
 wire   disk_busy;                     // a block moving to or from an image (the memory clock's side syncs it)
@@ -206,8 +210,17 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(VDNUM), .BLKSZ(2)) hps_io
 	.ioctl_wr(ioctl_wr),
 	.ioctl_addr(ioctl_addr),
 	.ioctl_dout(ioctl_dout),
-	.ioctl_wait(ioctl_wait)
+	.ioctl_wait(ioctl_wait),
+
+	.TIMESTAMP(timestamp)
 );
+
+// the date and time for Cuda's clock: the HPS's Unix seconds, from 1904 as a
+// Mac counts them (as the Quadra 800 core's RTC takes them); 0 until the
+// HPS has sent them
+wire [32:0] timestamp;
+reg  [31:0] mac_secs_m;
+always @(posedge clk_mem) mac_secs_m <= (timestamp[31:0] == 32'd0) ? 32'd0 : timestamp[31:0] + 32'd2082844800;
 
 ///////////////////////   OPTIONS AND RESET (memory clock)   ///////////////////////////////
 
@@ -298,6 +311,16 @@ always @(posedge clk_cpu) begin
 end
 wire cpu_reset = cpu_reset_s[2];
 
+// the clock's seconds, quasi-static: taken once seen the same twice
+reg [31:0] mac_secs_s [2];
+reg [31:0] clock_secs = 0;
+always @(posedge clk_cpu) begin
+	mac_secs_s[0] <= mac_secs_m;
+	mac_secs_s[1] <= mac_secs_s[0];
+	if (mac_secs_s[1] == mac_secs_s[0]) clock_secs <= mac_secs_s[1];
+end
+wire clock_ok = clock_secs != 32'd0;
+
 // the NVRAM image's bytes, in the CPU's clock (address and data are stable
 // from the toggle until the acknowledge returns)
 reg  [2:0]  nv_req_s;
@@ -363,9 +386,10 @@ PPCMac_system #(.CPU_HZ(CPU_MHZ * 1000000), .TB_HZ(12500000), .SDRAM_MB(128)) sy
 	.b_req, .b_we, .b_line, .b_addr, .b_be, .b_wdata, .b_ack, .b_rdata,
 
 	.cpu_req, .cpu_we, .cpu_line, .cpu_addr, .cpu_be, .cpu_wdata, .cpu_ack, .cpu_rdata, .cpu_irq, .cpu_tb_tick,
-	.modem_txd, .modem_rxd, .nv_ld_we, .nv_ld_addr, .nv_ld_data,
+	.modem_txd, .modem_rxd, .snd_left, .snd_right, .nv_ld_we, .nv_ld_addr, .nv_ld_data,
 	.mon_std(mon_c[1][8:6]), .mon_ext(mon_c[1][5:0]),
 	.ps2_key, .ps2_mouse,                 // in the memory clock: PPCMac_adb synchronises them
+	.clock_ok, .clock_secs,
 	.img_mounted(img_mounted[1:0]), .img_size, .img_readonly,   // the disks' side runs in the memory clock
 	.sd_lba(disk_lba), .sd_rd(disk_rd), .sd_wr(disk_wr), .sd_ack(sd_ack[1:0]),
 	.sd_buff_addr, .sd_buff_dout, .sd_buff_din(disk_buff_din), .sd_buff_wr, .disk_busy,

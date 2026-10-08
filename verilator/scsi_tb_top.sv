@@ -88,14 +88,15 @@ assign bus_db = scsi_db;
 
 /* verilator lint_off PINCONNECTEMPTY */
 PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
-	.clk, .reset, .via_tick(1'b0), .rtxc_tick(1'b0), .scsi_tick, .us_tick(1'b0),
+	.clk, .reset, .via_tick(1'b0), .rtxc_tick(1'b0), .scsi_tick, .us_tick(1'b0), .snd_tick(1'b0),
 	.sel, .we, .addr, .be, .wdata, .rdata, .irq,
 	.cuda_treq(1'b1), .cuda_cb1(1'b1), .cb2(1'b1), .via_tip(), .via_byteack(), .via_cb2_oe(), .via_cb2_out(),
 	.modem_txd(), .modem_rxd(1'b1), .nv_ld_we(1'b0), .nv_ld_addr(13'h0), .nv_ld_data(8'h0),
-	.ctl_irq(1'b0),
+	.ctl_irq(1'b0), .nmi(1'b0),
 	.mesh_rst, .mesh_bsy, .mesh_sel, .mesh_atn, .mesh_ack, .mesh_req, .mesh_msg, .mesh_cd, .mesh_io, .mesh_db,
 	.scsi_rst, .scsi_bsy, .scsi_sel, .scsi_atn, .scsi_ack, .scsi_req, .scsi_msg, .scsi_cd, .scsi_io, .scsi_db,
 	.dm_req, .dm_we, .dm_line, .dm_addr, .dm_be, .dm_wdata, .dm_ack, .dm_rdata,
+	.snd_left(), .snd_right(),
 	.dac_cr(), .dbl_buf_cr(), .cursor_x(), .cursor_clut(), .clk_v(clk_h), .clut_index(8'h0), .clut_rgb()
 );
 
