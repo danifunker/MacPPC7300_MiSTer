@@ -1,16 +1,18 @@
-# Resume prompt: speed: the L2, 70 MHz and the first FPU cuts are in; the FPU's latency and a release next
+# Resume prompt: speed: the L2, 70 MHz and the first FPU cuts are in and released; the FPU's latency and the clock past 70 next
 
 (Rewritten 2026-10-09, 02:00, at the end of the speed session that built
 the L2, moved the clock to 70 MHz and began on the FPU, for a Claude Fable
-session. The disk and Linux work continues from `RESUME_disk.md`; this
-prompt is about performance only. Everything it needs is here or in the
-files it names.)
+session. Since then (2026-10-09, at the user's request) it is the only
+resume prompt: the others are gone from the tree (git's history has them),
+build 36 is the fourth release, and the board's tools, the Main, the rules
+and the environment that lived in `RESUME_disk.md` are at the end of this
+one. Everything it needs is here or in the files it names.)
 
 Paste everything below the line into a new session started in `C:\Temp\mistercore\PPC_Mac`.
 
 ---
 
-I'm building a MiSTer FPGA core (DE10-Nano, Cyclone V) with my own PowerPC CPU, `DSPPC604` (`rtl/DSPPC604/`), inside a Power Macintosh 7300/7600 machine (`rtl/machine/`). It works: Mac OS 7.6.1 to 9.1 and Debian 7.11 boot on the board. The third release (build 28, `releases/`) is what users have. The speed work is under way (commits 8e5ceed and the one after it: a 128 KB L2, the clock at 70 MHz, the FPU's operand register off and `fmul` a cycle shorter; build 36 is the measured best). I want it **faster still**, measured:
+I'm building a MiSTer FPGA core (DE10-Nano, Cyclone V) with my own PowerPC CPU, `DSPPC604` (`rtl/DSPPC604/`), inside a Power Macintosh 7300/7600 machine (`rtl/machine/`). It works: Mac OS 7.6.1 to 9.1 and Debian 7.11 boot on the board. The fourth release (build 36, `releases/PPCMac_20261009.rbf`, with the Main 9e88154e) is what users have. The speed work is under way (commits 8e5ceed and the one after it: a 128 KB L2, the clock at 70 MHz, the FPU's operand register off and `fmul` a cycle shorter; build 36 is the measured best). I want it **faster still**, measured:
 
 1. **The FPU** (my request of 2026-10-08): adds, subtracts and converts are still 8 cycles, `fmadd` 8, `fmul` 7, `fdiv` 34, and the pipeline waits for every response. Latency cuts inside the unit first (the add path's alignment decided in the request cycle; a radix-8 divider); whether FP instructions may overlap (which changes what EX waits for, rule 3) is the session's decision, from the measurements, recorded in the plan.
 2. **The clock beyond 70** only if the slow-corner slack recovers (build 36 is -2.56 ns at 70 asked; the board runs it); first candidates are the forwarding into the FPU's first stage, the D-cache's answer into `wb_result` and ID's decode into the sequencer (`syn\sta_families.py` on the build's report).
@@ -27,7 +29,7 @@ I'm building a MiSTer FPGA core (DE10-Nano, Cyclone V) with my own PowerPC CPU, 
 - `docs/DSPPC604_plan.md`: the rules, "Pipeline shape", M2 (the FPU: its latencies and the list of what would shorten them), M5 step 4 (the timing cuts, the twelfth being the cache's delayed write), "Cost and speed".
 - `README.md`: the build table (builds 28-31), "How fast will it be".
 - `docs/PPCMac_stubs.md`: the L2 row (the L2 exists but is not reported to the software).
-- `RESUME_disk.md`: the board's tools, the rules and the environment (mister.py, the Remote, Quartus, WSL). They all apply.
+- The last sections here: the board's tools, the Main, the rules and the environment (mister.py, the Remote, Quartus, WSL). They all apply.
 
 ## Where things stand (2026-10-09, 02:00)
 
@@ -36,7 +38,9 @@ I'm building a MiSTer FPGA core (DE10-Nano, Cyclone V) with my own PowerPC CPU, 
 - **Measured** (the Speed table): the L2 alone buys 2-3 % on Speedometer's CPU tests (they live in the L1), 11 % on the disk, 6-10 % on the colour tests and takes the boot to the Finder's menu bar from 97-101 s to 86 s; 70 MHz buys 8 % on everything; the FPU cuts 5 % on the FPU tests. Build 36: CPU 2.504, Disk 1.556, Math 106.8, Dhrystones 46,559/s, FPU 3.570, Towers 0.204 s, Permutations 0.252 s, Fast Fourier 0.088 s.
 - **The bug of build 33, worth remembering:** every simulation gate was green and the board bombed within minutes (Mac OS 7.6.1 "error type 10" in the Finder, 9.1 stuck at the grey screen). The cache's S_IDLE took a request it had not granted when a snoop to the pending write's set and a CPU request to another set met in one cycle (the take skipped the clashing snoop and fell through; `gnt` had refused it for the snoop). The lockstep's disk-less boot has almost no DMA; the board's disk DMA finds such a race at once. The snoop storm (random read snoops every N cycles, half of them to lines the program stored to) under the random lockstep programs fails on that cache within a few thousand instructions on every seed and passes on the fix. **Any change to a cache's or the machine's arbitration must run `run_core.py` (the storm is in it) and then the board with a disk.**
 - **Bitstreams:** `Scratch\build1\PPCMac_bN.rbf`, b28 (the release) to b36 (b33, b33a, b34 carry the bug; b35 was never built; b37 was abandoned). Quartus scratch copies: `Scratch\qbuild` (build 36's tree), `qbuild2` (an abandoned build 37: build 36 with `FPU_OPERAND_REG = 1`; its `PPCMac.sv` says 70), `qbuild3` (33a), `qbuild4` (33b). TimeQuest scripts in `qbuild`: `worst28.tcl`, `wide29.tcl` and the per-build copies; `syn\sta_families.py REPORT` groups a summary report by source and destination module. Two Quartus compiles run side by side in two copies (40 minutes each instead of 25).
-- **The board, as left on 2026-10-09 at 02:00:** build 36 in `_Unstable/PPCMac.rbf`, the machine **off** (dark: Mac OS shut down), slot 0 back to Debian (`games/PPCMac/linux_debian711.hda`, as found at the session's start; slot 4 the Open Transport CD, 120 MB, eth0, the L2 on). For a Speedometer run put `os761ot.hda` on slot 0 first (`python syn\mister.py mount 0 games/PPCMac/os761ot.hda`; `speedo_run.py` does not change the mounts) and put Debian back when done. `releases/` still holds build 28.
+- **The board, as left on 2026-10-09 at 02:00:** build 36 in `_Unstable/PPCMac.rbf`, the machine **off** (dark: Mac OS shut down), slot 0 back to Debian (`games/PPCMac/linux_debian711.hda`, as found at the session's start; slot 4 the Open Transport CD, 120 MB, eth0, the L2 on). For a Speedometer run put `os761ot.hda` on slot 0 first (`python syn\mister.py mount 0 games/PPCMac/os761ot.hda`; `speedo_run.py` does not change the mounts) and put Debian back when done.
+- **The fourth release (2026-10-09, the user's request):** `releases/PPCMac_20261009.rbf` is build 36 (md5 1d1c4fc0c5fe898c55d5c8f3791ef668, commit 2e755e4), with `releases/MiSTer` unchanged (9e88154e, the Main on the board through all of the speed work). Build 28's `PPCMac_20261008c.rbf` is in git's history. The next release replaces it the same way (ask me first).
+- **The SCSI disks' writes go through the Main's Mac-family write cache** (`support/mac/mac_disk.cpp` in `..\Main_MiSTer`, upstream's "fast scsi", #1336): with the branch Main, `is_mac_scsi_family()` includes "ppcmac", so writes to slots 0 and 1 are gathered into runs of up to 64 KB, eight a disk, written after 20 ms without a write or 500 ms of age, before any overlapping read, and on a remount. With the official Main the core is not in the family and every write goes straight to the image. The Disk numbers above are with the cache.
 - **The disk image:** Speedometer 4.02 is at the root of `os761ot.hda`; `games/PPCMac/os761ot_backup.zip` (67 MB, zip64, checked with Python's zipfile; busybox's unzip cannot read it) is its backup from before the first run: unzip it over the image on a PC if a CPU change ever corrupts the volume (build 33's crash and one accidental reload did not). The floppy image `games/PPCMac/floppy/speedo.img` has Speedometer too.
 
 ## Speedometer runs
@@ -66,9 +70,29 @@ Slack -2.56 ns, total -833 ns (`Scratch\qbuild\worst_b36.txt`, grouped by `syn\s
 - The board: Mac OS 7.6.1 to the Finder and Speedometer under the fixed conditions (`os761ot.hda`, RAM 120 MB, the 16-inch monitor, 256 colours, Ethernet eth0, nothing else mounted); Mac OS 9.1, a floppy and the CD now and then.
 - Commit at each verified step (explicit paths, the message from a file, `PPCMac.qsf` only through a patch of your own lines). When a faster build is proven, it is a candidate for `releases/` (ask me first).
 
-## Rules (as in `RESUME_disk.md`)
+## Other open work (the machine; not this session's unless it is quick)
 
-- **Never push** (this repository or `..\Main_MiSTer`). **Never change anything under `sys/`.** Don't modify `ppctest\`, the dingusppc or MAME trees, or the Quadra repository.
-- SystemVerilog both Verilator 5.020 and Quartus 17.0 accept (the list of what Quartus 17 refuses is in `RESUME_disk.md`). CPU modules are `DSPPC604_*`; machine modules are `PPCMac_*`.
-- Edit files with the editor tools, not scripts, `sed` or heredocs. New code gets short comments. Update `docs/PPCMac_stubs.md` with any stub change.
-- Never type passwords into anything on the board. Real hardware outranks every emulator. rb-cli (`C:\Users\spam\AppData\Local\Programs\Rusty Backup\bin\rb-cli.exe`) handles Mac archives and HFS images (`archive extract`, `expand --to-hfv`, `ls`, `put`): use it before anything else.
+The scaler fault fix (`ALLOW_POWER_UP_DONT_CARE OFF`) unproven; the CD changer parked; the double chime with the NVRAM; milestone A (Mac OS's sounds) and P's proof; 16-bit DirectColor; the 9.1 pointer missing from screenshots; floppy writing; on the board still unseen: the OSD itself (screenshots leave it out), Mac OS 8.6, millions of colours, 720K floppies, RAM 96/48/24/6 MB in "About This Computer". The plan's milestones and decisions table hold the details.
+
+## The board's tools
+
+`python syn\mister.py ...` (usage at the top of the file): `put-core RBF`, `load`, `menu`, `cfg [--ram MB] [--monitor 16|13|12] [--joy ...] [--ptr] [--eth] [--net eth0|eth1|wlan0|tap0] [--trace-mesh]`, `mount 0|1|2|4 PATH`, `umount N`, `shot OUT.png`, `keys TEXT`, `mouse DX DY [STEPS]`, `click`, `ws STEP ...` (`kbdRaw:N`, `kbdRawDown/Up:N`, `mouseMove:dx,dy`, `mouseBtn:left|left_down|left_up`, `sleep:S`, `text:...`), `osd-mount N NAME ...` (blind: N items down from the first menu item: Load ROM 0, SCSI disk 0 1, SCSI disk 1 2, CD-ROM 3, Insert floppy disk 4; a name it does not find leaves the OSD open holding the keyboard and mouse: Escape twice), `uart [S] [--baud N]` (prints only at its end: for a long capture run `cat /dev/ttyS1 > /tmp/ser.txt` on the MiSTer after `stty -F /dev/ttyS1 38400 raw -echo`), `type LINE`, `trace [--last N]`, `trace-capture S`, `trace-fetch OUT`, `trace --file OUT`, `run CMD`. From Git Bash set `MSYS_NO_PATHCONV=1` before text with `/`. Mac OS: the Menu key is the power key (`ws kbdRaw:127 sleep:3 kbdRaw:28` shuts down), Alt is Command. A floppy is not remembered across loads.
+
+## The Main
+
+The branch `Mac-ppc-enhancements` in `..\Main_MiSTer`: aad7960 (the core joins the Mac SCSI family), 7b3a601 (Ethernet), f00fe2a (one Ethernet option). Installed on the board as `/media/fat/MiSTer`, md5 9e88154eaa4cd342a5ec64a93e8c61d4, the same as `releases/MiSTer` (built in WSL with `/opt/gcc-arm-10.2-2020.11-x86_64-arm-none-linux-gnueabihf/bin` on PATH: rsync the branch to `~/.cache/ppcmac/main_ppcenh`, `rm -rf bin`, `make -j8`; Ubuntu's `arm-linux-gnueabihf-gcc` makes a binary that does not link). Kept on the card: `MiSTer.a2546ea7`, `MiSTer.official` (eb1799eb). Ask me before installing any other Main binary.
+
+## Rules
+
+- **Never push** (this repository or `..\Main_MiSTer`) or add a remote. **Never change anything under `sys/`** (not even another core's fix: describe it and let me decide). Don't modify `ppctest\`, the dingusppc or MAME trees, or the Quadra repository (`..\MacQuadra800_MiSTer`, read only).
+- SystemVerilog both Verilator 5.020 and Quartus 17.0 accept; Verilator `-Wall` clean. Quartus 17 refuses: a second read expression on a memory, two write statements on one RAM, byte-enabled writes to a wide array, a variable part-select of a two-dimensional array, `genvar` inside the `for`, a generate loop without `generate`, RAM style attributes, a three-input add or subtract as one expression, a RAM written from registers with a combinational read; an implicit `.name` port connection needs the same type. Declare before use. CPU modules are `DSPPC604_*`; machine modules are `PPCMac_*` under `rtl/machine/`.
+- Edit files with the editor tools, not scripts, `sed` or heredocs (generated files and copies are the exception). New code gets short comments. Update `docs/PPCMac_stubs.md` in the same commit as any stub change.
+- Commit with explicit paths (never `git add -A`), the message from a file (`git commit -F`), ending with the co-author line the harness gives. `Scratch\` is git-ignored.
+- Never type passwords or other credentials into anything on the board (I type them). Real hardware outranks every emulator; dingusppc first among them, then MAME, Linux's and NetBSD's drivers, the chips' manuals. rb-cli (`C:\Users\spam\AppData\Local\Programs\Rusty Backup\bin\rb-cli.exe`) handles Mac archives and HFS images (`archive extract`, `expand --to-hfv`, `ls`, `put`): use it before anything else.
+
+## Environment
+
+- Windows 11. Verilator 5.020, g++, make in WSL (Ubuntu 24.04); run WSL commands from PowerShell as `wsl --cd <windows dir> -- <command>` (Git Bash mangles the paths), anything with `$`, quotes or pipes from a script file. One Verilator build at a time. Python 3.9 on Windows (`websockets`, PIL, `capstone`).
+- Quartus Lite 17.0: copy `PPCMac.qpf/.qsf/.sdc/.srf`, `PPCMac.sv`, `build_id.v`, `files.qip`, `rtl\`, `sys\` into a `Scratch\qbuild*` copy and run `C:\intelFPGA_lite\17.0\quartus\bin64\quartus_sh.exe --flow compile PPCMac` there in the background (about 25 minutes; `rm -rf` the copy's `rtl` from Git Bash, PowerShell's Remove-Item is refused there).
+- The MiSTer: 192.168.99.143 (`syn\mister_host`), the Remote on 8182, key-based SSH as root (`~/.ssh/mister_only`). Images: `\\daninas.local\Software\BlueSCSI Images\PowerPC Images`, Mac software under `\\daninas.local\Software\Old Mac Stuff`.
+- References: dingusppc (`C:\Temp\mistercore\dingusppc`), MAME (`..\mame\src\mame\apple`), the Quadra 800 core (`..\MacQuadra800_MiSTer`, read only), the Mac LC core (`..\MacLC_MiSTer`).

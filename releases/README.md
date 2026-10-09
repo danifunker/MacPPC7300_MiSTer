@@ -5,12 +5,12 @@ Test builds of the Power Macintosh 7300/7600 core for the MiSTer
 
 | File | Date | md5 | What it is |
 |---|---|---|---|
-| `PPCMac_20261008c.rbf` | 2026-10-08 | `dd1dec7abc2d24c12947afb0c2bb72f8` | The third test build (build 28, commit `3bec4fd`): everything in the second, plus the floppy drive (400K, 800K and 1440K disk images, read only), Debian 7.11 Linux (through BootX), RAM up to 120 MB (Mac OS sees all of it), a real power-off after Shut Down, the clock right after a restart, one "Ethernet" option, the options that need a restart applied at the next restart, Linux's 32-bit console colours. The earlier builds (`PPCMac_20261008.rbf`, 7.6.1 only; `PPCMac_20261008b.rbf`, build 20) are in git's history. |
-| `MiSTer` | 2026-10-08 | `9e88154eaa4cd342a5ec64a93e8c61d4` | The Main this build was tested with: the official MiSTer-devel Main with three commits for this core (branch `Mac-ppc-enhancements`, `f00fe2a`): the core joins the Mac SCSI family (the CD-ROM through the Mac CD layer, the BlueSCSI Toolbox, local time with daylight saving), its Ethernet frames go through the Main, and its Ethernet option is one setting (Off or the interface). The CD-ROM and Ethernet need it; with an official Main the core runs without them. The other cores are untouched. |
+| `PPCMac_20261009.rbf` | 2026-10-09 | `1d1c4fc0c5fe898c55d5c8f3791ef668` | The fourth test build (build 36, commit `2e755e4`): everything in the third, faster. The CPU runs at 70 MHz instead of 65, a 128 KB L2 cache sits in front of the memory, and the FPU's multiply is shorter. Speedometer 4.02 on Mac OS 7.6.1 against the third build: CPU 2.28 to 2.50, Disk 1.39 to 1.56, Math 95.0 to 106.8, FPU 3.12 to 3.57; the start to the Finder's menu bar from about 101 s to 86 s. Tested on the board: Speedometer's whole run on 7.6.1, Mac OS 9.1 to the Finder. The earlier builds (`PPCMac_20261008.rbf`, 7.6.1 only; `PPCMac_20261008b.rbf`, build 20; `PPCMac_20261008c.rbf`, build 28: the floppy drive, Debian, 120 MB, the power-off) are in git's history. |
+| `MiSTer` | 2026-10-08 | `9e88154eaa4cd342a5ec64a93e8c61d4` | The Main this build was tested with (the same as the third build's): the official MiSTer-devel Main with three commits for this core (branch `Mac-ppc-enhancements`, `f00fe2a`): the core joins the Mac SCSI family (the CD-ROM through the Mac CD layer, the BlueSCSI Toolbox, local time with daylight saving), its Ethernet frames go through the Main, and its Ethernet option is one setting (Off or the interface). The CD-ROM and Ethernet need it; with an official Main the core runs without them. The other cores are untouched. |
 
 ## Installing
 
-1. Copy `PPCMac_20261008c.rbf` to `/media/fat/_Unstable/` (or `_Computer/`)
+1. Copy `PPCMac_20261009.rbf` to `/media/fat/_Unstable/` (or `_Computer/`)
    on the SD card, as `PPCMac.rbf` or under its own name.
 2. For the CD-ROM and Ethernet: keep a copy of your `/media/fat/MiSTer`
    (for example as `MiSTer.official`), copy `MiSTer` from here in its
@@ -84,8 +84,13 @@ Test builds of the Power Macintosh 7300/7600 core for the MiSTer
 - Shut Down from the Finder before loading another core or switching the
   MiSTer off: like a real Mac, a disk that is not shut down is checked at
   the next start.
-- The CPU is the core's own 604-compatible design at 65 MHz, slower than
-  a real 7300's 604e (not measured yet).
+- The CPU is the core's own 604-compatible design at 70 MHz with a 128 KB
+  L2 cache ("L2 cache (on reset)" in the OSD, on by default), slower than a
+  real 7300's 604e. Speedometer 4.02 on Mac OS 7.6.1 gives CPU 2.50 and
+  Math 106.8 against a Quadra 605, the FPU 3.57 against a Quadra 650.
+- With the Main from here, the disks' writes are gathered in the MiSTer's
+  memory and reach the image file within half a second: Shut Down before
+  switching the MiSTer off.
 - Scale (OSD): V-Integer gives even lines for the 13-inch 640 x 480 on a
   1080-line display; for the 16-inch 832 x 624 Normal with a sharp scaler
   filter looks best.
