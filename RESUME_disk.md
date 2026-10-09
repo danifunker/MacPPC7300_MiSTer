@@ -26,6 +26,7 @@ I'm building a MiSTer FPGA core (DE10-Nano, Cyclone V) with a PowerPC CPU called
 - The serial log of Debian's earlier restart: no panic; the kernel simply started again (an outside reset, most likely the old automatic reset on an OSD change, now gone).
 - Release: `releases/PPCMac_20261008c.rbf` (build 28, md5 dd1dec7a...) and `releases/MiSTer` (9e88154e), the README there updated.
 - Still to see on the board: the OSD itself (screenshots leave it out), 8.6, Mac OS in millions of colours, 720K floppies.
+- The speed work (an L2 cache, the CPU clock, Speedometer) has its own prompt: `RESUME_speed.md` (a CPU session).
 
 ## In flight when this was first written
 
