@@ -1,5 +1,5 @@
-// The SCSI bench's top: Grand Central (MacPPC7300_gc: MESH, its DMA channel)
-// and the disks (MacPPC7300_scsidisk) on the internal bus, wired as
+// The SCSI bench's top: Grand Central (MacPPC7300_gc: MESH, its DMA channel;
+// AWACS and its sound-out channel) and the disks (MacPPC7300_scsidisk) on the internal bus, wired as
 // MacPPC7300_machine wires them, and the floppy's image (MacPPC7300_fdblk) for
 // SWIM3; Grand Central's register port, its DMA port and the hps_io side
 // are the bench's. The SCSI controllers' 25 MHz tick is made here by phase
@@ -48,6 +48,9 @@ module scsi_tb_top
 	input  logic         sd_buff_wr,
 	output logic [15:0]  cd_left,
 	output logic [15:0]  cd_right,
+	// AWACS's samples (DMA channel 8)
+	output logic [15:0]  snd_left,
+	output logic [15:0]  snd_right,
 	// the floppy's slot (6)
 	input  logic         fd_mounted,
 	output logic [31:0]  fd_lba,
@@ -71,6 +74,19 @@ always_ff @(posedge clk) begin
 	end
 	else scsi_acc <= scsi_acc + SCSI_HZ;
 	if (reset) begin scsi_acc <= 32'h0; scsi_tick <= 1'b0; end
+end
+
+// AWACS's 88,200 Hz, as MacPPC7300_machine makes it
+logic [31:0] snd_acc;
+logic        snd_tick;
+always_ff @(posedge clk) begin
+	snd_tick <= 1'b0;
+	if (snd_acc + 32'd88_200 >= CPU_HZ) begin
+		snd_acc  <= snd_acc + 32'd88_200 - CPU_HZ;
+		snd_tick <= 1'b1;
+	end
+	else snd_acc <= snd_acc + 32'd88_200;
+	if (reset) begin snd_acc <= 32'h0; snd_tick <= 1'b0; end
 end
 
 // the floppy's microseconds, 16 times as fast as the CPU's clock would make them
@@ -109,7 +125,7 @@ assign bus_db = scsi_db;
 
 /* verilator lint_off PINCONNECTEMPTY */
 MacPPC7300_gc #(.SCSI_HZ(SCSI_HZ)) gc (
-	.clk, .reset, .via_tick(1'b0), .rtxc_tick(1'b0), .scsi_tick, .us_tick, .snd_tick(1'b0),
+	.clk, .reset, .via_tick(1'b0), .rtxc_tick(1'b0), .scsi_tick, .us_tick, .snd_tick,
 	.sel, .we, .addr, .be, .wdata, .rdata, .irq,
 	.cuda_treq(1'b1), .cuda_cb1(1'b1), .cb2(1'b1), .via_tip(), .via_byteack(), .via_cb2_oe(), .via_cb2_out(),
 	.modem_txd(), .modem_rxd(1'b1), .modem_cts(1'b0), .modem_rts(),
@@ -121,7 +137,7 @@ MacPPC7300_gc #(.SCSI_HZ(SCSI_HZ)) gc (
 	.mesh_rst, .mesh_bsy, .mesh_sel, .mesh_atn, .mesh_ack, .mesh_req, .mesh_msg, .mesh_cd, .mesh_io, .mesh_db,
 	.scsi_rst, .scsi_bsy, .scsi_sel, .scsi_atn, .scsi_ack, .scsi_req, .scsi_msg, .scsi_cd, .scsi_io, .scsi_db,
 	.dm_req, .dm_we, .dm_line, .dm_addr, .dm_be, .dm_wdata, .dm_ack, .dm_rdata,
-	.snd_left(), .snd_right(),
+	.snd_left, .snd_right,
 	.dac_cr(), .dbl_buf_cr(), .cursor_x(), .cursor_clut(), .clk_v(clk_h), .clut_index(24'h0), .clut_rgb(),
 	.dfin(), .dfin_ch(), .dfin_type(), .dfin_info(), .itr_ev(), .itr_st(),
 	.fd_m_t, .fd_m_ok, .fd_m_fmt, .fd_m_dc42, .fd_rq_t, .fd_rq_lba, .fd_dn_t, .fd_ra, .fd_q

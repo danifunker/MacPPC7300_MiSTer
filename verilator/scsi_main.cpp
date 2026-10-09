@@ -23,7 +23,9 @@
 //   12. SDTR, WDTR, and a MESSAGE REJECT answered under ATN (Mac OS 8.5);
 //   13. the floppy: SWIM3 and DMA channel 1 reading a DiskCopy 1440K image,
 //      a raw 800K one, an 800K DiskCopy one of an odd size (slot 6); the GCR
-//      sectors decoded as Apple's driver does (denib).
+//      sectors decoded as Apple's driver does (denib);
+//   14. sound out: AWACS playing DMA channel 8's frames in order, a part
+//      frame left by a stopped channel dropped, a late frame held.
 // --stock: the official Main instead (no CD drive, nothing written to slot 4).
 //
 // Every byte the drivers take is checked against the image; every step's
@@ -211,6 +213,7 @@ void host_edge() {
 // ---- memory on the DMA port, in clk: 1 MB, big-endian -------------------------------------------
 std::vector<uint8_t> mem(1u << 20, 0);
 int mem_wait = 0;
+int mem_lat = 4;                                        // clocks an access waits (test 14 slows it)
 bool mem_ack = false;
 uint32_t mem_rd[8];
 int dma_lines = 0, dma_words = 0;
@@ -218,7 +221,7 @@ int dma_lines = 0, dma_words = 0;
 void mem_edge() {
 	if (mem_ack) { mem_ack = false; return; }
 	if (!dut->dm_req) { mem_wait = 0; return; }
-	if (++mem_wait < 4) return;
+	if (++mem_wait < mem_lat) return;
 	mem_wait = 0;
 	uint32_t a = ((uint32_t)dut->dm_addr << 2) & (mem.size() - 1);
 	if (dut->dm_line) {
@@ -429,6 +432,56 @@ int fd_stat(int a) {
 	sw(4, (uint8_t)(a & 7));
 	return (sr(7) >> 2) & 1;
 }
+// AWACS (Grand Central's 14000) and its sound-out DMA channel 8 (08800)
+const uint32_t DMA_8 = 0x08800;
+const int FRAME_CLKS = 65000000 / 44100;                // a frame at AWACS's default 44,100 Hz
+void d8w(int reg, uint32_t le) {
+	uint32_t be = (le >> 24) | ((le >> 8) & 0xFF00) | ((le << 8) & 0xFF0000) | (le << 24);
+	access(DMA_8 + 4 * reg, 4, true, be);
+}
+uint32_t d8r(int reg) {
+	uint32_t be = access(DMA_8 + 4 * reg, 4, false, 0);
+	return (be >> 24) | ((be >> 8) & 0xFF00) | ((be << 8) & 0xFF0000) | (be << 24);
+}
+// n stereo frames in memory, big-endian: left l0 + k, right r0 + k
+void put_frames(uint32_t at, int n, uint16_t l0, uint16_t r0) {
+	for (int k = 0; k < n; k++) {
+		uint16_t l = (uint16_t)(l0 + k), r = (uint16_t)(r0 + k);
+		mem[at + 4 * k] = l >> 8; mem[at + 4 * k + 1] = l & 0xFF;
+		mem[at + 4 * k + 2] = r >> 8; mem[at + 4 * k + 3] = r & 0xFF;
+	}
+}
+struct Played { uint64_t at; uint16_t l, r; };
+// what the outputs play over n clocks: each change
+std::vector<Played> play(int n) {
+	std::vector<Played> v;
+	uint16_t l = dut->snd_left, r = dut->snd_right;
+	while (n-- > 0) {
+		tick();
+		if (dut->snd_left != l || dut->snd_right != r) {
+			l = dut->snd_left; r = dut->snd_right;
+			v.push_back({cycles, l, r});
+		}
+	}
+	return v;
+}
+// the frames l0 + k, r0 + k for k = 0..n-1, in order, each one frame after the last
+void check_frames(const std::vector<Played>& v, int n, uint16_t l0, uint16_t r0, const char* what) {
+	check((int)v.size() == n, "%s: %d frames played, %d expected", what, (int)v.size(), n);
+	for (int k = 0; k < (int)v.size() && k < n; k++) {
+		if (v[k].l != (uint16_t)(l0 + k) || v[k].r != (uint16_t)(r0 + k)) {
+			check(false, "%s: frame %d played %04X %04X, %04X %04X expected", what, k, v[k].l, v[k].r,
+				(uint16_t)(l0 + k), (uint16_t)(r0 + k));
+			return;
+		}
+		if (k > 0 && v[k].at - v[k - 1].at > (uint64_t)FRAME_CLKS + 8) {
+			check(false, "%s: frame %d came %llu clocks after the one before (an underrun)", what, k,
+				(unsigned long long)(v[k].at - v[k - 1].at));
+			return;
+		}
+	}
+}
+
 // a message out: ATN on for all but the last byte, as Linux's mesh.c sends one
 void msg_out(const std::vector<uint8_t>& m) {
 	if (m.size() > 1) {
@@ -939,6 +992,41 @@ int main(int argc, char** argv) {
 		fd_hdr = 0; fd_len = 1000; fd_size = 1000; fd_remount = true;
 		run(20000);
 		check(fd_stat(8) == 1, "1,000 bytes taken for a disk");
+	}
+
+	// ---- 14: sound out ----
+	std::printf("14. sound out (AWACS, DMA channel 8): 64 frames and half of one, a STOP; 32 more start aligned;\n"
+	            "    memory too slow for the stream: the last frame held, never a 0\n");
+	{
+		put_frames(0x60000, 64, 0x1000, 0x2000);
+		mem[0x60100] = 0xAA; mem[0x60101] = 0xBB;           // half a frame: left over in the FIFO
+		put_cmd(0x700, 0, 0x00, 258, 0x60000);              // OUTPUT_MORE
+		put_cmd(0x710, 7, 0x00, 0, 0);                      // STOP
+		d8w(3, 0x700); d8w(0, 0x80008000);
+		check_frames(play(70 * FRAME_CLKS), 64, 0x1000, 0x2000, "64 frames");
+		check((d8r(1) & 0x0400) == 0, "sound out: the channel still ACTIVE after its STOP (%04X)", d8r(1));
+
+		put_frames(0x61000, 32, 0x3000, 0x4000);
+		put_cmd(0x720, 0, 0x00, 128, 0x61000);
+		put_cmd(0x730, 7, 0x00, 0, 0);
+		d8w(3, 0x720); d8w(0, 0x80008000);
+		check_frames(play(40 * FRAME_CLKS), 32, 0x3000, 0x4000, "after the half frame");
+
+		mem_lat = 6000;                                     // longer than the FIFO lasts (about three frames)
+		put_frames(0x62000, 24, 0x5000, 0x6000);
+		put_cmd(0x740, 0, 0x00, 96, 0x62000);
+		put_cmd(0x750, 7, 0x00, 0, 0);
+		d8w(3, 0x740); d8w(0, 0x80008000);
+		std::vector<Played> v = play(80 * FRAME_CLKS);
+		mem_lat = 4;
+		bool ordered = !v.empty(), late = false;
+		for (size_t k = 0; k < v.size(); k++) {
+			ordered = ordered && v[k].l == (uint16_t)(0x5000 + k) && v[k].r == (uint16_t)(0x6000 + k);
+			if (k > 0 && v[k].at - v[k - 1].at > (uint64_t)FRAME_CLKS + 8) late = true;
+		}
+		check(ordered && v.size() == 24, "slow memory: %d changes, in order %d (each a frame, never a 0)",
+			(int)v.size(), ordered);
+		check(late, "slow memory: no frame came late (the test did not starve the FIFO)");
 	}
 
 	std::printf("%llu cycles; DMA: %d lines, %d words; the card: %d blocks read, %d written\n",

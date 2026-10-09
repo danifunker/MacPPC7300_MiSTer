@@ -32,8 +32,9 @@
 //  byte swap is set. The channel's bytes fill an 8-byte FIFO (do_ready /
 //  do_put, a byte a clock); at each frame a whole frame leaves it for the
 //  outputs (left, right), or, if the channel has not delivered one, the
-//  outputs go to 0 (silence: an underrun). What the FIFO holds when the
-//  channel stops is played out.
+//  outputs keep the last frame (an underrun; a jump to 0 would click).
+//  What the FIFO holds when the channel stops is played out, and a part of
+//  a frame left after that is dropped, so the next start is frame-aligned.
 //
 //  In: while the in channel is active, each frame puts 4 zero bytes into
 //  a FIFO of 8 that the channel takes (di_valid / di_take); a frame that
@@ -137,11 +138,8 @@ always_ff @(posedge clk) begin
 		right <= byte_swap ? {b3, b2} : {b2, b3};
 		o_rd  <= o_rd + 3'd4;
 	end
-	else if (frame) begin
-		left  <= 16'h0;
-		right <= 16'h0;
-	end
-	o_n <= o_n + (do_put ? 4'd1 : 4'd0) - (o_pop ? 4'd4 : 4'd0);
+	if (!out_active && !o_pop && o_n < 4'd4) o_n <= 4'd0;   // a stopped channel's part frame
+	else o_n <= o_n + (do_put ? 4'd1 : 4'd0) - (o_pop ? 4'd4 : 4'd0);
 	if (frame && out_active) frame_count <= frame_count + 32'd1;
 
 	// in
