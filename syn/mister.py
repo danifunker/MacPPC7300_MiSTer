@@ -23,11 +23,11 @@ to the card and the core's UART.
                                                  it at its start and keeps the NVRAM in it
     python syn\\mister.py cfg [--ram MB] [--monitor 16|13|12]
                               [--joy none|mousestick|firebird|gamepad|sidewinder] [--ptr]
-                              [--eth] [--net eth0|eth1|wlan0|tap0] [--trace-mesh]
+                              [--eth] [--net eth0|eth1|wlan0|tap0] [--trace-mesh] [--l2 on|off]
                                                  writes config/PPCMac.CFG (--eth or --net: Ethernet
                                                  on, eth0 unless --net; --trace-mesh: the trace
                                                  also takes MESH's accesses and interrupt;
-                                                 no OSD entry)
+                                                 no OSD entry; --l2: the L2 cache, on unless off)
     python syn\\mister.py load                    loads _Unstable/PPCMac.rbf (Remote: /api/launch)
     python syn\\mister.py menu                    loads the menu core again (/api/launch/menu)
     python syn\\mister.py shot [OUT.png]          a screenshot of the core's output, fetched
@@ -232,7 +232,10 @@ def main():
         if net not in nets:
             sys.exit("--net one of %s" % ", ".join(nets))
         eth = (nets.index(net) + 1) if ("--eth" in a or "--net" in a) else 0
-        status = ((RAM_OPTION[ram] << 1) | (joys.index(joy) << 11)
+        l2 = a[a.index("--l2") + 1] if "--l2" in a else "on"                   # PPCMac.sv: O[4], 1 off
+        if l2 not in ("on", "off"):
+            sys.exit("--l2 on or off")
+        status = ((RAM_OPTION[ram] << 1) | ((l2 == "off") << 4) | (joys.index(joy) << 11)
                   | (("--ptr" in a) << 14) | ({16: 0, 13: 1, 12: 2}[monitor] << 15)
                   | (eth << 17) | (("--trace-mesh" in a) << 29))
         data = "".join("\\x%02x" % ((status >> (8 * i)) & 0xFF) for i in range(4)) + "\\x00" * 12

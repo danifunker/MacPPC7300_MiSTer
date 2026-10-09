@@ -782,7 +782,56 @@ for this work (it is in build mode: no edits, commits, pushes or fetches).
 | Printer and the disk write buffer (Main branch `mac-printer-writebuffer`) | the write buffer serves slots 0 and 1 once ppcmac is in the Mac family (the branch above); the modem port's CTS and RTS as the Quadra's (build 8), so the ImageWriter on the modem port through the Main's printer daemon |
 | ALSA audio through the HPS, composite and Y/C video (`yc_out`) | on already (the framework's defaults: `MISTER_DISABLE_ALSA` and `MISTER_DISABLE_YC` not set in `PPCMac.qsf`) |
 | Aspect ratio and Scale (Normal, V-Integer, HV-Integer) through `video_freak` | done (2026-10-08) |
-| A second, smaller monitor choice (12-inch 512 x 384) | done 2026-10-08 (build 9; the Monitor option moved to O[16:15]): Apple's 12-inch RGB (sense 2, extended 21, 512 x 384 at 60.15 Hz, dingusppc's `displayid.cpp`); on the board Mac OS 7.6.1 comes up at 512 x 384; the 21-inch later || Speedometer against a real machine | Speedometer on the 7300 and the core |
+| A second, smaller monitor choice (12-inch 512 x 384) | done 2026-10-08 (build 9; the Monitor option moved to O[16:15]): Apple's 12-inch RGB (sense 2, extended 21, 512 x 384 at 60.15 Hz, dingusppc's `displayid.cpp`); on the board Mac OS 7.6.1 comes up at 512 x 384; the 21-inch later |
+| Speedometer against a real machine | Speedometer on the 7300 and the core: the Speed section below (2026-10-08) |
+
+## Speed (2026-10-08, the speed session: `RESUME_speed.md`)
+
+The measure is Speedometer 4.02 on the board, always under the same
+conditions: `os761ot.hda` on SCSI disk 0 (Mac OS 7.6.1 with Open Transport,
+as the image is: 256 colours, virtual memory on), RAM 120 MB, the 16-inch
+monitor (832 x 624), Ethernet eth0, no floppy, nothing else mounted; the
+Performance Rating and the CPU, Graphics, Disk and Math scores, and the
+benchmark list, read off screenshots. The time from the core's load to the
+Finder (the desktop drawn) is the cheap second measure. Quartus's figures
+are the slow 100 C model's for the CPU clock (`general[1]`).
+
+| Build | CPU MHz | L2 | Slack, fmax | ALMs, RAM blocks | Load to Finder | Speedometer |
+|---|---|---|---|---|---|---|
+| 28 (the third release) | 65 | none | -1.462 ns, 59.4 MHz | 35,642 (85 %), 195 | 101-109 s (the picture at 34 s, "Starting Up..." at 41-49 s, the menu bar at 101 s, the desktop at 109 s) | CPU 2.281, Graphics skipped, Disk 1.386, Math 95.006. Benchmark Mix: KWhetstones/s 13,746.649 (46.743), Dhrystones/s 43,211.925 (2.501), Towers 0.212 s (3.013), Quick Sort 0.167 (4.269), Bubble Sort 0.302 (2.518), Queens 0.158 (2.557), Puzzle 0.292 (3.745), Permutations 0.265 (3.068), Int. Matrix 0.186 (4.340), Sieve 0.497 (2.760), average 7.551. Color: 8-bit 8.556 s (1.238), 16-bit 11.906 s (1.140), average 1.189. FPU: KWhetstones/s 14,864.804 (2.854), Matrix Mult. 0.193 s (3.661), Fast Fourier 0.101 s (2.842), average 3.119 |
+| 29 (the device register stage) | 65 | none | -1.092 ns, 60.7 MHz | 36,743 (88 %), 195 | 97-112 s | CPU 2.279, Graphics skipped (below), Disk 1.408, Math 95.027, PR not given. Benchmark Mix (Quadra 605 = 1): KWhetstones/s 16,150.653 (54.918), Dhrystones/s 43,151.547 (2.498), Towers 0.212 s (3.009), Quick Sort 0.167 (4.271), Bubble Sort 0.301 (2.522), Queens 0.158 (2.559), Puzzle 0.292 (3.741), Permutations 0.265 (3.067), Int. Matrix 0.186 (4.340), Sieve 0.497 (2.761), average 8.369. Color: 8-bit 9.260 s (1.144), 16-bit 11.992 s (1.132), average 1.138. FPU (Quadra 650 = 1): KWhetstones/s 16,181.753 (3.107), Matrix Mult. 0.193 s (3.665), Fast Fourier 0.101 s (2.839), average 3.204 |
+
+| 30 (+ the 128 KB L2) | 65 | 128 KB | -2.013 ns, 57.5 MHz (the cache-answer family of build 29, -0.32 ns there, placed 1.7 ns worse at 90 %) | 37,883 (90 %), 329 | | CPU 2.321, Graphics skipped, Disk 1.544, Math 96.758. Benchmark Mix: KWhetstones/s 14,186.409 (48.238), Dhrystones/s 43,919.132 (2.542), Towers 0.209 s (3.065), Quick Sort 0.162 (4.389), Bubble Sort 0.296 (2.566), Queens 0.155 (2.603), Puzzle 0.287 (3.813), Permutations 0.261 (3.122), Int. Matrix 0.181 (4.451), Sieve 0.487 (2.821), average 7.761. Color: 8-bit 7.717 s (1.373), 16-bit 11.146 s (1.218), average 1.295. FPU: KWhetstones/s 15,187.412 (2.916), Matrix Mult. 0.187 s (3.774), Fast Fourier 0.099 s (2.907), average 3.199. Against build 28: the CPU tests 2-3 % faster (they live in the L1), the disk 11 %, the colour tests 6-10 % |
+
+| 31 (+ the cache's delayed write) | 65 | 128 KB | -0.321 ns, 64.0 MHz (TNS -1.9 ns: the I-cache's unused write-back address into the machine, the D-cache's answer, the MMU's read-ahead, each a few tenths) | 37,765 (90 %), 329 | the menu bar at 86 s (97-101 s in builds 28 and 29: the L2) | CPU 2.317, Graphics skipped, Disk 1.533, Math 96.623. Benchmark Mix: KWhetstones/s 13,839.872 (47.060), Dhrystones/s 42,649.233 (2.469), Towers 0.226 s (2.822), Quick Sort 0.166 (4.295), Bubble Sort 0.297 (2.563), Queens 0.159 (2.538), Puzzle 0.287 (3.808), Permutations 0.287 (2.831), Int. Matrix 0.182 (4.435), Sieve 0.487 (2.819), average 7.564. Color: 8-bit 7.931 s (1.336), 16-bit 11.428 s (1.188), average 1.262. FPU: KWhetstones/s 14,564.732 (2.797), Matrix Mult. 0.188 s (3.753), Fast Fourier 0.100 s (2.870), average 3.140. Against build 30: the same within noise but Towers and Permutations, 8-10 % slower: their recursion stores and then asks again in the next cycle, which the delayed write makes wait a cycle (refined in the next build: only a request to the pending write's own set waits) |
+
+Speedometer 4.02 is at the root of `os761ot.hda` (copied from the floppy
+image `games/PPCMac/floppy/speedo.img`, the volume of `Speedo402.sit`'s
+DiskCopy image cloned into a 1440K HFS floppy with rb-cli; the image was
+backed up as `games/PPCMac/os761ot_backup.zip` before the first run, 67 MB,
+checked). A run is scripted from an off machine (the session's
+`speedo_run.py`: load, boot, the Finder's windows closed, "Mac" Command-O,
+"Spee" Command-O, the splash clicked, "Not Yet" clicked, Command-A, Command-D
+"Mac" Return for the temporary file's drive, Return at the Graf notice, 100 s,
+a screenshot, Command-Q, "No" clicked, the power key; the clicks find the
+pointer in a screenshot and correct: 7.5 minutes). Builds 28 and 29 agree
+within 1 % on every number but KWhetstones/s, which swings 15 % between runs
+(13.7-16.2 k): a timed test, not a counted one. It skips the Graf
+Test and the 1-, 2- and 4-bit colour tests: "This machine does not support
+monochrome graphics" (Mac OS 7.6.1 at 832 x 624 in 256 colours). Open: whether
+a real 7300 offers 1 bit there (the Monitors control panel), and so whether
+the Control driver should see something it does not see here.
+
+Where build 28's time goes (TimeQuest, `Scratch\qbuild\worst28.tcl`): its 60
+worst paths are one family, the data cache's tag RAM (the M10K's 2.5 ns
+clock-to-out and 2.4 ns of clock skew against the logic's flip-flops) through
+the CPU's memory address mux (`cpu|mem_addr`, the write-back address off the
+tag RAM), the machine's `ram_map` and device decode, Grand Central's register
+selects and the ESCC's read mux into `gc|rdata_q`: 14.1-14.4 ns of data
+delay, 83 % of it routing. Build 26's were the same family into `gc|nv_hi`
+and the VIA's `t1_left` through `cpu|mem_wdata` (the write-back data off the
+cache RAMs). The CPU's own worst path (the I-cache's tag RAM into the MMU's
+segment-register read-ahead, `mmu|i_sr_q`) was -1.33 ns in build 26.
 
 ## Decisions needed
 
@@ -821,3 +870,5 @@ for this work (it is in build mode: no edits, commits, pushes or fetches).
 | after parity | Found by the user, 2026-10-08 (Debian's `shutdown -h now` ended in "BUG: soft lockup" in `pmac_power_off` / `cuda_poll`), decided by the session: Linux, like Mac OS, sends Cuda POWER_DOWN and waits for the power to go; nothing switched it off, so the CPU spun until the kernel's watchdog spoke (the disks were already synced and unmounted: harmless, but it read as a crash). Cuda's firmware switches a 7300 off by driving PA0 low (115B, 1161-1163) and waiting over a second; the core now takes PA0 driven low for 256 bus cycles (the cold start's port set-up drives it 65) as the power going off: the CPU and the board are held in reset (a black screen) until the OSD's reset or the keyboard's power key (the Menu key), which restarts the machine as the OSD's reset does. `run_cuda.py` ends with POWER_DOWN: off 17 ms later (the firmware sends no reply first), the CPU held, the power key seen; MAME's 6805 lockstep identical. |
 | after parity | Found on the board by the session, 2026-10-08 (build 26), decided by the session: Mac OS 7.6.1 found every 400K and 800K floppy image "unreadable" (insertion and the address fields worked). Apple's SWIM3 driver (SonySWIM3.a, the same code as the 7300 ROM's DRVR 4) wants a GCR sector as the chip leaves it: 704 bytes of 6-bit values (the sector number, 12 tag bytes and 512 data bytes in three-byte groups with three running checksums, the checksums) and decodes them itself (DeNibbleize); SWIM3 sent the 512 decoded bytes, as dingusppc does (dingusppc cannot read GCR with Apple's driver either; MAME stops on a GCR read). `PPCMac_swim3.sv` now encodes each GCR sector so (zeros for the tags), MFM unchanged; the bench decodes with Apple's routine. Also: the Mac's clock now counts on from the HPS's time in the core (it went back to the core's load time at every reset or power-on). |
 | parity | Decided by the session, 2026-10-08: Ethernet carries frames only. MACE (registers, DMA channels 2 and 3) stays in the FPGA; `PPCMac_enet` keeps a transmit and a receive ring (8 x 2 KB each) at DDR3 0x30400000 (after the VRAM, in the cores' half of DDR3), the Main sends and receives them on its interface; the receive DMA gets what Linux's `mace.c` expects (the frame, the FCS, RFS0-3; the INPUT_LAST ends with the frame); the link is up only while the Main serves the rings, so with the official Main the cable stays unplugged. Reason: MACE's DMA is Grand Central's, already in the FPGA, so the Quadra's way (the Main models the chip and reaches guest memory through a mailbox) would be more work and slower; frames are what crosses to the HPS either way. |
+| speed | Decided by the session, 2026-10-08 (the speed session): the machine presents a device access to the devices from a register (`PPCMac_machine` p_*: the word, address, byte enables and the one-hot decode, a cycle after the CPU's request), so the device answer comes two cycles after a word request and the line's eight words a cycle later than before. Reason: build 28's 60 worst paths all ran from the data cache's tag RAM through the CPU's memory address (a write-back's, straight off the RAM) and the machine's decode into Grand Central's registers (-1.46 ns); a device access is some 1 % of the CPU's accesses and the VIA's are paced in microseconds anyway, so the cycle is cheap and the CPU is untouched. |
+| speed | Decided by the session, 2026-10-08: the L2 cache is `PPCMac_l2.sv` on the machine's single memory port in the CPU's clock, in front of the clock crossing: 128 KB to begin with (256 KB when the fit allows), direct-mapped like the cache DIMMs, 32-byte lines, write-back and write-allocate for lines (the L1's write-backs stay in it, dirty), words (cache-inhibited accesses) served from a line they hit and otherwise passed to memory without allocating; indexed by SDRAM offset, so RAM and the ROM are cached and no device ever is; a hit answered from a register two cycles after the request; invalidated by the machine's reset (the ROM upload writes the SDRAM behind it) and kept across Cuda's restart; an OSD option "L2 cache (on reset)" (O[4]) with Off as a wire, for the measurements. Not reported to the software (Hammerhead's register 0E still reads 0): the ROM's L2 code (FFF03D48) sizes the L2 from a word read of 0E whose value on a real Hammerhead is not known. Reason: that port is where the CPU's and the DMA's accesses already meet, so the L2 is coherent with DMA by construction and the L1's snoop stays as it is; write-back because the L1's write-backs then cost two cycles instead of a trip to the SDRAM. |

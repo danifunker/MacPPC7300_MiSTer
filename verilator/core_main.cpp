@@ -107,6 +107,7 @@ struct Options {
 	uint64_t dev_log_from = 0;     // ... from this instruction on (no lockstep)
 	uint64_t trace_from = 0, trace_count = 0;
 	uint64_t stuck = 1ull << 24;   // cycles without a retirement that count as stuck
+	bool l2 = true;                // the L2 cache in the memory path (--no-l2 turns it off)
 	bool memtest = false;          // boot the memory test in place of the ROM
 	uint32_t memtest_passes = 1;   // ... and stop when it has completed this many
 	int64_t mem_fault = -1;        // SDRAM offset whose reads come back with bit 0 flipped
@@ -302,6 +303,7 @@ void usage() {
 #ifdef PPCMAC_MACHINE
 		"usage: machine_tb --machine --rom FILE [options]\n"
 		"  --ram MB         installed RAM (default 16)\n"
+		"  --no-l2          the L2 cache off (PPCMac_l2; on by default)\n"
 		"  --cpu-mhz F      the CPU's clock (default 65)\n"
 		"  --mem-mhz F      the memory's clock (default 100)\n"
 		"  --max-instr N    stop after N instructions\n"
@@ -626,6 +628,7 @@ int main(int argc, char** argv) {
 		else if (a == "--machine") opt.machine = true;
 		else if (a == "--rom") opt.rom = next();
 		else if (a == "--ram") opt.ram_mb = (unsigned)std::atoi(next().c_str());
+		else if (a == "--no-l2") opt.l2 = false;
 		else if (a == "--cpu-mhz") opt.cpu_mhz = std::atof(next().c_str());
 		else if (a == "--mem-mhz") opt.mem_mhz = std::atof(next().c_str());
 		else if (a == "--max-instr") opt.max_instr = std::strtoull(next().c_str(), nullptr, 0);
@@ -891,6 +894,7 @@ int main(int argc, char** argv) {
 		dut->ps2_key = 0;
 		dut->ram_mb = opt.ram_mb;
 		dut->boot_memtest = opt.memtest;
+		dut->l2_on = opt.l2;
 		dut->reset_pc = reset_pc;
 		dut->modem_rxd = term.txd;
 		dut->nv_ld_we = nv_ld >= 0;

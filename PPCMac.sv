@@ -108,6 +108,7 @@ localparam CONF_STR = {
 	"SC2,NVR,Mount NVRAM;",
 	"-;",
 	"O[3:1],RAM (on reset),16 MB,24 MB,48 MB,64 MB,96 MB,6 MB,120 MB;",
+	"O[4],L2 cache (on reset),On,Off;",
 	"O[16:15],Monitor (on reset),16-inch 832x624,13-inch 640x480,12-inch 512x384;",
 	"-;",
 	"O[13:11],ADB controller (on reset),None,Gravis MouseStick II,Gravis Firebird,Gravis GamePad,SideWinder 3D Pro;",
@@ -412,12 +413,14 @@ reg  [8:0]  mon_m = 9'h1ED;                 // the 16-inch's sense codes
 reg  [2:0]  joy_mode = 0;
 reg         net_on = 0;
 reg         tr_mesh_m = 0;                  // the trace also takes MESH (status[29]: no menu entry)
+reg         l2_on_m = 1;
 always @(posedge clk_mem) if (cpu_reset_m) begin
 	ram_mb    <= ram_opt;
 	mon_m     <= {mon_std, mon_ext};
 	joy_mode  <= (status[13:11] > 3'd4) ? 3'd0 : status[13:11];
 	net_on    <= status[19:17] != 3'd0;     // the Main's mac_eth.cpp takes the interface from it too
 	tr_mesh_m <= status[29];
+	l2_on_m   <= ~status[4];
 end
 wire [51:0] joy = {status[14], joy_mode, joystick_r_analog_0, joystick_l_analog_0, joystick_0[15:0]};
 
@@ -427,6 +430,7 @@ reg [7:0] ram_mb_c [2];
 reg [1:0] boot_memtest_c;
 reg [8:0] mon_c [2];
 reg [1:0] tr_mesh_c;
+reg [1:0] l2_on_c = 2'b11;
 always @(posedge clk_cpu) begin
 	cpu_reset_s    <= {cpu_reset_s[1:0], cpu_reset_m};
 	ram_mb_c[0]    <= ram_mb;
@@ -435,6 +439,7 @@ always @(posedge clk_cpu) begin
 	mon_c[0]       <= mon_m;
 	mon_c[1]       <= mon_c[0];
 	tr_mesh_c      <= {tr_mesh_c[0], tr_mesh_m};
+	l2_on_c        <= {l2_on_c[0], l2_on_m};
 end
 wire cpu_reset = cpu_reset_s[2];
 
@@ -601,6 +606,7 @@ PPCMac_system #(.CPU_HZ(CPU_MHZ * 1000000), .TB_HZ(12500000), .SDRAM_MB(128)) sy
 	.reset_pc(32'hFFF00100),
 	.ram_mb(ram_mb_c[1]),
 	.boot_memtest(boot_memtest_c[1]),
+	.l2_on(l2_on_c[1]),
 
 	.clk_b(clk_mem),
 	.reset_b(cpu_reset_m),

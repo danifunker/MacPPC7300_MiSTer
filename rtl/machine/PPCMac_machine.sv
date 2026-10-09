@@ -467,13 +467,21 @@ assign v_addr  = v_byte[21:2];
 assign v_be    = v_swbe(c_be, v_swap);
 assign v_wdata = v_swl(c_wdata, v_swap);
 
-// Everything else is answered here: a word a cycle after it is seen, a line
+// Everything else is answered here: a word two cycles after it is seen, a line
 // as eight words presented on consecutive cycles, answered after the last.
+// The request goes to the devices from a register (p_*): the CPU's address and
+// store data come straight off its caches' RAMs, and the decode and the
+// devices' own muxes behind them set the clock before (build 28: -1.5 ns).
 logic       dev_ack, dev_busy;
 logic [3:0] dev_cnt;                               // cycles since the request was taken
 logic [6:0] dev_sel_q;                             // which block answers: Control, Chaos, Bandit, GC, Hammerhead, debug, boot
-logic       pres_q;                                // a word was presented in the last cycle
-logic [2:0] pres_k_q;                              // ... this one of the line
+logic       p_sel, pq_sel;                         // a word is before the devices in this cycle; was in the last
+logic [2:0] p_k, pq_k;                             // ... this one of the line
+logic [31:2] p_a;
+logic [3:0]  p_be;
+logic [31:0] p_wd;
+logic        p_we;
+logic [6:0]  p_dev;
 logic [31:0] line_buf [8];
 
 // a word access to the VIA waits for the VIA's clock: its next edge, then half
@@ -490,6 +498,15 @@ wire  [2:0] pres_k  = dev_take ? 3'd0 : dev_cnt[2:0];
 wire [31:2] dev_a   = c_line ? {c_addr[31:5], pres_k} : c_addr;
 wire  [3:0] dev_be  = c_line ? 4'hF : c_be;
 wire [31:0] dev_wd  = c_line ? c_wdata[255 - 32 * pres_k -: 32] : c_wdata[31:0];
+always_ff @(posedge clk) begin
+	p_sel <= present & ~reset;
+	p_k   <= pres_k;
+	p_a   <= dev_a;
+	p_be  <= dev_be;
+	p_wd  <= dev_wd;
+	p_we  <= c_we;
+	p_dev <= {is_ctl, is_cha, is_ban, is_gc, is_hh, is_dbg, is_boot};
+end
 
 // ---- the time base, the VIA's clock, the ESCC's and the SCSI controllers', the microsecond, ----
 // ---- AWACS's twice 44,100 Hz ----
@@ -569,7 +586,7 @@ logic        gc_irq;
 
 PPCMac_pcicfg #(.BRIDGE(0)) chaos (
 	.clk, .reset(board_reset),
-	.sel(present & is_cha), .we(c_we), .addr(dev_a[23:2]), .be(dev_be), .wdata(dev_wd),
+	.sel(p_sel & p_dev[5]), .we(p_we), .addr(p_a[23:2]), .be(p_be), .wdata(p_wd),
 	.rdata(cha_rdata), .ctl_regs_base, .ctl_vram_base
 );
 
@@ -578,7 +595,7 @@ logic [31:26] ban_unused_vram;
 
 PPCMac_pcicfg #(.BRIDGE(1)) bandit (
 	.clk, .reset(board_reset),
-	.sel(present & is_ban), .we(c_we), .addr(dev_a[23:2]), .be(dev_be), .wdata(dev_wd),
+	.sel(p_sel & p_dev[4]), .we(p_we), .addr(p_a[23:2]), .be(p_be), .wdata(p_wd),
 	.rdata(ban_rdata), .ctl_regs_base(ban_unused_regs), .ctl_vram_base(ban_unused_vram)
 );
 
@@ -589,7 +606,7 @@ logic        cuda_nmi;                     // Cuda's NMI (PC2), Grand Central's 
 
 PPCMac_control control (
 	.clk, .reset(board_reset),
-	.sel(present & is_ctl), .we(c_we), .addr(dev_a[8:2]), .be(dev_be), .wdata(dev_wd),
+	.sel(p_sel & p_dev[6]), .we(p_we), .addr(p_a[8:2]), .be(p_be), .wdata(p_wd),
 	.rdata(ctl_rdata), .irq(ctl_irq), .mon_std, .mon_ext,
 	.sw_params, .fb_base, .row_words, .enables(ctl_enables), .timing_on, .hs_pos, .vs_pos,
 	.vbl_start_tog, .vbl_end_tog
@@ -628,7 +645,7 @@ logic [7:0]   itr_st;
 
 PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
 	.clk, .reset(board_reset), .via_tick, .rtxc_tick, .scsi_tick, .us_tick, .snd_tick,
-	.sel(present & is_gc), .we(c_we), .addr(dev_a[16:2]), .be(dev_be), .wdata(dev_wd),
+	.sel(p_sel & p_dev[3]), .we(p_we), .addr(p_a[16:2]), .be(p_be), .wdata(p_wd),
 	.rdata(gc_rdata), .irq(gc_irq),
 	.cuda_treq, .cuda_cb1, .cb2(cb2_line), .via_tip, .via_byteack, .via_cb2_oe, .via_cb2_out,
 	.modem_txd, .modem_rxd, .modem_cts, .modem_rts,
@@ -732,17 +749,17 @@ localparam logic [7:0] HH_WHO_AM_I   = 8'h10;   // the primary CPU
 
 logic [7:0]  hh_arb;
 logic [31:0] hh_rdata;
-wire  [7:0]  hh_reg   = dev_a[11:4];            // register number: offset >> 4
+wire  [7:0]  hh_reg   = p_a[11:4];              // register number: offset >> 4
 wire         hh_bank_r = hh_reg >= 8'h1C && hh_reg <= 8'h4F;
 wire  [5:0]  hh_n     = 6'(hh_reg - 8'h1C);     // bank * 2 + (1 for the low byte)
-wire         hh_at    = dev_a[3:2] == 2'b00 && dev_be[3];  // the access starts at the register
-wire  [7:0]  hh_wbyte = dev_wd[31:24];
+wire         hh_at    = p_a[3:2] == 2'b00 && p_be[3];  // the access starts at the register
+wire  [7:0]  hh_wbyte = p_wd[31:24];
 
 always_ff @(posedge clk) begin
-	if (present & is_hh) begin
+	if (p_sel & p_dev[2]) begin
 		if (hh_bank_r) begin
 			hh_rdata <= {hh_n[0] ? hh_bank[hh_n[5:1]][7:0] : hh_bank[hh_n[5:1]][15:8], 24'h0};
-			if (c_we & dev_be[3]) begin
+			if (p_we & p_be[3]) begin
 				if (hh_n[0]) hh_bank[hh_n[5:1]][7:0]  <= hh_wbyte;
 				else         hh_bank[hh_n[5:1]][15:8] <= hh_wbyte;
 			end
@@ -756,7 +773,7 @@ always_ff @(posedge clk) begin
 				8'h0B:   hh_rdata <= {hh_at ? HH_WHO_AM_I  : 8'h00, 24'h0};
 				default: hh_rdata <= 32'h0;     // L2 cache configuration (0E) included: no L2
 			endcase
-			if (c_we & hh_at & hh_reg == 8'h09) hh_arb <= hh_wbyte;
+			if (p_we & hh_at & hh_reg == 8'h09) hh_arb <= hh_wbyte;
 		end
 	end
 	if (reset) begin
@@ -767,7 +784,7 @@ end
 
 // ---- the memory-test boot program, in place of the ROM when the OSD asks ------------------
 logic [31:0] boot_rdata;
-PPCMac_bootrom bootrom (.clk, .addr(dev_a[12:2]), .q(boot_rdata));
+PPCMac_bootrom bootrom (.clk, .addr(p_a[12:2]), .q(boot_rdata));
 
 // ---- the debug registers (not a 7600 device) -------------------------------------------
 // The memory test (verilator/progs.py, memtest) writes its progress here and
@@ -776,11 +793,11 @@ PPCMac_bootrom bootrom (.clk, .addr(dev_a[12:2]), .q(boot_rdata));
 //   10 the word read there   14 the word expected   20 installed RAM in bytes (read only)
 logic [31:0] dbg_reg [6];
 logic [31:0] dbg_rdata;
-wire  [3:0]  dbg_n = dev_a[7:2] < 6'd6 ? dev_a[5:2] : 4'd15;
+wire  [3:0]  dbg_n = p_a[7:2] < 6'd6 ? p_a[5:2] : 4'd15;
 always_ff @(posedge clk) begin
-	if (present & is_dbg) begin
-		dbg_rdata <= dev_a[7:2] == 6'h08 ? {4'h0, ram_mb, 20'h0} : dbg_n < 4'd6 ? dbg_reg[dbg_n[2:0]] : 32'h0;
-		if (c_we & dbg_n < 4'd6) dbg_reg[dbg_n[2:0]] <= merge_be(dbg_reg[dbg_n[2:0]], dev_wd, dev_be);
+	if (p_sel & p_dev[1]) begin
+		dbg_rdata <= p_a[7:2] == 6'h08 ? {4'h0, ram_mb, 20'h0} : dbg_n < 4'd6 ? dbg_reg[dbg_n[2:0]] : 32'h0;
+		if (p_we & dbg_n < 4'd6) dbg_reg[dbg_n[2:0]] <= merge_be(dbg_reg[dbg_n[2:0]], p_wd, p_be);
 	end
 	if (reset) for (int i = 0; i < 6; i++) dbg_reg[i] <= 32'h0;
 end
@@ -797,17 +814,18 @@ always_ff @(posedge clk) begin
 		dev_sel_q <= {is_ctl, is_cha, is_ban, is_gc, is_hh, is_dbg, is_boot};
 	end
 	else if (dev_busy) dev_cnt <= dev_cnt + 4'd1;
-	dev_ack  <= (dev_take & ~c_line) | (dev_busy & c_line & dev_cnt == 4'd8);
+	// a word's answer is out the cycle after p_sel; a line's last word is in line_buf the cycle after that
+	dev_ack  <= (p_sel & ~c_line) | (pq_sel & c_line & pq_k == 3'd7);
 	if (dev_ack) dev_busy <= 1'b0;
-	pres_q   <= present;
-	pres_k_q <= pres_k;
-	if (pres_q) line_buf[pres_k_q] <= dev_rdata;
+	pq_sel   <= p_sel;
+	pq_k     <= p_k;
+	if (pq_sel) line_buf[pq_k] <= dev_rdata;
 	if (reset) begin
 		dev_busy  <= 1'b0;
 		dev_ack   <= 1'b0;
 		dev_cnt   <= 4'd0;
 		dev_sel_q <= 7'b0;
-		pres_q    <= 1'b0;
+		pq_sel    <= 1'b0;
 	end
 end
 

@@ -957,6 +957,24 @@ How the rules apply, decided before step 1 and followed in it:
   2.1 and 1.4. So the design sits at the 66 MHz line, each fit putting
   one family or another just past it; what remains is as much the
   fitter's placement as the logic.
+- The write decided from the tags, landed a cycle later (2026-10-08, the
+  speed session's twelfth cut). In the whole machine (build 29, 65 MHz
+  asked, slow 100 C), 575 of the 600 slowest paths ran from the data
+  cache's tag RAM through the hit decision into its own RAMs' write ports:
+  a store hit's merged word and write enables (`st_word`, `data_we`,
+  `tag_we` for the dirty bit), 14 ns of which 2.4 is the M10K's clock
+  skew and 8 is routing. Now a write that S_LOOK or S_SNOOP decides (a
+  store hit, a line zero, a flush's, invalidate's or snoop's tag clear) is
+  taken into registers (`wr_*`) and written at the next edge; nothing reads
+  the RAMs in that cycle (`gnt` and the snoop wait on `wr_pend`), and no
+  other write can land then (S_WB and S_FILL write on `mem_ack`, two
+  cycles away at the soonest). The answer's timing is unchanged; only a
+  request or a snoop arriving in the very cycle after such a write waits
+  one cycle, which the memory unit's and the walker's spacing already
+  rules out. The golden programs: 1.85, 1.89, 2.04 and 3.53, 3.61 cycles
+  per instruction, as before. The hazard mechanism and the commit points
+  are untouched (a cache-internal timing of its RAM writes). Timing: build
+  31.
 
 ### M6: real ROM, first MiSTer build
 

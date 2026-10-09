@@ -3,7 +3,7 @@
 //  PPCMac - the machine around the CPU
 //  The CPU, the machine and the clock crossing to memory, as one block
 //
-//    DSPPC604 --(memory port)--> PPCMac_machine --(RAM, ROM)--> DSPPC604_memcdc --> b_*
+//    DSPPC604 --(memory port)--> PPCMac_machine --(RAM, ROM)--> PPCMac_l2 --> DSPPC604_memcdc --> b_*
 //
 //  Everything left of the crossing runs in the CPU's clock; b_* is the same
 //  port protocol in the memory's clock, addressed by SDRAM offset, for the
@@ -22,6 +22,7 @@ module PPCMac_system
 	parameter int unsigned CPU_HZ   = 65_000_000,
 	parameter int unsigned TB_HZ    = 12_500_000,
 	parameter int unsigned SDRAM_MB = 128,
+	parameter int unsigned L2_KB    = 128,          // the L2 cache (PPCMac_l2)
 	parameter int unsigned CUDA_FAST_BOOT = 0       // 1: the test bench's (PPCMac_cuda FAST_BOOT)
 )
 (
@@ -32,6 +33,7 @@ module PPCMac_system
 	input  logic [31:0]  reset_pc,
 	input  logic [7:0]   ram_mb,          // installed RAM, at most SDRAM_MB - 4
 	input  logic         boot_memtest,    // the memory test in place of the ROM
+	input  logic         l2_on,           // the L2 cache in the memory path (quasi-static, taken under reset)
 
 	// memory, in the memory's clock, by SDRAM offset
 	input  logic         clk_b,
@@ -334,10 +336,24 @@ PPCMac_video video (
 	.hblank(vid_hblank), .vblank(vid_vblank)
 );
 
-DSPPC604_memcdc cdc (
-	.clk_a(clk), .reset_a(reset),
+// the L2 cache between the machine's memory port and the crossing
+logic         l_req, l_we, l_line, l_ack;
+logic [31:2]  l_addr;
+logic [3:0]   l_be;
+logic [255:0] l_wdata, l_rdata;
+
+PPCMac_l2 #(.L2_KB(L2_KB)) l2 (
+	.clk, .reset, .on(l2_on),
 	.a_req(m_req), .a_we(m_we), .a_line(m_line), .a_addr(m_addr), .a_be(m_be), .a_wdata(m_wdata),
 	.a_ack(m_ack), .a_rdata(m_rdata),
+	.b_req(l_req), .b_we(l_we), .b_line(l_line), .b_addr(l_addr), .b_be(l_be), .b_wdata(l_wdata),
+	.b_ack(l_ack), .b_rdata(l_rdata)
+);
+
+DSPPC604_memcdc cdc (
+	.clk_a(clk), .reset_a(reset),
+	.a_req(l_req), .a_we(l_we), .a_line(l_line), .a_addr(l_addr), .a_be(l_be), .a_wdata(l_wdata),
+	.a_ack(l_ack), .a_rdata(l_rdata),
 	.clk_b, .reset_b,
 	.b_req, .b_we, .b_line, .b_addr, .b_be, .b_wdata, .b_ack, .b_rdata
 );

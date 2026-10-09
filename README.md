@@ -85,6 +85,9 @@ framework), Quartus 17.0, slow 100 C model; this is the number that counts:
 | With LUN 0 only, 32-bit pixels through the colour table, 120 MB, one Ethernet option (build 24) | 35,618 (85%) | 195 | 49 | 59.5 MHz (slack -1.466 ns). On the board: Debian 7.11 sees one disk and one CD, its console readable |
 | With Hammerhead's RAM banks, the options on reset, the power-off (build 26) | 35,525 (85%) | 195 | 49 | 57.7 MHz (slack -1.943 ns). On the board: Mac OS 7.6.1 sees 120 MB; Shut Down turns the machine off, the Menu key on; 9.1 and Debian at 120 MB start; 1440K floppies read, 400K and 800K do not |
 | With GCR sectors as Apple's driver wants them, the clock counted on (build 28, the third release) | 35,642 (85%) | 195 | 49 | 59.4 MHz (slack -1.462 ns). On the board: 400K, 800K and 1440K floppies open in the Finder; the clock right after two minutes off |
+| With the device access from a register in the machine (build 29, the speed session) | 36,743 (88%) | 195 | 49 | 60.7 MHz (slack -1.092 ns, total -12 ns against -186: the device family is gone; what leads is the data cache's store-hit write). On the board: Mac OS 7.6.1 to the Finder in the same time as build 28; Speedometer 4.02's first numbers (`docs/PPCMac_plan.md`, Speed) |
+| With the 128 KB L2 cache (`PPCMac_l2`, build 30) | 37,883 (90%) | 329 | 49 | 57.5 MHz (slack -2.013 ns: the cache's answer into `wb_result`, placed 1.7 ns worse under the L2's pressure). On the board: Speedometer's CPU tests 2-3 % faster, the disk 11 %, the colour tests 6-10 % |
+| With the data cache's tag-decided writes landed a cycle later (build 31) | 37,765 (90%) | 329 | 49 | 64.0 MHz (slack -0.321 ns, total -1.9 ns) |
 
 On the board (DE10-Nano, 128 MB SDRAM) the memory test passes at every RAM
 size the OSD offers (6 to 96 MB, three or more passes each, no error) at

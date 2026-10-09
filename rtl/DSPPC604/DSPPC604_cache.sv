@@ -119,6 +119,18 @@ logic [6:0]   wr_idx;
 tag_t         tag_wd;
 logic [255:0] data_wd;
 
+// A write decided from the tags just read (a store hit, a line zero, a cache
+// instruction's or a snoop's invalidate) lands at the next edge, from these
+// registers: the tag RAM's output, the compare and the way select are then
+// not in front of the RAMs' write ports. Nothing reads the RAMs in that
+// cycle (the request and snoop ports wait), and no other write can land then.
+logic            wr_pend;
+logic [WAYS-1:0] l_tag_we, l_data_we, wr_tag_we, wr_data_we;
+logic [7:0]      l_wwe, wr_wwe;
+logic [6:0]      wr_idx_q;
+tag_t            l_tag_wd, wr_tag_wd;
+logic [255:0]    l_data_wd, wr_data_wd;
+
 always_ff @(posedge clk) begin
 	for (int w = 0; w < WAYS; w++) begin
 		tag_q[w] <= tag_mem[w][rd_idx];
@@ -250,7 +262,7 @@ wire [7:0]  st_wwe  = 8'd1 << (3'd7 - r_word);
 
 // a read hit being answered: the next request can come in behind it
 wire read_hit = (state == S_LOOK) & k_word & hit & ~unc & ~r_we & ~r_snoop;
-wire can_take = ((state == S_IDLE) | read_hit) & ~snoop_req & ~inval_all & ~inval_pend;
+wire can_take = ((state == S_IDLE) | read_hit) & ~snoop_req & ~inval_all & ~inval_pend & ~wr_pend;
 assign gnt = can_take & req;
 
 always_comb begin
@@ -260,6 +272,11 @@ always_comb begin
 	wr_idx    = r_idx;
 	tag_wd    = {1'b1, 1'b0, r_tag};
 	data_wd   = mem_rdata;
+	l_tag_we  = '0;
+	l_data_we = '0;
+	l_wwe     = '1;
+	l_tag_wd  = {1'b1, 1'b0, r_tag};
+	l_data_wd = {8{st_word}};
 	rd_idx    = (state == S_IDLE) ? (snoop_req ? snoop_addr[11:5] : addr[11:5]) : gnt ? addr[11:5] : r_idx;
 	ans_now    = 1'b0;
 	ans_data     = hit_word;
@@ -286,11 +303,10 @@ always_comb begin
 		else if (k_word & hit) begin
 			ans_now = 1'b1;
 			if (WRITABLE & r_we) begin
-				data_we[hit_sel] = 1'b1;
-				data_wwe = st_wwe;
-				data_wd  = {8{st_word}};
-				tag_we[hit_sel] = ~r_wt;                 // dirty, unless memory gets it too
-				tag_wd = {1'b1, 1'b1, r_tag};
+				l_data_we[hit_sel] = 1'b1;
+				l_wwe = st_wwe;
+				l_tag_we[hit_sel] = ~r_wt;               // dirty, unless memory gets it too
+				l_tag_wd = {1'b1, 1'b1, r_tag};
 				if (r_wt) ans_now = 1'b0;                 // -> S_UNC
 			end
 		end
@@ -298,16 +314,16 @@ always_comb begin
 		else if (k_zero) begin
 			if (~hit & victim_dirty) ;                   // -> S_WB, then again
 			else begin
-				data_we[wsel] = 1'b1;
-				data_wd = '0;
-				tag_we[wsel] = 1'b1;
-				tag_wd = {1'b1, 1'b1, r_tag};
+				l_data_we[wsel] = 1'b1;
+				l_data_wd = '0;
+				l_tag_we[wsel] = 1'b1;
+				l_tag_wd = {1'b1, 1'b1, r_tag};
 				ans_now = 1'b1;
 			end
 		end
 		else if ((k_flush | k_store) & hit & tag_q[hit_sel].dirty) ;   // -> S_WB
 		else if (k_flush | k_inval) begin
-			if (hit) begin tag_we[hit_sel] = 1'b1; tag_wd = '0; end
+			if (hit) begin l_tag_we[hit_sel] = 1'b1; l_tag_wd = '0; end
 			ans_now = 1'b1;
 		end
 		else if (k_store) ans_now = 1'b1;
@@ -359,13 +375,32 @@ always_comb begin
 		if (~enable) snoop_ack = 1'b1;
 		else if (hit & tag_q[hit_sel].dirty) ;           // -> S_WB
 		else begin
-			if (hit & r_snoop_we) begin tag_we[hit_sel] = 1'b1; tag_wd = '0; end
+			if (hit & r_snoop_we) begin l_tag_we[hit_sel] = 1'b1; l_tag_wd = '0; end
 			snoop_ack = 1'b1;
 		end
 	end
 
 	default: ;
 	endcase
+
+	if (wr_pend) begin                                   // the write decided in the last cycle
+		tag_we   = wr_tag_we;
+		data_we  = wr_data_we;
+		data_wwe = wr_wwe;
+		wr_idx   = wr_idx_q;
+		tag_wd   = wr_tag_wd;
+		data_wd  = wr_data_wd;
+	end
+end
+
+always_ff @(posedge clk) begin
+	wr_pend    <= ((|l_tag_we) | (|l_data_we)) & ~reset;
+	wr_tag_we  <= l_tag_we;
+	wr_data_we <= l_data_we;
+	wr_wwe     <= l_wwe;
+	wr_idx_q   <= r_idx;
+	wr_tag_wd  <= l_tag_wd;
+	wr_data_wd <= l_data_wd;
 end
 
 always_ff @(posedge clk) begin
@@ -383,7 +418,7 @@ always_ff @(posedge clk) begin
 			sweep_idx  <= 7'd0;
 			inval_pend <= 1'b0;
 		end
-		else if (snoop_req) begin
+		else if (snoop_req & ~wr_pend) begin
 			state      <= S_SNOOP;
 			r_addr     <= {snoop_addr, 3'b000};
 			r_snoop    <= 1'b1;
@@ -392,7 +427,7 @@ always_ff @(posedge clk) begin
 			r_we       <= 1'b0;
 			r_after_wb <= 1'b0;
 		end
-		else if (req) begin
+		else if (req & ~wr_pend) begin             // (as gnt)
 			state      <= S_LOOK;
 			r_we       <= we;
 			r_kind     <= kind;
