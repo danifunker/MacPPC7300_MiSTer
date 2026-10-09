@@ -5,12 +5,12 @@ Test builds of the Power Macintosh 7300/7600 core for the MiSTer
 
 | File | Date | md5 | What it is |
 |---|---|---|---|
-| `PPCMac_20261008b.rbf` | 2026-10-08 | `08e29d97f36a24026b0c1782477a043f` | The second test build (build 20, commit `7dcfbf0`): Mac OS 7.6.1, 8.5, 8.6 and 9.1 boot from SCSI disk images to the Finder; the CD-ROM (ISO, CUE/BIN with CD audio), Ethernet (DHCP, web, FTP), the BlueSCSI Toolbox's file sharing, ADB game controllers, MIDI and the MT32-pi, the 12-inch monitor. The first build (`PPCMac_20261008.rbf`, 7.6.1 only) is in git's history. |
-| `MiSTer` | 2026-10-08 | `a2546ea7d3d5a3a1338187f41d327044` | The Main this build was tested with: the official MiSTer-devel Main with two commits for this core (branch `Mac-ppc-enhancements`, `7b3a601`): the core joins the Mac SCSI family (the CD-ROM through the Mac CD layer, the BlueSCSI Toolbox, local time with daylight saving) and its Ethernet frames go through the Main. The CD-ROM and Ethernet need it; with an official Main the core runs without them. |
+| `PPCMac_20261008c.rbf` | 2026-10-08 | `dd1dec7abc2d24c12947afb0c2bb72f8` | The third test build (build 28, commit `3bec4fd`): everything in the second, plus the floppy drive (400K, 800K and 1440K disk images, read only), Debian 7.11 Linux (through BootX), RAM up to 120 MB (Mac OS sees all of it), a real power-off after Shut Down, the clock right after a restart, one "Ethernet" option, the options that need a restart applied at the next restart, Linux's 32-bit console colours. The earlier builds (`PPCMac_20261008.rbf`, 7.6.1 only; `PPCMac_20261008b.rbf`, build 20) are in git's history. |
+| `MiSTer` | 2026-10-08 | `9e88154eaa4cd342a5ec64a93e8c61d4` | The Main this build was tested with: the official MiSTer-devel Main with three commits for this core (branch `Mac-ppc-enhancements`, `f00fe2a`): the core joins the Mac SCSI family (the CD-ROM through the Mac CD layer, the BlueSCSI Toolbox, local time with daylight saving), its Ethernet frames go through the Main, and its Ethernet option is one setting (Off or the interface). The CD-ROM and Ethernet need it; with an official Main the core runs without them. The other cores are untouched. |
 
 ## Installing
 
-1. Copy `PPCMac_20261008b.rbf` to `/media/fat/_Unstable/` (or `_Computer/`)
+1. Copy `PPCMac_20261008c.rbf` to `/media/fat/_Unstable/` (or `_Computer/`)
    on the SD card, as `PPCMac.rbf` or under its own name.
 2. For the CD-ROM and Ethernet: keep a copy of your `/media/fat/MiSTer`
    (for example as `MiSTer.official`), copy `MiSTer` from here in its
@@ -39,10 +39,16 @@ Test builds of the Power Macintosh 7300/7600 core for the MiSTer
    files in `/media/fat/games/PPCMac/shared/` and use the BlueSCSI
    Toolbox's Mac app ("BlueSCSI SD Transfer") to copy them in and out.
 8. Optional, Ethernet (needs the Main from here): OSD "Ethernet (on
-   reset)" On, "Net interface" the MiSTer's (eth0 for the cable), then the
-   core's Reset. (Builds after this one have a single option, "Ethernet (on
-   reset)": Off or the interface, with a Main to match.) The Mac gets its own address on your network (Open
-   Transport's TCP/IP, "Using DHCP Server").
+   reset)": the MiSTer's interface (eth0 for the cable), then the core's
+   Reset. The Mac gets its own address on your network (Open Transport's
+   TCP/IP, "Using DHCP Server").
+9. Optional, a floppy disk: OSD "Insert floppy disk", a `.dsk`, `.img` or
+   `.ima` image (400K, 800K or 1440K, tried; 720K should work too; raw or
+   DiskCopy 4.2). Disks are read-only (shown locked); eject from the
+   Finder (Put Away). The OSD does not remember a floppy across loads.
+10. Optional, Linux: a Debian 7.11 PowerPC disk image with its own Mac OS
+    and BootX (the BlueSCSI-style "HD00_512 LINUX" image works) needs RAM
+    96 MB or more and, in BootX's options, "Force SCSI ON" off.
 
 ## What works, what does not
 
@@ -55,7 +61,17 @@ Test builds of the Power Macintosh 7300/7600 core for the MiSTer
   every start: their date code takes no year after 2019 (the "Y2K20" bug of
   the classic Mac OS); the time is right. The free 2020Patch extension
   (mactcp.net) is said to quiet it (not tried here).
-- No floppy disks yet (coming), no PCI cards.
+- RAM (OSD, "on reset": a change takes effect at the next Reset): 6, 16,
+  24, 48, 64, 96 or 120 MB; Mac OS sees all of it. The Monitor and the
+  game controller also wait for the next Reset.
+- Shut Down (Mac OS, or Linux's `poweroff`/`shutdown -h now`) switches the
+  machine off: the screen goes dark. The OSD's Reset or the keyboard's
+  power key (the PC keyboard's Menu key) starts it again.
+- Floppy disks: read only. No PCI cards.
+- Debian 7.11 Linux boots to its login prompt (the console in colour, the
+  disks, Ethernet); X and sound under Linux are not tested. If the image
+  starts its graphical login (lightdm) and the screen stays dark,
+  Ctrl+Option+F1 (Ctrl, the Windows key, F1) shows the text console.
 - ADB game controllers (OSD, takes effect at the core's Reset): Gravis
   MouseStick II, Firebird, GamePad, SideWinder 3D Pro; "Stick moves
   pointer" drives the mouse from the stick. MIDI: the OSD's UART "MIDI",
@@ -76,3 +92,5 @@ Test builds of the Power Macintosh 7300/7600 core for the MiSTer
 - Known: when the core is loaded with an NVRAM image mounted, the startup
   chime may play twice. If the picture starts in four strips, please say
   so on Discord: this build has a fix for that we could not test.
+- The OSD's UART stays for the serial port (Open Firmware's console, MIDI,
+  PPP); the debug readouts of earlier builds are gone.

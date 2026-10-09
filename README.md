@@ -83,6 +83,8 @@ framework), Quartus 17.0, slow 100 C model; this is the number that counts:
 | With the floppy drive: SWIM3 reading images, DMA channel 1 (build 21) | 35,626 (85%) | 193 | 49 | 61.7 MHz (slack -0.950 ns). On the SCSI bench: DiskCopy and raw images read; the board test waits for the board |
 | With MESH's reselection commands setting no command done (build 22) | 35,914 (86%) | 193 | 49 | 59.6 MHz (slack -1.448 ns). On the board: Debian 7.11 finds its disk and boots |
 | With LUN 0 only, 32-bit pixels through the colour table, 120 MB, one Ethernet option (build 24) | 35,618 (85%) | 195 | 49 | 59.5 MHz (slack -1.466 ns). On the board: Debian 7.11 sees one disk and one CD, its console readable |
+| With Hammerhead's RAM banks, the options on reset, the power-off (build 26) | 35,525 (85%) | 195 | 49 | 57.7 MHz (slack -1.943 ns). On the board: Mac OS 7.6.1 sees 120 MB; Shut Down turns the machine off, the Menu key on; 9.1 and Debian at 120 MB start; 1440K floppies read, 400K and 800K do not |
+| With GCR sectors as Apple's driver wants them, the clock counted on (build 28, the third release) | 35,642 (85%) | 195 | 49 | 59.4 MHz (slack -1.462 ns). On the board: 400K, 800K and 1440K floppies open in the Finder; the clock right after two minutes off |
 
 On the board (DE10-Nano, 128 MB SDRAM) the memory test passes at every RAM
 size the OSD offers (6 to 96 MB, three or more passes each, no error) at
