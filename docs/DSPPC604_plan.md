@@ -168,9 +168,28 @@ times the product: 8 to 7) or the product is four or more times the addend
 variable: a 54:1 window mux after the 163-bit adder cost 3 ns too many, the
 unit alone fell to 59 MHz) and the four distances where cancellation can
 reach far still count in S_LZC (8). The unit alone: 3,443 ALMs, 74.6 MHz.
-Next in that list: the add path's alignment distance decided in the request
-cycle (adds skip S_MUL1), a radix-8 divider, S_SHIFT folded into S_NORM
-where the shift amounts allow.
+Tried and reverted the same day, for the addend-dominant sum (a dot
+product's running sum against each product: Matrix Mult.'s case, which
+build 46 therefore hardly moved): the count taken as nominal (sr) in S_ADD
+and corrected by 0, 1 or 2 in S_NORM from three bits of the registered sum
+(the product lies wholly below those bits, so the top is at the addend's
+place, one above after a carry or one below after a borrow). Every vector
+passed, but S_NORM grew by the window mux and a fourth adder into `l_q`,
+the fitter retimed registers across S_NORM/S_SHIFT and the unit alone fell
+to 65.8 MHz. Two designs that could still take that cycle, for a later FPU
+session: shift the partial products left by sr in S_MUL1 (the DSP outputs
+and the distance are both ready at about 5 ns there), so the addend stays
+pinned at the top and the window is fixed, at the price of a 159-bit adder
+in S_MUL2; or take the one carry bit into the addend's lowest window place
+from the adder's output in S_ADD (a single 54:1 mux of `add_sum` or
+`add_zp`, selected early by `eff_sub`, rather than the 5-bit window of the
+first attempt). Then the add path's alignment distance decided in the
+request cycle (adds skip S_MUL1), a radix-8 divider, S_SHIFT folded into
+S_NORM where the shift amounts allow. All of it is worth a few per cent on
+three Speedometer FPU tests; the core's distance from a real 604 (about a
+quarter of a 7600/120's Speedometer CPU index at 70 against 120 MHz: 0.58 of
+the clock, the rest cycles per instruction) is a pipeline matter, scoped in
+`RESUME_speed.md`.
 
 ### M3: pipeline, user-mode integer (done)
 
