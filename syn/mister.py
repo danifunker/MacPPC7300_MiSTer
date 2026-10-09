@@ -368,6 +368,7 @@ MACE_REGS = {0: "RCVFIFO", 1: "XMTFIFO", 2: "XMTFC", 3: "XMTFS", 4: "XMTRC", 5: 
              26: "RNTPC", 27: "RCVCC", 29: "UTR", 30: "RTR1", 31: "RTR2"}
 DMA_REGS = {0x00: "control", 0x04: "status", 0x08: "cmdptr hi", 0x0C: "cmdptr", 0x10: "int sel",
             0x14: "branch sel", 0x18: "wait sel"}
+AWACS_REGS = {0: "control", 1: "codec ctl", 2: "codec st", 3: "clip", 4: "byte swap", 5: "frames"}
 
 
 def trace(last, first, fname=None):
@@ -433,6 +434,8 @@ def trace(last, first, fname=None):
                     data >>= 24
             elif blk == 0:
                 reg = "GC int " + {0x20: "events", 0x24: "mask", 0x28: "clear", 0x2C: "levels"}.get(addr & 0xFC, "?")
+            elif blk == 0x140:
+                reg = "AWACS %s+%d" % (AWACS_REGS.get((addr >> 4) & 15, "%d" % ((addr >> 4) & 15)), addr & 3)
             else:
                 reg = "DMA-%X " % (blk & 15) + DMA_REGS.get(addr & 0xFF, "%02x" % (addr & 0xFF))
             print("%s %-14s %s %0*x  (be %x)" % (t, reg, "w" if we else "r", 2 if be == 8 else 8, data, be))
@@ -452,6 +455,10 @@ def trace(last, first, fname=None):
             print("%s IRQ cpu %d 68k %d | MESH mask %d event %d line %d | DMA-A mask %d event %d level %d"
                   % (t, s >> 7, (s >> 6) & 1, (s >> 5) & 1, (s >> 4) & 1, (s >> 3) & 1,
                      (s >> 2) & 1, (s >> 1) & 1, s & 1))
+        elif kind == 11:
+            s = r[1]
+            print("%s IRQ cpu %d 68k %d | DMA-8 mask %d event %d level %d active %d"
+                  % (t, s >> 7, (s >> 6) & 1, (s >> 5) & 1, (s >> 4) & 1, (s >> 3) & 1, (s >> 2) & 1))
         elif kind in (5, 8, 9):
             # MacPPC7300_dbdma fin_info: {cmd_ptr, cmd key bits reqCount, ..., ...}
             w1, w2 = int.from_bytes(r[8:16], "little"), int.from_bytes(r[16:24], "little")

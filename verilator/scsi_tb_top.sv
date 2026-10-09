@@ -139,7 +139,7 @@ MacPPC7300_gc #(.SCSI_HZ(SCSI_HZ)) gc (
 	.dm_req, .dm_we, .dm_line, .dm_addr, .dm_be, .dm_wdata, .dm_ack, .dm_rdata,
 	.snd_left, .snd_right,
 	.dac_cr(), .dbl_buf_cr(), .cursor_x(), .cursor_clut(), .clk_v(clk_h), .clut_index(24'h0), .clut_rgb(),
-	.dfin(), .dfin_ch(), .dfin_type(), .dfin_info(), .itr_ev(), .itr_st(),
+	.dfin(), .dfin_ch(), .dfin_type(), .dfin_info(), .itr_ev(), .itr_st(), .itr8_ev(), .itr8_st(),
 	.fd_m_t, .fd_m_ok, .fd_m_fmt, .fd_m_dc42, .fd_rq_t, .fd_rq_lba, .fd_dn_t, .fd_ra, .fd_q
 );
 

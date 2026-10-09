@@ -632,10 +632,12 @@ wire        scsi_cd  = mesh_cd  | t_cd;
 wire        scsi_io  = mesh_io  | t_io;
 wire [7:0]  scsi_db  = mesh_db  | t_db;
 
-logic         dfin, dfin_ch;
+logic         dfin;
+logic [3:0]   dfin_ch;
 logic [1:0]   dfin_type;
 logic [127:0] dfin_info;
-logic         itr_ev;
+logic         itr_ev, itr8_ev;
+logic [7:0]   itr8_st;
 logic         fd_m_t, fd_m_ok, fd_m_dc42, fd_rq_t, fd_dn_t;
 logic [1:0]   fd_m_fmt;
 logic [11:0]  fd_rq_lba;
@@ -659,7 +661,7 @@ MacPPC7300_gc #(.SCSI_HZ(SCSI_HZ)) gc (
 	.dm_wdata(gdm_wdata), .dm_ack(gdm_ack), .dm_rdata(gdm_rdata),
 	.snd_left, .snd_right,
 	.dac_cr, .dbl_buf_cr, .cursor_x, .cursor_clut, .clk_v, .clut_index, .clut_rgb,
-	.dfin, .dfin_ch, .dfin_type, .dfin_info, .itr_ev, .itr_st,
+	.dfin, .dfin_ch, .dfin_type, .dfin_info, .itr_ev, .itr_st, .itr8_ev, .itr8_st,
 	.fd_m_t, .fd_m_ok, .fd_m_fmt, .fd_m_dc42, .fd_rq_t, .fd_rq_lba, .fd_dn_t, .fd_ra, .fd_q
 );
 
@@ -846,10 +848,11 @@ logic        bt_pend, bt_we;
 logic [31:0] bt_a, bt_wd, bt_us = 32'd0;
 logic [3:0]  bt_be;
 logic [15:0] bt_div = 16'd0;
-// MACE (F3011000-F30111FF) and its DMA channels 2 and 3 (F3008200, 8300); MESH (F3018000)
-// and its channel A (F3008A00) with tr_mesh. Not the interrupt registers: the NanoKernel
-// reads and rewrites them thousands of times a second
+// MACE (F3011000-F30111FF) and its DMA channels 2 and 3 (F3008200, 8300); AWACS (F3014000)
+// and its channel 8 (F3008800); MESH (F3018000) and its channel A (F3008A00) with tr_mesh.
+// Not the interrupt registers: the NanoKernel reads and rewrites them thousands of times a second
 wire         bt_hit = is_gc && (a[16:9] == 8'h88 || a[16:8] == 9'h082 || a[16:8] == 9'h083 ||
+                                a[16:8] == 9'h140 || a[16:8] == 9'h088 ||
                                 (tr_mesh && (a[16:8] == 9'h180 || a[16:8] == 9'h08A)));
 always_ff @(posedge clk) begin
 	if (bt_div == 16'(CPU_HZ / 1_000_000 - 1)) begin
@@ -868,15 +871,16 @@ always_ff @(posedge clk) begin
 	if (reset) bt_pend <= 1'b0;
 end
 wire bt_ev = dev_ack & bt_pend;
-// kind 5: a command of DMA channel 2 or 3 finished (8 fetched, 9 stopped); 6: the ADB keyboard;
-// 10: MESH's interrupt (with tr_mesh)
+// kind 5: a command of DMA channel 2, 3 or 8 finished (8 fetched, 9 stopped); 6: the ADB
+// keyboard; 10: MESH's interrupt (with tr_mesh); 11: channel 8's interrupt
 wire   itr_tr = itr_ev & tr_mesh;
-assign tr_ev  = sd_tr_ev | bt_ev | dfin | adb_tr_ev | itr_tr;
+assign tr_ev  = sd_tr_ev | bt_ev | dfin | adb_tr_ev | itr_tr | itr8_ev;
 assign tr_rec = sd_tr_ev ? sd_tr_rec :
                 bt_ev    ? {128'd0, bt_we ? bt_wd : dev_rdata, bt_a, bt_us, 19'd0, bt_we, bt_be, 8'd4} :
-                dfin     ? {64'd0, dfin_info, bt_us, 16'd0, 7'd1, dfin_ch,
+                dfin     ? {64'd0, dfin_info, bt_us, 16'd0, 4'd0, dfin_ch,
                             (dfin_type == 2'd0) ? 8'd5 : (dfin_type == 2'd1) ? 8'd8 : 8'd9} :
                 itr_tr   ? {192'd0, bt_us, 16'd0, itr_st, 8'd10} :
+                itr8_ev  ? {192'd0, bt_us, 16'd0, itr8_st, 8'd11} :
                            {160'd0, adb_tr_info, bt_us, 24'd0, 8'd6};
 
 assign c_ack   = cpu_m_ack | dev_ack | v_ack;

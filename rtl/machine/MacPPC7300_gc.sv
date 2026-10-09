@@ -173,16 +173,19 @@ module MacPPC7300_gc
 	input  logic [23:0]  clut_index,
 	output logic [23:0]  clut_rgb,
 
-	// for MacPPC7300_trace: DMA channel 2 or 3 (dfin_ch) finished (dfin_type 0), fetched (1) or
-	// was stopped (2) a command
+	// for MacPPC7300_trace: DMA channel 2, 3 or 8 (dfin_ch) finished (dfin_type 0), fetched (1)
+	// or was stopped (2) a command
 	output logic         dfin,
-	output logic         dfin_ch,
+	output logic [3:0]   dfin_ch,
 	output logic [1:0]   dfin_type,
 	output logic [127:0] dfin_info,
 	// ... and MESH's and channel A's interrupt on its way to the CPU, at each change (itr_st:
 	// irq, 68k mode, MESH's mask, event, line, channel A's mask, event, level)
 	output logic         itr_ev,
 	output logic [7:0]   itr_st,
+	// ... and channel 8's (itr8_st: irq, 68k mode, mask, event, level, the channel active)
+	output logic         itr8_ev,
+	output logic [7:0]   itr8_st,
 
 	// the floppy disk's image (MacPPC7300_fdblk)
 	input  logic         fd_m_t,
@@ -360,13 +363,16 @@ MacPPC7300_dbdma dma_a (
 // ---- AWACS (MacPPC7300_awacs) and its DMA channels, 8 out and 9 in -------------------------------
 logic [31:0] awacs_rq, dma_8_rle, dma_9_rle;
 logic        s8_ready, s8_put, s8_active, s8_irq, s9_valid, s9_take, s9_active, s9_irq;
+logic        s8_fin;
+logic [1:0]  s8_fin_dec;
+logic [127:0] s8_fin_info;
 logic [7:0]  s8_data, s9_data;
 wire         dma_8_sel = sel & dma & (addr[14:8] == 7'd8) & (addr[7:5] == 3'd0);
 wire         dma_9_sel = sel & dma & (addr[14:8] == 7'd9) & (addr[7:5] == 3'd0);
 
 MacPPC7300_awacs awacs (
 	.clk, .reset, .snd_tick,
-	.sel(sel & devs & (sub == 4'h4) & (off[3:0] == 4'h0)), .we, .rn(off[7:4]), .wdata, .rq(awacs_rq),
+	.sel(sel & devs & (sub == 4'h4) & (off[3:2] == 2'd0)), .we, .rn(off[7:4]), .wdata, .be, .rq(awacs_rq),
 	.out_active(s8_active), .do_ready(s8_ready), .do_data(s8_data), .do_put(s8_put),
 	.in_active(s9_active), .di_valid(s9_valid), .di_data(s9_data), .di_take(s9_take),
 	.left(snd_left), .right(snd_right)
@@ -380,12 +386,20 @@ MacPPC7300_dbdma dma_8 (
 	.di_valid(1'b0), .di_data(8'h00), .di_flush(1'b0), .di_last(1'b0), .dev_st(8'h00),
 	.do_ready(s8_ready), .do_data(s8_data), .do_put(s8_put), .dq_ack(1'b0), .dq_rd(8'h00),
 	/* verilator lint_off PINCONNECTEMPTY */
-	.do_last(), .di_take(), .xfer_in(), .xfer_out(), .drained(), .fin(), .fin_dec(), .fin_info(),
+	.do_last(), .di_take(), .xfer_in(), .xfer_out(), .drained(),
 	.dq_req(), .dq_we(), .dq_off(), .dq_wd(),
 	/* verilator lint_on PINCONNECTEMPTY */
+	.fin(s8_fin), .fin_dec(s8_fin_dec), .fin_info(s8_fin_info),
 	.active(s8_active),
 	.irq(s8_irq)
 );
+
+// channel 8's interrupt for the trace
+wire [7:0] itr8_now = {irq, int_mask[31], int_mask[8], int_events[8], dma_lvl[8], s8_active, 2'b00};
+always_ff @(posedge clk) begin
+	itr8_ev <= itr8_now[6:2] != itr8_st[6:2];
+	itr8_st <= itr8_now;
+end
 
 MacPPC7300_dbdma dma_9 (
 	.clk, .reset,
@@ -472,10 +486,10 @@ MacPPC7300_dbdma #(.S6_EOF(1'b1), .DEV_QUAD(1'b1)) dma_3 (
 	.irq(e3_irq), .fin(e3_fin), .fin_dec(e3_fin_dec), .fin_info(e3_fin_info)
 );
 
-assign dfin      = e2_fin | e3_fin;
-assign dfin_ch   = e3_fin;
-assign dfin_type = e3_fin ? e3_fin_dec : e2_fin_dec;
-assign dfin_info = e3_fin ? e3_fin_info : e2_fin_info;
+assign dfin      = e2_fin | e3_fin | s8_fin;
+assign dfin_ch   = s8_fin ? 4'd8 : e3_fin ? 4'd3 : 4'd2;
+assign dfin_type = s8_fin ? s8_fin_dec : e3_fin ? e3_fin_dec : e2_fin_dec;
+assign dfin_info = s8_fin ? s8_fin_info : e3_fin ? e3_fin_info : e2_fin_info;
 
 // ---- SWIM3 (MacPPC7300_swim3): byte registers at (offset >> 4) & F (grandcentral.cpp:205), ----
 // ---- and its DMA channel 1 ----
@@ -613,7 +627,7 @@ always_comb begin
 			4'h8:       rq = byte_reg_rdata(be, mesh_rq);
 			4'h5:       rq = byte_reg_rdata(be, swim_rq);
 			4'h2, 4'h3: if (scc_compat | scc_risc) rq = byte_reg_rdata(be, scc_rq);
-			4'h4:    rq = (off[3:0] == 4'h0) ? awacs_rq : 32'h0;
+			4'h4:    rq = (off[3:2] == 2'd0) ? awacs_rq : 32'h0;
 			4'h6, 4'h7: begin
 				case (via_reg)
 					4'd0:        rq = byte_reg_rdata(be, via_pb_rd);

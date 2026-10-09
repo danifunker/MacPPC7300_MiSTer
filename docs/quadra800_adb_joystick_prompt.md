@@ -129,7 +129,16 @@ Candidates to check, in this order:
    streams from the hard disk while a CD track plays stutters. The
    MacPPC7300 core has the same player behind its disk target, the disk
    first.
-3. **Both cores at once.** If the same game glitches the same way on both
+3. **Speed and register read-back.** On MacPPC7300 the real cause turned
+   out to be a register that read back in a different byte order than it
+   was written: Mac OS's read-modify-write of the sound control register
+   then restored the chime's rate, and every sound played at half speed,
+   turning to noise after a moment. Found by recording the output (an
+   HDMI capture), matching it against the game's own 'snd ' resources at
+   several speeds, and tracing the guest's register accesses. Do the same
+   here: check that the sounds play at their own rate, and that every EASC
+   register the Sound Manager reads back returns what it wrote.
+4. **Both cores at once.** If the same game glitches the same way on both
    cores, look at what they share: the Main's Mac CD layer (`support/mac/`,
    the frame window) and the framework's audio output (`sys/`, which is
    not to be changed).

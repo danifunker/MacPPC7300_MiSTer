@@ -25,7 +25,8 @@
 //      a raw 800K one, an 800K DiskCopy one of an odd size (slot 6); the GCR
 //      sectors decoded as Apple's driver does (denib);
 //   14. sound out: AWACS playing DMA channel 8's frames in order, a part
-//      frame left by a stopped channel dropped, a late frame held.
+//      frame left by a stopped channel dropped, a late frame held, the rate
+//      set by a byte store.
 // --stock: the official Main instead (no CD drive, nothing written to slot 4).
 //
 // Every byte the drivers take is checked against the image; every step's
@@ -1027,6 +1028,41 @@ int main(int argc, char** argv) {
 		check(ordered && v.size() == 24, "slow memory: %d changes, in order %d (each a frame, never a 0)",
 			(int)v.size(), ordered);
 		check(late, "slow memory: no frame came late (the test did not starve the FIFO)");
+
+		// the rate set by a byte store to the control register's second byte (code 2: 22,050 Hz)
+		access(0x14001, 1, true, 0x02);
+		check(access(0x14000, 4, false, 0) == 0x00020000, "control after a byte write: %08X, 00020000 expected",
+			access(0x14000, 4, false, 0));
+		put_frames(0x63000, 8, 0x7000, 0x7100);
+		put_cmd(0x760, 0, 0x00, 32, 0x63000);
+		put_cmd(0x770, 7, 0x00, 0, 0);
+		d8w(3, 0x760); d8w(0, 0x80008000);
+		v = play(12 * 2 * FRAME_CLKS);
+		bool even = v.size() == 8;
+		for (size_t k = 1; k < v.size(); k++) {
+			uint64_t gap = v[k].at - v[k - 1].at;
+			even = even && v[k].l == (uint16_t)(0x7000 + k) && gap + 8 >= (uint64_t)(2 * FRAME_CLKS) &&
+			       gap <= (uint64_t)(2 * FRAME_CLKS) + 8;
+		}
+		check(even, "22,050 Hz set by a byte store: %d frames, not 2 x %d clocks apart", (int)v.size(), FRAME_CLKS);
+		access(0x14001, 1, true, 0x00);
+
+		// Mac OS's way (the board's trace): the ROM's word for the chime (22,050 Hz), then two
+		// read-modify-writes through little-endian accessors, the first setting 44,100 Hz
+		auto sw32 = [](uint32_t x) { return (x >> 24) | ((x >> 8) & 0xFF00) | ((x << 8) & 0xFF0000) | (x << 24); };
+		access(0x14000, 4, true, 0x00020000);
+		for (int k = 0; k < 2; k++) {
+			uint32_t le = sw32(access(0x14000, 4, false, 0));
+			if (k == 0) le &= ~0x700u;
+			access(0x14000, 4, true, sw32(le));
+		}
+		check(access(0x14000, 4, false, 0) == 0, "control after Mac OS's read-modify-writes: %08X, 0 expected",
+			access(0x14000, 4, false, 0));
+		put_frames(0x64000, 8, 0x7800, 0x7900);
+		put_cmd(0x780, 0, 0x00, 32, 0x64000);
+		put_cmd(0x790, 7, 0x00, 0, 0);
+		d8w(3, 0x780); d8w(0, 0x80008000);
+		check_frames(play(12 * FRAME_CLKS), 8, 0x7800, 0x7900, "44,100 Hz after Mac OS's read-modify-writes");
 	}
 
 	std::printf("%llu cycles; DMA: %d lines, %d words; the card: %d blocks read, %d written\n",

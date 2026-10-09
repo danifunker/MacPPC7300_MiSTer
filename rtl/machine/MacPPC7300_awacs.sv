@@ -11,7 +11,9 @@
 //  hands the out channel's bytes to the host's sound card and feeds the in
 //  channel 2,048 zero bytes every 10 ms; here both go at the frame rate.
 //
-//  Registers, 16 bytes apart (Grand Central's 14000 window; offset >> 4):
+//  Registers, 16 bytes apart (Grand Central's 14000 window; offset >> 4),
+//  each a word whose bytes may also be written alone (2026-10-09: a byte
+//  or halfword write used to be dropped, as dingusppc drops it):
 //    0  sound control   stored little-endian (dingusppc byte-swaps the
 //                       word); bits 10-8 the sample rate: 44,100, 29,400,
 //                       22,050, 17,640, 14,700, 11,025, 8,820, 7,350 Hz
@@ -62,6 +64,7 @@ module MacPPC7300_awacs
 	input  logic        we,
 	input  logic [3:0]  rn,              // offset >> 4
 	input  logic [31:0] wdata,           // the word as the CPU writes it
+	input  logic [3:0]  be,              // its bytes written (be[3]: the register's first)
 	output logic [31:0] rq,              // what a read of rn returns now
 
 	// DMA channel 8, sound out: bytes to the FIFO
@@ -84,19 +87,30 @@ module MacPPC7300_awacs
 logic [31:0] snd_ctrl, codec_ctrl, clip_count, frame_count;
 logic        byte_swap;
 
+// a register kept little-endian reads back as it was written (2026-10-09: it read swapped, so
+// Mac OS's read-modify-write of the control register put the chime's 22,050 Hz back after
+// setting 44,100: every sound at half speed)
+function automatic logic [31:0] bswap(input logic [31:0] v);
+	return {v[7:0], v[15:8], v[23:16], v[31:24]};
+endfunction
 always_comb begin
 	case (rn)
-		4'd0:    rq = snd_ctrl;
+		4'd0:    rq = bswap(snd_ctrl);
 		4'd1:    rq = codec_ctrl;
 		4'd2:    rq = 32'h0031_4000;
-		4'd3:    rq = clip_count;
+		4'd3:    rq = bswap(clip_count);
 		4'd4:    rq = {31'h0, ~byte_swap};
-		4'd5:    rq = frame_count;
+		4'd5:    rq = bswap(frame_count);
 		default: rq = 32'h0;
 	endcase
 end
 
 wire [31:0] wle = {wdata[7:0], wdata[15:8], wdata[23:16], wdata[31:24]};
+// a byte or halfword write changes only its bytes: in a register kept as written (m_be) or
+// little-endian (m_le)
+wire [31:0] m_be = {{8{be[3]}}, {8{be[2]}}, {8{be[1]}}, {8{be[0]}}};
+wire [31:0] m_le = {m_be[7:0], m_be[15:8], m_be[23:16], m_be[31:24]};
+wire [31:0] cw   = wdata | {8'h0, wdata[15:14], 22'h0};
 
 // ---- the frame clock ----------------------------------------------------------------------
 logic [3:0] ftick;                        // snd_ticks into the frame
@@ -149,11 +163,11 @@ always_ff @(posedge clk) begin
 	// the registers
 	if (sel) begin
 		case (rn)
-			4'd0: if (we) snd_ctrl <= wle;
-			4'd1: if (we) codec_ctrl <= wdata | {8'h0, wdata[15:14], 22'h0};
-			4'd3: clip_count <= we ? wle : 32'h0;
-			4'd4: if (we) byte_swap <= wdata != 32'h0;
-			4'd5: if (we) frame_count <= wle;
+			4'd0: if (we) snd_ctrl <= (snd_ctrl & ~m_le) | (wle & m_le);
+			4'd1: if (we) codec_ctrl <= (codec_ctrl & ~m_be) | (cw & m_be);
+			4'd3: clip_count <= we ? (clip_count & ~m_le) | (wle & m_le) : 32'h0;
+			4'd4: if (we) byte_swap <= (wdata & m_be) != 32'h0;
+			4'd5: if (we) frame_count <= (frame_count & ~m_le) | (wle & m_le);
 			default: ;
 		endcase
 	end
