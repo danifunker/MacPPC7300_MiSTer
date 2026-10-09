@@ -427,7 +427,7 @@ typedef enum logic [3:0] {
 	S_MUL1,     // partial products; alignment distance
 	S_MUL2,     // product; aligned addend
 	S_ADD,      // magnitude of product +/- addend
-	S_LZC,      // leading zeros
+	S_LZC,      // leading zeros counted: a sum that may have cancelled (the rest know theirs)
 	S_NORM,     // normalise; where to round
 	S_SHIFT,    // bring the rounding point to bit 0
 	S_ROUND,    // round, range checks, pack
@@ -547,6 +547,32 @@ wire [162:0] add_sum = add_p + add_z;
 wire [162:0] add_pz  = add_p - add_z - {162'd0, zst};   // negative: addend is larger
 wire [162:0] add_zp  = add_z - add_p;
 wire         eff_sub = s_p ^ s_z;
+
+// the magnitude of the sum, and its sign
+logic [161:0] r_next;
+logic         r_next_sign;
+
+always_comb begin
+	if (~eff_sub)        begin r_next = add_sum[161:0]; r_next_sign = s_p; end
+	else if (add_pz[162]) begin r_next = add_zp[161:0];  r_next_sign = s_z; end
+	else                 begin r_next = add_pz[161:0];  r_next_sign = s_p; end
+end
+
+// Where the sum's leading one is, without counting: the addend's leading one
+// is at bit 160 - sr and the product's at 105 or 104. When one is at least
+// two places above the other the sum's top is within one place of it (no
+// cancellation past that). For the addend pinned at the top (sr = 0: frsp,
+// fctiw, an addend far larger than the product) and for a product at least
+// four times the addend (sr >= 58) the place is fixed, so five bits there
+// give the leading-zero count and S_LZC is skipped. The rest (an addend
+// larger than the product by up to 2**55: a window at a variable place,
+// which did not fit the cycle after the adder) count the whole sum in S_LZC
+// as before; so does a window with no one in it (not expected: a guard).
+wire        add_pin  = (sr == 8'd0);
+wire        add_fast = add_pin | (sr >= 8'd58);
+wire [4:0]  add_win  = add_pin ? r_next[161:157] : r_next[107:103];
+wire [7:0]  add_lz   = (add_pin ? 8'd0 : 8'd54) + (add_win[4] ? 8'd0 : add_win[3] ? 8'd1 :
+                                                   add_win[2] ? 8'd2 : add_win[1] ? 8'd3 : 8'd4);
 
 // ---- normalise -------------------------------------------------------------
 logic [7:0]  lz_cnt;
@@ -852,29 +878,26 @@ always_ff @(posedge clk) begin
 		p_q <= p_sum;
 		{zal, zst} <= align_z(mz, sr);
 		state <= S_ADD;
-		if (z_zero & ~p_zero) begin                  // no addend (fmul): the product is the sum
-			r_q      <= {56'd0, p_sum};
+		if (z_zero & ~p_zero) begin                  // no addend (fmul): the product is the sum,
+			r_q      <= {56'd0, p_sum};              // its top at bit 105 or 104 (normalised operands)
 			r_sign   <= s_p;
 			r_sticky <= 1'b0;
-			state    <= S_LZC;
+			lz_q     <= p_sum[105] ? 8'd56 : 8'd57;
+			rzero_q  <= 1'b0;
+			state    <= S_NORM;
 		end
 	end
 
 	S_ADD: begin
-		if (~eff_sub) begin
-			r_q    <= add_sum[161:0];
-			r_sign <= s_p;
-		end
-		else if (add_pz[162]) begin
-			r_q    <= add_zp[161:0];
-			r_sign <= s_z;
-		end
-		else begin
-			r_q    <= add_pz[161:0];
-			r_sign <= s_p;
-		end
+		r_q      <= r_next;
+		r_sign   <= r_next_sign;
 		r_sticky <= zst;
-		state    <= S_LZC;
+		if (add_fast & (|add_win)) begin
+			lz_q    <= add_lz;
+			rzero_q <= 1'b0;
+			state   <= S_NORM;
+		end
+		else state <= S_LZC;
 	end
 
 	S_LZC: begin
@@ -946,12 +969,15 @@ always_ff @(posedge clk) begin
 		d_quo <= d_quo_next;
 		d_cnt <= d_cnt - 5'd1;
 		if (d_cnt == 5'd0) begin
-			// the first quotient bit lands on window bit 161
+			// the first quotient bit lands on window bit 161; the quotient of
+			// normalised operands is in (1/2, 2), so it or the next is the top
 			r_q      <= sgl_q ? {d_quo_next[28:0], 133'd0} : {d_quo_next, 105'd0};
 			r_sign   <= s_p;
 			r_sticky <= (d_next != 53'd0);
 			e_win    <= ex - ez - 14'sd161;
-			state    <= S_LZC;
+			lz_q     <= {7'd0, ~(sgl_q ? d_quo_next[28] : d_quo_next[56])};
+			rzero_q  <= 1'b0;
+			state    <= S_NORM;
 		end
 	end
 

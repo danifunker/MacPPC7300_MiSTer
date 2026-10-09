@@ -156,6 +156,22 @@ operands, found with `fp_classify` or, for an lfs result still a single,
 3,294 ALMs, 75.5 MHz worst case; the whole CPU's worst path moved off the FPU
 (builds 44 and 45 in the Speed table: -2.40 to -1.35 ns at 70 MHz).
 
+The latency cuts of 2026-10-10, first step: S_LZC is skipped when the
+leading-zero count is known without counting. A product of normalised
+operands has its top at bit 105 or 104 (`fmul` 7 to 6 cycles), a quotient
+in (1/2, 2) at bit 161 or 160 (`fdiv` 34 to 33, `fdivs` and `fres` 20 to
+19), and a sum whose two parts are two or more places apart has its top
+within a place of the larger: five bits at a fixed place give the count when
+the addend is pinned at the top (`frsp`, `fctiw`, an addend 2**56 or more
+times the product: 8 to 7) or the product is four or more times the addend
+(8 to 7). An addend larger than the product by up to 2**55 (its place
+variable: a 54:1 window mux after the 163-bit adder cost 3 ns too many, the
+unit alone fell to 59 MHz) and the four distances where cancellation can
+reach far still count in S_LZC (8). The unit alone: 3,443 ALMs, 74.6 MHz.
+Next in that list: the add path's alignment distance decided in the request
+cycle (adds skip S_MUL1), a radix-8 divider, S_SHIFT folded into S_NORM
+where the shift amounts allow.
+
 ### M3: pipeline, user-mode integer (done)
 
 What was built (`rtl/DSPPC604/DSPPC604.sv` and the modules it instantiates):
