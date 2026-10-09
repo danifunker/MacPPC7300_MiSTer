@@ -1,15 +1,25 @@
-"""Test vectors: dingusppc's CSV sets plus generated cases without expectations.
+"""Test vectors: dingusppc's CSV sets, generated cases without expectations,
+and vectors read from a results-format CSV (hardware results used as golden
+values, or a model's predictions).
 
 Register convention (dingusppc's): integer operands in r3 (rA) and r4 (rB),
 result in r3; floating point frA = f4, frB = f5, frC = f6, result in f3.
+A memory vector (F_MEM) gets the address of an 8-byte buffer in r6; the buffer
+starts as the f6 pattern and is recorded in f6's place.
 """
 
+import csv
 import os
 import struct
 from dataclasses import dataclass, field
 from typing import Optional
 
-from ppcasm import xo_form, x_form, a_form, m_form
+from ppcasm import xo_form, x_form, a_form, m_form, d_form
+from layout import F_HAS_EXPECTED, F_MEM
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+V4_DIR = os.path.join(HERE, "v4")
+GOLDEN_604 = os.path.join(HERE, "runs", "results_604_run2.csv")
 
 DINGUS_DEFAULT = os.path.normpath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "..", "dingusppc", "cpu", "ppc", "test"))
@@ -33,9 +43,10 @@ class Vector:
     fpscr: int = 0
     f: list = field(default_factory=lambda: [0, 0, 0])         # f4..f6 as bit patterns
     exp: Optional[dict] = None                                 # complete output state
+    mem: bool = False                                          # r6 -> buffer (F_MEM)
 
     def pack_input(self):
-        flags = 1 if self.exp is not None else 0
+        flags = (F_HAS_EXPECTED if self.exp is not None else 0) | (F_MEM if self.mem else 0)
         return struct.pack(">2I4I4I3Q", self.insn, flags, *self.r,
                            self.cr, self.xer, self.ctr, self.fpscr, *self.f)
 
@@ -249,6 +260,7 @@ def generate_extras(cpu):
 
 
 def build_set(cpu="604e", dingus_dir=DINGUS_DEFAULT, extras=True):
+    """The version-3 set: dingusppc's vectors plus the generated extras."""
     if cpu not in CPUS:
         raise ValueError("unknown cpu %r (choose from %s)" % (cpu, ", ".join(CPUS)))
     vectors = load_dingus(dingus_dir)
@@ -256,6 +268,184 @@ def build_set(cpu="604e", dingus_dir=DINGUS_DEFAULT, extras=True):
     if extras:
         vectors += generate_extras(cpu)
     return vectors
+
+
+# --- results-format CSV ---------------------------------------------------------
+CSV_IN = ("r3", "r4", "r5", "r6", "cr", "xer", "ctr", "fpscr", "f4", "f5", "f6")
+CSV_COLUMNS = (["index", "name", "source", "insn"] + ["in_" + f for f in CSV_IN]
+               + ["out_" + f for f in OUT_FIELDS] + ["verdict"])
+
+
+def is_mem_source(src):
+    """Memory vectors are recognised by a `mem` part in their source name."""
+    return "mem" in src.split("-")
+
+
+def load_csv(path, expect="model"):
+    """Vectors from a CSV in the format `ppctest.py results` writes.
+
+    expect="all": every row's recorded outputs become the expected values
+    (a hardware results file used as the reference).
+    expect="model": only rows whose verdict is `model` carry expected values
+    (what verilator/fpmodel.py and v4gen.py write)."""
+    out = []
+    with open(path, newline="") as fh:
+        for r in csv.DictReader(fh):
+            h = lambda k: int(r[k], 16)
+            exp = None
+            if expect == "all" or r["verdict"] == "model":
+                exp = {"r": [h("out_r3"), h("out_r4"), h("out_r5"), h("out_r6")],
+                       "cr": h("out_cr"), "xer": h("out_xer"), "ctr": h("out_ctr"),
+                       "fpscr": h("out_fpscr"),
+                       "f": [h("out_f3"), h("out_f4"), h("out_f5"), h("out_f6")]}
+            out.append(Vector(
+                r["name"], h("insn"), r["source"],
+                r=[h("in_r3"), h("in_r4"), h("in_r5"), h("in_r6")],
+                cr=h("in_cr"), xer=h("in_xer"), ctr=h("in_ctr"), fpscr=h("in_fpscr"),
+                f=[h("in_f4"), h("in_f5"), h("in_f6")], exp=exp, mem=is_mem_source(r["source"])))
+    return out
+
+
+# --- version 4 additions ----------------------------------------------------------
+FPSCR_FEX, FPSCR_VX = 0x40000000, 0x20000000
+_VX_BITS = 0x01F80700
+
+
+def fpscr_as_held(x):
+    """A value written to the whole FPSCR, with the two summary bits as the
+    architecture derives them (VX and FEX cannot be written)."""
+    x &= 0x9FFFFFFF
+    if x & _VX_BITS:
+        x |= FPSCR_VX
+    if ((x & FPSCR_VX and x & 0x80) or (x & 0x10000000 and x & 0x40) or
+            (x & 0x08000000 and x & 0x20) or (x & 0x04000000 and x & 0x10) or
+            (x & 0x02000000 and x & 0x08)):
+        x |= FPSCR_FEX
+    return x
+
+
+FPSCR_STARTS = [0x00000000, 0xFFFFFFFF, 0x9FF80700, 0x000000FF, 0x60000000, 0x00000800,
+                0x0007F000, 0xA5A5A5A5, 0x5A5A5A5A]
+XER_PATTERNS = [0xFFFFFFFF, 0x00000000, 0x55555555, 0xAAAAAAAA, 0xE000007F, 0x1FFFFF80,
+                0x0000FF00] + [1 << n for n in range(31, -1, -1)]
+NOP = 0x60000000
+MEM_A, MEM_B = 0x8123456789ABCDEF, 0xFEDCBA9876543210
+
+
+def generate_v4_plain():
+    """Version-4 vectors with no expected values: the processor's answers are
+    the reference. FPSCR instructions, XER, and integer loads and stores."""
+    out = []
+
+    def add(name, insn, src, **kw):
+        out.append(Vector(name, insn, src, **kw))
+
+    # ---- XER: which bits does the register keep? ------------------------------
+    for p in XER_PATTERNS:
+        add("NOP", NOP, "v4-xer", xer=p)                       # the harness's own mtxer / mfxer
+        add("MFXER", 0x7C6102A6, "v4-xer", xer=p)              # mfxer r3
+        for before in (0, 0xFFFFFFFF):
+            add("MTXER", 0x7C6103A6, "v4-xer", r=[p, 0, 0, 0], xer=before)   # mtxer r3
+    for crfd in range(8):
+        for xer in (0, 0xF0000000, 0xE000007F, 0xFFFFFFFF,
+                    0x80000000, 0x40000000, 0x20000000, 0x10000000):
+            for cr in (0, 0xFFFFFFFF):
+                add("MCRXR", (31 << 26) | (crfd << 23) | (512 << 1), "v4-xer", xer=xer, cr=cr)
+
+    # ---- FPSCR instructions ---------------------------------------------------
+    src = "v4-fpscr"
+    for start in FPSCR_STARTS + [1 << n for n in range(31, -1, -1)]:
+        add("NOP", NOP, src, fpscr=start)                      # what mtfsf 0xFF made of it
+    for start in FPSCR_STARTS:
+        for rc, dot in ((0, ""), (1, ".")):
+            add("MFFS" + dot, (63 << 26) | (3 << 21) | (583 << 1) | rc, src, fpscr=start)
+        for f4 in (0xFFFFFFFFFFFFFFFF, 0x0123456789ABCDEF):    # target with old contents
+            add("MFFS", (63 << 26) | (4 << 21) | (583 << 1), src, fpscr=start, f=[f4, 0, 0])
+    for start in (0x00000000, 0xFFFFFFFF, 0x9FF80700, 0x000000FF, 0x0007F000):
+        for fm in (0x00, 0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01,
+                   0xFF, 0x7F, 0xAA, 0x55, 0xF0, 0x0F):
+            for value in (0x00000000, 0xFFFFFFFF, 0x55555555, 0xAAAAAAAA, 0x60000000,
+                          0x90000000, 0x000000F8, 0x20000000):
+                for rc, dot in ((0, ""), (1, ".")):
+                    add("MTFSF" + dot, (63 << 26) | (fm << 17) | (5 << 11) | (711 << 1) | rc, src,
+                        fpscr=start, f=[0, (0x12345678 << 32) | value, 0])
+    for start in (0x00000000, 0xFFFFFFFF, 0x000000F8):
+        for crfd in range(8):
+            for imm in range(16):
+                for rc, dot in ((0, ""), (1, ".")):
+                    add("MTFSFI" + dot, (63 << 26) | (crfd << 23) | (imm << 12) | (134 << 1) | rc,
+                        src, fpscr=start)
+    for start in (0x00000000, 0xFFFFFFFF, 0x000000F8, 0x9FF80700):
+        for name, xo in (("MTFSB0", 70), ("MTFSB1", 38)):
+            for bit in range(32):
+                for rc, dot in ((0, ""), (1, ".")):
+                    add(name + dot, (63 << 26) | (bit << 21) | (xo << 1) | rc, src, fpscr=start)
+    for start in FPSCR_STARTS:
+        for crfd in (0, 3, 7):
+            for crfs in range(8):
+                for cr in (0, 0xFFFFFFFF):
+                    add("MCRFS", (63 << 26) | (crfd << 23) | (crfs << 18) | (64 << 1), src,
+                        fpscr=start, cr=cr)
+
+    # ---- integer loads and stores through the 8-byte buffer at (r6) --------------
+    src = "v4-mem"
+
+    def mem(name, insn, **kw):
+        kw.setdefault("f", [0, 0, MEM_A])
+        add(name, insn, src, mem=True, **kw)
+
+    for buf in (MEM_A, MEM_B):
+        f = [0, 0, buf]
+        for d in (0, 4):
+            mem("LWZ", d_form(32, 3, 6, d), f=f)
+        for d in (0, 2, 4, 6):
+            mem("LHZ", d_form(40, 3, 6, d), f=f)
+            mem("LHA", d_form(42, 3, 6, d), f=f)
+        for d in range(8):
+            mem("LBZ", d_form(34, 3, 6, d), f=f)
+        for name, xo in (("LWZX", 23), ("LBZX", 87), ("LHZX", 279), ("LHAX", 343),
+                         ("LWBRX", 534), ("LHBRX", 790)):
+            mem(name, x_form(31, 3, 0, 6, xo), f=f)            # rA = 0: address is r6
+        for name, op in (("LWZU", 33), ("LBZU", 35), ("LHZU", 41), ("LHAU", 43)):
+            mem(name, d_form(op, 3, 6, 4), f=f)                # r6 moves on by 4
+        # string loads: 1..8 bytes into r3 and r4, which start as all ones
+        for n in range(1, 9):
+            mem("LSWI", x_form(31, 3, 6, n, 597), f=f, r=[0xFFFFFFFF, 0xFFFFFFFF, 0, 0])
+        for n in range(0, 9):                                   # n = 0: r3 is "undefined"
+            mem("LSWX", x_form(31, 3, 0, 6, 533), f=f, r=[0xFFFFFFFF, 0xFFFFFFFF, 0, 0], xer=n)
+    for r3 in (0x11223344, 0xAABBCCDD):
+        r = [r3, 0x55667788, 0, 0]
+        for name, op in (("STW", 36), ("STB", 38), ("STH", 44)):
+            for d in (0, 4):
+                mem(name, d_form(op, 3, 6, d), r=r)
+        for name, xo in (("STWX", 151), ("STBX", 215), ("STHX", 407),
+                         ("STWBRX", 662), ("STHBRX", 918)):
+            mem(name, x_form(31, 3, 0, 6, xo), r=r)
+        for name, op in (("STWU", 37), ("STBU", 39), ("STHU", 45)):
+            mem(name, d_form(op, 3, 6, 4), r=r)
+        for n in range(1, 9):
+            mem("STSWI", x_form(31, 3, 6, n, 725), r=r)
+        for n in range(0, 9):
+            mem("STSWX", x_form(31, 3, 0, 6, 661), r=r, xer=n)
+    return out
+
+
+V4_MODEL_FILES = ("model_random.csv", "model_targeted.csv")
+
+
+def build_v4(cpu="604e", golden=GOLDEN_604, v4_dir=V4_DIR):
+    """The version-4 set. First the whole version-3 set in its original order,
+    expecting what the real 604 returned for it; then the model-predicted
+    vectors written by v4gen.py; then the vectors with no expectation."""
+    if cpu in NO_GRAPHICS_FP:
+        raise ValueError("the version-4 set is for the 604, 604e and 750")
+    vectors = load_csv(golden, expect="all")
+    for name in V4_MODEL_FILES:
+        path = os.path.join(v4_dir, name)
+        if not os.path.exists(path):
+            raise FileNotFoundError("%s is missing: run `python v4gen.py` first" % path)
+        vectors += load_csv(path, expect="model")
+    return vectors + generate_v4_plain()
 
 
 if __name__ == "__main__":

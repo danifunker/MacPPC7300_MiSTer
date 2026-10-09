@@ -14,7 +14,8 @@ first mismatching vector numbers are also printed on the console.
 Register use: r27 load address, r26 client interface, r25 stdout, r24 disk,
 r23 simulator flag, r22 vectors left, r21 chunk block offset, r19 checksum,
 r18 write-failed flag, r17 vectors in this chunk, r13 mismatches, r29 vector
-number, r31/r30 input/output record, r28 address of `slot`. r14-r16 belong to
+number, r31/r30 input/output record, r28 address of `slot`, r7 the memory
+buffer of an F_MEM vector (0 otherwise). r14-r16 belong to
 the call helpers.
 """
 
@@ -118,8 +119,9 @@ def _prologue(a):
     a.bne("e_magic")
 
 
-def _status(a):
-    """Label `done`: fill in the completion record and write the header back.
+def _status(a, slots=False):
+    """Label `done`: fill in the completion record and write the header back,
+    to the block in M_HDRBLK when the program uses result slots.
     Uses r19 checksum, r18 write-failed, r13 mismatches, r29 count."""
     e = a.emit
     a.label("done")
@@ -137,7 +139,8 @@ def _status(a):
     a.label("cp")
     e(lwzx(0, 8, 9), stwx(0, 10, 9), addi(9, 9, 4), cmpwi(9, H_PATH_LEN))
     a.blt("cp")
-    e(li(3, HDR_BLK), addi(4, 27, M_HDR), li(5, BLOCK)); a.bl("disk_write")
+    e(lwz(3, M_HDRBLK, 27) if slots else li(3, HDR_BLK))
+    e(addi(4, 27, M_HDR), li(5, BLOCK)); a.bl("disk_write")
     e(cmpwi(3, BLOCK))
     a.beq("h_ok")
     e(li(18, 1))
@@ -159,6 +162,12 @@ def build_romdump():
     _prologue(a)
     e(lwz(22, M_HDR + H_ROMLEN, 27), lwz(21, M_HDR + H_ROMBLK, 27))
     e(lwz(20, M_HDR + H_ROMADDR, 27))
+    # Under Linux the wrapper maps physical memory at the same address with
+    # the top bit clear (a user program cannot have an address that high).
+    e(cmpwi(23, 0))
+    a.beq("addr_ok")
+    e(rlwinm(20, 20, 0, 1, 31))
+    a.label("addr_ok")
     e(li(19, 0), li(18, 0), li(13, 0), li(29, 0))
 
     a.label("chunk")
@@ -208,16 +217,44 @@ def build_romdump():
     a.b("exit")
 
     _epilogue(a, [
-        ("s_banner", CRLF + "romdump v3 "), ("s_nl", CRLF), ("s_dot", "."),
+        ("s_banner", CRLF + "romdump v4b "), ("s_nl", CRLF), ("s_dot", "."),
         ("s_sum", CRLF + "rom sum="), ("s_wok", " write=ok"), ("s_wfail", " write=FAILED"),
     ])
     return _finish(a)
 
 
-def build():
+def build(own_slots_always=False):
+    """own_slots_always: test-only variant that picks its result slot itself
+    even under the Linux wrapper, so the self-test can exercise that code."""
     a = Asm(base_reg=27)
     e = a.emit
     _prologue(a)
+
+    # ---- result slot: the first one whose header block is still blank ---------
+    # Each run gets its own, so runs with different CPU cards sit side by side
+    # on one disk. Under Linux the wrapper chooses the slot and redirects the
+    # writes, so this is skipped there.
+    e(li(8, HDR_BLK), stw(8, M_HDRBLK, 27))
+    if not own_slots_always:
+        e(cmpwi(23, 0))
+        a.bne("slots_done")
+    e(lwz(21, M_HDR + H_NSLOT, 27), lwz(22, M_HDR + H_SLOTBLK, 27), li(20, 1))
+    a.label("slot_try")
+    e(cmpw(20, 21))
+    a.bgt("e_full")
+    e(mr(3, 22), addi(4, 27, M_IN), li(5, BLOCK)); a.bl("disk_read")
+    e(cmpwi(3, BLOCK))
+    a.bne("e_read")
+    e(lwz(8, M_IN, 27), cmpwi(8, 0))
+    a.beq("slot_ok")
+    e(addi(20, 20, 1), addi(22, 22, SLOT_BLKS))
+    a.b("slot_try")
+    a.label("slot_ok")
+    e(stw(22, M_HDRBLK, 27), stw(20, M_HDR + H_SLOT, 27))
+    e(lwz(8, M_HDR + H_STRIDE, 27), mullw(8, 8, 20), lwz(9, M_HDR + H_RESBLK, 27))
+    e(add(9, 9, 8), stw(9, M_HDR + H_RESBLK, 27))        # results go to this slot's area
+    a.label("slots_done")
+
     e(lwz(22, M_HDR + H_NVEC, 27))
     e(li(21, 0), li(19, 0), li(18, 0), li(13, 0), li(29, 0))
     a.la(28, "slot")
@@ -247,17 +284,30 @@ def build():
     e(lfd(0, I_CTR, 31), mtfsf(0xFF, 0))          # low word of the pair = FPSCR
     a.la(8, "zero"); e(lfd(3, 0, 8))
     e(lfd(4, I_F4, 31), lfd(5, I_F4 + 8, 31), lfd(6, I_F4 + 16, 31))
+    # the memory buffer starts as the f6 pattern; r7 = its address for an
+    # F_MEM vector, 0 otherwise
+    e(stfd(6, M_SCRATCH, 27))
+    e(lwz(0, I_FLAGS, 31), andi_(7, 0, F_MEM))
+    a.beq("nomem")
+    e(addi(7, 27, M_SCRATCH))
+    a.label("nomem")
     e(lwz(0, I_CR, 31), mtcrf(0xFF, 0))
     e(lwz(0, I_XER, 31), mtxer(0))
     e(lwz(0, I_CTR, 31), mtctr(0))
     e(lwz(3, I_R3, 31), lwz(4, I_R3 + 4, 31), lwz(5, I_R3 + 8, 31), lwz(6, I_R3 + 12, 31))
+    e(add(6, 6, 7))
     a.label("slot")
     e(nop())
-    e(stw(3, O_R3, 30), stw(4, O_R3 + 4, 30), stw(5, O_R3 + 8, 30), stw(6, O_R3 + 12, 30))
+    e(stw(3, O_R3, 30), stw(4, O_R3 + 4, 30), stw(5, O_R3 + 8, 30))
+    e(subf(0, 7, 6), stw(0, O_R3 + 12, 30))       # r6 less the buffer address
     e(mfcr(0), stw(0, O_CR, 30), mfxer(0), stw(0, O_XER, 30))
     e(stfd(3, O_F3, 30), stfd(4, O_F3 + 8, 30), stfd(5, O_F3 + 16, 30), stfd(6, O_F3 + 24, 30))
     e(mffs(0), stfd(0, O_CTR, 30))                # FPSCR lands in O_FPSCR
     e(mfctr(0), stw(0, O_CTR, 30))
+    e(cmpwi(7, 0))
+    a.beq("nobuf")
+    e(lfd(0, M_SCRATCH, 27), stfd(0, O_F3 + 24, 30))   # the buffer, in place of f6
+    a.label("nobuf")
 
     # checksum: sum = rotl(sum, 1) + word, over the 16 output words
     e(li(9, REC // 4), mr(8, 30))
@@ -297,7 +347,7 @@ def build():
     a.b("chunk")
 
     # ---- finish -------------------------------------------------------------
-    _status(a)
+    _status(a, slots=True)
 
     a.la(3, "s_n"); a.bl("puts"); e(mr(3, 29)); a.bl("puthex")
     a.la(3, "s_sum"); a.bl("puts"); e(mr(3, 19)); a.bl("puthex")
@@ -308,21 +358,26 @@ def build():
     a.la(3, "s_wfail")
     a.label("pw")
     a.bl("puts")
-    e(mr(17, 13), cmpwi(17, H_MISS_MAX))
-    a.ble("ml0")
-    e(li(17, H_MISS_MAX))
-    a.label("ml0")
-    e(li(20, 0))
-    a.label("ml")
-    e(cmpw(20, 17))
-    a.bge("exit")
-    a.la(3, "s_sp"); a.bl("puts")
-    e(slwi(8, 20, 2), add(8, 8, 27), lwz(3, M_HDR + H_MISS, 8)); a.bl("puthex")
-    e(addi(20, 20, 1))
-    a.b("ml")
+
+    # ---- second stage: the tests that do not fit in a boot block ---------------
+    # Loaded 64 KB above this program and entered with the same registers
+    # (r27 base, r26 client interface, r25 console, r24 disk, r20 its own
+    # base) and the slot header in M_HDR. Not under Linux.
+    e(cmpwi(23, 0))
+    a.bne("exit")
+    e(lwz(22, M_HDR + H_S2LEN, 27), cmpwi(22, 0))
+    a.beq("exit")
+    e(lwz(21, M_HDR + H_S2BLK, 27), addis(20, 27, 1))
+    a.label("s2")
+    e(mr(3, 21), mr(4, 20), li(5, 4096)); a.bl("disk_read")
+    e(cmpwi(3, 4096))
+    a.bne("e_read")
+    e(addi(21, 21, CHUNK_BLOCKS), addi(20, 20, 4096), addi(22, 22, -4096), cmpwi(22, 0))
+    a.bgt("s2")
+    e(addis(20, 27, 1), mtctr(20), bctr())
 
     _epilogue(a, [
-        ("s_banner", CRLF + "ppctest v3 "), ("s_nl", CRLF), ("s_dot", "."), ("s_sp", " "),
+        ("s_banner", CRLF + "ppctest v4d "), ("s_nl", CRLF), ("s_dot", "."),
         ("s_n", CRLF + "n="), ("s_sum", " sum="), ("s_miss", " miss="),
         ("s_wok", " write=ok"), ("s_wfail", " write=FAILED"),
     ])
@@ -337,6 +392,7 @@ _OF_STRINGS = [
 _ERR_STRINGS = [
     ("s_epath", CRLF + "ERR no bootpath"), ("s_eopen", CRLF + "ERR open"),
     ("s_eread", CRLF + "ERR read"), ("s_emagic", CRLF + "ERR not a ppctest disk"),
+    ("s_efull", CRLF + "ERR full"),
 ]
 
 
@@ -346,6 +402,7 @@ def _epilogue(a, strings):
     a.label("e_path"); a.la(3, "s_epath"); a.b("fail")
     a.label("e_open"); a.la(3, "s_eopen"); a.b("fail")
     a.label("e_read"); a.la(3, "s_eread"); a.b("fail")
+    a.label("e_full"); a.la(3, "s_efull"); a.b("fail")      # every result slot is used
     a.label("e_magic"); a.la(3, "s_emagic")
     a.label("fail")
     a.bl("puts")

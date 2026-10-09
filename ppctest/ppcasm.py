@@ -63,6 +63,8 @@ def li(rt, si):         return addi(rt, 0, si)
 def lis(rt, si):        return addis(rt, 0, si)
 def ori(ra, rs, ui):    return d_form(24, rs, ra, _u16(ui))
 def andi_(ra, rs, ui):  return d_form(28, rs, ra, _u16(ui))
+def andis_(ra, rs, ui): return d_form(29, rs, ra, _u16(ui))
+def mulli(rt, ra, si):  return d_form(7, rt, ra, _s16(si))
 def lwz(rt, d, ra):     return d_form(32, rt, ra, _s16(d))
 def lbz(rt, d, ra):     return d_form(34, rt, ra, _s16(d))
 def stw(rs, d, ra):     return d_form(36, rs, ra, _s16(d))
@@ -81,6 +83,9 @@ def xor(ra, rs, rb):    return x_form(31, rs, ra, rb, 316)
 def lbzx(rt, ra, rb):   return x_form(31, rt, ra, rb, 87)
 def lwzx(rt, ra, rb):   return x_form(31, rt, ra, rb, 23)
 def stwx(rs, ra, rb):   return x_form(31, rs, ra, rb, 151)
+def stbx(rs, ra, rb):   return x_form(31, rs, ra, rb, 215)
+def srw(ra, rs, rb):    return x_form(31, rs, ra, rb, 536)
+def mullw(rt, ra, rb):  return xo_form(rt, ra, rb, 235)
 def rlwinm(ra, rs, sh, mb, me): return m_form(21, rs, ra, sh, mb, me)
 def slwi(ra, rs, n):    return rlwinm(ra, rs, n, 0, 31 - n)
 def srwi(ra, rs, n):    return rlwinm(ra, rs, 32 - n, n, 31)
@@ -105,6 +110,7 @@ def sync():             return x_form(31, 0, 0, 0, 598)
 def isync():            return x_form(19, 0, 0, 0, 150)
 def blr():              return 0x4E800020
 def bctrl():            return 0x4E800421
+def bctr():             return 0x4E800420
 def sc():               return 0x44000002
 def nop():              return 0x60000000
 
@@ -112,11 +118,12 @@ def nop():              return 0x60000000
 class Asm:
     """Collects words, resolves branch and base-relative label references."""
 
-    def __init__(self, base_reg=None):
+    def __init__(self, base_reg=None, origin=None):
         self.words = []
         self.labels = {}
         self.fixups = []        # (index, kind, label, extra)
         self.base_reg = base_reg
+        self.origin = origin    # run-time address of the first word, when it is fixed
 
     @property
     def pos(self):
@@ -159,10 +166,20 @@ class Asm:
     def bgt(self, l): self.bc(BO_TRUE, GT, l)
     def ble(self, l): self.bc(BO_FALSE, GT, l)
     def bdnz(self, l): self.bc(BO_DNZ, 0, l)
+    def bso(self, l): self.bc(BO_TRUE, SO, l)
+    def bns(self, l): self.bc(BO_FALSE, SO, l)
 
     def la(self, rt, label):
         """rt = run-time address of label (base register + offset)."""
         self.fixups.append((len(self.words), "la", label, rt)); self.emit(0)
+
+    def li_addr(self, rt, label):
+        """rt = absolute address of label; needs a fixed origin. Two words."""
+        self.fixups.append((len(self.words), "abs", label, rt)); self.emit(0, 0)
+
+    def addr_word(self, label):
+        """A data word holding the absolute address of label."""
+        self.fixups.append((len(self.words), "absw", label, 0)); self.emit(0)
 
     def li32(self, rt, value):
         value &= 0xFFFFFFFF
@@ -186,4 +203,13 @@ class Asm:
                 words[idx] |= rel & 0xFFFC
             elif kind == "la":
                 words[idx] = addi(extra, self.base_reg, target)
+            elif kind in ("abs", "absw"):
+                if self.origin is None:
+                    raise ValueError("absolute reference to %s without an origin" % label)
+                addr = (self.origin + target) & 0xFFFFFFFF
+                if kind == "absw":
+                    words[idx] = addr
+                else:
+                    words[idx] = lis(extra, addr >> 16)
+                    words[idx + 1] = ori(extra, extra, addr & 0xFFFF)
         return struct.pack(">%dI" % len(words), *words)
