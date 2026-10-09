@@ -22,7 +22,8 @@
 //   11. the BlueSCSI Toolbox on ID 0: MODE SENSE page 31, LIST, SEND DATA;
 //   12. SDTR, WDTR, and a MESSAGE REJECT answered under ATN (Mac OS 8.5);
 //   13. the floppy: SWIM3 and DMA channel 1 reading a DiskCopy 1440K image,
-//      a raw 800K one, an 800K DiskCopy one of an odd size (slot 6).
+//      a raw 800K one, an 800K DiskCopy one of an odd size (slot 6); the GCR
+//      sectors decoded as Apple's driver does (denib).
 // --stock: the official Main instead (no CD drive, nothing written to slot 4).
 //
 // Every byte the drivers take is checked against the image; every step's
@@ -472,9 +473,10 @@ void put_cmd(uint32_t at, uint8_t cmd, uint8_t bits, uint16_t req, uint32_t addr
 uint16_t res_count(uint32_t at) { return mem[at + 12] | mem[at + 13] << 8; }
 uint16_t xfer_stat(uint32_t at) { return mem[at + 14] | mem[at + 15] << 8; }
 
-// read n sectors from first by DMA into memory at at, waiting for SECT_DONE
-bool fd_read(uint8_t first, uint8_t n, uint32_t at) {
-	put_cmd(0x900, 3, 0x00, (uint16_t)(512 * n), at);
+// read n sectors from first by DMA into memory at at, waiting for SECT_DONE (a GCR
+// sector is 704 bytes, an MFM one 512)
+bool fd_read(uint8_t first, uint8_t n, uint32_t at, int bytes = 512) {
+	put_cmd(0x900, 3, 0x00, (uint16_t)(bytes * n), at);
 	put_cmd(0x910, 7, 0x00, 0, 0);
 	d1w(3, 0x900); d1w(0, 0x80008000);
 	sw(0xD, first); sw(0xE, n);
@@ -496,6 +498,43 @@ bool fd_check(uint32_t at, uint32_t sec, int n, const char* what) {
 					mem[at + 512 * s + k], fd_data(sec + s, k));
 				return false;
 			}
+	return true;
+}
+
+// Apple's DeNibbleize (SonySWIM3.a): a GCR sector as SWIM3 gives it (its number, 699
+// six-bit values for 12 tag bytes and 512 data bytes, 4 for the checksums) to its 524 bytes
+bool denib(const uint8_t* p, uint8_t* out) {
+	unsigned ca = 0, cb = 0, cc = 0, x, s;
+	int o = 0;
+	p++;
+	for (int g = 0; g < 175; g++) {
+		uint8_t hi = *p++;
+		x = cc >> 7; cc = ((cc << 1) | x) & 0xFF;
+		uint8_t a = (((hi << 2) & 0xC0) | *p++) ^ cc;
+		out[o++] = a; s = ca + a + x; ca = s & 0xFF; x = s >> 8;
+		uint8_t b = (((hi << 4) & 0xC0) | *p++) ^ ca;
+		out[o++] = b; s = cb + b + x; cb = s & 0xFF; x = s >> 8;
+		if (g == 174) break;
+		uint8_t c = (((hi << 6) & 0xC0) | *p++) ^ cb;
+		out[o++] = c; s = cc + c + x; cc = s & 0xFF;
+	}
+	uint8_t hi = *p++;
+	return (unsigned)(((hi << 2) & 0xC0) | p[0]) == ca && (unsigned)(((hi << 4) & 0xC0) | p[1]) == cb &&
+	       (unsigned)(((hi << 6) & 0xC0) | p[2]) == cc && p[2] < 0x80;
+}
+bool fd_check_gcr(uint32_t at, uint32_t sec, int n, const char* what) {
+	for (int s = 0; s < n; s++) {
+		uint8_t b[524];
+		if (!denib(&mem[at + 704 * s], b)) {
+			check(false, "%s: sector %u's checksums do not match (Apple's DeNibbleize)", what, sec + s);
+			return false;
+		}
+		for (int k = 0; k < 524; k++)
+			if (b[k] != (k < 12 ? 0 : fd_data(sec + s, k - 12))) {
+				check(false, "%s: sector %u decoded byte %d is %02X", what, sec + s, k, b[k]);
+				return false;
+			}
+	}
 	return true;
 }
 
@@ -877,9 +916,9 @@ int main(int argc, char** argv) {
 		fd_cmd(0, 0);
 		for (int t = 0; t < 20; t++) fd_cmd(1, 0);
 		fd_stat(0xC);
-		ok = fd_read(3, 2, 0x62000);
+		ok = fd_read(3, 2, 0x62000, 704);
 		check(ok, "800K: no SECT_DONE for track 20 side 1's sectors 3-4");
-		if (ok) fd_check(0x62000, 384 + 4 * 11 * 2 + 11 + 3, 2, "800K track 20 side 1");
+		if (ok) fd_check_gcr(0x62000, 384 + 4 * 11 * 2 + 11 + 3, 2, "800K track 20 side 1");
 		check(sr(0xA) == 0x94 && sr(0xB) == 0x84 && sr(0xC) == 0x22, "800K: the last address field %02X %02X %02X",
 			sr(0xA), sr(0xB), sr(0xC));
 
@@ -893,9 +932,9 @@ int main(int argc, char** argv) {
 		fd_cmd(0, 0);
 		for (int t = 0; t < 20; t++) fd_cmd(1, 0);
 		fd_stat(0xC);
-		ok = fd_read(3, 2, 0x63000);
+		ok = fd_read(3, 2, 0x63000, 704);
 		check(ok, "838,479 bytes: no SECT_DONE");
-		if (ok) fd_check(0x63000, 384 + 4 * 11 * 2 + 11 + 3, 2, "838,479 bytes, track 20 side 1");
+		if (ok) fd_check_gcr(0x63000, 384 + 4 * 11 * 2 + 11 + 3, 2, "838,479 bytes, track 20 side 1");
 		fd_cmd(3, 1);
 		fd_hdr = 0; fd_len = 1000; fd_size = 1000; fd_remount = true;
 		run(20000);

@@ -263,11 +263,22 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(VDNUM), .BLKSZ(2)) hps_io
 );
 
 // the date and time for Cuda's clock: the HPS's Unix seconds, from 1904 as a
-// Mac counts them (as the Quadra 800 core's RTC takes them); 0 until the
-// HPS has sent them
+// Mac counts them (as the Quadra 800 core's RTC takes them), counted on here
+// (the HPS sends them at the core's start: a restart wants the time it is then);
+// 0 until the HPS has sent them
 wire [32:0] timestamp;
-reg  [31:0] mac_secs_m;
-always @(posedge clk_mem) mac_secs_m <= (timestamp[31:0] == 32'd0) ? 32'd0 : timestamp[31:0] + 32'd2082844800;
+reg  [31:0] mac_secs_m = 0;
+reg  [26:0] sec_div = 0;                    // clk_mem's 100 MHz
+reg         ts_tog = 0;
+always @(posedge clk_mem) begin
+	sec_div <= (sec_div == 27'd99_999_999) ? 27'd0 : sec_div + 27'd1;
+	if (sec_div == 27'd99_999_999 && mac_secs_m != 32'd0) mac_secs_m <= mac_secs_m + 32'd1;
+	ts_tog <= timestamp[32];
+	if (ts_tog != timestamp[32] && timestamp[31:0] != 32'd0) begin
+		mac_secs_m <= timestamp[31:0] + 32'd2082844800;
+		sec_div    <= 27'd0;
+	end
+end
 
 ///////////////////////   OPTIONS AND RESET (memory clock)   ///////////////////////////////
 

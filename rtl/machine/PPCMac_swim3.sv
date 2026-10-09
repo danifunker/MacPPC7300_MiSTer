@@ -9,9 +9,11 @@
 //  superdrive.cpp answers them, and the disk at the level of its sectors,
 //  as swim3.cpp reads one: an address field passes under the head, its
 //  track, side, sector and format go into registers A, B and C and raise
-//  ID_READ; the sector sought (first sector, then each next one) has its
-//  512 bytes go to DMA channel 1 (the dev side of a PPCMac_dbdma); after
-//  "sectors to transfer" of them, SECT_DONE. The ROM's probe of the chip
+//  ID_READ; the sector sought (first sector, then each next one) goes to
+//  DMA channel 1 (the dev side of a PPCMac_dbdma): an MFM sector's 512
+//  bytes, a GCR sector's 704 six-bit values as the chip leaves them for the
+//  driver to decode (A_GCR; dingusppc sends 512 bytes, which Apple's driver
+//  rejects); after "sectors to transfer" of them, SECT_DONE. The ROM's probe of the chip
 //  (interrupt mask <- 0, mode set 01, mode clear 18, phase <- 5 and read
 //  back: 5) finds it and the 68k .Sony driver (DRVR 4) installs; Mac OS
 //  7.6.1's System needs that (the "bus error" at the welcome screen of
@@ -60,7 +62,8 @@
 //  dingusppc's does): MFM 720K (9 sectors a track, numbered from 1) or
 //  1440K (18), GCR 400K (one side) or 800K, 12 sectors on tracks 0-15 down
 //  to 8 on 64-79, numbered from 0. Address fields come only while the motor
-//  turns with a disk in and the drive's mode is the disk's. The timing is
+//  turns with a disk in and the drive's mode is the disk's (and not from
+//  side 1 of a one-sided disk). The timing is
 //  dingusppc's (an MFM track for all): an index gap of 2,336 us, then each
 //  sector's 10,800 us (10,528 at double density), its address field 352 us
 //  in and its data done 8,576 us in.
@@ -161,7 +164,7 @@ wire  [4:0]  spt   = d_mfm ? (d_hd ? 5'd18 : 5'd9) : {1'b0, spt_g};
 wire         gap   = rot_sec >= spt;
 wire  [13:0] slot_end = gap ? 14'(T_INDEX - 1) : (d_mfm & ~d_hd) ? 14'(T_SEC_DD - 1) : 14'(T_SEC_HD - 1);
 wire         turning = motor_on & has_disk;
-wire         am_ev   = us_tick & turning & ~gap & rot_us == 14'(T_AM) & drive_mfm == d_mfm;
+wire         am_ev   = us_tick & turning & ~gap & rot_us == 14'(T_AM) & drive_mfm == d_mfm & (d_ds | ~head);
 wire         data_ev = us_tick & turning & ~gap & rot_us == 14'(T_DATA);
 wire  [6:0]  sec_id  = {2'b00, rot_sec} + {6'd0, d_mfm};
 wire  [4:0]  sec_nx  = (rot_sec + 5'd1 >= spt) ? 5'd0 : rot_sec + 5'd1;
@@ -190,20 +193,66 @@ wire  [11:0] trk_b  = d_mfm ? mfm_t : gcr_t;
 wire  [11:0] lba    = trk_b + {7'd0, rot_sec};
 
 // ---- a disk access
-typedef enum logic [1:0] { A_IDLE, A_SEARCH, A_FETCH, A_PUSH } a_t;
+typedef enum logic [2:0] { A_IDLE, A_SEARCH, A_FETCH, A_PUSH, A_GCR } a_t;
 a_t         acc;
 logic [7:0] cur_trk, cur_sec, fmt_r, target;
 logic [4:0] dsec;                       // the slot of the sector being read
 logic       blk_ok, dat_ok, q_ok;
 logic       pend;                       // a block asked for and not yet read
-logic [8:0] idx;                        // its byte going out
+logic [8:0] idx;                        // its byte going out (GCR: being read)
 logic [2:0] dn_s;
 logic       dn_h;
 
+// A GCR sector goes out as the chip gives it: its number, then 175 groups of three bytes
+// (12 tag bytes, zeros here, then the 512; the last group two) as 6-bit values with
+// three running checksums, then the checksums: 704 bytes (SonySWIM3.a's DeNibbleize)
+typedef enum logic [2:0] { G_SEC, G_LD, G_ENC, G_NIB, G_CK } g_t;
+g_t         gs;
+logic [9:0] src;                        // the group's byte being read, of the 524
+logic [1:0] gk, gw;
+logic [7:0] grp, g_a, g_b, g_c, ck_a, ck_b, ck_c, e_a, e_b, e_c;
+logic       g_ok;
+wire        g_last = grp == 8'd174;
+wire  [7:0] ck_cr  = {ck_c[6:0], ck_c[7]};
+wire  [8:0] sum_a  = {1'b0, ck_a} + {1'b0, g_a} + {8'd0, ck_c[7]};
+wire  [8:0] sum_b  = {1'b0, ck_b} + {1'b0, g_b} + {8'd0, sum_a[8]};
+wire  [8:0] sum_c  = {1'b0, ck_cr} + {1'b0, g_c} + {8'd0, sum_b[8]};
+wire        g_out  = gs == G_SEC || gs == G_NIB || gs == G_CK;
+logic [7:0] g_q;
+always_comb begin
+	case (gs)
+		G_SEC:   g_q = {3'd0, dsec};
+		G_NIB:   case (gk)
+			2'd0:    g_q = {2'b00, e_a[7:6], e_b[7:6], e_c[7:6]};
+			2'd1:    g_q = {2'b00, e_a[5:0]};
+			2'd2:    g_q = {2'b00, e_b[5:0]};
+			default: g_q = {2'b00, e_c[5:0]};
+		endcase
+		default: case (gk)
+			2'd0:    g_q = {2'b00, ck_a[7:6], ck_b[7:6], ck_c[7:6]};
+			2'd1:    g_q = {2'b00, ck_a[5:0]};
+			2'd2:    g_q = {2'b00, ck_b[5:0]};
+			default: g_q = {2'b00, ck_c[5:0]};
+		endcase
+	endcase
+end
+
 assign b_ra     = (d_dc42 ? 10'd84 : 10'd0) + {1'b0, idx};
-assign di_valid = (acc == A_PUSH) & q_ok;
-assign di_data  = b_q;
-assign di_flush = acc != A_PUSH;
+assign di_valid = ((acc == A_PUSH) & q_ok) | ((acc == A_GCR) & g_out & g_ok);
+assign di_data  = (acc == A_GCR) ? g_q : b_q;
+assign di_flush = (acc != A_PUSH) & (acc != A_GCR);
+
+task automatic sector_done;
+	xfer_cnt <= xfer_cnt - 8'd1;
+	if (xfer_cnt == 8'd1) begin
+		int_flags <= int_flags | I_SECT;
+		acc <= A_IDLE;
+	end
+	else begin
+		target <= {1'b0, 2'b00, sec_nx} + {7'd0, d_mfm};
+		acc    <= A_SEARCH;
+	end
+endtask
 
 always_comb begin
 	case (rn)
@@ -283,27 +332,66 @@ always_ff @(posedge clk) begin
 			if (blk_ok && dat_ok) begin
 				idx  <= 9'd0;
 				q_ok <= 1'b0;
-				acc  <= A_PUSH;
+				g_ok <= 1'b0;
+				gs   <= G_SEC;
+				{ck_a, ck_b, ck_c} <= 24'd0;
+				grp  <= 8'd0;
+				src  <= 10'd0;
+				gk   <= 2'd0;
+				gw   <= 2'd0;
+				acc  <= d_mfm ? A_PUSH : A_GCR;
 			end
 		end
 		A_PUSH: begin
 			if (di_take) begin
 				q_ok <= 1'b0;
 				idx  <= idx + 9'd1;
-				if (idx == 9'd511) begin
-					xfer_cnt <= xfer_cnt - 8'd1;
-					if (xfer_cnt == 8'd1) begin
-						int_flags <= int_flags | I_SECT;
-						acc <= A_IDLE;
-					end
-					else begin
-						target <= {1'b0, 2'b00, sec_nx} + {7'd0, d_mfm};
-						acc    <= A_SEARCH;
-					end
-				end
+				if (idx == 9'd511) sector_done();
 			end
 			else q_ok <= 1'b1;
 		end
+		A_GCR: case (gs)
+			G_LD: if (gw != 2'd2) gw <= gw + 2'd1;
+			else begin
+				gw <= 2'd0;
+				case (gk)
+					2'd0:    g_a <= src < 10'd12 ? 8'd0 : b_q;
+					2'd1:    g_b <= src < 10'd12 ? 8'd0 : b_q;
+					default: g_c <= src < 10'd12 ? 8'd0 : b_q;
+				endcase
+				src <= src + 10'd1;
+				idx <= 9'(src + 10'd1 - 10'd12);
+				if (gk == 2'd2 || src == 10'd523) begin
+					gk <= 2'd0;
+					gs <= G_ENC;
+				end
+				else gk <= gk + 2'd1;
+			end
+			G_ENC: begin
+				e_a  <= g_a ^ ck_cr;
+				e_b  <= g_b ^ sum_a[7:0];
+				e_c  <= g_last ? 8'd0 : g_c ^ sum_b[7:0];
+				ck_a <= sum_a[7:0];
+				ck_b <= sum_b[7:0];
+				ck_c <= g_last ? ck_cr : sum_c[7:0];
+				gs   <= G_NIB;
+			end
+			default: if (di_take) begin
+				g_ok <= 1'b0;
+				if (gs == G_SEC) gs <= G_LD;
+				else if (gs == G_NIB) begin
+					if (gk == (g_last ? 2'd2 : 2'd3)) begin
+						gk  <= 2'd0;
+						grp <= grp + 8'd1;
+						gs  <= g_last ? G_CK : G_LD;
+					end
+					else gk <= gk + 2'd1;
+				end
+				else if (gk == 2'd3) sector_done();
+				else gk <= gk + 2'd1;
+			end
+			else g_ok <= 1'b1;
+		endcase
 		default: ;
 	endcase
 
