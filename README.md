@@ -95,6 +95,8 @@ framework), Quartus 17.0, slow 100 C model; this is the number that counts:
 | The FPU's special results (NaN, infinity, zero operands) found a cycle after the request (build 44) | 35,657 (85%) | 322 | 49 | slack -2.074 ns at 70 asked (the FPU's select gone from the 400 worst paths; the worst is lfs's conversion forwarded into `fcmp`'s exception trap) |
 | The operands' classes found in the core beside lfs's conversion, from the single's own fields (build 45) | 35,725 (85%) | 322 | 49 | slack -1.350 ns at 70 asked (no FPU path among the 400 worst; the D-cache's tag RAM into the I-cache's PLRU leads). On the board: Speedometer as build 38 |
 | S_LZC skipped where the FPU knows its leading-zero count: `fmul` 6 cycles, `fdiv` 33, `frsp` and `fctiw` 7 (build 46) | 35,238 (84%) | 322 | 49 | slack -2.249 ns at 70 asked, seed 1 (the fetch address into the I-cache's way RAMs, the same family placed worse). On the board: Math 108.1 (106.8), FPU 3.60 (3.57) |
+| The performance counters (`DSPPC604_perf`, `PERF = 1`) and the trace on, a measuring build (build 47) | 37,550 (90%) | 322 | 49 | slack -2.301 ns at 70 asked. On the board: Speedometer as build 46 (CPU 2.505, Math 108.1, FPU 3.60); the counters into the trace every 2^23 cycles |
+| The counters refined to 28 (MEM's wait split four ways, doubles counted; build 48) | 37,402 (89%) | 322 | 49 | slack -2.077 ns at 70 asked. On the board: Speedometer as build 46 (CPU 2.503, Math 108.0, FPU 3.61); the whole run's account in `docs/MacPPC7300_plan.md`, "Where the cycles go". A release build keeps `PERF = 0`, `TRACE = 0` |
 
 On the board (DE10-Nano, 128 MB SDRAM) the memory test passes at every RAM
 size the OSD offers (6 to 96 MB, three or more passes each, no error) at
@@ -246,7 +248,15 @@ Quadra 605 = 1.0; Dhrystones 46,559 a second; the FPU 3.57 against a Quadra
 650; Mac OS 7.6.1 from the core's load to the Finder's menu bar in 86 s. The
 lockstep runs of the 7300's ROM retire 1.57 cycles an instruction with the L2
 (2.2 before it); the integer golden program 1.85, the floating-point one 3.45.
-A real 7300 is to be measured with the same Speedometer for the comparison.
+The user's real Power Macintosh 7300/120 (a 604 at 120 MHz, 256 MB) ran
+the same Speedometer on 2026-10-10: CPU 7.800, Disk 3.544, Math 320.232;
+Dhrystones 162,592 a second; the FPU 14.33; Color 3.135. Against build 48
+that is 3.0-4.0x on the integer tests, 3.0-4.5x on the FPU's, 2.2-2.5x on
+Color, with the clock 1.71x of ours: the rest is cycles per instruction,
+accounted in `docs/MacPPC7300_plan.md`, "Where the cycles go" (the
+performance counters of builds 47 and 48): every load and store holds the
+pipeline a cycle in MEM, then load-use, redirects, the divider and the
+non-pipelined FPU.
 
 ## What the real 604 turned out to do
 

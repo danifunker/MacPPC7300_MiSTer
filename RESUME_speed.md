@@ -1,9 +1,41 @@
-# Resume prompt: speed: the FPU's timing cuts and first latency cut are in; the core's cycles per instruction next
+# Resume prompt: the sound first (the chime low and crackly; Mac OS's sounds wrong after 40 ms); the speed work paused with its account in the plan
 
-(Rewritten 2026-10-10 at the end of the FPU session (builds 44-46) for a
-Claude Fable session. It is the only resume prompt: everything it needs is
-here or in the files it names; the board's tools, the Main, the rules and the
-environment are at the end.)
+(Rewritten 2026-10-10 at the end of the cycle-accounting session (builds
+47, 48) for a Claude Fable session. It is the only resume prompt:
+everything it needs is here or in the files it names; the board's tools,
+the Main, the rules and the environment are at the end.)
+
+**The user's decision, 2026-10-10: the sound issues come first; the speed
+work stops after build 48.** So the next session is a **machine session**
+(the usual rule: it never changes the CPU) on the sound:
+
+1. **The startup chime on the board is far too low and crackly** (the user,
+   by ear, on build 47; never listened to before: milestone A's proof was
+   the chime bit-exact in simulation, "on the board, to be heard"). First
+   have the user compare build 38 (`releases/`) by ear: if 38 is clean, the
+   suspect is build 43's area cut, which made DMA channel 8 fetch a word per
+   memory access instead of a 32-byte line (`MacPPC7300_dbdma`'s `LINE` 0
+   for channel 8; AWACS's FIFO lasts about three frames, 68 µs): put channel
+   8 back on lines. The level is a separate fault: AWACS's attenuation
+   fields or the scaling into the 16-bit output; measure it in the bench
+   (`run_scsi.py` test 14 drives the chime's path) against the ROM's sample
+   values and the MiSTer's audio output in `MacPPC7300.sv`.
+2. **Sound in games** (open since 2026-10-09): after its first 40 ms a
+   sound's content is wrong; the Sound Manager refills its buffers far ahead
+   of the hardware and polls channel 8's status until ACTIVE clears. The
+   plan's decisions table, "sound", has the analysis; build 42 (`TRACE = 1`)
+   records channel 8's commands and interrupt. A diagnostic build needs
+   `TRACE = 1` in `MacPPC7300.sv` (and `PERF = 1` only for the counters).
+
+The speed work resumes later from `docs/MacPPC7300_plan.md`, "Where the
+cycles go" (the account and the ranked cuts; the first needs the user's
+go-ahead under rule 2 of `docs/DSPPC604_plan.md`), with the paragraphs
+below as its state. The user's real 7300/120 reference row is in the Speed
+table.
+
+---
+
+## The speed work's state (paused 2026-10-10)
 
 Paste everything below the line into a new session started in `C:\Temp\mistercore\PPC_Mac`.
 
@@ -31,6 +63,21 @@ I'm building a MiSTer FPGA core (DE10-Nano, Cyclone V) with my own PowerPC CPU, 
 
 ## Where things stand (2026-10-10)
 
+- **Committed, a1ae377 and after (builds 47, 48): the cycle accounting.**
+  `DSPPC604_perf` behind `PERF` (28 counters: every cycle classed, the
+  events counted), into the DDR3 trace every 2^23 cycles with `TRACE = 1`
+  (kind 12, five records), `syn\perf.py` for the account per 120 ms
+  interval (`--file` a capture of `mister.py trace-capture`/`trace-fetch`,
+  `--csv`, `--sum A B`), `speedo_run.py --shots` for which test is on; the
+  benches print it (`core_main.cpp`, `print_perf`). Measured on the board:
+  the plan's "Where the cycles go" (the table per phase, the ranked cuts).
+  The user's real 7300/120 ran the same Speedometer: 3.0-4.5x on the CPU and
+  FPU tests, the clock 1.71x of ours. A release build keeps `PERF = 0`.
+  The whole run's capture: `Scratch\speedo_b48\` (`perf.csv`, the
+  screenshots); the first 48 s of a capture are the previous run's ring.
+- **The bitstreams:** b47 (`Scratch\qbuild10`), b48 (`qbuild11`) in
+  `Scratch\build1\`; the board was left with build 46 in `_Unstable`,
+  Debian on slot 0, the machine off.
 - **Committed, 3514027 (builds 44, 45):** the FPU's results that need no arithmetic are found a cycle after the request, from its operand registers, and the operands' classes (`fp_cls_t`, `cls_a/b/c`) come from the core beside the operands (`fp_classify`, `fp_classify_single` for an lfs result still a single). Build 42's 400 worst paths were that one path; build 45 is -1.350 ns at 70 MHz asked (from -2.404), 35,725 ALMs, no FPU path among the 400 worst; the limit is now the fetch address into the I-cache's way RAMs and PLRU, and the D-cache's tag RAM into the I-cache. Speedometer as build 38.
 - **Committed, e69c10e (build 46):** S_LZC skipped when the leading-zero count is known: `fmul` 6 cycles, `fdiv` 33, `fdivs`/`fres` 19, `frsp`/`fctiw` 7, a sum with a pinned addend or a dominant product 7, an addend-dominant sum still 8. Build 46: 35,238 ALMs, -2.249 ns with seed 1 and -3.356 with seed 2 (both fits: the fetch address into the I-cache's RAMs, no FPU path among the 400 worst; three fits of a near-identical CPU at -1.35, -2.25 and -3.36 ns say that family's placement swings 2 ns). Speedometer: Math 108.111 (106.797), FPU 3.600 (3.566), the rest unchanged.
 - **Tried and reverted:** the addend-dominant sum's count taken as nominal and corrected in S_NORM (every vector passed; S_NORM then did not fit the cycle: the unit alone 65.8 MHz). Two designs that could still take that cycle are in `docs/DSPPC604_plan.md` (M2's last paragraph). The rest of the FPU latency list (the add path's alignment in the request cycle, a radix-8 divider, S_SHIFT into S_NORM, FP overlap) is worth a few per cent on three FPU tests: **deferred behind the cycles-per-instruction work.**
