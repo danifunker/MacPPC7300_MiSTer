@@ -1,7 +1,7 @@
 # Prompt for a MacQuadra800_MiSTer session: the ADB game controllers
 
-(Written 2026-10-08 by the PPCMac session, from a read of MacQuadra800_MiSTer
-at 58a05e2 while porting its ADB controllers to the PPCMac core. Nothing
+(Written 2026-10-08 by the MacPPC7300 session, from a read of MacQuadra800_MiSTer
+at 58a05e2 while porting its ADB controllers to the MacPPC7300 core. Nothing
 here was tested on a board: these are findings from the code and the
 protocol notes. Paste everything below the line into a session started in
 the Quadra 800 core's repository.)

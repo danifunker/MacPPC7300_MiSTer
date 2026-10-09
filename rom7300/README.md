@@ -14,7 +14,7 @@ this ROM's), plus `tools/remap_annotations.py`, which moves the 7600 ROM's
 hand-written notes to this ROM's addresses. Regenerate from WSL:
 
     bash tools/regen.sh                 # build, coverage run (cov7300), all outputs
-    SKIP_COV=1 bash tools/regen.sh      # reuse ~/.cache/ppcmac/romdisasm/cov7300
+    SKIP_COV=1 bash tools/regen.sh      # reuse ~/.cache/macppc7300/romdisasm/cov7300
 
 ## What differs from the 7600's ROM (28F2)
 

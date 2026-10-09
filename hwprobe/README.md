@@ -5,8 +5,8 @@ a table of register operations on Grand Central's devices, timed with the
 time base, prints the results on the console and writes them back to its own
 BlueSCSI disk image; and a host tool that builds the image and interprets
 the results. Made for milestone E of the machine's plan
-(`docs/PPCMac_plan.md`): what MESH and Curio do with an empty ID, which
-dingusppc models only at a high level (`docs/PPCMac_stubs.md`).
+(`docs/MacPPC7300_plan.md`): what MESH and Curio do with an empty ID, which
+dingusppc models only at a high level (`docs/MacPPC7300_stubs.md`).
 
 Everything is Python 3 with no extra packages. It imports ppctest's modules
 (`ppcasm.py`, `layout.py`, `image.py`) and changes nothing there; the boot
@@ -16,7 +16,7 @@ block is cudadump's (`..\cudadump\program.py`) with this disk's header.
 
 | | why |
 |---|---|
-| 1000 reads each of the VIA's port B and IFR, MESH's ID, Curio's configuration 3, Grand Central's levels and a DMA channel's status | how long a device access takes on the real bus (the core paces only the VIA: `docs/PPCMac_stubs.md`, "VIA access time") |
+| 1000 reads each of the VIA's port B and IFR, MESH's ID, Curio's configuration 3, Grand Central's levels and a DMA channel's status | how long a device access takes on the real bus (the core paces only the VIA: `docs/MacPPC7300_stubs.md`, "VIA access time") |
 | VIA timer 2 against the time base over 10 ms | the time base's rate (12.5 MHz expected), which every other number here is measured in |
 | MESH's registers as Open Firmware leaves them | the reset or driver values of registers dingusppc reads as 0 (source ID, selection timeout, FIFO count, error) |
 | MESH: arbitration, then bus status 0 and 1, exception and sequence | whether BSY or SEL show after a won arbitration (dingusppc: SEL only) |
@@ -125,5 +125,5 @@ chip reset with ENF and 00 after a DMA no-operation.
 ## Results from the real 7300
 
 None yet: the image is in `TO_CARD\` for the user's next session with the
-machine. When they come, they go here, into `docs/PPCMac_stubs.md`
+machine. When they come, they go here, into `docs/MacPPC7300_stubs.md`
 (the entries that name this probe), and into the RTL if they differ.

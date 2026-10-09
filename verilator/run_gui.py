@@ -4,7 +4,7 @@
     python verilator\\run_gui.py [--rom FILE | --rom7600] [--nvram FILE] [--ram MB]
                                  [--monitor 16|13] [--pause]
 
-Builds ppcmac_gui (gui_main.cpp, `make gui`) and starts it: the Control
+Builds macppc7300_gui (gui_main.cpp, `make gui`) and starts it: the Control
 window (run, reset, the frame counter with the machine's frames a second,
 the speed in simulated MHz and instructions a second), the Machine window
 (pc, MSR, counts), the Video window (the Control video's picture, zoom), the
@@ -41,8 +41,8 @@ def main():
             conv.append(a)
         return subprocess.call(["wsl", "--cd", HERE, "--", "python3", "run_gui.py"] + conv)
 
-    cache = os.path.join(os.path.expanduser("~"), ".cache", "ppcmac")
-    build = os.environ.get("PPCMAC_BUILD") or os.path.join(cache, "verilator")
+    cache = os.path.join(os.path.expanduser("~"), ".cache", "macppc7300")
+    build = os.environ.get("MACPPC7300_BUILD") or os.path.join(cache, "verilator")
     tmp = build.rstrip("/") + "-tmp"
     os.makedirs(tmp, exist_ok=True)
     os.environ["TMPDIR"] = tmp
@@ -52,15 +52,15 @@ def main():
     if "--rom" not in args:
         args = ["--rom", os.path.join(HERE, "..", "ppctest", "runs", rom)] + args
 
-    print("building ppcmac_gui (a few minutes after an RTL change)...", flush=True)
+    print("building macppc7300_gui (a few minutes after an RTL change)...", flush=True)
     r = run(["make", "-s", "-C", HERE, "gui", "BUILD=" + build])
     if r.returncode:
         print(r.stdout)
-        print("building ppcmac_gui failed")
+        print("building macppc7300_gui failed")
         return 1
     if r.stdout.strip():
         print(r.stdout.strip())
-    return subprocess.call([os.path.join(build, "gui", "ppcmac_gui")] + args)
+    return subprocess.call([os.path.join(build, "gui", "macppc7300_gui")] + args)
 
 
 if __name__ == "__main__":

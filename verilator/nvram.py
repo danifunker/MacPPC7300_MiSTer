@@ -14,7 +14,7 @@ from a device log, its Open Firmware partition shown and changed.
         the image as dingusppc's nvram.bin (its signature and size first),
         for verilator\\machref run in the file's directory
 
-The NVRAM is reached through Grand Central (PPCMac_gc.sv; dingusppc's
+The NVRAM is reached through Grand Central (MacPPC7300_gc.sv; dingusppc's
 macio.h): the address's high bits written to F301D000, then byte
 (address & 1F) at F301F000 + 16 * (address & 1F).
 
@@ -72,7 +72,7 @@ def from_log(path, until=None):
                 if size == 1:
                     hi = lanes[addr & 3]
                 elif lanes[0] is not None:
-                    hi = (lanes[1] << 8) | lanes[0]          # PPCMac_gc: {wdata[23:16], wdata[31:24]}
+                    hi = (lanes[1] << 8) | lanes[0]          # MacPPC7300_gc: {wdata[23:16], wdata[31:24]}
                 else:
                     hi = (lanes[3] << 8) | lanes[2]          # {wdata[7:0], wdata[15:8]}
             elif 0xF301F000 <= addr < 0xF301F200 and size == 1:

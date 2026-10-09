@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build Cuda (PPCMac_cuda: the 68HC05 and its firmware) under Verilator and
+"""Build Cuda (MacPPC7300_cuda: the 68HC05 and its firmware) under Verilator and
 test it alone, in lockstep with MAME's 6805 core.
 
     python verilator\\run_cuda.py [cuda_tb options]
@@ -28,8 +28,8 @@ def main():
     if os.name == "nt":
         return subprocess.call(["wsl", "--cd", HERE, "--", "python3", "run_cuda.py"] + sys.argv[1:])
 
-    cache = os.path.join(os.path.expanduser("~"), ".cache", "ppcmac")
-    build = os.environ.get("PPCMAC_BUILD") or os.path.join(cache, "verilator")
+    cache = os.path.join(os.path.expanduser("~"), ".cache", "macppc7300")
+    build = os.environ.get("MACPPC7300_BUILD") or os.path.join(cache, "verilator")
     # the compilers' temporary files go in a directory of this build's own
     tmp = build.rstrip("/") + "-tmp"
     os.makedirs(tmp, exist_ok=True)

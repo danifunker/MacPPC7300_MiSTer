@@ -1,4 +1,4 @@
-// The SDRAM controller's bench: PPCMac_sdram behind DSPPC604_memcdc
+// The SDRAM controller's bench: MacPPC7300_sdram behind DSPPC604_memcdc
 // (sdram_tb_top.sv), driven on the CPU's side with random line and word
 // requests (the CDC bench's patterns) and on the upload port with a file
 // written byte by byte, against a behavioural model of the SDRAM board.

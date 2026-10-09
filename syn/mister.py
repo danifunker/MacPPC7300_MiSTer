@@ -7,28 +7,28 @@ other cores' tooling does (tools/misterdeploy): loading a core, screenshots,
 keys and the mouse. SSH does what the Remote has no call for: copying files
 to the card and the core's UART.
 
-    python syn\\mister.py put-core [RBF]          output_files\\PPCMac.rbf -> _Unstable/PPCMac.rbf
-    python syn\\mister.py put-rom FILE            -> games/PPCMac/boot.rom (loaded at core start)
-    python syn\\mister.py put-nvram [FILE]        -> games/PPCMac/boot1.rom, the NVRAM image loaded at
+    python syn\\mister.py put-core [RBF]          output_files\\MacPPC7300.rbf -> _Unstable/MacPPC7300.rbf
+    python syn\\mister.py put-rom FILE            -> games/MacPPC7300/boot.rom (loaded at core start)
+    python syn\\mister.py put-nvram [FILE]        -> games/MacPPC7300/boot1.rom, the NVRAM image loaded at
                                                  core start (default syn\\nvram_of_prompt.bin)
     python syn\\mister.py rm-nvram                removes boot1.rom (the NVRAM starts blank)
-    python syn\\mister.py put-disk FILE [NAME]    a disk image -> games/PPCMac/NAME
+    python syn\\mister.py put-disk FILE [NAME]    a disk image -> games/MacPPC7300/NAME
     python syn\\mister.py mount 0|1|4 PATH        the image (PATH from /media/fat) mounted as SCSI
                                                  disk 0 or 1, or the CD-ROM (4), at the core's
-                                                 next start (config/PPCMac.sN, as the OSD writes it)
+                                                 next start (config/MacPPC7300.sN, as the OSD writes it)
     python syn\\mister.py umount 0|1|2|4          ... no longer
     python syn\\mister.py make-nvr [PATH]         an empty 8 KB NVRAM image (default
-                                                 games/PPCMac/PPCMac.nvr) if there is none, mounted
-                                                 on block slot 2 (config/PPCMac.s2): the core loads
+                                                 games/MacPPC7300/MacPPC7300.nvr) if there is none, mounted
+                                                 on block slot 2 (config/MacPPC7300.s2): the core loads
                                                  it at its start and keeps the NVRAM in it
     python syn\\mister.py cfg [--ram MB] [--monitor 16|13|12]
                               [--joy none|mousestick|firebird|gamepad|sidewinder] [--ptr]
                               [--eth] [--net eth0|eth1|wlan0|tap0] [--trace-mesh] [--l2 on|off]
-                                                 writes config/PPCMac.CFG (--eth or --net: Ethernet
+                                                 writes config/MacPPC7300.CFG (--eth or --net: Ethernet
                                                  on, eth0 unless --net; --trace-mesh: the trace
                                                  also takes MESH's accesses and interrupt;
                                                  no OSD entry; --l2: the L2 cache, on unless off)
-    python syn\\mister.py load                    loads _Unstable/PPCMac.rbf (Remote: /api/launch)
+    python syn\\mister.py load                    loads _Unstable/MacPPC7300.rbf (Remote: /api/launch)
     python syn\\mister.py menu                    loads the menu core again (/api/launch/menu)
     python syn\\mister.py shot [OUT.png]          a screenshot of the core's output, fetched
                                                  (/api/screenshots)
@@ -37,7 +37,7 @@ to the card and the core's UART.
     python syn\\mister.py osd-mount N NAME ...     the OSD opened, down N items, Enter, then each
                                                  NAME typed in the file browser and Enter (e.g.
                                                  osd-mount 4 floppy arkanoid: the floppy's item,
-                                                 games/PPCMac/floppy/arkanoid.img); blind
+                                                 games/MacPPC7300/floppy/arkanoid.img); blind
     python syn\\mister.py mouse DX DY [STEPS]     the Remote's mouse moved, right and down
     python syn\\mister.py click [left|right]      its button
     python syn\\mister.py ws STEP ...             any tools\\misterdeploy\\ws_send.py steps
@@ -52,7 +52,7 @@ to the card and the core's UART.
     unless --raw.)
     python syn\\mister.py run CMD                 any shell command on the MiSTer
     python syn\\mister.py trace [--last N] [--from K]
-                                                 the SCSI targets' trace (PPCMac_trace, DDR3
+                                                 the SCSI targets' trace (MacPPC7300_trace, DDR3
                                                  0x30500000): every command with its status,
                                                  sense, bytes moved and the Toolbox's answer;
                                                  bus resets; CD mounts (the last 40 unless asked)
@@ -81,8 +81,8 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-CORE = "/media/fat/_Unstable/PPCMac.rbf"
-RAM_OPTION = {16: 0, 24: 1, 48: 2, 64: 3, 96: 4, 6: 5, 120: 6}      # PPCMac.sv: O[3:1]
+CORE = "/media/fat/_Unstable/MacPPC7300.rbf"
+RAM_OPTION = {16: 0, 24: 1, 48: 2, 64: 3, 96: 4, 6: 5, 120: 6}      # MacPPC7300.sv: O[3:1]
 
 # a reader of the UART left from an earlier command would take part of what
 # comes in: stop any before starting another
@@ -174,48 +174,48 @@ def main():
         return 2
     cmd = a[0]
     if cmd == "put-core":
-        rbf = a[1] if len(a) > 1 else os.path.join(ROOT, "output_files", "PPCMac.rbf")
+        rbf = a[1] if len(a) > 1 else os.path.join(ROOT, "output_files", "MacPPC7300.rbf")
         return scp(rbf, "root@%s:%s" % (host(), CORE))
     if cmd == "put-rom":
-        ssh("mkdir -p /media/fat/games/PPCMac")
-        return scp(a[1], "root@%s:/media/fat/games/PPCMac/boot.rom" % host())
+        ssh("mkdir -p /media/fat/games/MacPPC7300")
+        return scp(a[1], "root@%s:/media/fat/games/MacPPC7300/boot.rom" % host())
     if cmd == "put-nvram":
         img = a[1] if len(a) > 1 else os.path.join(HERE, "nvram_of_prompt.bin")
         if os.path.getsize(img) != 8192:
             sys.exit("%s is not an 8 KB NVRAM image" % img)
-        ssh("mkdir -p /media/fat/games/PPCMac")
-        return scp(img, "root@%s:/media/fat/games/PPCMac/boot1.rom" % host())
+        ssh("mkdir -p /media/fat/games/MacPPC7300")
+        return scp(img, "root@%s:/media/fat/games/MacPPC7300/boot1.rom" % host())
     if cmd == "rm-nvram":
-        return ssh("rm -f /media/fat/games/PPCMac/boot1.rom")
+        return ssh("rm -f /media/fat/games/MacPPC7300/boot1.rom")
     if cmd == "put-disk":
-        ssh("mkdir -p /media/fat/games/PPCMac")
+        ssh("mkdir -p /media/fat/games/MacPPC7300")
         name = a[2] if len(a) > 2 else os.path.basename(a[1])
-        return scp(a[1], "root@%s:/media/fat/games/PPCMac/%s" % (host(), name))
+        return scp(a[1], "root@%s:/media/fat/games/MacPPC7300/%s" % (host(), name))
     if cmd == "mount":
         # what the Main writes when an SC slot's image is picked in the OSD
         # (menu.cpp, store_name): the path from /media/fat, read back and
         # mounted at the core's next start (user_io.cpp)
         slot, path = int(a[1]), a[2]
         if slot not in (0, 1, 2, 4) or "'" in path:
-            sys.exit("mount 0|1|2|4 PATH (from /media/fat, e.g. games/PPCMac/os761.hda; 2: the NVRAM image; "
+            sys.exit("mount 0|1|2|4 PATH (from /media/fat, e.g. games/MacPPC7300/os761.hda; 2: the NVRAM image; "
                      "4: a CD image, which needs the Main branch)")
-        return ssh("test -f '/media/fat/%s' && printf '%%s\\0' '%s' > /media/fat/config/PPCMac.s%d && "
-                   "xxd /media/fat/config/PPCMac.s%d" % (path, path, slot, slot))
+        return ssh("test -f '/media/fat/%s' && printf '%%s\\0' '%s' > /media/fat/config/MacPPC7300.s%d && "
+                   "xxd /media/fat/config/MacPPC7300.s%d" % (path, path, slot, slot))
     if cmd == "make-nvr":
         # an empty (all-zero) 8 KB NVRAM image, if there is none, mounted on
         # block slot 2: the core loads it at its start and saves the NVRAM
-        # into it (PPCMac_nvsave)
-        path = a[1] if len(a) > 1 else "games/PPCMac/PPCMac.nvr"
+        # into it (MacPPC7300_nvsave)
+        path = a[1] if len(a) > 1 else "games/MacPPC7300/MacPPC7300.nvr"
         if "'" in path:
             sys.exit("make-nvr [PATH]")
         return ssh("test -f '/media/fat/%s' || dd if=/dev/zero of='/media/fat/%s' bs=8192 count=1 2>/dev/null; "
-                   "printf '%%s\\0' '%s' > /media/fat/config/PPCMac.s2 && ls -l '/media/fat/%s'"
+                   "printf '%%s\\0' '%s' > /media/fat/config/MacPPC7300.s2 && ls -l '/media/fat/%s'"
                    % (path, path, path, path))
     if cmd == "umount":
-        return ssh("rm -f /media/fat/config/PPCMac.s%d" % int(a[1]))
+        return ssh("rm -f /media/fat/config/MacPPC7300.s%d" % int(a[1]))
     if cmd == "cfg":
         ram, monitor = 16, 16
-        joys = ["none", "mousestick", "firebird", "gamepad", "sidewinder"]   # PPCMac.sv: O[13:11]
+        joys = ["none", "mousestick", "firebird", "gamepad", "sidewinder"]   # MacPPC7300.sv: O[13:11]
         joy = a[a.index("--joy") + 1] if "--joy" in a else "none"
         if joy not in joys:
             sys.exit("--joy one of %s" % ", ".join(joys))
@@ -227,19 +227,19 @@ def main():
         if ram not in RAM_OPTION or monitor not in (16, 13, 12):
             sys.exit("--ram one of %s, --monitor 16, 13 or 12 (the memory-test boot and the debug "
                      "readout are gone)" % sorted(RAM_OPTION))
-        nets = ["eth0", "eth1", "wlan0", "tap0"]                                # PPCMac.sv: O[19:17], 0 off
+        nets = ["eth0", "eth1", "wlan0", "tap0"]                                # MacPPC7300.sv: O[19:17], 0 off
         net = a[a.index("--net") + 1] if "--net" in a else "eth0"
         if net not in nets:
             sys.exit("--net one of %s" % ", ".join(nets))
         eth = (nets.index(net) + 1) if ("--eth" in a or "--net" in a) else 0
-        l2 = a[a.index("--l2") + 1] if "--l2" in a else "on"                   # PPCMac.sv: O[4], 1 off
+        l2 = a[a.index("--l2") + 1] if "--l2" in a else "on"                   # MacPPC7300.sv: O[4], 1 off
         if l2 not in ("on", "off"):
             sys.exit("--l2 on or off")
         status = ((RAM_OPTION[ram] << 1) | ((l2 == "off") << 4) | (joys.index(joy) << 11)
                   | (("--ptr" in a) << 14) | ({16: 0, 13: 1, 12: 2}[monitor] << 15)
                   | (eth << 17) | (("--trace-mesh" in a) << 29))
         data = "".join("\\x%02x" % ((status >> (8 * i)) & 0xFF) for i in range(4)) + "\\x00" * 12
-        return ssh("printf '%s' > /media/fat/config/PPCMac.CFG && xxd /media/fat/config/PPCMac.CFG" % data)
+        return ssh("printf '%s' > /media/fat/config/MacPPC7300.CFG && xxd /media/fat/config/MacPPC7300.CFG" % data)
     if cmd == "load":
         api("POST", "/api/launch", {"path": CORE[len("/media/fat/"):]})
         return 0
@@ -247,9 +247,9 @@ def main():
         api("POST", "/api/launch/menu")
         return 0
     if cmd == "shot":
-        out = a[1] if len(a) > 1 else "PPCMac_screen.png"
+        out = a[1] if len(a) > 1 else "MacPPC7300_screen.png"
         def ours():
-            return sorted((s for s in json.loads(api("GET", "/api/screenshots")) if s.get("core") == "PPCMac"),
+            return sorted((s for s in json.loads(api("GET", "/api/screenshots")) if s.get("core") == "MacPPC7300"),
                           key=lambda s: s["modified"])
         before = {s["path"] for s in ours()}
         api("POST", "/api/screenshots")
@@ -388,7 +388,7 @@ def trace(last, first, fname=None):
         w = lambda off: int.from_bytes(raw[off:off + 8], "little")
         head = w(0)
         if head >> 32 != 0x54524345:
-            print("no trace (header %016x): a core without PPCMac_trace, or nothing written yet" % head)
+            print("no trace (header %016x): a core without MacPPC7300_trace, or nothing written yet" % head)
             return 1
         n, drops = head & 0xFFFFFFFF, w(8)
         lo = max(0, n - TRACE_RECS) if first is None else max(first, n - TRACE_RECS)
@@ -453,7 +453,7 @@ def trace(last, first, fname=None):
                   % (t, s >> 7, (s >> 6) & 1, (s >> 5) & 1, (s >> 4) & 1, (s >> 3) & 1,
                      (s >> 2) & 1, (s >> 1) & 1, s & 1))
         elif kind in (5, 8, 9):
-            # PPCMac_dbdma fin_info: {cmd_ptr, cmd key bits reqCount, ..., ...}
+            # MacPPC7300_dbdma fin_info: {cmd_ptr, cmd key bits reqCount, ..., ...}
             w1, w2 = int.from_bytes(r[8:16], "little"), int.from_bytes(r[16:24], "little")
             fi = w1 | (w2 << 64)
             ptr, cmdw, x, y = fi >> 96, (fi >> 64) & 0xFFFFFFFF, (fi >> 32) & 0xFFFFFFFF, fi & 0xFFFFFFFF

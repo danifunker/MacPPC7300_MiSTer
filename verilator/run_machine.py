@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the whole machine (PPCMac_system) under Verilator and run a ROM on it.
+"""Build the whole machine (MacPPC7300_system) under Verilator and run a ROM on it.
 
     python verilator\\run_machine.py [machine_tb options]
 
@@ -52,8 +52,8 @@ def main():
             conv.append(a)
         return subprocess.call(["wsl", "--cd", HERE, "--", "python3", "run_machine.py"] + conv)
 
-    cache = os.path.join(os.path.expanduser("~"), ".cache", "ppcmac")
-    build = os.environ.get("PPCMAC_BUILD") or os.path.join(cache, "verilator")
+    cache = os.path.join(os.path.expanduser("~"), ".cache", "macppc7300")
+    build = os.environ.get("MACPPC7300_BUILD") or os.path.join(cache, "verilator")
     refdir = os.path.join(cache, "dingusref")
     # the compilers' temporary files go in a directory of this build's own:
     # other WSL sessions working at the same time have deleted files in /tmp

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Runs on the MiSTer: copy PPCMac_trace's new records to a file as they come,
+"""Runs on the MiSTer: copy MacPPC7300_trace's new records to a file as they come,
 for longer than the ring holds.
 
     python3 trstream.py SECONDS OUT

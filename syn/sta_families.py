@@ -7,7 +7,7 @@ for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
     try: slack = float(f[1])
     except ValueError: continue
     def mod(s):
-        s = re.sub(r"emu:emu\|PPCMac_system:system\|", "", s)
+        s = re.sub(r"emu:emu\|MacPPC7300_system:system\|", "", s)
         s = re.sub(r"\|altsyncram.*", "|RAM", s)
         m = re.match(r"((?:[A-Za-z0-9_]+:[A-Za-z0-9_\[\]\.]+\|)+)", s)
         return ((m.group(1) if m else s) + ("RAM" if "|RAM" in s else ""))[:60]

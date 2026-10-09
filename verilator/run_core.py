@@ -52,8 +52,8 @@ def main():
     if args.quick:
         args.seeds = 4
 
-    cache = os.path.join(os.path.expanduser("~"), ".cache", "ppcmac")
-    build = os.environ.get("PPCMAC_BUILD") or os.path.join(cache, "verilator")
+    cache = os.path.join(os.path.expanduser("~"), ".cache", "macppc7300")
+    build = os.environ.get("MACPPC7300_BUILD") or os.path.join(cache, "verilator")
     # the compilers' temporary files go in a directory of this build's own:
     # other WSL sessions working at the same time have deleted files in /tmp
     # under a running g++

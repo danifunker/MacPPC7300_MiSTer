@@ -14,7 +14,7 @@
 DINGUS ?= /mnt/c/Temp/mistercore/dingusppc
 MAME   ?= /mnt/c/Temp/mistercore/mame
 QEMU   ?= /mnt/c/Temp/mistercore/qemu
-BUILD  ?= $(HOME)/.cache/ppcmac/romdisasm/build
+BUILD  ?= $(HOME)/.cache/macppc7300/romdisasm/build
 OPT    ?= -O2
 CXX    ?= g++
 CC     ?= gcc

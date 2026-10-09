@@ -3,7 +3,7 @@
  * default, the real machine we measure; dingusppc builds the 7600 from the
  * same definition), headless, running a ROM from the reset vector and
  * logging every access the CPU makes to a device. It is the reference for
- * the device side of PPCMac_machine: which registers the ROM touches, in
+ * the device side of MacPPC7300_machine: which registers the ROM touches, in
  * what order, and what dingusppc's devices answer.
  *
  *   machref --rom FILE [--machine pm7300] [--ram MB] [--cpu 604] [--pvr HEX]

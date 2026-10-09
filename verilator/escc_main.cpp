@@ -1,4 +1,4 @@
-// The ESCC's bench (PPCMac_escc alone): the modem port's bit rates as Open
+// The ESCC's bench (MacPPC7300_escc alone): the modem port's bit rates as Open
 // Firmware, a MIDI driver and PPP program them, a byte received at MIDI's
 // rate, RTS while it waits, CTS and its external/status interrupt.
 //

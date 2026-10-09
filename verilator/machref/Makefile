@@ -8,7 +8,7 @@
 # stands in for the files that need them.
 
 DINGUS ?= /mnt/c/Temp/mistercore/dingusppc
-BUILD  ?= $(HOME)/.cache/ppcmac/machref
+BUILD  ?= $(HOME)/.cache/macppc7300/machref
 OPT    ?= -O2
 CXX    ?= g++
 

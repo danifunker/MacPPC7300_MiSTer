@@ -1,4 +1,4 @@
-# PPCMac_MiSTer
+# MacPPC7300_MiSTer
 
 A PowerPC Macintosh core for the [MiSTer](https://github.com/MiSTer-devel) FPGA
 platform. Work in progress: the CPU is built and verified, and the machine
@@ -9,7 +9,7 @@ the machine on the DE10-Nano with the SDRAM; its screen shows Mac OS's (the
 Control video: with no disk yet, the grey desktop and the pointer), or, as
 the OSD chooses, a debug readout of rows of squares.
 
-`PPCMac` is a working name and may change.
+`MacPPC7300` is a working name and may change.
 
 ## Status
 
@@ -27,27 +27,27 @@ the OSD chooses, a debug readout of rows of squares.
 | Caches | two 16 KB four-way caches with 32-byte lines (the 604's shape), write-back, one line port to memory, a snoop port for DMA; directed tests and the whole suite through them |
 | Clock crossing to the SDRAM controller | done, checked at several clock ratios; the controller itself comes with the machine |
 | Timing and area pass | in progress: 55 to 64-65 MHz so far with eleven cuts that cost no cycles, plus the FPU operand register on (2 % of floating-point cycles) to take its forwarding path off the list; the slowest families now sit at the 66 MHz line and move across it with the fitter's placement; what remains and what it would cost is in [the plan](docs/DSPPC604_plan.md) |
-| Machine: the 7600's address map and device stubs | `rtl/machine/`: Hammerhead, Bandit and Chaos configuration space, Grand Central (interrupt and DMA registers, VIA with timers, NVRAM, board register) and its devices, each built as the chip behaves where Mac OS needs it (below) and otherwise answering as dingusppc's devices do; [docs/PPCMac_stubs.md](docs/PPCMac_stubs.md) lists every stub and what it leaves out |
+| Machine: the 7600's address map and device stubs | `rtl/machine/`: Hammerhead, Bandit and Chaos configuration space, Grand Central (interrupt and DMA registers, VIA with timers, NVRAM, board register) and its devices, each built as the chip behaves where Mac OS needs it (below) and otherwise answering as dingusppc's devices do; [docs/MacPPC7300_stubs.md](docs/MacPPC7300_stubs.md) lists every stub and what it leaves out |
 | The ROM in simulation | the 7300's (the reference) and the 7600's each run from the reset vector in lockstep with dingusppc, Cuda answering, for 60 million instructions with no difference (2026-10-07): through Open Firmware (which waits for Cuda at 18.3 million and gets its answer), the NanoKernel's start-up and into Mac OS's 68k emulator, running in user mode from 28 million on. Before Cuda existed, 150 million instructions to Open Firmware's endless poll for it |
 | Memory-test boot program | selectable in place of the ROM; passes in the bench over 1 and 6 MB and finds an injected fault |
-| SDRAM controller | `rtl/machine/PPCMac_sdram.sv`, adapted from Sorgelig's; passes its bench against a model of the 128 MB board that checks every command and timing |
-| First bitstream | `PPCMac.sv`: CPU at 65 MHz, SDRAM at 100 MHz, ROM upload, OSD options, debug readout on screen and UART; on the board the memory test passes at every RAM size (6-96 MB) |
+| SDRAM controller | `rtl/machine/MacPPC7300_sdram.sv`, adapted from Sorgelig's; passes its bench against a model of the 128 MB board that checks every command and timing |
+| First bitstream | `MacPPC7300.sv`: CPU at 65 MHz, SDRAM at 100 MHz, ROM upload, OSD options, debug readout on screen and UART; on the board the memory test passes at every RAM size (6-96 MB) |
 | The 7600's ROM on the board | runs exactly as in simulation: the same 26,771 device writes, the last after the same 18.27 million instructions, then the same wait for Cuda (before Cuda was built) |
-| Cuda (ADB, power, reset, clock, PRAM) | the real chip: a 68HC05 (`rtl/machine/PPCMac_hc05.sv`, checked instruction by instruction against MAME's 6805 core) running Apple's firmware 341S0060 (Cuda 2.40), behind Grand Central's VIA with a real shift register; it holds the CPU in reset until its firmware powers the machine up. The firmware is the 7300's own: read out of its chip through the VIA (`cudadump/`, 2026-10-07), byte for byte MAME's dump. In simulation the ROM's Cuda traffic goes through and the ROM runs on through the NanoKernel into Mac OS (the CPU bug the lockstep found at 24.4 million instructions is fixed: the plan's M6 section). On the board (2026-10-07) Cuda releases the CPU 1,284 ms after the machine's reset and both ROMs run through Open Firmware into Mac OS. On its ADB line the keyboard and the mouse, on its I2C lines Athens |
-| Interrupts | Grand Central's events, mask and levels as MAME's and dingusppc's; the VIA is the first source (2026-10-07): the 7300's ROM runs 100 million instructions in lockstep with Mac OS's timer interrupts, its device traffic matching dingusppc's through Mac OS's start-up to where Mac OS probes MESH ([docs/PPCMac_plan.md](docs/PPCMac_plan.md), milestone I) |
-| Serial console | the ESCC (a Z85C30's asynchronous mode, `rtl/machine/PPCMac_escc.sv`); its modem port is the MiSTer's UART, Open Firmware's console: with an NVRAM image that sets `auto-boot?` false, Open Firmware's prompt over the UART, in simulation (in lockstep, the banner byte for byte dingusppc's) and on the board (2026-10-07) |
-| SCSI controllers, with empty buses | MESH (`rtl/machine/PPCMac_mesh.sv`) and Curio's 53CF94 (`PPCMac_sc53c94.sv`) as dingusppc models them, with no targets: Mac OS reads MESH's ID, sets both up and selects every target on both buses, each selection ending in a timeout and an interrupt; in simulation the 7300's ROM runs 450 million instructions in lockstep through that probing, its SCSI traffic matching dingusppc's, and on the board Mac OS runs through it as in the simulation (milestone E, 2026-10-07; [docs/PPCMac_plan.md](docs/PPCMac_plan.md)) |
-| Disks (milestone S, in progress) | MESH's information phases, FIFO and DMA; DBDMA (`PPCMac_dbdma.sv`, MESH's channel A) through the CPU's snoop port; SCSI disks on IDs 0 and 1 (`PPCMac_scsidisk.sv`) from the SD card's images through hps_io's block devices (the OSD's `SC0`/`SC1`, the Mac SCSI family's slot layout). `python verilator\run_scsi.py` drives them the way the ROM and Mac OS's driver do (programmed I/O and DMA reads, DMA writes, the card's blocks checked): passes. On the board Mac OS 7.6.1 boots from its image to the Finder with all its extensions, Open Transport included (2026-10-08: milestone S done), and shuts down from the keyboard's power key (the PC keyboard's Menu key); since 2026-10-08 a shut-down machine (Mac OS or Linux) is off, black, until the OSD's Reset or the power key starts it. On the way: the bus error at the welcome screen was the floppy controller's stub, the first "Starting Up..." stop the monitor sense lines (the Control driver's DDC probe read its own driven lines back high), the second Open Transport's AppleTalk waiting for LocalTalk's line (the ESCC's synchronous mode's sync/hunt). Mac OS 8.5, 8.6 and 9.1 start from their images to the Finder too (2026-10-08, build 20): their grey screen was their disk driver's SDTR (Apple's 8.1.2 and 8.1.3), which the disks now answer with offset 0, and MESH's bus free, which now lets ACK go under ATN (the 8.6 image then starts BeOS R4.5's loader from its Startup Items; it has no BeOS partition) |
-| NVRAM and clock | Grand Central's NVRAM kept on the SD card (an 8 KB .nvr on block slot 2, `PPCMac_nvsave.sv`); Cuda's clock from the MiSTer's RTC |
-| Sound | AWACS (`rtl/machine/PPCMac_awacs.sv`) and its DMA channels 8 and 9: the startup chime plays from the ROM by DMA, bit-exact in simulation (`--wav`), to the MiSTer's audio outputs |
-| Serial, Ethernet, NMI, clock | the ESCC's interrupts (both channels); MACE (`PPCMac_mace.sv`) with its cable unplugged (frames sent by DMA end in loss of carrier); Cuda's NMI on Grand Central's source 14 (Command-Menu: MacsBug, or the ROM's debugger); Cuda's clock set from the MiSTer's RTC |
-| Floppy controller | the SWIM3 (`rtl/machine/PPCMac_swim3.sv`) as dingusppc models it, with an empty Superdrive: the ROM's .Sony driver finds the chip and installs, which Mac OS 7.6.1's System requires (it dereferences the driver's variables while loading: with the chip stubbed to read 0 that was the "bus error" at the welcome screen). Floppy disks (2026-10-08, build 21): an image (raw or DiskCopy 4.2; 400K, 800K, 720K, 1440K) from the OSD's "Insert floppy disk" (hps_io slot 6, `PPCMac_fdblk.sv`) read at the level of its sectors as dingusppc's SWIM3 reads one, into memory by DMA channel 1; read only (disks show as locked). `run_scsi.py` test 13 reads a 1440K DiskCopy image and an 800K raw one |
+| Cuda (ADB, power, reset, clock, PRAM) | the real chip: a 68HC05 (`rtl/machine/MacPPC7300_hc05.sv`, checked instruction by instruction against MAME's 6805 core) running Apple's firmware 341S0060 (Cuda 2.40), behind Grand Central's VIA with a real shift register; it holds the CPU in reset until its firmware powers the machine up. The firmware is the 7300's own: read out of its chip through the VIA (`cudadump/`, 2026-10-07), byte for byte MAME's dump. In simulation the ROM's Cuda traffic goes through and the ROM runs on through the NanoKernel into Mac OS (the CPU bug the lockstep found at 24.4 million instructions is fixed: the plan's M6 section). On the board (2026-10-07) Cuda releases the CPU 1,284 ms after the machine's reset and both ROMs run through Open Firmware into Mac OS. On its ADB line the keyboard and the mouse, on its I2C lines Athens |
+| Interrupts | Grand Central's events, mask and levels as MAME's and dingusppc's; the VIA is the first source (2026-10-07): the 7300's ROM runs 100 million instructions in lockstep with Mac OS's timer interrupts, its device traffic matching dingusppc's through Mac OS's start-up to where Mac OS probes MESH ([docs/MacPPC7300_plan.md](docs/MacPPC7300_plan.md), milestone I) |
+| Serial console | the ESCC (a Z85C30's asynchronous mode, `rtl/machine/MacPPC7300_escc.sv`); its modem port is the MiSTer's UART, Open Firmware's console: with an NVRAM image that sets `auto-boot?` false, Open Firmware's prompt over the UART, in simulation (in lockstep, the banner byte for byte dingusppc's) and on the board (2026-10-07) |
+| SCSI controllers, with empty buses | MESH (`rtl/machine/MacPPC7300_mesh.sv`) and Curio's 53CF94 (`MacPPC7300_sc53c94.sv`) as dingusppc models them, with no targets: Mac OS reads MESH's ID, sets both up and selects every target on both buses, each selection ending in a timeout and an interrupt; in simulation the 7300's ROM runs 450 million instructions in lockstep through that probing, its SCSI traffic matching dingusppc's, and on the board Mac OS runs through it as in the simulation (milestone E, 2026-10-07; [docs/MacPPC7300_plan.md](docs/MacPPC7300_plan.md)) |
+| Disks (milestone S, in progress) | MESH's information phases, FIFO and DMA; DBDMA (`MacPPC7300_dbdma.sv`, MESH's channel A) through the CPU's snoop port; SCSI disks on IDs 0 and 1 (`MacPPC7300_scsidisk.sv`) from the SD card's images through hps_io's block devices (the OSD's `SC0`/`SC1`, the Mac SCSI family's slot layout). `python verilator\run_scsi.py` drives them the way the ROM and Mac OS's driver do (programmed I/O and DMA reads, DMA writes, the card's blocks checked): passes. On the board Mac OS 7.6.1 boots from its image to the Finder with all its extensions, Open Transport included (2026-10-08: milestone S done), and shuts down from the keyboard's power key (the PC keyboard's Menu key); since 2026-10-08 a shut-down machine (Mac OS or Linux) is off, black, until the OSD's Reset or the power key starts it. On the way: the bus error at the welcome screen was the floppy controller's stub, the first "Starting Up..." stop the monitor sense lines (the Control driver's DDC probe read its own driven lines back high), the second Open Transport's AppleTalk waiting for LocalTalk's line (the ESCC's synchronous mode's sync/hunt). Mac OS 8.5, 8.6 and 9.1 start from their images to the Finder too (2026-10-08, build 20): their grey screen was their disk driver's SDTR (Apple's 8.1.2 and 8.1.3), which the disks now answer with offset 0, and MESH's bus free, which now lets ACK go under ATN (the 8.6 image then starts BeOS R4.5's loader from its Startup Items; it has no BeOS partition) |
+| NVRAM and clock | Grand Central's NVRAM kept on the SD card (an 8 KB .nvr on block slot 2, `MacPPC7300_nvsave.sv`); Cuda's clock from the MiSTer's RTC |
+| Sound | AWACS (`rtl/machine/MacPPC7300_awacs.sv`) and its DMA channels 8 and 9: the startup chime plays from the ROM by DMA, bit-exact in simulation (`--wav`), to the MiSTer's audio outputs |
+| Serial, Ethernet, NMI, clock | the ESCC's interrupts (both channels); MACE (`MacPPC7300_mace.sv`) with its cable unplugged (frames sent by DMA end in loss of carrier); Cuda's NMI on Grand Central's source 14 (Command-Menu: MacsBug, or the ROM's debugger); Cuda's clock set from the MiSTer's RTC |
+| Floppy controller | the SWIM3 (`rtl/machine/MacPPC7300_swim3.sv`) as dingusppc models it, with an empty Superdrive: the ROM's .Sony driver finds the chip and installs, which Mac OS 7.6.1's System requires (it dereferences the driver's variables while loading: with the chip stubbed to read 0 that was the "bus error" at the welcome screen). Floppy disks (2026-10-08, build 21): an image (raw or DiskCopy 4.2; 400K, 800K, 720K, 1440K) from the OSD's "Insert floppy disk" (hps_io slot 6, `MacPPC7300_fdblk.sv`) read at the level of its sectors as dingusppc's SWIM3 reads one, into memory by DMA channel 1; read only (disks show as locked). `run_scsi.py` test 13 reads a 1440K DiskCopy image and an 800K raw one |
 | Video | the Control video controller (registers, Swatch's timing), RaDACal (colour table, hardware cursor), the Athens clock chip on Cuda's I2C, the 4 MB VRAM in the HPS's DDR3, the scan-out through the framework's scaler; the monitor an OSD choice (Apple's 16-inch, 832 x 624, or 13-inch, 640 x 480). In simulation the ROM runs in lockstep through Mac OS's video driver, every video access as dingusppc's, and the frames match dingusppc's pixel for pixel at both sizes; on the board Mac OS's screen (milestone V, 2026-10-07) |
-| Keyboard and mouse | an ADB keyboard and mouse on Cuda's line (`rtl/machine/PPCMac_adb.sv`), from the MiSTer's keyboard and mouse: Cuda's own firmware talks to them in `run_cuda.py` (registers 0, 2 and 3, a key, a mouse move, an address and handler change, SendReset); on the board the pointer follows the mouse over Mac OS's screen and Open Firmware takes typed lines from the keyboard (milestone K, 2026-10-07). Keys now and then lost or changed into others were the keyboard's clock crossing of hps_io's key code (fixed 2026-10-08, build 15) |
+| Keyboard and mouse | an ADB keyboard and mouse on Cuda's line (`rtl/machine/MacPPC7300_adb.sv`), from the MiSTer's keyboard and mouse: Cuda's own firmware talks to them in `run_cuda.py` (registers 0, 2 and 3, a key, a mouse move, an address and handler change, SendReset); on the board the pointer follows the mouse over Mac OS's screen and Open Firmware takes typed lines from the keyboard (milestone K, 2026-10-07). Keys now and then lost or changed into others were the keyboard's clock crossing of hps_io's key code (fixed 2026-10-08, build 15) |
 | Game controllers | the Quadra 800 core's ADB controllers from the MiSTer's joystick 0 (OSD "ADB controller (on reset)", "Stick moves pointer"): Gravis MouseStick II, Firebird, Mac GamePad, SideWinder 3D Pro, with ADB's address collisions; Cuda's firmware takes their answers in `run_cuda.py`; on the board Mac OS 7.6.1 separates a GamePad from the keyboard and a MouseStick from the mouse (2026-10-08, build 7); the controllers themselves are the user's to try |
 | Serial MIDI, MT32-pi, PPP, printer | as the Quadra 800 core: the modem port's TRxC clock a MIDI interface's (31,250 bit/s), the UART's MIDI mode, the MT32-pi on the user port (its OSD page, popups, LCD, audio), CTS and RTS for PPP and the Main's printer daemon; `run_escc.py` measures the rates (2026-10-08, build 8); the devices are the user's and the Discord testers' to try |
-| CD-ROM, BlueSCSI Toolbox | the CD-ROM drive at SCSI ID 3 (slot 4: ISO, TOAST, CUE, BIN, CHD), speaking the Quadra 800 core's contract with the Main's Mac CD layer, its audio (`PPCMac_cdaudio.sv`) mixed after AWACS; the Toolbox's file sharing (ID 0, slot 3) and CD changer (ID 3, slot 5) as the Mac LC core's; `run_scsi.py` checks them against a model of the Main (2026-10-08, build 8). Needs the Main branch `Mac-ppc-enhancements` (ppcmac in the Mac family); with the official Main there is no CD drive. On the board with that Main (2026-10-08): ISO and CUE/BIN discs mount and run, CD audio plays from the right tracks, BlueSCSI SD Transfer downloads and uploads; the CD changer app does not find the changer (parked) |
-| Ethernet | MACE's frames through two rings in DDR3 (`PPCMac_enet.sv`, the DDR3 port shared with the video by `PPCMac_ddrarb.sv`) to the Main's interface (OSD "Ethernet (on reset)": Off or the interface, eth0, eth1, wlan0, tap0, one option since 2026-10-08; the Main branch's `mac_eth.cpp`); receive into DMA channel 3 as Linux's `mace.c` reads it (2026-10-08, build 10). On the board with the Main branch (build 17): Mac OS 7.6.1's TCP/IP takes an address by DHCP, Cyberdog loads web pages from the LAN, the LAN pings it, Fetch reaches FTP servers; it took MACE's internal loopback (the driver's self-test), the FCS, and Grand Central's DMA status bits (s5 on the transmit channel, an INPUT_MORE ended by the frame and s6 on the receive one). Off, MACE's cable stays unplugged as before |
+| CD-ROM, BlueSCSI Toolbox | the CD-ROM drive at SCSI ID 3 (slot 4: ISO, TOAST, CUE, BIN, CHD), speaking the Quadra 800 core's contract with the Main's Mac CD layer, its audio (`MacPPC7300_cdaudio.sv`) mixed after AWACS; the Toolbox's file sharing (ID 0, slot 3) and CD changer (ID 3, slot 5) as the Mac LC core's; `run_scsi.py` checks them against a model of the Main (2026-10-08, build 8). Needs the Main branch `Mac-ppc-enhancements` (macppc7300 in the Mac family); with the official Main there is no CD drive. On the board with that Main (2026-10-08): ISO and CUE/BIN discs mount and run, CD audio plays from the right tracks, BlueSCSI SD Transfer downloads and uploads; the CD changer app does not find the changer (parked) |
+| Ethernet | MACE's frames through two rings in DDR3 (`MacPPC7300_enet.sv`, the DDR3 port shared with the video by `MacPPC7300_ddrarb.sv`) to the Main's interface (OSD "Ethernet (on reset)": Off or the interface, eth0, eth1, wlan0, tap0, one option since 2026-10-08; the Main branch's `mac_eth.cpp`); receive into DMA channel 3 as Linux's `mace.c` reads it (2026-10-08, build 10). On the board with the Main branch (build 17): Mac OS 7.6.1's TCP/IP takes an address by DHCP, Cyberdog loads web pages from the LAN, the LAN pings it, Fetch reaches FTP servers; it took MACE's internal loopback (the driver's self-test), the FCS, and Grand Central's DMA status bits (s5 on the transmit channel, an INPUT_MORE ended by the frame and s6 on the receive one). Off, MACE's cable stays unplugged as before |
 
 The first full build of the core (2026-10-06: the CPU at 65 MHz, the
 machine, the SDRAM controller at 100 MHz, the debug readout, the MiSTer
@@ -55,7 +55,7 @@ framework), Quartus 17.0, slow 100 C model; this is the number that counts:
 
 | Build | ALMs | RAM blocks | DSP blocks | CPU clock closes at |
 |---|---|---|---|---|
-| `PPCMac` with the memory test, 2026-10-06 | 24,757 of 41,910 (59%); the CPU 13,883, the machine 2,673, the SDRAM controller 367, the readout 455 | 144 of 553 (26%) | 40 of 112 (36%) | 64.59 MHz (65 MHz asked: slack -0.099 ns); memory 107.3 MHz (100 asked) |
+| `MacPPC7300` with the memory test, 2026-10-06 | 24,757 of 41,910 (59%); the CPU 13,883, the machine 2,673, the SDRAM controller 367, the readout 455 | 144 of 553 (26%) | 40 of 112 (36%) | 64.59 MHz (65 MHz asked: slack -0.099 ns); memory 107.3 MHz (100 asked) |
 | The same with fourteen readout rows | 25,051 (60%) | 144 | 40 | 64.64 MHz (slack -0.086 ns); memory 110.7 MHz |
 | With Cuda, 2026-10-07 | 25,521 (61%) | 153 | 41 | 61.26 MHz (slack -0.939 ns; every failing path inside the CPU, decode into the branch target buffer); memory 107.8 MHz. Runs on the board at 65 MHz |
 | With Grand Central's interrupt | 25,379 (61%) | 153 | 41 | 62.70 MHz (slack -0.565 ns); memory 107.7 MHz. Runs on the board at 65 MHz |
@@ -85,11 +85,12 @@ framework), Quartus 17.0, slow 100 C model; this is the number that counts:
 | With LUN 0 only, 32-bit pixels through the colour table, 120 MB, one Ethernet option (build 24) | 35,618 (85%) | 195 | 49 | 59.5 MHz (slack -1.466 ns). On the board: Debian 7.11 sees one disk and one CD, its console readable |
 | With Hammerhead's RAM banks, the options on reset, the power-off (build 26) | 35,525 (85%) | 195 | 49 | 57.7 MHz (slack -1.943 ns). On the board: Mac OS 7.6.1 sees 120 MB; Shut Down turns the machine off, the Menu key on; 9.1 and Debian at 120 MB start; 1440K floppies read, 400K and 800K do not |
 | With GCR sectors as Apple's driver wants them, the clock counted on (build 28, the third release) | 35,642 (85%) | 195 | 49 | 59.4 MHz (slack -1.462 ns). On the board: 400K, 800K and 1440K floppies open in the Finder; the clock right after two minutes off |
-| With the device access from a register in the machine (build 29, the speed session) | 36,743 (88%) | 195 | 49 | 60.7 MHz (slack -1.092 ns, total -12 ns against -186: the device family is gone; what leads is the data cache's store-hit write). On the board: Mac OS 7.6.1 to the Finder in the same time as build 28; Speedometer 4.02's first numbers (`docs/PPCMac_plan.md`, Speed) |
-| With the 128 KB L2 cache (`PPCMac_l2`, build 30) | 37,883 (90%) | 329 | 49 | 57.5 MHz (slack -2.013 ns: the cache's answer into `wb_result`, placed 1.7 ns worse under the L2's pressure). On the board: Speedometer's CPU tests 2-3 % faster, the disk 11 %, the colour tests 6-10 % |
+| With the device access from a register in the machine (build 29, the speed session) | 36,743 (88%) | 195 | 49 | 60.7 MHz (slack -1.092 ns, total -12 ns against -186: the device family is gone; what leads is the data cache's store-hit write). On the board: Mac OS 7.6.1 to the Finder in the same time as build 28; Speedometer 4.02's first numbers (`docs/MacPPC7300_plan.md`, Speed) |
+| With the 128 KB L2 cache (`MacPPC7300_l2`, build 30) | 37,883 (90%) | 329 | 49 | 57.5 MHz (slack -2.013 ns: the cache's answer into `wb_result`, placed 1.7 ns worse under the L2's pressure). On the board: Speedometer's CPU tests 2-3 % faster, the disk 11 %, the colour tests 6-10 % |
 | With the data cache's tag-decided writes landed a cycle later (build 31) | 37,765 (90%) | 329 | 49 | 64.0 MHz (slack -0.321 ns, total -1.9 ns). On the board: the Finder's menu bar at 86 s (97-101 s before the L2); Speedometer as build 30 but Towers and Permutations 8-10 % slower (a request right after a store hit waited a cycle) |
 | The same at 70 MHz (build 32) | 38,841 (93%) | 329 | 49 | 62.2 MHz (slack -1.766 ns at 70 asked). On the board: Mac OS 7.6.1 and 9.1 to the Finder, Speedometer's every number 8 % above build 31's, the clock right: 70 MHz is the clock from here |
 | With the cache's wait narrowed to the pending write's set, a read-only cache off the write-back muxes, the FPU's operand register off and `fmul` a cycle shorter, 70 MHz (build 36, the fourth release; build 33, the first form of the narrowed wait, took an ungranted request when a snoop and a request met and bombed on the board; the core bench's snoop storm catches that class now) | 38,452 (92%) | 329 | 49 | slack -2.556 ns at 70 asked (the forwarding into the FPU's first stage, which the operand register was there for). On the board: a clean run; CPU 2.504, Math 106.8, FPU 3.570 against a Quadra 650, Towers and Permutations back; the FP golden program 3.45 cycles per instruction |
+| Build 36 renamed MacPPC7300 (from PPCMac), the disks' INQUIRY as the Mac LC core's (build 38, the fifth release) | 38,452 (92%) | 329 | 49 | slack -1.970 ns at 70 asked (the same logic, another fit). Not yet on the board |
 
 On the board (DE10-Nano, 128 MB SDRAM) the memory test passes at every RAM
 size the OSD offers (6 to 96 MB, three or more passes each, no error) at
@@ -150,7 +151,7 @@ not by drift.
   1.0.5 and the 68k emulator byte for byte; `rom7300/README.md`
   (with the disassembly) says where the rest differs.
 - The machine's own plan, with its milestones and rules, is
-  [docs/PPCMac_plan.md](docs/PPCMac_plan.md).
+  [docs/MacPPC7300_plan.md](docs/MacPPC7300_plan.md).
 - Long-term goal: the Apple/Bandai Pippin (a PowerPC 603).
 - This CPU will be a good deal slower than a real 604 (see below), so the
   first machine may yet change to something more modest. Nothing
@@ -216,7 +217,7 @@ not by drift.
   ROM takes the module's top 4 MB, so 124 MB is the most a 128 MB module
   allows; 6 MB is the Pippin's; 120 added 2026-10-08, the user's choice for
   the largest). The OSD's memory-test boot is gone (2026-10-08, the user);
-  `PPCMac_bootrom` stays for the bench. The caches fill their lines from the SDRAM, so the cache
+  `MacPPC7300_bootrom` stays for the bench. The caches fill their lines from the SDRAM, so the cache
   line-fill bus is designed for that controller. 128 MB of RAM would need the
   ROM elsewhere (the HPS's DDR3 or a second SDRAM board): left out for now.
 
@@ -236,7 +237,7 @@ several instructions per clock.
 
 Measured (2026-10-09, build 36 at 70 MHz with the 128 KB L2, Speedometer
 4.02 on Mac OS 7.6.1; the whole table and the conditions are in
-`docs/PPCMac_plan.md`, "Speed"): CPU 2.50, Disk 1.56, Math 106.8 against a
+`docs/MacPPC7300_plan.md`, "Speed"): CPU 2.50, Disk 1.56, Math 106.8 against a
 Quadra 605 = 1.0; Dhrystones 46,559 a second; the FPU 3.57 against a Quadra
 650; Mac OS 7.6.1 from the core's load to the Finder's menu bar in 86 s. The
 lockstep runs of the 7300's ROM retire 1.57 cycles an instruction with the L2
@@ -340,7 +341,7 @@ Tests the pipeline, and the memory path behind it, seven ways:
    same with address translation on, page faults included.
 6. The memory port carried across a clock boundary, at several clock
    ratios.
-7. The SDRAM controller (`rtl/machine/PPCMac_sdram.sv`) behind the clock
+7. The SDRAM controller (`rtl/machine/MacPPC7300_sdram.sv`) behind the clock
    crossing, against a behavioural model of the 128 MB board in
    `verilator/sdram_main.cpp` that holds the data and checks every command
    and timing: the power-up sequence, tRCD, tRP, tRAS, tRC, tWR, tRFC,
@@ -354,7 +355,7 @@ python verilator\run_machine.py --max-instr 30000000 --progress 1000000
 python verilator\run_machine.py --boot memtest --memtest-passes 2
 ```
 
-Runs the whole machine (`PPCMac_system`: the CPU, the 7600's address map and
+Runs the whole machine (`MacPPC7300_system`: the CPU, the 7600's address map and
 device stubs, the clock crossing, and a software memory in its own clock
 standing in for the SDRAM) on the 7300's ROM (`--rom7600` for the 7600's,
 `--rom FILE` for any) from the reset vector, in
@@ -453,7 +454,7 @@ on the MiSTer, `/dev/ttyS1` at 38,400 baud is the port itself.
 python verilator\run_cuda.py
 ```
 
-Cuda alone (`PPCMac_cuda`: the 68HC05, its firmware, its RAM and
+Cuda alone (`MacPPC7300_cuda`: the 68HC05, its firmware, its RAM and
 peripherals), with a model of the VIA and a host speaking the Cuda protocol
 around it: the cold start, the host's sync, then packets whose replies are
 checked (Cuda's ROM through READ_MCU_MEM, the clock, PRAM written and read
@@ -469,7 +470,7 @@ python verilator\run_scsi.py
 ```
 
 MESH, its DBDMA channel and the disks (`scsi_tb_top`: Grand Central and
-`PPCMac_scsidisk` on the internal bus), driven through Grand Central's
+`MacPPC7300_scsidisk` on the internal bus), driven through Grand Central's
 registers the way the 7300's ROM and Mac OS 7.6.1's driver drive them in
 dingusppc's log of a boot from the 7.6.1 image: READ(6) by programmed I/O
 (block 0, then 19 blocks), READ(10) with its middle by DMA into memory at an
@@ -501,7 +502,7 @@ code (the NanoKernel's own faulting access at FFF11518 or FFF11A10 comes
 first). The 7.6.1 bus error at "Welcome to Mac OS" was found this way
 (2026-10-07): the exception log gave the fault's count and address, the
 dump the 68k registers and SonyVars, the trace the 68k instructions, and
-MacsBug on the board (`games/PPCMac/os761mb.hda`, the image with MacsBug
+MacsBug on the board (`games/MacPPC7300/os761mb.hda`, the image with MacsBug
 6.6.3 in its System Folder) the same fault to the byte.
 
 For a hang: `--dev-log-from N` starts the device log at the Nth instruction
@@ -517,7 +518,7 @@ driver's DDC probe, then Open Transport's AppleTalk) was found this way.
 clock as the machine starts (seconds since 1904; the MiSTer gives its RTC).
 
 On the board, `python syn\mister.py trace [--last N] [--from K]` reads the
-trace the core keeps in DDR3 (`PPCMac_trace.sv`, a ring of 2,048 records at
+trace the core keeps in DDR3 (`MacPPC7300_trace.sv`, a ring of 2,048 records at
 0x30500000, read through `/dev/mem` on the MiSTer): every SCSI command the
 targets answer (ID, CDB, status, sense, bytes moved, the Toolbox's answer
 from the Main), bus resets and CD mounts; the CPU's accesses to MACE and
@@ -564,10 +565,10 @@ size and maximum clock. `--paths 10` also lists the slowest paths.
 
 | Path | Contents |
 |---|---|
-| `PPCMac.sv`, `PPCMac.qsf`, `files.qip` | MiSTer core top level and Quartus project |
+| `MacPPC7300.sv`, `MacPPC7300.qsf`, `files.qip` | MiSTer core top level and Quartus project |
 | `sys/` | MiSTer framework (do not edit) |
 | `rtl/DSPPC604/` | the CPU |
-| `rtl/machine/` | the machine: the 7600's address map and device stubs (`PPCMac_*`), Cuda (`PPCMac_cuda`, `PPCMac_hc05`, the ROM `PPCMac_cudarom` generated by `verilator/cudarom.py`) |
+| `rtl/machine/` | the machine: the 7600's address map and device stubs (`MacPPC7300_*`), Cuda (`MacPPC7300_cuda`, `MacPPC7300_hc05`, the ROM `MacPPC7300_cudarom` generated by `verilator/cudarom.py`) |
 | `rtl/machine/cuda/` | Cuda's firmware, Apple's 341S0060 (Cuda 2.40), as MAME's `cuda` set has it and byte for byte as read out of the 7300's own chip (`cudadump/`) |
 | `rtl/pll.v`, `rtl/pll/` | the core's PLL (the template's, edited to three outputs) |
 | `syn/mister.py` | puts the core, the ROM and an NVRAM image on the MiSTer over SSH, sets options (RAM, boot, UART, picture, monitor), loads, screenshots, reads the UART and types at it |
@@ -576,8 +577,8 @@ size and maximum clock. `--paths 10` also lists the slowest paths.
 | `verilator/ref/` | dingusppc's interpreter as a library, for lockstep runs |
 | `verilator/machref/` | dingusppc's whole 7600, headless, logging every device access |
 | `verilator/hc05ref/` | MAME's 6805 core as a library, for Cuda's lockstep runs |
-| `docs/PPCMac_plan.md` | the machine's plan: milestones, rules, what the ROM asks for next |
-| `docs/PPCMac_stubs.md` | everything the machine stubs, simplifies or leaves out |
+| `docs/MacPPC7300_plan.md` | the machine's plan: milestones, rules, what the ROM asks for next |
+| `docs/MacPPC7300_stubs.md` | everything the machine stubs, simplifies or leaves out |
 | `syn/` | stand-alone area and timing checks |
 | `ppctest/` | tool that builds the test disk for real Macs and decodes its results |
 | `cudadump/` | a disk that reads Cuda's firmware out of a real 7300 |

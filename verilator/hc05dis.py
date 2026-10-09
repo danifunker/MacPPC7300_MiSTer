@@ -11,7 +11,7 @@ directly; what is reached only through jump tables or code built in RAM
 (the pseudo-command handlers, READ_MCU_MEM's LDA in RAM) is printed as
 bytes. Each line has the address, the bytes, the instruction with the
 68HC05E1's register names (PORTA, DDRB, PLL, TCTL, ...) and its cycle count
-from MAME's s_hc_cycles. This is how the facts in rtl/machine/PPCMac_cuda.sv's
+from MAME's s_hc_cycles. This is how the facts in rtl/machine/MacPPC7300_cuda.sv's
 header were found (the bus clock from the delay and ADB loops, the timer
 interrupt's power-switch polling, the VIA handshake).
 """

@@ -8,8 +8,8 @@
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROM=${1:-$HERE/../../ppctest/runs/my7600.rom}
-COV=${2:-$HOME/.cache/ppcmac/romdisasm/cov}
-export TMPDIR=$HOME/.cache/ppcmac/romdisasm/tmp
+COV=${2:-$HOME/.cache/macppc7300/romdisasm/cov}
+export TMPDIR=$HOME/.cache/macppc7300/romdisasm/tmp
 mkdir -p "$TMPDIR"
 bash "$HERE/build.sh"
 if [ -z "$SKIP_COV" ]; then

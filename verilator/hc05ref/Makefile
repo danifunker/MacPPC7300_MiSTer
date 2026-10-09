@@ -6,7 +6,7 @@
 # $(BUILD); the MAME tree is only read (two files of src/devices/cpu/m6805).
 
 MAME   ?= /mnt/c/Temp/mistercore/mame
-BUILD  ?= $(HOME)/.cache/ppcmac/hc05ref
+BUILD  ?= $(HOME)/.cache/macppc7300/hc05ref
 OPT    ?= -O2
 
 CXX ?= g++

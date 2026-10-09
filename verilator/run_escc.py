@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the ESCC bench (PPCMac_escc alone) under Verilator and run it.
+"""Build the ESCC bench (MacPPC7300_escc alone) under Verilator and run it.
 
     python verilator\\run_escc.py
 
@@ -26,8 +26,8 @@ def main():
     if os.name == "nt":
         return subprocess.call(["wsl", "--cd", HERE, "--", "python3", "run_escc.py"] + sys.argv[1:])
 
-    cache = os.path.join(os.path.expanduser("~"), ".cache", "ppcmac")
-    build = os.environ.get("PPCMAC_BUILD") or os.path.join(cache, "verilator")
+    cache = os.path.join(os.path.expanduser("~"), ".cache", "macppc7300")
+    build = os.environ.get("MACPPC7300_BUILD") or os.path.join(cache, "verilator")
     tmp = build.rstrip("/") + "-tmp"
     os.makedirs(tmp, exist_ok=True)
     os.environ["TMPDIR"] = tmp

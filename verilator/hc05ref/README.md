@@ -4,7 +4,7 @@
 tables and the 68HC05E1's parameters (13 address bits, the stack at
 00C0-00FF), behind the small C API in `hc05_ref.h`. `verilator/cuda_main.cpp`
 links it and runs Cuda's firmware on it and on the RTL
-(`rtl/machine/PPCMac_hc05.sv`) at the same time, comparing after every
+(`rtl/machine/MacPPC7300_hc05.sv`) at the same time, comparing after every
 instruction.
 
 MAME's instruction code is compiled **unmodified** from its tree:
@@ -21,7 +21,7 @@ codes as stored and counts 11.)
 |---|---|
 | `hc05_ref.h` | the API |
 | `hc05_ref.cpp` | the class MAME's code needs, the tables, the API |
-| `Makefile` | builds `$HOME/.cache/ppcmac/hc05ref/libhc05ref.a` under WSL |
+| `Makefile` | builds `$HOME/.cache/macppc7300/hc05ref/libhc05ref.a` under WSL |
 
 ## Build
 

@@ -1029,10 +1029,10 @@ must be reached through BATs with I = 1, which is what the ROM sets up; a
 read of RAM space beyond the installed memory returns 0 with no exception.
 
 **Step 1, the ROM in Verilator, done 2026-10-06.** The machine is
-`rtl/machine/`: `PPCMac_system` (the CPU, `PPCMac_machine`, the clock
+`rtl/machine/`: `MacPPC7300_system` (the CPU, `MacPPC7300_machine`, the clock
 crossing), the 7600's map taken from dingusppc's `machinetnt.cpp` with file
 and line for each entry, and register stubs that answer as dingusppc's
-devices do from reset (`docs/PPCMac_stubs.md` lists every one).
+devices do from reset (`docs/MacPPC7300_stubs.md` lists every one).
 `verilator/core_main.cpp` builds a second time as `machine_tb` with the whole
 system as its top and a software memory in its own clock on the far side of
 the crossing; `verilator/run_machine.py` runs it.
@@ -1079,7 +1079,7 @@ What happened, with 16 MB:
   reading 0 here (as measured on the 7300) and all ones in dingusppc.
 
 **Step 2, the memory-test boot program, done in the bench 2026-10-06.**
-`progs.py memtest` generates `rtl/machine/PPCMac_bootrom.sv` (67
+`progs.py memtest` generates `rtl/machine/MacPPC7300_bootrom.sv` (67
 instructions in an 8 KB ROM mirrored over the ROM's 4 MB when the OSD's Boot
 option says so). It turns the caches on, maps RAM cached and the devices
 inhibited with two DBATs, then each pass writes every word of the installed
@@ -1091,7 +1091,7 @@ each) and 6 MB with 30 % wait states and a 133 MHz memory clock; an injected
 single-bit fault is found at its address.
 
 **Step 3, the SDRAM controller, verified in its bench 2026-10-06.**
-`rtl/machine/PPCMac_sdram.sv`, adapted from Sorgelig's MiSTer `sdram.sv` as
+`rtl/machine/MacPPC7300_sdram.sv`, adapted from Sorgelig's MiSTer `sdram.sv` as
 used unmodified in the Quadra 800 core (hardware-tested at 99 MHz, eight-beat
 bursts, CAS 2) and the Sun-3 core: kept are the power-up sequence, the mode
 word, the refresh pairs for the two ranks of the 128 MB board, ACTIVE to
@@ -1114,15 +1114,15 @@ the model's tRCD tightened to 25 ns); a fourth (tRCD of one clock) hung the
 controller's state machine, which the model reported as missed refreshes.
 Step 7 of `run_core.py`.
 
-The MiSTer top (`PPCMac.sv`): one PLL with three outputs (video 20 MHz as the
+The MiSTer top (`MacPPC7300.sv`): one PLL with three outputs (video 20 MHz as the
 template had it, the CPU at `CPU_MHZ` = 65, memory 100 MHz, from a 1300 MHz
 VCO; 60 and 70 MHz also divide), `hps_io` and the SDRAM controller in the
 memory clock, the CPU held in reset as the prompt specifies, the ROM upload
 into the top 4 MB (index 1 from the OSD, or index 0, a `boot.rom` loaded at
 core start), the OSD's RAM sizes 16, 24, 48, 64, 96 and 6 MB (16 the
-default) and Boot ROM or Memory test, and `PPCMac_debug.sv`: twelve rows of
+default) and Boot ROM or Memory test, and `MacPPC7300_debug.sv`: twelve rows of
 32 squares on the template's video timing and the same rows as hex on the
-UART once a second. `PPCMac.sdc` makes the three clocks asynchronous (every
+UART once a second. `MacPPC7300.sdc` makes the three clocks asynchronous (every
 crossing is a two-flip-flop toggle or quasi-static). `syn/mister.py` puts
 the core and ROM on the MiSTer over SSH, sets the options, loads the core,
 takes a screenshot and reads the UART.
@@ -1140,7 +1140,7 @@ instruction. The UART is read over SSH from /dev/ttyS1 with the core's UART
 mode left at None.
 
 **Step 4, the ROM on the board, done 2026-10-06.** The 7600's ROM as
-`games/PPCMac/boot.rom` (loaded at core start), 16 MB, 65 MHz. The second
+`games/MacPPC7300/boot.rom` (loaded at core start), 16 MB, 65 MHz. The second
 build adds two readout rows (device writes, and the instructions retired at
 the last of them; 25,051 ALMs, the CPU's clock closing at 64.64 MHz) to
 compare the path, not only the end, with the simulation:
@@ -1158,7 +1158,7 @@ two before it still in the pipeline, where the simulation counts the
 instructions before the writing one. So the first bitstream executes the
 7600's ROM exactly as the simulation does, through the hardware
 initialisation, RAM sizing and 18 million instructions of Open Firmware, to
-where Open Firmware waits for Cuda. `docs/PPCMac_board_rom_20261006.png` is
+where Open Firmware waits for Cuda. `docs/MacPPC7300_board_rom_20261006.png` is
 the screen at that point. M6's remaining bullet, timing closure at 66 MHz
 and then 75, stays open: the CPU's clock closes at 64.6 MHz in both builds
 and the board runs at 65 MHz.
@@ -1166,7 +1166,7 @@ and the board runs at 65 MHz.
 After M6 the work is the machine, which gets its own plan.
 
 **Found by the machine, 2026-10-06; fixed 2026-10-07:** with Cuda built
-(`docs/PPCMac_stubs.md`), the ROM runs on past Open Firmware into the
+(`docs/MacPPC7300_stubs.md`), the ROM runs on past Open Firmware into the
 NanoKernel, and at 24,440,545 instructions the lockstep stopped on
 `lwzux r28, r26, r28` (FFF122B4, the NanoKernel's page-table code): r26 =
 00FEA000, r28 = 0, the word loaded 00000021; the core wrote r26 = 00FEA021,
@@ -1216,7 +1216,7 @@ give the address, 00FEA000.
   instructions (the limit asked), through the NanoKernel's start-up into
   Mac OS's 68k emulator (pc 6806xxxx in user mode from 28 million on), at
   2.20 cycles per instruction. On the way, two more places where dingusppc
-  is not a 604, both now bench accommodations (`docs/PPCMac_stubs.md`):
+  is not a 604, both now bench accommodations (`docs/MacPPC7300_stubs.md`):
   MSR[PM] is dropped by dingusppc's `rfi` and exception entry where the
   604 copies it (the NanoKernel runs Mac OS with PM set: 33,160,742), and
   `dcbst`, `dcbf`, `icbi` and `dcbi` are never translated by dingusppc, so
@@ -1238,7 +1238,7 @@ Firmware into Mac OS's 68k emulator; the same `dcbst` DSI at 33,173,502.
 Against dingusppc's whole 7300 (`machref --machine pm7300`) its device
 traffic parts where the 7600's did: Cuda's timing, and the periodic VIA
 interrupt dingusppc services from 28.8 million instructions on. The
-machine's own plan, `docs/PPCMac_plan.md`, takes it from here.
+machine's own plan, `docs/MacPPC7300_plan.md`, takes it from here.
 
 ## Known behaviour and open items
 
@@ -1382,7 +1382,7 @@ run on a real 604 can settle.
   the low bits of SRR0 (kept; the random programs clear SRR0's before
   writing it), MSR[PM] through `rfi` and exception entry (dropped, where
   the 604 copies it between MSR and SRR1 both ways; the bench puts it
-  back, `docs/PPCMac_stubs.md`), undefined SPRs (plain storage), `dcbst`,
+  back, `docs/MacPPC7300_stubs.md`), undefined SPRs (plain storage), `dcbst`,
   `dcbf`, `icbi` and `dcbi` (never translated, so never a DSI: the bench
   makes the reference take the one the core takes), invalid instruction
   forms

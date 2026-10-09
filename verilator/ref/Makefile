@@ -7,7 +7,7 @@
 # $(BUILD); the dingusppc tree is only read.
 
 DINGUS ?= /mnt/c/Temp/mistercore/dingusppc
-BUILD  ?= $(HOME)/.cache/ppcmac/dingusref
+BUILD  ?= $(HOME)/.cache/macppc7300/dingusref
 OPT    ?= -O2
 # 1: keep only the ref_* C API visible in the library, so dingusppc's many
 #    generically named globals (ppc_state, power_on, ...) cannot clash with the

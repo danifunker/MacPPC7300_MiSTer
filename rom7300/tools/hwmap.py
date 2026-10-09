@@ -1,7 +1,7 @@
 """Names for the Power Macintosh 7600's hardware addresses, PowerPC SPRs,
 68k Mac low-memory globals and A-line traps, used to annotate the listings.
 
-The hardware map is the one PPCMac's machine implements (Hammerhead, Bandit,
+The hardware map is the one MacPPC7300's machine implements (Hammerhead, Bandit,
 Chaos, Grand Central); register names inside the Grand Central devices follow
 the chips' data sheets and dingusppc's models. Trap and low-memory names are
 read from two local, independent tables at run time (MAME's

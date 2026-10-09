@@ -1,7 +1,7 @@
 // The SCSI bench: MESH, its DBDMA channel (A) and the disks (scsi_tb_top),
 // driven through Grand Central's registers the way the 7300's ROM and Mac OS
 // 7.6.1's disk driver drive them (dingusppc's device log of the 7.6.1
-// image's boot, docs/PPCMac_plan.md milestone S), with a memory on the DMA
+// image's boot, docs/MacPPC7300_plan.md milestone S), with a memory on the DMA
 // port and hps_io's block side as the MiSTer's Main serves an image.
 //
 //   1. the ROM's way: arbitrate, select without ATN, READ(6) of block 0,
@@ -698,7 +698,7 @@ int main(int argc, char** argv) {
 	send_cdb({0x12, 0, 0, 0, 36, 0});
 	wait_phase();
 	pio_in(buf, 36);
-	check(std::memcmp(buf + 8, "QUANTUM MiSTer PPCMac HD1.0 ", 28) == 0 && buf[0] == 0 && buf[2] == 2,
+	check(std::memcmp(buf + 8, "MiSTer  VIRTUAL DISK0   \0\0\0\0", 28) == 0 && buf[0] == 0 && buf[2] == 2,
 		"INQUIRY data: %.28s", (const char*)buf + 8);
 	finish(0x00);
 	arbitrate_select(0, false);

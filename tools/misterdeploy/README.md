@@ -86,6 +86,6 @@ key at a time, Shift held for capitals and symbols), `mouseMove:<dx>,<dy>` (rela
 `mouseBtn:left|right|middle`, `sleep:<s>`. The Remote's virtual keyboard and mouse
 reach the core as a real USB keyboard and mouse would, through `hps_io`'s PS/2.
 
-In this repo (PPCMac), `syn/mister.py` is the wrapper: `load`, `menu` and `shot` use
+In this repo (MacPPC7300), `syn/mister.py` is the wrapper: `load`, `menu` and `shot` use
 the Remote's HTTP API (`/api/launch`, `/api/screenshots`), `ws`, `keys` and `mouse`
 this tool; copying files to the card and the UART go over SSH.

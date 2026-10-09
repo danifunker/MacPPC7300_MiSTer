@@ -1,4 +1,4 @@
-// PPCMac: three outputs (see pll.v): video 20 MHz, the CPU, memory 100 MHz.
+// MacPPC7300: three outputs (see pll.v): video 20 MHz, the CPU, memory 100 MHz.
 // With the CPU at 65 MHz the VCO is 1300 MHz (C = 65, 20, 13); 60 and 70 MHz
 // give 1200 and 1400 MHz.
 `timescale 1ns/10ps

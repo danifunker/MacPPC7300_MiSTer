@@ -20,11 +20,11 @@ commit `3f070249`). It is GPL-3.0-or-later; so is anything linked with this libr
 
 Under WSL (g++ 13, GNU make, binutils; nothing else is needed):
 
-    make -C /mnt/c/Temp/mistercore/PPC_Mac/verilator/ref              # -> $HOME/.cache/ppcmac/dingusref/libdingusref.a
+    make -C /mnt/c/Temp/mistercore/PPC_Mac/verilator/ref              # -> $HOME/.cache/macppc7300/dingusref/libdingusref.a
     make -C /mnt/c/Temp/mistercore/PPC_Mac/verilator/ref BUILD=<dir>  # -> <dir>/libdingusref.a
     make -C /mnt/c/Temp/mistercore/PPC_Mac/verilator/ref selftest     # build + run the self-test
 
-Variables: `BUILD` (all output goes there, default `$HOME/.cache/ppcmac/dingusref`),
+Variables: `BUILD` (all output goes there, default `$HOME/.cache/macppc7300/dingusref`),
 `DINGUS` (dingusppc tree, default `/mnt/c/Temp/mistercore/dingusppc`), `OPT`
 (default `-O2`), `HIDE` (default 1). It compiles in parallel by itself; a clean
 build takes a few seconds. Run `make clean` (same `BUILD`) after changing a variable.

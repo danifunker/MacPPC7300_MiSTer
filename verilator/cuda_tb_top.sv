@@ -1,5 +1,5 @@
-// The Cuda bench's top: Cuda (PPCMac_cuda) with the ADB devices (PPCMac_adb)
-// on its ADB line, as PPCMac_machine connects them; every other port of
+// The Cuda bench's top: Cuda (MacPPC7300_cuda) with the ADB devices (MacPPC7300_adb)
+// on its ADB line, as MacPPC7300_machine connects them; every other port of
 // Cuda's is the bench's. adb_line is the wire, for the bench to watch.
 
 module cuda_tb_top
@@ -54,7 +54,7 @@ module cuda_tb_top
 logic tick;
 assign adb_line = ~(adb_low | adb_dev_low);
 
-PPCMac_cuda #(.CLK_HZ(CLK_HZ)) cuda (
+MacPPC7300_cuda #(.CLK_HZ(CLK_HZ)) cuda (
 	.clk, .reset,
 	.via_tip, .via_byteack, .treq, .cb1, .cb2_oe, .cb2_out, .cb2,
 	.cpu_reset, .power_off, .adb_low, .adb_line, .tick,
@@ -68,7 +68,7 @@ PPCMac_cuda #(.CLK_HZ(CLK_HZ)) cuda (
 	.dbg_cpi, .dbg_fast
 );
 
-PPCMac_adb adb (
+MacPPC7300_adb adb (
 	.clk, .reset, .tick, .host_low(adb_low), .dev_low(adb_dev_low),
 	.ps2_key, .ps2_mouse, .joy, .power_key,
 	/* verilator lint_off PINCONNECTEMPTY */

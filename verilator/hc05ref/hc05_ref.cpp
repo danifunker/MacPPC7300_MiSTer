@@ -1,5 +1,5 @@
 // hc05ref: MAME's 6805 core (the 68HC05's tables) as a lockstep reference
-// for rtl/machine/PPCMac_hc05.sv.
+// for rtl/machine/MacPPC7300_hc05.sv.
 //
 // MAME's instruction code is compiled unmodified from its tree:
 // src/devices/cpu/m6805/m6805defs.h (addressing, stack, flags) and

@@ -4,10 +4,10 @@
 # Writes OUTDIR/{rom_first,rom_ea,ram_first,ram_ea}.bin, pages.txt,
 # m68k_pcs.txt, RAM dumps, devices.log and summary.txt.
 set -e
-export TMPDIR=$HOME/.cache/ppcmac/romdisasm/tmp
+export TMPDIR=$HOME/.cache/macppc7300/romdisasm/tmp
 mkdir -p "$TMPDIR"
 ROM=$1; OUT=$2; MAX=$3; shift 3
-BIN=${ROMCOV:-$HOME/.cache/ppcmac/romdisasm/build/romcov}
+BIN=${ROMCOV:-$HOME/.cache/macppc7300/romdisasm/build/romcov}
 ROM=$(realpath "$ROM")
 mkdir -p "$OUT"
 OUT=$(realpath "$OUT")

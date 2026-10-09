@@ -17,7 +17,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # Build outside the Windows drive when possible: compiling on /mnt/c is slow.
-BUILD_ENV = "PPCMAC_BUILD"
+BUILD_ENV = "MACPPC7300_BUILD"
 
 
 def wsl_path(path):
@@ -36,7 +36,7 @@ def main():
 
     args = [os.path.abspath(a) if os.path.isfile(a) else a for a in args]
     build = os.environ.get(BUILD_ENV) or os.path.join(
-        os.path.expanduser("~"), ".cache", "ppcmac", "verilator")
+        os.path.expanduser("~"), ".cache", "macppc7300", "verilator")
     os.makedirs(build, exist_ok=True)
     rc = subprocess.call(["make", "-s", "-C", HERE, "BUILD=" + build])
     if rc:

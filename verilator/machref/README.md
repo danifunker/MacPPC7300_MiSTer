@@ -5,7 +5,7 @@ default, the real machine we measure; dingusppc builds the 7600 from the same
 definition with the same devices) with all its devices, runs a ROM from the
 reset vector, and writes a
 log of every access the CPU makes to a device. It is the reference for the
-device side of `rtl/machine/PPCMac_machine.sv`: which registers the ROM
+device side of `rtl/machine/MacPPC7300_machine.sv`: which registers the ROM
 touches, in what order, and what dingusppc's devices answer. The CPU itself is
 checked separately, in lockstep (`verilator/ref`, `run_machine.py`).
 
@@ -19,7 +19,7 @@ chime can finish. GPL-3.0-or-later, as dingusppc.
 |---|---|
 | `machref.cpp` | the program: builds the machine, puts a logging proxy in front of every device region, runs |
 | `null_host.cpp` | the host side with nothing behind it |
-| `Makefile` | builds `$HOME/.cache/ppcmac/machref/machref` under WSL |
+| `Makefile` | builds `$HOME/.cache/macppc7300/machref/machref` under WSL |
 | `devdiff.py` | compares the RTL machine's device log with machref's |
 
 ## Build and run
@@ -27,7 +27,7 @@ chime can finish. GPL-3.0-or-later, as dingusppc.
 Under WSL:
 
     make -C /mnt/c/Temp/mistercore/PPC_Mac/verilator/machref
-    ~/.cache/ppcmac/machref/machref --rom /mnt/c/Temp/mistercore/PPC_Mac/ppctest/runs/my7300.rom \
+    ~/.cache/macppc7300/machref/machref --rom /mnt/c/Temp/mistercore/PPC_Mac/ppctest/runs/my7300.rom \
         --max 100000000 --sample 1000000 --log m.log
 
 A clean build compiles all of dingusppc (about two minutes); 100 million

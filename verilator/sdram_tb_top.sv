@@ -1,5 +1,5 @@
 // The SDRAM controller's test bench top: the CPU's memory port through the
-// clock crossing into PPCMac_sdram, whose pins go to the C++ chip model in
+// clock crossing into MacPPC7300_sdram, whose pins go to the C++ chip model in
 // sdram_main.cpp (the data bus split into its two directions).
 
 module sdram_tb_top
@@ -51,7 +51,7 @@ DSPPC604_memcdc cdc (
 	.b_req, .b_we, .b_line, .b_addr, .b_be, .b_wdata, .b_ack, .b_rdata
 );
 
-PPCMac_sdram #(.CLK_MHZ(100)) sdram (
+MacPPC7300_sdram #(.CLK_MHZ(100)) sdram (
 	.clk(clk_b), .init, .ready,
 	.req(b_req), .we(b_we), .line(b_line), .addr(b_addr[26:2]), .be(b_be), .wdata(b_wdata),
 	.ack(b_ack), .rdata(b_rdata),

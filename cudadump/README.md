@@ -166,7 +166,7 @@ two seconds by Cuda's own clock). The decode of
 - No unsolicited packets, no timeouts, no collisions.
 
 The memory image files are in `runs\` (git-ignored). Recorded in
-`docs\PPCMac_stubs.md`'s Cuda table.
+`docs\MacPPC7300_stubs.md`'s Cuda table.
 
 The same disk did not run with the 604e card; what the console showed there
 is not recorded yet.

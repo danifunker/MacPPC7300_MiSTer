@@ -1,4 +1,4 @@
-// PPCMac: the whole machine (PPCMac_system) in a window, to watch it run.
+// MacPPC7300: the whole machine (MacPPC7300_system) in a window, to watch it run.
 //
 // The same framework as the other cores' Verilator setups (ImGui + SDL2 +
 // OpenGL: sim/sim_video, sim/sim_console, sim/imgui, the template's files
@@ -14,14 +14,14 @@
 // the VRAM, the NVRAM image loaded during reset. No lockstep: this is for
 // watching; machine_tb (run_machine.py) is the bench that checks.
 //
-//   ppcmac_gui --rom FILE [--nvram FILE] [--ram MB] [--monitor 16|13]
+//   macppc7300_gui --rom FILE [--nvram FILE] [--ram MB] [--monitor 16|13]
 //              [--cpu-mhz F] [--mem-mhz F] [--pause]
 //
 // Built by `make gui` (verilator/Makefile); run_gui.py builds and starts it
 // (under WSL, the window through WSLg).
 
 #include <verilated.h>
-#include "VPPCMac_system.h"
+#include "VMacPPC7300_system.h"
 
 #include "imgui.h"
 #include "imgui_impl_sdl.h"
@@ -45,7 +45,7 @@ extern SDL_Window* window;                 // sim_video.cpp
 
 namespace {
 
-using Top = VPPCMac_system;
+using Top = VMacPPC7300_system;
 
 const uint32_t SDRAM_SIZE = 128u << 20;
 const uint32_t ROM_SDRAM  = SDRAM_SIZE - (4u << 20);
@@ -159,7 +159,7 @@ int main(int argc, char** argv) {
 		else if (a == "--mem-mhz") opt.mem_mhz = std::atof(next().c_str());
 		else if (a == "--pause") opt.pause = true;
 		else {
-			std::printf("usage: ppcmac_gui --rom FILE [--nvram FILE] [--ram MB] [--monitor 16|13]\n"
+			std::printf("usage: macppc7300_gui --rom FILE [--nvram FILE] [--ram MB] [--monitor 16|13]\n"
 			            "                  [--cpu-mhz F] [--mem-mhz F] [--pause]\n");
 			return a == "--help" ? 0 : 2;
 		}
@@ -188,8 +188,8 @@ int main(int argc, char** argv) {
 	int vw = opt.monitor == 13 ? 640 : 832, vh = opt.monitor == 13 ? 480 : 624;
 	SimVideo video(vw, vh, 0);
 	DebugConsole console;
-	if (video.Initialise("PPCMac") == 1) return 1;
-	SDL_SetWindowTitle(window, "PPCMac (Verilator)");
+	if (video.Initialise("MacPPC7300") == 1) return 1;
+	SDL_SetWindowTitle(window, "MacPPC7300 (Verilator)");
 	SDL_SetWindowSize(window, 1440, 900);
 
 	Mem mm;

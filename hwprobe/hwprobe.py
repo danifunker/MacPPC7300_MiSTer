@@ -13,7 +13,7 @@ operations on Grand Central's devices, timed with the time base, prints the
 results on the console and writes them back to the image; `decode` names
 and interprets them. `list` shows the operation table.
 
-What it measures (the machine's plan, milestone E, and docs/PPCMac_stubs.md):
+What it measures (the machine's plan, milestone E, and docs/MacPPC7300_stubs.md):
 
 - how long an access to the VIA, MESH, Curio and Grand Central's own
   registers takes (1000 reads each);

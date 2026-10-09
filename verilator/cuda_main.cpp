@@ -1,5 +1,5 @@
-// Test bench for PPCMac_cuda: Cuda (the 68HC05 and its firmware) with the
-// ADB devices (PPCMac_adb) on its ADB line (cuda_tb_top.sv).
+// Test bench for MacPPC7300_cuda: Cuda (the 68HC05 and its firmware) with the
+// ADB devices (MacPPC7300_adb) on its ADB line (cuda_tb_top.sv).
 //
 //   cuda_tb [--lockstep --rom 341s0060.bin] [--seconds S] [--trace-from N --trace-count M] [--show N]
 //
@@ -322,7 +322,7 @@ int main(int argc, char** argv) {
 	std::vector<std::pair<uint16_t, uint8_t>> rtl_writes;
 	// the PS/2 keyboard and mouse as hps_io gives them (a toggle an event)
 	uint32_t ps2_key = 0, ps2_mouse = 0;
-	// the game controller (PPCMac_adb's joy): {pointer, mode, right stick, left stick, joystick_0}
+	// the game controller (MacPPC7300_adb's joy): {pointer, mode, right stick, left stick, joystick_0}
 	uint64_t joy = 0;
 	auto J = [](int ptr, int mode, int ly, int lx, int js) -> int64_t {
 		return (int64_t)ptr << 51 | (int64_t)mode << 48 | (int64_t)(ly & 0xFF) << 24 | (int64_t)(lx & 0xFF) << 16 | js;
@@ -357,7 +357,7 @@ int main(int argc, char** argv) {
 		{"WRITE_PRAM 0010 = AA 55", {0x01, 0x0C, 0x00, 0x10, 0xAA, 0x55}, {0x01, 0x00, 0x0C}, 8},
 		{"READ_PRAM 0010", {0x01, 0x07, 0x00, 0x10}, {0x01, 0x00, 0x07, 0xAA, 0x55}, 5},
 		{"the ROM's first packet: I2C write to 88, 61 55", {0x01, 0x22, 0x88, 0x61, 0x55}, {}, 8},
-		// the ADB devices (PPCMac_adb) answering Cuda's firmware: flags 00 an
+		// the ADB devices (MacPPC7300_adb) answering Cuda's firmware: flags 00 an
 		// answer, 02 none (a timeout)
 		{"ADB talk 3 of address 2: the keyboard", {0x00, 0x2F}, {0x00, 0x00, 0x2F, 0x62, 0x02}, 8},
 		{"ADB talk 3 of address 3: the mouse", {0x00, 0x3F}, {0x00, 0x00, 0x3F, 0x63, 0x01}, 8},
@@ -486,7 +486,7 @@ int main(int argc, char** argv) {
 		}
 		if (off_seen && !wake_seen && dut->power_key) {
 			wake_seen = true;
-			std::printf("the power key seen at %.3f s (the machine's reset follows: PPCMac_machine power_wake)\n", clocks / CLK_HZ);
+			std::printf("the power key seen at %.3f s (the machine's reset follows: MacPPC7300_machine power_wake)\n", clocks / CLK_HZ);
 		}
 		if (released && clocks % host_period == 0) {
 			host.step(via, !dut->treq, clocks);

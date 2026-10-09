@@ -13,8 +13,8 @@
 //               line port (random wait states; at the end every line the
 //               data cache may hold dirty is written back through the snoop
 //               port), running a program file.
-//   machine_tb  the whole machine (top PPCMac_system, PPCMAC_MACHINE
-//               defined): the CPU, PPCMac_machine with its device stubs, the
+//   machine_tb  the whole machine (top MacPPC7300_system, MACPPC7300_MACHINE
+//               defined): the CPU, MacPPC7300_machine with its device stubs, the
 //               clock crossing, and this bench's software memory standing in
 //               for the SDRAM controller on the far side, in its own clock.
 //               It runs a ROM from the reset vector: --machine --rom FILE
@@ -34,10 +34,10 @@
 //   E pc              stop after the instruction at pc
 
 #include <verilated.h>
-#ifdef PPCMAC_MACHINE
-#include "VPPCMac_system.h"
-#include "VPPCMac_system___024root.h"
-typedef VPPCMac_system Top;
+#ifdef MACPPC7300_MACHINE
+#include "VMacPPC7300_system.h"
+#include "VMacPPC7300_system___024root.h"
+typedef VMacPPC7300_system Top;
 #else
 #include "VDSPPC604.h"
 typedef VDSPPC604 Top;
@@ -67,8 +67,8 @@ namespace {
 
 const uint32_t PVR_604  = 0x00040303;
 
-#ifdef PPCMAC_MACHINE
-// the machine's SDRAM module, as PPCMac_system is built (SDRAM_MB)
+#ifdef MACPPC7300_MACHINE
+// the machine's SDRAM module, as MacPPC7300_system is built (SDRAM_MB)
 const uint32_t SDRAM_SIZE = 128u << 20;
 const uint32_t ROM_BASE   = 0xFFC00000u;
 const uint32_t ROM_SIZE   = 4u << 20;
@@ -301,10 +301,10 @@ void wr32(std::vector<uint8_t>& m, uint32_t a, uint32_t v, uint32_t be) {
 
 void usage() {
 	std::printf(
-#ifdef PPCMAC_MACHINE
+#ifdef MACPPC7300_MACHINE
 		"usage: machine_tb --machine --rom FILE [options]\n"
 		"  --ram MB         installed RAM (default 16)\n"
-		"  --no-l2          the L2 cache off (PPCMac_l2; on by default)\n"
+		"  --no-l2          the L2 cache off (MacPPC7300_l2; on by default)\n"
 		"  --cpu-mhz F      the CPU's clock (default 70)\n"
 		"  --mem-mhz F      the memory's clock (default 100)\n"
 		"  --max-instr N    stop after N instructions\n"
@@ -370,7 +370,7 @@ void usage() {
 		"  --trace          print every retired instruction\n");
 }
 
-#ifdef PPCMAC_MACHINE
+#ifdef MACPPC7300_MACHINE
 // A device access the core's machine answered, as seen on the CPU's port.
 struct DevAccess {
 	bool we, line;
@@ -684,7 +684,7 @@ int main(int argc, char** argv) {
 		}
 		else { usage(); return a == "--help" ? 0 : 2; }
 	}
-#ifdef PPCMAC_MACHINE
+#ifdef MACPPC7300_MACHINE
 	if (!opt.machine || opt.rom.empty() == !opt.memtest || !opt.prog.empty()) { usage(); return 2; }
 	if (opt.memtest && opt.lockstep) {
 		std::fprintf(stderr, "the memory test runs without the reference (it has no copy of the boot program)\n");
@@ -713,7 +713,7 @@ int main(int argc, char** argv) {
 	std::map<uint32_t, Check> checks;
 	std::vector<std::pair<uint32_t, uint32_t>> expect_mem;
 	uint32_t reset_pc = 0x100, end_pc = 0xFFFFFFFF;
-#ifdef PPCMAC_MACHINE
+#ifdef MACPPC7300_MACHINE
 	std::vector<uint8_t> mem(SDRAM_SIZE, 0);
 	std::vector<uint8_t> rom(ROM_SIZE, 0);
 	if (!opt.memtest) {
@@ -797,7 +797,7 @@ int main(int argc, char** argv) {
 #ifdef WITH_REF
 	if (opt.lockstep) {
 		if (ref_init(RAM_SIZE, PVR_604) != 0) { std::fprintf(stderr, "reference model failed to start\n"); return 2; }
-#ifdef PPCMAC_MACHINE
+#ifdef MACPPC7300_MACHINE
 		// RAM, the ROM, and everything else answered by the core's machine
 		if (ref_add_rom(ROM_BASE, rom.data(), ROM_SIZE) != 0 ||
 		    ref_add_mmio(RAM_SIZE, ROM_BASE - RAM_SIZE, dev_read, dev_write, &devq) != 0) {
@@ -822,7 +822,7 @@ int main(int argc, char** argv) {
 	auto stalled = [&]() { return opt.stall > 0 && (int)(rng() % 100) < opt.stall; };
 
 	Mem mm;
-#ifdef PPCMAC_MACHINE
+#ifdef MACPPC7300_MACHINE
 	Ddr ddr;
 	Frame fr;
 	fr.next = opt.frame_at;
@@ -846,7 +846,7 @@ int main(int argc, char** argv) {
 	int cacheop_dsi_notes = 0;      // DSIs at cache instructions handed to the reference (both benches)
 	int rc_notes = 0;               // PTE R/C bits taken from the core
 
-#ifdef PPCMAC_MACHINE
+#ifdef MACPPC7300_MACHINE
 	// ---- two clocks: the CPU's (and the machine's), and the memory's ----
 	const double pa = 1e6 / opt.cpu_mhz / 2, pb = 1e6 / opt.mem_mhz / 2;   // half periods, ps
 	double ta = pa, tb = pb;                                              // next edge of each
@@ -1368,7 +1368,7 @@ int main(int argc, char** argv) {
 	while (!done && cycles < opt.max_cycles) {
 		tick();
 
-#ifdef PPCMAC_MACHINE
+#ifdef MACPPC7300_MACHINE
 		term.clock(dut->modem_txd);
 		if (opt.serial_stop && term.finished) {
 			std::printf("serial: the last line typed has been answered with a prompt\n");
@@ -1423,7 +1423,7 @@ int main(int argc, char** argv) {
 			if (dut->trace_last) {
 				uint32_t pc = dut->trace_pc, insn = dut->trace_insn;
 				retired++;
-#ifdef PPCMAC_MACHINE
+#ifdef MACPPC7300_MACHINE
 				last_retire_cycle = cycles;
 				{
 					uint32_t off = pc & 0xFFFFF, hi = pc & 0xFFF00000u;
@@ -1432,15 +1432,15 @@ int main(int argc, char** argv) {
 						exc_count[off >> 8]++;
 						if (xlog)
 							std::fprintf(xlog, "E %llu %X %08X %08X %08X %08X %08X\n", (unsigned long long)retired, off, prev_pc,
-								(uint32_t)dut->rootp->PPCMac_system__DOT__cpu__DOT__srr0,
-								(uint32_t)dut->rootp->PPCMac_system__DOT__cpu__DOT__srr1,
-								(uint32_t)dut->rootp->PPCMac_system__DOT__cpu__DOT__dar,
-								(uint32_t)dut->rootp->PPCMac_system__DOT__cpu__DOT__dsisr);
+								(uint32_t)dut->rootp->MacPPC7300_system__DOT__cpu__DOT__srr0,
+								(uint32_t)dut->rootp->MacPPC7300_system__DOT__cpu__DOT__srr1,
+								(uint32_t)dut->rootp->MacPPC7300_system__DOT__cpu__DOT__dar,
+								(uint32_t)dut->rootp->MacPPC7300_system__DOT__cpu__DOT__dsisr);
 					}
 					if (xlog && insn == 0x4C000064u)
 						std::fprintf(xlog, "R %llu %08X %08X %08X\n", (unsigned long long)retired, pc,
-							(uint32_t)dut->rootp->PPCMac_system__DOT__cpu__DOT__srr0,
-							(uint32_t)dut->rootp->PPCMac_system__DOT__cpu__DOT__srr1);
+							(uint32_t)dut->rootp->MacPPC7300_system__DOT__cpu__DOT__srr0,
+							(uint32_t)dut->rootp->MacPPC7300_system__DOT__cpu__DOT__srr1);
 					prev_pc = pc;
 				}
 				// the registers (the bench's copy of the GPRs, kept from the
@@ -1450,10 +1450,10 @@ int main(int argc, char** argv) {
 						(unsigned long long)retired, pc, insn, (uint32_t)dut->trace_msr, (uint32_t)dut->trace_cr,
 						(uint32_t)dut->trace_xer, (uint32_t)dut->trace_lr, (uint32_t)dut->trace_ctr);
 					std::printf("  srr0 %08X srr1 %08X dar %08X dsisr %08X\n",
-						(uint32_t)dut->rootp->PPCMac_system__DOT__cpu__DOT__srr0,
-						(uint32_t)dut->rootp->PPCMac_system__DOT__cpu__DOT__srr1,
-						(uint32_t)dut->rootp->PPCMac_system__DOT__cpu__DOT__dar,
-						(uint32_t)dut->rootp->PPCMac_system__DOT__cpu__DOT__dsisr);
+						(uint32_t)dut->rootp->MacPPC7300_system__DOT__cpu__DOT__srr0,
+						(uint32_t)dut->rootp->MacPPC7300_system__DOT__cpu__DOT__srr1,
+						(uint32_t)dut->rootp->MacPPC7300_system__DOT__cpu__DOT__dar,
+						(uint32_t)dut->rootp->MacPPC7300_system__DOT__cpu__DOT__dsisr);
 					for (int r = 0; r < 32; r += 8)
 						std::printf("  r%-2d %08X %08X %08X %08X %08X %08X %08X %08X\n", r, gpr[r], gpr[r + 1], gpr[r + 2],
 							gpr[r + 3], gpr[r + 4], gpr[r + 5], gpr[r + 6], gpr[r + 7]);
@@ -1495,11 +1495,11 @@ int main(int argc, char** argv) {
 						(unsigned long long)retired, (unsigned long long)cycles, pc, dut->trace_msr);
 					if (!opt.disk[0].empty())
 						std::printf("disks: valid %u (memory clock's side %u, toggle %u), blocks %u, target state %u\n",
-							(unsigned)dut->rootp->PPCMac_system__DOT__machine__DOT__disks__DOT__m_valid,
-							(unsigned)dut->rootp->PPCMac_system__DOT__machine__DOT__disks__DOT__h_valid,
-							(unsigned)dut->rootp->PPCMac_system__DOT__machine__DOT__disks__DOT__h_mtog,
-							(unsigned)dut->rootp->PPCMac_system__DOT__machine__DOT__disks__DOT__m_blocks[0],
-							(unsigned)dut->rootp->PPCMac_system__DOT__machine__DOT__disks__DOT__ts);
+							(unsigned)dut->rootp->MacPPC7300_system__DOT__machine__DOT__disks__DOT__m_valid,
+							(unsigned)dut->rootp->MacPPC7300_system__DOT__machine__DOT__disks__DOT__h_valid,
+							(unsigned)dut->rootp->MacPPC7300_system__DOT__machine__DOT__disks__DOT__h_mtog,
+							(unsigned)dut->rootp->MacPPC7300_system__DOT__machine__DOT__disks__DOT__m_blocks[0],
+							(unsigned)dut->rootp->MacPPC7300_system__DOT__machine__DOT__disks__DOT__ts);
 					if (xlog) { exc_summary("exceptions:"); std::fflush(xlog); }
 					std::fflush(stdout);
 				}
@@ -1547,7 +1547,7 @@ int main(int argc, char** argv) {
 				if (opt.lockstep) {
 					ref_state_t before{}, s{};
 					ref_get_state(&before);
-#ifdef PPCMAC_MACHINE
+#ifdef MACPPC7300_MACHINE
 					// an interrupt the core took before this instruction: the
 					// decrementer's and the external vector are reached no other way
 					if (before.pc != pc && ((pc & 0xFFF00000u) == 0 || (pc & 0xFFF00000u) == 0xFFF00000u) &&
@@ -1611,7 +1611,7 @@ int main(int argc, char** argv) {
 								w = (uint32_t)rm[ipa] << 24 | (uint32_t)rm[ipa + 1] << 16 | (uint32_t)rm[ipa + 2] << 8 | rm[ipa + 3];
 								known = true;
 							}
-#ifdef PPCMAC_MACHINE
+#ifdef MACPPC7300_MACHINE
 							else if (ipa >= ROM_BASE) {
 								uint32_t o = ipa - ROM_BASE;
 								w = (uint32_t)rom[o] << 24 | (uint32_t)rom[o + 1] << 16 | (uint32_t)rom[o + 2] << 8 | rom[o + 3];
@@ -1644,7 +1644,7 @@ int main(int argc, char** argv) {
 					// The core retires nothing for an instruction that takes an
 					// exception; the reference has to take it now to catch up.
 					for (int tries = 0; tries < 3 && before.pc != pc; tries++) {
-#ifdef PPCMAC_MACHINE
+#ifdef MACPPC7300_MACHINE
 						devq.icount = retired - 1;
 						devq.pc = before.pc;
 #endif
@@ -1686,7 +1686,7 @@ int main(int argc, char** argv) {
 						diverged = true;
 						break;
 					}
-#ifdef PPCMAC_MACHINE
+#ifdef MACPPC7300_MACHINE
 					devq.icount = retired - 1;
 					devq.pc = pc;
 #endif
@@ -1723,7 +1723,7 @@ int main(int argc, char** argv) {
 						s.msr = (s.msr & ~4u) | (ref_get_spr(27) & 4u);
 						ref_set_state(&s);
 					}
-#ifdef PPCMAC_MACHINE
+#ifdef MACPPC7300_MACHINE
 					// time is the core's: mftb and mfspr of the time base or the
 					// decrementer read what the core's counters held
 					uint32_t xo10 = (insn >> 1) & 0x3FF;
@@ -1801,7 +1801,7 @@ int main(int argc, char** argv) {
 	}
 
 	bool mem_ok = true;
-#ifdef PPCMAC_MACHINE
+#ifdef MACPPC7300_MACHINE
 	dut->final();
 	if (devq.log) std::fclose(devq.log);
 	if (wav) {

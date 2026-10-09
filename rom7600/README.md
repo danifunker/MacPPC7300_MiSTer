@@ -196,17 +196,17 @@ memory.
 In WSL (gcc 13, make, python3; no packages needed), from this directory:
 
     bash tools/regen.sh                 # build tools, coverage run, all outputs
-    SKIP_COV=1 bash tools/regen.sh      # reuse ~/.cache/ppcmac/romdisasm/cov
+    SKIP_COV=1 bash tools/regen.sh      # reuse ~/.cache/macppc7300/romdisasm/cov
 
 From Windows: `wsl --cd C:\Temp\mistercore\PPC_Mac\rom7600\tools -- bash ./regen.sh`.
 `regen.sh` runs `build.sh` (make -j4: the three disassembler wrappers and `romcov`,
-which compiles dingusppc headless into `~/.cache/ppcmac/romdisasm/build`; the
+which compiles dingusppc headless into `~/.cache/macppc7300/romdisasm/build`; the
 dingusppc, MAME and QEMU trees are only read), `run_cov.sh` (the coverage run into
-`~/.cache/ppcmac/romdisasm/cov`, about 30 s, RAM dumps of 32 MB each),
+`~/.cache/macppc7300/romdisasm/cov`, about 30 s, RAM dumps of 32 MB each),
 `romdis.py` (all listings, about a minute), `hwsummary.py` and `crosscheck.py`. Paths
 of the source trees are options of `romdis.py` (`--mame`, `--snow`) and variables of
 the Makefile (`DINGUS`, `MAME`, `QEMU`). Temporary files go to
-`~/.cache/ppcmac/romdisasm/tmp`.
+`~/.cache/macppc7300/romdisasm/tmp`.
 
 ## Notes for an emulator or FPGA implementation
 

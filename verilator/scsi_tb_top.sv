@@ -1,9 +1,9 @@
-// The SCSI bench's top: Grand Central (PPCMac_gc: MESH, its DMA channel)
-// and the disks (PPCMac_scsidisk) on the internal bus, wired as
-// PPCMac_machine wires them, and the floppy's image (PPCMac_fdblk) for
+// The SCSI bench's top: Grand Central (MacPPC7300_gc: MESH, its DMA channel)
+// and the disks (MacPPC7300_scsidisk) on the internal bus, wired as
+// MacPPC7300_machine wires them, and the floppy's image (MacPPC7300_fdblk) for
 // SWIM3; Grand Central's register port, its DMA port and the hps_io side
 // are the bench's. The SCSI controllers' 25 MHz tick is made here by phase
-// accumulation, as in PPCMac_machine.
+// accumulation, as in MacPPC7300_machine.
 
 module scsi_tb_top
 #(
@@ -108,7 +108,7 @@ assign bus_phase = {scsi_msg, scsi_cd, scsi_io};
 assign bus_db = scsi_db;
 
 /* verilator lint_off PINCONNECTEMPTY */
-PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
+MacPPC7300_gc #(.SCSI_HZ(SCSI_HZ)) gc (
 	.clk, .reset, .via_tick(1'b0), .rtxc_tick(1'b0), .scsi_tick, .us_tick, .snd_tick(1'b0),
 	.sel, .we, .addr, .be, .wdata, .rdata, .irq,
 	.cuda_treq(1'b1), .cuda_cb1(1'b1), .cb2(1'b1), .via_tip(), .via_byteack(), .via_cb2_oe(), .via_cb2_out(),
@@ -127,7 +127,7 @@ PPCMac_gc #(.SCSI_HZ(SCSI_HZ)) gc (
 	.fd_m_t, .fd_m_ok, .fd_m_fmt, .fd_m_dc42, .fd_rq_t, .fd_rq_lba, .fd_dn_t, .fd_ra, .fd_q
 );
 
-PPCMac_fdblk fdblk (
+MacPPC7300_fdblk fdblk (
 	.clk_m(clk_h), .reset_m(reset),
 	.img_mounted(fd_mounted), .img_size, .img_readonly(1'b0),
 	.sd_lba(fd_lba), .sd_rd(fd_rd), .sd_blk_cnt(fd_blk_cnt), .sd_ack(fd_ack),
@@ -136,7 +136,7 @@ PPCMac_fdblk fdblk (
 	.clk, .rq_t(fd_rq_t), .rq_lba(fd_rq_lba), .dn_t(fd_dn_t), .ra(fd_ra), .q(fd_q)
 );
 
-PPCMac_scsidisk #(.CLK_HZ(CPU_HZ)) disks (
+MacPPC7300_scsidisk #(.CLK_HZ(CPU_HZ)) disks (
 	.clk, .reset,
 	.t_bsy, .t_req, .t_msg, .t_cd, .t_io, .t_db,
 	.b_rst(scsi_rst), .b_bsy(scsi_bsy), .b_sel(scsi_sel), .b_atn(scsi_atn), .b_ack(scsi_ack), .b_db(scsi_db),
