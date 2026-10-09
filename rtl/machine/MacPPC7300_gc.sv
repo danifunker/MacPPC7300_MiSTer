@@ -77,7 +77,8 @@
 
 module MacPPC7300_gc
 #(
-	parameter int unsigned SCSI_HZ = 25_000_000
+	parameter int unsigned SCSI_HZ = 25_000_000,
+	parameter int unsigned SOUND_IN_DMA = 1       // 0: DMA channel 9 (sound in) its registers alone
 )
 (
 	input  logic        clk,
@@ -378,7 +379,7 @@ MacPPC7300_awacs awacs (
 	.left(snd_left), .right(snd_right)
 );
 
-MacPPC7300_dbdma dma_8 (
+MacPPC7300_dbdma #(.LINE(1'b0)) dma_8 (
 	.clk, .reset,
 	.sel(dma_8_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_8_rle),
 	.dm_req(s8_req), .dm_we(s8_we), .dm_line(s8_line), .dm_addr(s8_addr), .dm_be(s8_be), .dm_wdata(s8_wdata),
@@ -401,20 +402,55 @@ always_ff @(posedge clk) begin
 	itr8_st <= itr8_now;
 end
 
-MacPPC7300_dbdma dma_9 (
-	.clk, .reset,
-	.sel(dma_9_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_9_rle),
-	.dm_req(s9_req), .dm_we(s9_we), .dm_line(s9_line), .dm_addr(s9_addr), .dm_be(s9_be), .dm_wdata(s9_wdata),
-	.dm_ack(s9_ack), .dm_rdata,
-	.di_valid(s9_valid), .di_data(s9_data), .di_take(s9_take), .di_flush(1'b0), .di_last(1'b0), .dev_st(8'h00),
-	.do_ready(1'b0), .dq_ack(1'b0), .dq_rd(8'h00),
-	/* verilator lint_off PINCONNECTEMPTY */
-	.do_data(), .do_put(), .do_last(), .xfer_in(), .xfer_out(), .drained(), .fin(), .fin_dec(), .fin_info(),
-	.dq_req(), .dq_we(), .dq_off(), .dq_wd(),
-	/* verilator lint_on PINCONNECTEMPTY */
-	.active(s9_active),
-	.irq(s9_irq)
-);
+generate
+if (SOUND_IN_DMA != 0) begin : g_dma_9
+	MacPPC7300_dbdma #(.LINE(1'b0)) dma_9 (
+		.clk, .reset,
+		.sel(dma_9_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_9_rle),
+		.dm_req(s9_req), .dm_we(s9_we), .dm_line(s9_line), .dm_addr(s9_addr), .dm_be(s9_be), .dm_wdata(s9_wdata),
+		.dm_ack(s9_ack), .dm_rdata,
+		.di_valid(s9_valid), .di_data(s9_data), .di_take(s9_take), .di_flush(1'b0), .di_last(1'b0), .dev_st(8'h00),
+		.do_ready(1'b0), .dq_ack(1'b0), .dq_rd(8'h00),
+		/* verilator lint_off PINCONNECTEMPTY */
+		.do_data(), .do_put(), .do_last(), .xfer_in(), .xfer_out(), .drained(), .fin(), .fin_dec(), .fin_info(),
+		.dq_req(), .dq_we(), .dq_off(), .dq_wd(),
+		/* verilator lint_on PINCONNECTEMPTY */
+		.active(s9_active),
+		.irq(s9_irq)
+	);
+end
+else begin : g_dma_9_stub
+	// the registers alone: RUN, PAUSE and s7-s0 as written, never ACTIVE, nothing moved
+	logic [15:0] st9;
+	logic [31:0] ptr9, isel9, bsel9, wsel9;
+	always_comb begin
+		case (addr[4:2])
+			3'd1:    dma_9_rle = {16'h0, st9};
+			3'd3:    dma_9_rle = ptr9;
+			3'd4:    dma_9_rle = isel9;
+			3'd5:    dma_9_rle = bsel9;
+			3'd6:    dma_9_rle = wsel9;
+			default: dma_9_rle = 32'h0;
+		endcase
+	end
+	always_ff @(posedge clk) begin
+		if (dma_9_sel & we) begin
+			case (addr[4:2])
+				3'd0: st9 <= (st9 & ~(wle[31:16] & 16'hC0FF)) | (wle[15:0] & wle[31:16] & 16'hC0FF);
+				3'd3: ptr9  <= wle;
+				3'd4: isel9 <= wle & 32'h00FF_00FF;
+				3'd5: bsel9 <= wle & 32'h00FF_00FF;
+				3'd6: wsel9 <= wle & 32'h00FF_00FF;
+				default: ;
+			endcase
+		end
+		if (reset) begin st9 <= 16'h0; ptr9 <= 32'h0; isel9 <= 32'h0; bsel9 <= 32'h0; wsel9 <= 32'h0; end
+	end
+	assign s9_req = 1'b0;   assign s9_we = 1'b0;      assign s9_line = 1'b0;   assign s9_addr = '0;
+	assign s9_be = 4'h0;    assign s9_wdata = '0;     assign s9_take = 1'b0;   assign s9_active = 1'b0;
+	assign s9_irq = 1'b0;
+end
+endgenerate
 
 // ---- MACE (MacPPC7300_mace): byte registers at (offset >> 4) & 1F (grandcentral.cpp:190), ----
 // ---- and its DMA channels, 2 out and 3 in ----
@@ -454,7 +490,7 @@ MacPPC7300_mace mace (
 	.irq(mace_irq), .xmtsv(mace_xmtsv)
 );
 
-MacPPC7300_dbdma #(.DEV_QUAD(1'b1)) dma_2 (
+MacPPC7300_dbdma #(.DEV_QUAD(1'b1), .LINE(1'b0)) dma_2 (
 	.clk, .reset,
 	.sel(dma_2_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_2_rle),
 	.dm_req(e2_req), .dm_we(e2_we), .dm_line(e2_line), .dm_addr(e2_addr), .dm_be(e2_be), .dm_wdata(e2_wdata),
@@ -470,7 +506,7 @@ MacPPC7300_dbdma #(.DEV_QUAD(1'b1)) dma_2 (
 	.irq(e2_irq), .fin(e2_fin), .fin_dec(e2_fin_dec), .fin_info(e2_fin_info)
 );
 
-MacPPC7300_dbdma #(.S6_EOF(1'b1), .DEV_QUAD(1'b1)) dma_3 (
+MacPPC7300_dbdma #(.S6_EOF(1'b1), .DEV_QUAD(1'b1), .LINE(1'b0)) dma_3 (
 	.clk, .reset,
 	.sel(dma_3_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_3_rle),
 	.dm_req(e3_req), .dm_we(e3_we), .dm_line(e3_line), .dm_addr(e3_addr), .dm_be(e3_be), .dm_wdata(e3_wdata),
@@ -507,7 +543,7 @@ MacPPC7300_swim3 swim3 (
 	.rq_t(fd_rq_t), .rq_lba(fd_rq_lba), .dn_t(fd_dn_t), .b_ra(fd_ra), .b_q(fd_q)
 );
 
-MacPPC7300_dbdma dma_1 (
+MacPPC7300_dbdma #(.LINE(1'b0)) dma_1 (
 	.clk, .reset,
 	.sel(dma_1_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_1_rle),
 	.dm_req(f1_req), .dm_we(f1_we), .dm_line(f1_line), .dm_addr(f1_addr), .dm_be(f1_be), .dm_wdata(f1_wdata),

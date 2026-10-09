@@ -23,7 +23,9 @@ module MacPPC7300_system
 	parameter int unsigned TB_HZ    = 12_500_000,
 	parameter int unsigned SDRAM_MB = 128,
 	parameter int unsigned L2_KB    = 128,          // the L2 cache (MacPPC7300_l2)
-	parameter int unsigned CUDA_FAST_BOOT = 0       // 1: the test bench's (MacPPC7300_cuda FAST_BOOT)
+	parameter int unsigned CUDA_FAST_BOOT = 0,      // 1: the test bench's (MacPPC7300_cuda FAST_BOOT)
+	parameter int unsigned TRACE = 1,               // 0: no DDR3 trace (MacPPC7300_trace)
+	parameter int unsigned SOUND_IN_DMA = 1         // 0: DMA channel 9 (sound in) its registers alone
 )
 (
 	input  logic         clk,             // the CPU's clock
@@ -243,7 +245,8 @@ logic [47:0]  net_mac;
 logic         scsi_tr_ev;
 logic [255:0] scsi_tr_rec;
 
-MacPPC7300_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_FAST_BOOT(CUDA_FAST_BOOT)) machine (
+MacPPC7300_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_FAST_BOOT(CUDA_FAST_BOOT),
+                     .SOUND_IN_DMA(SOUND_IN_DMA)) machine (
 	.clk, .reset, .ram_mb, .boot_memtest,
 	.c_req, .c_we, .c_line, .c_addr, .c_be, .c_wdata, .c_ack, .c_rdata,
 	.m_req, .m_we, .m_line, .m_addr, .m_be, .m_wdata, .m_ack, .m_rdata,
@@ -306,12 +309,21 @@ MacPPC7300_ddrarb ddrarb_b (
 	.ddr_rd(na_rd), .ddr_din(na_din), .ddr_be(na_be), .ddr_we(na_we)
 );
 
-MacPPC7300_trace trace (
-	.clk, .ev(scsi_tr_ev), .rec(scsi_tr_rec),
-	.clk_h(clk_b), .reset_h(reset_b),
-	.ddr_busy(tr_busy), .ddr_burstcnt(tr_burstcnt), .ddr_addr(tr_addr), .ddr_rd(tr_rd), .ddr_din(tr_din),
-	.ddr_be(tr_be), .ddr_we(tr_we)
-);
+generate
+if (TRACE != 0) begin : g_trace
+	MacPPC7300_trace trace (
+		.clk, .ev(scsi_tr_ev), .rec(scsi_tr_rec),
+		.clk_h(clk_b), .reset_h(reset_b),
+		.ddr_busy(tr_busy), .ddr_burstcnt(tr_burstcnt), .ddr_addr(tr_addr), .ddr_rd(tr_rd), .ddr_din(tr_din),
+		.ddr_be(tr_be), .ddr_we(tr_we)
+	);
+end
+else begin : g_no_trace
+	// without the trace its records have no load, and their logic goes with it
+	assign tr_burstcnt = 8'd0;  assign tr_addr = 29'd0;  assign tr_rd = 1'b0;
+	assign tr_din = 64'd0;      assign tr_be = 8'd0;     assign tr_we = 1'b0;
+end
+endgenerate
 
 // ---- the network bridge: MACE's frames to and from the Main, through DDR3 ----
 MacPPC7300_enet enet (

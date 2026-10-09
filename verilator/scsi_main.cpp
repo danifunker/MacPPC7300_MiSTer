@@ -1018,8 +1018,9 @@ int main(int argc, char** argv) {
 		put_cmd(0x740, 0, 0x00, 96, 0x62000);
 		put_cmd(0x750, 7, 0x00, 0, 0);
 		d8w(3, 0x740); d8w(0, 0x80008000);
-		std::vector<Played> v = play(80 * FRAME_CLKS);
+		std::vector<Played> v = play(160 * FRAME_CLKS);  // a word a frame at 6,000 clocks each (LINE 0)
 		mem_lat = 4;
+		check((d8r(1) & 0x0400) == 0, "slow memory: the channel still ACTIVE after the play (%04X)", d8r(1));
 		bool ordered = !v.empty(), late = false;
 		for (size_t k = 0; k < v.size(); k++) {
 			ordered = ordered && v[k].l == (uint16_t)(0x5000 + k) && v[k].r == (uint16_t)(0x6000 + k);

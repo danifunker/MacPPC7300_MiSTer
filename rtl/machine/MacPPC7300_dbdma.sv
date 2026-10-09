@@ -63,7 +63,8 @@
 //  written as a line when all 32 bytes are there, else as the words that
 //  have bytes (with byte enables), when the line is done, the command's
 //  count is used up, the device says no more bytes are coming (di_flush), or
-//  FLUSH asks.
+//  FLUSH asks. With LINE 0 (the slow devices, 2026-10-09) the buffer is a
+//  word: data out is read a word at a time and data in written as one.
 //
 //  The device side moves a byte a clock: di_valid / di_data / di_take from
 //  the device to memory, do_ready / do_data / do_put the other way (do_last
@@ -94,7 +95,10 @@ module MacPPC7300_dbdma
 	// NetBSD's if_mc tests s6 in xferStatus)
 	parameter bit S6_EOF = 1'b0,
 	// a quad with key 6 to F3000000-F301FFFF goes to the dq_* port
-	parameter bit DEV_QUAD = 1'b0
+	parameter bit DEV_QUAD = 1'b0,
+	// data moves a 32-byte line at a time (MESH's disk speed); 0: a word at a time (the slow
+	// devices: a 4-byte buffer instead of 32)
+	parameter bit LINE = 1'b1
 )
 (
 	input  logic         clk,
@@ -191,11 +195,22 @@ function automatic logic cond(input logic [1:0] b, input logic [31:0] sr, input 
 	endcase
 endfunction
 
-// a 32-byte line: byte k in bits 255-8k
-logic [255:0] lb;
-logic [31:0]  lv;                       // which of its bytes are held (data in), bit 31 byte 0
-logic         lb_ok;                    // it holds the line at addr (data out)
-logic [26:0]  lline;                    // the line the bytes held belong to (data in)
+// the buffer: a 32-byte line (or with LINE 0 a word), byte k in its bits 8*LB-1-8k
+localparam int LB = LINE ? 32 : 4;      // bytes
+localparam int AB = LINE ? 5 : 2;       // their address bits
+localparam int NW = LB / 4;             // words
+logic [8*LB-1:0] lb;
+logic [LB-1:0]   lv;                    // which of its bytes are held (data in), bit LB-1 byte 0
+logic            lb_ok;                 // it holds the line at addr (data out)
+logic [31:2]     lline;                 // the word address of its first byte (data in)
+logic [255:0]    lb_w;                  // a line write's data: lb itself, steady while it waits
+logic [31:0]     dw;                    // a word write's data
+always_comb begin
+	lb_w = '0;
+	lb_w[8*LB-1:0] = lb;
+end
+assign dm_wdata = dm_line ? lb_w : {224'h0, dw};
+wire [31:2] lmask = LINE ? 30'h3FFF_FFF8 : 30'h3FFF_FFFF;   // a word address to its buffer's first word
 
 typedef enum logic [3:0] {
 	S_IDLE, S_FETCH, S_DECODE, S_IN, S_INW, S_OUT, S_OUTR, S_QUAD, S_QREAD, S_WAIT, S_WB, S_FINISH
@@ -213,12 +228,15 @@ wire  eof_ends = (cmd == 4'd3) || (S6_EOF && cmd == 4'd2);   // the device's end
 wire  go     = stat[ACTIVE] & ~pausing & ~stop_req;       // may start something new
 assign xfer_in  = (s == S_IN) & go & (res_count != 16'd0);
 assign xfer_out = (s == S_OUT) & go & lb_ok & (res_count != 16'd0);
-assign drained  = (lv == 32'h0);
+assign drained  = (lv == '0);
 
 assign di_take = xfer_in & di_valid;
 assign do_put  = xfer_out & do_ready;
 assign do_last = do_put & (cmd == 4'd1) & (res_count == 16'd1);
-assign do_data = lb[8 * (31 - addr[4:0]) +: 8];
+wire  [AB-1:0] bi = addr[AB-1:0];        // the byte in the buffer
+wire  lb_last = bi == AB'(LB - 1);
+wire  [31:0]   bk = (LB - 1) - int'(bi); // ... its place, from the top byte
+assign do_data = lb[8 * bk +: 8];
 
 // the quad commands' size: 4 if bit 2, else 2 if bit 1, else 1
 wire [2:0] q_size = req_count[2] ? 3'd4 : req_count[1] ? 3'd2 : 3'd1;
@@ -240,8 +258,8 @@ logic       wany;
 always_comb begin
 	wfirst = 3'd0;
 	wany   = 1'b0;
-	for (int j = 7; j >= 0; j--)
-		if (lv[31 - 4 * j -: 4] != 4'h0) begin wfirst = 3'(j); wany = 1'b1; end
+	for (int j = NW - 1; j >= 0; j--)
+		if (lv[(LB - 1) - 4 * j -: 4] != 4'h0) begin wfirst = 3'(j); wany = 1'b1; end
 end
 
 // xferStatus as written back: the status with ACTIVE
@@ -353,7 +371,7 @@ always_ff @(posedge clk) begin
 			fin_dec   <= 2'd1;
 			fin_info  <= {cmd_ptr, cmd, 1'b0, key, cmd_bits, req_count, addr, cmd_arg};
 			res_count <= req_count;
-			lv        <= 32'h0;
+			lv        <= '0;
 			lb_ok     <= 1'b0;
 			in_end    <= 1'b0;
 			case (cmd)
@@ -384,38 +402,37 @@ always_ff @(posedge clk) begin
 		// ---- data in: bytes gathered into lb, written out by S_INW ---------------------------
 		S_IN: begin
 			if (di_take) begin
-				lb[8 * (31 - addr[4:0]) +: 8] <= di_data;
-				lv[31 - addr[4:0]] <= 1'b1;
-				lline     <= addr[31:5];
+				lb[8 * bk +: 8] <= di_data;
+				lv[bk] <= 1'b1;
+				lline     <= addr[31:2] & lmask;
 				addr      <= addr + 32'd1;
 				res_count <= res_count - 16'd1;
 				if (di_last && eof_ends) in_end <= 1'b1;
-				if (addr[4:0] == 5'd31 || res_count == 16'd1 || (di_last && eof_ends)) s <= S_INW;
+				if (lb_last || res_count == 16'd1 || (di_last && eof_ends)) s <= S_INW;
 			end
-			else if (stop_req || flush_req || (di_flush && lv != 32'h0) || res_count == 16'd0)
+			else if (stop_req || flush_req || (di_flush && lv != '0) || res_count == 16'd0)
 				s <= S_INW;
 		end
 		S_INW: begin                        // the line held written: whole, or word by word
 			if (dm_req) begin
 				if (dm_ack) begin
-					if (dm_line) lv <= 32'h0;
-					else lv[31 - 4 * dm_addr[4:2] -: 4] <= 4'h0;
+					if (dm_line) lv <= '0;
+					else lv[(LB - 1) - 4 * (LINE ? int'(dm_addr[4:2]) : 0) -: 4] <= 4'h0;
 				end
 			end
-			else if (lv == 32'hFFFF_FFFF) begin
+			else if (LINE && lv == '1) begin
 				dm_req   <= 1'b1;
 				dm_we    <= 1'b1;
 				dm_line  <= 1'b1;
-				dm_addr  <= {lline, 3'd0};
-				dm_wdata <= lb;
+				dm_addr  <= lline;
 			end
 			else if (wany) begin
 				dm_req   <= 1'b1;
 				dm_we    <= 1'b1;
 				dm_line  <= 1'b0;
-				dm_addr  <= {lline, wfirst};
-				dm_be    <= lv[31 - 4 * wfirst -: 4];
-				dm_wdata <= {224'h0, lb[255 - 32 * wfirst -: 32]};
+				dm_addr  <= lline | 30'(wfirst);
+				dm_be    <= lv[(LB - 1) - 4 * wfirst -: 4];
+				dw       <= lb[(8 * LB - 1) - 32 * wfirst -: 32];
 			end
 			else if (stop_req) s <= S_IDLE;
 			else if (flush_req) begin       // a flush: the counts written, then on
@@ -434,7 +451,7 @@ always_ff @(posedge clk) begin
 			else if (do_put) begin
 				addr      <= addr + 32'd1;
 				res_count <= res_count - 16'd1;
-				if (addr[4:0] == 5'd31) lb_ok <= 1'b0;
+				if (lb_last) lb_ok <= 1'b0;
 			end
 		end
 		S_OUTR: begin
@@ -443,12 +460,13 @@ always_ff @(posedge clk) begin
 				else if (go) begin
 					dm_req  <= 1'b1;
 					dm_we   <= 1'b0;
-					dm_line <= 1'b1;
-					dm_addr <= {addr[31:5], 3'd0};
+					dm_line <= LINE;
+					dm_addr <= addr[31:2] & lmask;
+					dm_be   <= 4'b1111;
 				end
 			end
 			else if (dm_ack) begin
-				lb    <= dm_rdata;
+				lb    <= dm_rdata[8*LB-1:0];
 				lb_ok <= 1'b1;
 				s     <= S_OUT;
 			end
@@ -471,7 +489,7 @@ always_ff @(posedge clk) begin
 					dm_line  <= 1'b0;
 					dm_addr  <= addr[31:2];
 					dm_be    <= q_be;
-					dm_wdata <= {224'h0, q_wd};
+					dw       <= q_wd;
 				end
 			end
 			else if (dm_ack) s <= S_WAIT;
@@ -528,7 +546,7 @@ always_ff @(posedge clk) begin
 					dm_line  <= 1'b0;
 					dm_addr  <= cmd_ptr[31:2] + 30'd2;
 					dm_be    <= 4'b1111;
-					dm_wdata <= {224'h0, cmd_arg[7:0], cmd_arg[15:8], cmd_arg[23:16], cmd_arg[31:24]};
+					dw       <= {cmd_arg[7:0], cmd_arg[15:8], cmd_arg[23:16], cmd_arg[31:24]};
 				end
 				else begin
 					dm_req   <= 1'b1;
@@ -537,7 +555,7 @@ always_ff @(posedge clk) begin
 					dm_addr  <= cmd_ptr[31:2] + 30'd3;
 					dm_be    <= (cmd == 4'd6) ? 4'b0011 : 4'b1111;
 					// (a flush's write-back has FLUSH in xferStatus, as dbdma.cpp's)
-					dm_wdata <= {224'h0, res_count[7:0], res_count[15:8], xstat[7:0],
+					dw       <= {res_count[7:0], res_count[15:8], xstat[7:0],
 					             xstat[15:8] | (flushing ? 8'h20 : 8'h00)};
 				end
 			end
@@ -575,7 +593,7 @@ always_ff @(posedge clk) begin
 		flush_req <= 1'b0;
 		flushing  <= 1'b0;
 		q_wb      <= 1'b0;
-		lv        <= 32'h0;
+		lv        <= '0;
 	end
 
 	if (reset) begin
@@ -594,7 +612,7 @@ always_ff @(posedge clk) begin
 		flushing  <= 1'b0;
 		pausing   <= 1'b0;
 		in_end    <= 1'b0;
-		lv        <= 32'h0;
+		lv        <= '0;
 		lb_ok     <= 1'b0;
 		cmd       <= 4'd7;
 		cmd_bits  <= 8'h0;

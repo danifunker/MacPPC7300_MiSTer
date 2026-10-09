@@ -165,6 +165,7 @@ lint:
 	$(VERILATOR) --lint-only $(WARN) --top-module DSPPC604 $(RTL_SRCS)
 	$(VERILATOR) --lint-only $(WARN) --top-module DSPPC604_memcdc $(RTL)/DSPPC604_memcdc.sv
 	$(VERILATOR) --lint-only $(WARN) --top-module MacPPC7300_system $(RTL_SRCS) $(MACH_SRCS)
+	$(VERILATOR) --lint-only $(WARN) --top-module MacPPC7300_system -GTRACE=0 -GSOUND_IN_DMA=0 $(RTL_SRCS) $(MACH_SRCS)
 	$(VERILATOR) --lint-only $(WARN) --top-module sdram_tb_top $(RTL)/DSPPC604_memcdc.sv $(MACH)/MacPPC7300_sdram.sv $(HERE)sdram_tb_top.sv
 	$(VERILATOR) --lint-only $(WARN) --top-module MacPPC7300_debug $(MACH)/MacPPC7300_debug.sv
 	$(VERILATOR) --lint-only $(WARN) --top-module MacPPC7300_nvsave $(MACH)/MacPPC7300_nvsave.sv

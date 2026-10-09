@@ -91,7 +91,8 @@ module MacPPC7300_machine
 	parameter int unsigned RTXC_HZ  = 3_686_400,     // the ESCC's RTxC clock
 	parameter int unsigned SCSI_HZ  = 25_000_000,    // MESH's time base and Curio's clock (below CPU_HZ)
 	parameter int unsigned SDRAM_MB = 128,          // the module; the ROM sits in its top 4 MB
-	parameter int unsigned CUDA_FAST_BOOT = 0       // 1: the test bench's (MacPPC7300_cuda FAST_BOOT)
+	parameter int unsigned CUDA_FAST_BOOT = 0,      // 1: the test bench's (MacPPC7300_cuda FAST_BOOT)
+	parameter int unsigned SOUND_IN_DMA = 1         // 0: DMA channel 9 (sound in) its registers alone
 )
 (
 	input  logic         clk,
@@ -645,7 +646,7 @@ logic [9:0]   fd_ra;
 logic [7:0]   fd_q;
 logic [7:0]   itr_st;
 
-MacPPC7300_gc #(.SCSI_HZ(SCSI_HZ)) gc (
+MacPPC7300_gc #(.SCSI_HZ(SCSI_HZ), .SOUND_IN_DMA(SOUND_IN_DMA)) gc (
 	.clk, .reset(board_reset), .via_tick, .rtxc_tick, .scsi_tick, .us_tick, .snd_tick,
 	.sel(p_sel & p_dev[3]), .we(p_we), .addr(p_a[16:2]), .be(p_be), .wdata(p_wd),
 	.rdata(gc_rdata), .irq(gc_irq),
