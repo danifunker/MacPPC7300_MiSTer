@@ -145,6 +145,17 @@ a scoreboard would join the one hazard mechanism, rule 2) is left to the
 measurements: Speedometer's Matrix Mult. and Fast Fourier are dependent
 chains, where latency, not throughput, is the cost.
 
+The timing cuts of 2026-10-10 (the machine plan's decisions table, "speed"):
+the results that need no arithmetic are found in the cycle after the
+request, from the operand registers, while the first stage has begun (a
+special result abandons it for S_DONE: a cycle more for those operands only;
+the golden programs 3.45 to 3.49 cycles an instruction), and the operands'
+classes (`fp_cls_t`, `cls_a/b/c`) come from the requester beside the
+operands, found with `fp_classify` or, for an lfs result still a single,
+`fp_classify_single`, so no conversion sits in front of them. The unit alone:
+3,294 ALMs, 75.5 MHz worst case; the whole CPU's worst path moved off the FPU
+(builds 44 and 45 in the Speed table: -2.40 to -1.35 ns at 70 MHz).
+
 ### M3: pipeline, user-mode integer (done)
 
 What was built (`rtl/DSPPC604/DSPPC604.sv` and the modules it instantiates):

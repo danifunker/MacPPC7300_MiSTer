@@ -525,6 +525,16 @@ wire [63:0] fop_a = ffa_mem ? mem_result : ffa_wb ? wb_value : ex_fa;
 wire [63:0] fop_b = ffb_mem ? mem_result : ffb_wb ? wb_value : ex_fb;
 wire [63:0] fop_c = ffc_mem ? mem_result : ffc_wb ? wb_value : ex_fc;
 
+// their classes, beside the operands: for a single still as lfs loaded it,
+// from the single's own fields, so the conversion is not in front of them
+// (MEM's result forwarded to an FP operation is never a load's: ex_stall)
+fp_cls_t wb_cls, mem_cls, fcls_a, fcls_b, fcls_c;
+assign wb_cls  = wb_fsgl ? fp_classify_single(wb_result[31:0]) : fp_classify(wb_result);
+assign mem_cls = fp_classify(mem_result);
+assign fcls_a  = ffa_mem ? mem_cls : ffa_wb ? wb_cls : fp_classify(ex_fa);
+assign fcls_b  = ffb_mem ? mem_cls : ffb_wb ? wb_cls : fp_classify(ex_fb);
+assign fcls_c  = ffc_mem ? mem_cls : ffc_wb ? wb_cls : fp_classify(ex_fc);
+
 // a load's data is not there until it reaches WB
 wire ex_stall = mem_load & (fa_mem | fb_mem | fc_mem | ffa_mem | ffb_mem | ffc_mem);
 
@@ -594,6 +604,9 @@ DSPPC604_fpu #(.OPERAND_REG (FPU_OPERAND_REG)) fpu
 	.a          (fop_a),
 	.b          (fop_b),
 	.c          (fop_c),
+	.cls_a      (fcls_a),
+	.cls_b      (fcls_b),
+	.cls_c      (fcls_c),
 	.fpscr_in   (fpscr),
 	.resp_valid (fpu_resp),
 	.resp_ready (mem_ready),

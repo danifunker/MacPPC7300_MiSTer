@@ -245,6 +245,54 @@ package DSPPC604_pkg;
 	// are exact rearrangements of bits, not rounding operations, and are
 	// written as the architecture defines them.
 
+	// The class of a floating-point operand, as the FPU wants it. The core
+	// finds it beside the operand itself (for an lfs result still in its
+	// single format, from the single's own fields), so that the FPU's
+	// request cycle does not wait for the single-to-double conversion.
+	typedef struct packed {
+		logic s;
+		logic ez;      // exponent field zero (as a double)
+		logic zero;
+		logic den;
+		logic inf;
+		logic nan;
+		logic snan;
+	} fp_cls_t;
+
+	function automatic fp_cls_t fp_classify(input logic [63:0] x);
+		logic ez, ef, fz;
+		begin
+			ez = (x[62:52] == 11'd0);
+			ef = (x[62:52] == 11'h7FF);
+			fz = (x[51:0] == 52'd0);
+			fp_classify.s    = x[63];
+			fp_classify.ez   = ez;
+			fp_classify.zero = ez & fz;
+			fp_classify.den  = ez & ~fz;
+			fp_classify.inf  = ef & fz;
+			fp_classify.nan  = ef & ~fz;
+			fp_classify.snan = ef & ~fz & ~x[51];
+		end
+	endfunction
+
+	// of a single as fp_single_to_double would deliver it: a single denormal
+	// is a normal double
+	function automatic fp_cls_t fp_classify_single(input logic [31:0] w);
+		logic ez, ef, fz;
+		begin
+			ez = (w[30:23] == 8'd0);
+			ef = (w[30:23] == 8'hFF);
+			fz = (w[22:0] == 23'd0);
+			fp_classify_single.s    = w[31];
+			fp_classify_single.ez   = ez & fz;
+			fp_classify_single.zero = ez & fz;
+			fp_classify_single.den  = 1'b0;
+			fp_classify_single.inf  = ef & fz;
+			fp_classify_single.nan  = ef & ~fz;
+			fp_classify_single.snan = ef & ~fz & ~w[22];
+		end
+	endfunction
+
 	// lfs: single to double
 	function automatic logic [63:0] fp_single_to_double(input logic [31:0] w);
 		logic [4:0]  lz;

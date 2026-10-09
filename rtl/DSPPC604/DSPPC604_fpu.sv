@@ -8,9 +8,11 @@
 //  module follows; both are checked against results from a real 604.
 //
 //  Handshake (same as the integer unit)
-//    The requester holds req_valid, ctl, the operands and fpscr_in steady
-//    until the response is taken. resp_valid stays high, with the results,
-//    until a cycle in which resp_ready is high too.
+//    The requester holds req_valid, ctl, the operands, their classes
+//    (cls_a/b/c, fp_classify of each operand, found by the requester beside
+//    the operand so that no conversion of it sits in front of the class)
+//    and fpscr_in steady until the response is taken. resp_valid stays high,
+//    with the results, until a cycle in which resp_ready is high too.
 //
 //    fmr fneg fabs fnabs fsel fcmpu fcmpo   same cycle (combinational)
 //    everything else                        several cycles, see the stages
@@ -37,6 +39,13 @@
 //  forwarding network ends at a register; every instruction then takes one
 //  cycle more (the moves and compares one instead of none).
 //
+//  The results that need no arithmetic (NaN operands, infinities, zeros, the
+//  invalid operations) are found in the cycle after the request, from the
+//  operand registers, while the first stage has already begun: only an
+//  operation with such operands takes a cycle more. Before 2026-10-10 they
+//  were found in the request cycle, and that select, behind the requester's
+//  forwarding, was the slowest path of the whole CPU.
+//
 //============================================================================
 
 module DSPPC604_fpu
@@ -54,6 +63,9 @@ module DSPPC604_fpu
 	input  logic [63:0] a,           // frA
 	input  logic [63:0] b,           // frB
 	input  logic [63:0] c,           // frC
+	input  DSPPC604_pkg::fp_cls_t cls_a,   // the operands' classes (fp_classify of each)
+	input  DSPPC604_pkg::fp_cls_t cls_b,
+	input  DSPPC604_pkg::fp_cls_t cls_c,
 	input  logic [31:0] fpscr_in,
 
 	output logic        resp_valid,
@@ -129,6 +141,7 @@ endfunction
 // With OPERAND_REG everything below works from these registers, filled in
 // the request cycle; without it, from the ports.
 logic [63:0] a_q, b_q, c_q;
+fp_cls_t     ka_q, kb_q, kc_q;
 fpu_ctl_t    ctl_q;
 logic [31:0] fpscr_i_q;
 wire [63:0]  ia     = (OPERAND_REG != 0) ? a_q : a;
@@ -139,18 +152,19 @@ fpu_ctl_t    ictl;
 assign ictl = (OPERAND_REG != 0) ? ctl_q : ctl;
 
 // ---- operand classes -------------------------------------------------------
-wire        a_s = ia[63];
-wire        b_s = ib[63];
-wire        c_s = ic[63];
-wire        a_ez = (ia[62:52] == 11'd0), a_ef = (ia[62:52] == 11'h7FF), a_fz = (ia[51:0] == 52'd0);
-wire        b_ez = (ib[62:52] == 11'd0), b_ef = (ib[62:52] == 11'h7FF), b_fz = (ib[51:0] == 52'd0);
-wire        c_ez = (ic[62:52] == 11'd0), c_ef = (ic[62:52] == 11'h7FF), c_fz = (ic[51:0] == 52'd0);
-wire        a_zero = a_ez & a_fz, a_den = a_ez & ~a_fz, a_inf = a_ef & a_fz, a_nan = a_ef & ~a_fz;
-wire        b_zero = b_ez & b_fz, b_den = b_ez & ~b_fz, b_inf = b_ef & b_fz, b_nan = b_ef & ~b_fz;
-wire        c_zero = c_ez & c_fz, c_den = c_ez & ~c_fz, c_inf = c_ef & c_fz, c_nan = c_ef & ~c_fz;
-wire        a_snan = a_nan & ~ia[51];
-wire        b_snan = b_nan & ~ib[51];
-wire        c_snan = c_nan & ~ic[51];
+// of the operands as presented (the requester's fp_classify): the moves,
+// select and compare, and the datapath's set-up in the request cycle
+fp_cls_t ka, kb, kc;
+assign ka = (OPERAND_REG != 0) ? ka_q : cls_a;
+assign kb = (OPERAND_REG != 0) ? kb_q : cls_b;
+assign kc = (OPERAND_REG != 0) ? kc_q : cls_c;
+
+wire        a_s = ka.s, b_s = kb.s, c_s = kc.s;
+wire        a_ez = ka.ez, b_ez = kb.ez, c_ez = kc.ez;
+wire        a_zero = ka.zero, b_zero = kb.zero, c_zero = kc.zero;
+wire        a_den = ka.den, b_den = kb.den, c_den = kc.den;
+wire        a_nan = ka.nan, b_nan = kb.nan;
+wire        a_snan = ka.snan, b_snan = kb.snan;
 
 // magnitude m * 2**e for a finite operand; a denormal has exponent field 1
 wire [52:0] a_m = {~a_ez, ia[51:0]};
@@ -161,38 +175,51 @@ wire signed [13:0] b_e = $signed({3'b000, b_ez ? 11'd1 : ib[62:52]}) - 14'sd1075
 wire signed [13:0] c_e = $signed({3'b000, c_ez ? 11'd1 : ic[62:52]}) - 14'sd1075;
 
 // ---- what the instruction is ----------------------------------------------
-logic op_simple;    // answered in the request cycle
-logic op_fma;       // fmadd family
-logic op_div;       // fdiv, fres
-logic op_rsq;
-logic op_int;       // fctiw, fctiwz
-logic op_sub;       // the frB operand is subtracted
-logic op_neg;       // the result is negated
-logic use_a, use_b, use_c;
+typedef struct packed {
+	logic simple;   // answered in the request cycle
+	logic div;      // fdiv, fres
+	logic rsq;
+	logic isint;    // fctiw, fctiwz
+	logic sub;      // the frB operand is subtracted
+	logic neg;      // the result is negated
+	logic use_a, use_b, use_c;
+	logic sgl;      // rounded to single precision: opcode 59, and frsp
+} opdec_t;
 
-always_comb begin
-	op_simple = 0; op_fma = 0; op_div = 0; op_rsq = 0; op_int = 0;
-	op_sub = 0; op_neg = 0; use_a = 0; use_b = 0; use_c = 0;
-	case (ictl.op)
-		FPU_ADD:    begin use_a = 1; use_b = 1; end
-		FPU_SUB:    begin use_a = 1; use_b = 1; op_sub = 1; end
-		FPU_MUL:    begin use_a = 1; use_c = 1; end
-		FPU_DIV:    begin use_a = 1; use_b = 1; op_div = 1; end
-		FPU_MADD:   begin use_a = 1; use_b = 1; use_c = 1; op_fma = 1; end
-		FPU_MSUB:   begin use_a = 1; use_b = 1; use_c = 1; op_fma = 1; op_sub = 1; end
-		FPU_NMADD:  begin use_a = 1; use_b = 1; use_c = 1; op_fma = 1; op_neg = 1; end
-		FPU_NMSUB:  begin use_a = 1; use_b = 1; use_c = 1; op_fma = 1; op_sub = 1; op_neg = 1; end
-		FPU_RSP:    begin use_b = 1; end
-		FPU_CTIW,
-		FPU_CTIWZ:  begin use_b = 1; op_int = 1; end
-		FPU_RES:    begin use_b = 1; op_div = 1; end
-		FPU_RSQRTE: begin use_b = 1; op_rsq = 1; end
-		default:    op_simple = 1;   // moves, fsel, compares
-	endcase
-end
+function automatic opdec_t decode_op(input fpu_ctl_t fc);
+	begin
+		decode_op = '0;
+		case (fc.op)
+			FPU_ADD:    begin decode_op.use_a = 1; decode_op.use_b = 1; end
+			FPU_SUB:    begin decode_op.use_a = 1; decode_op.use_b = 1; decode_op.sub = 1; end
+			FPU_MUL:    begin decode_op.use_a = 1; decode_op.use_c = 1; end
+			FPU_DIV:    begin decode_op.use_a = 1; decode_op.use_b = 1; decode_op.div = 1; end
+			FPU_MADD:   begin decode_op.use_a = 1; decode_op.use_b = 1; decode_op.use_c = 1; end
+			FPU_MSUB:   begin decode_op.use_a = 1; decode_op.use_b = 1; decode_op.use_c = 1; decode_op.sub = 1; end
+			FPU_NMADD:  begin decode_op.use_a = 1; decode_op.use_b = 1; decode_op.use_c = 1; decode_op.neg = 1; end
+			FPU_NMSUB:  begin decode_op.use_a = 1; decode_op.use_b = 1; decode_op.use_c = 1; decode_op.sub = 1; decode_op.neg = 1; end
+			FPU_RSP:    begin decode_op.use_b = 1; end
+			FPU_CTIW,
+			FPU_CTIWZ:  begin decode_op.use_b = 1; decode_op.isint = 1; end
+			FPU_RES:    begin decode_op.use_b = 1; decode_op.div = 1; end
+			FPU_RSQRTE: begin decode_op.use_b = 1; decode_op.rsq = 1; end
+			default:    decode_op.simple = 1;   // moves, fsel, compares
+		endcase
+		decode_op.sgl = fc.single | (fc.op == FPU_RSP);
+	end
+endfunction
 
-// rounded to single precision: opcode 59, and frsp
-wire op_sgl = ictl.single | (ictl.op == FPU_RSP);
+opdec_t od;
+assign od = decode_op(ictl);
+
+wire op_simple = od.simple;
+wire op_div    = od.div;
+wire op_rsq    = od.rsq;
+wire op_int    = od.isint;
+wire op_sub    = od.sub;
+wire op_neg    = od.neg;
+wire use_a     = od.use_a, use_b = od.use_b, use_c = od.use_c;
+wire op_sgl    = od.sgl;
 
 // ---- moves, select and compare: combinational ------------------------------
 logic [63:0] simple_result;
@@ -236,23 +263,31 @@ always_comb begin : simple_ops
 end
 
 // ---- results that need no arithmetic ---------------------------------------
-// NaN operands, infinities, zeros and the invalid operations.
+// NaN operands, infinities, zeros and the invalid operations: found in the
+// cycle after the request (sp_check), from the operand registers.
 logic        sp_valid;
 logic [63:0] sp_result;
 logic [31:0] sp_set;        // exception bits
 logic        sp_fprf_we;
 
-wire        sb_eff  = b_s ^ op_sub;           // sign frB contributes with
-wire        s_prod  = a_s ^ c_s;
-wire        rn_down = (ifpscr[1:0] == 2'b11);
-wire        imz     = (a_inf & c_zero) | (a_zero & c_inf);
-wire        nan_any  = (use_a & a_nan)  | (use_b & b_nan)  | (use_c & c_nan);
-wire        snan_any = (use_a & a_snan) | (use_b & b_snan) | (use_c & c_snan);
+fp_cls_t qa, qb, qc;
+opdec_t  qd;
+assign qa = ka_q;
+assign qb = kb_q;
+assign qc = kc_q;
+assign qd = decode_op(ctl_q);
+
+wire        q_sb_eff  = qb.s ^ qd.sub;         // sign frB contributes with
+wire        q_s_prod  = qa.s ^ qc.s;
+wire        q_rn_down = (fpscr_i_q[1:0] == 2'b11);
+wire        q_imz     = (qa.inf & qc.zero) | (qa.zero & qc.inf);
+wire        q_nan_any  = (qd.use_a & qa.nan)  | (qd.use_b & qb.nan)  | (qd.use_c & qc.nan);
+wire        q_snan_any = (qd.use_a & qa.snan) | (qd.use_b & qb.snan) | (qd.use_c & qc.snan);
 
 // the NaN operand that propagates: frA first, then frB, then frC; made
 // quiet, and for single precision without the bits a single cannot hold
-wire [63:0] nan_pick = (use_a & a_nan) ? ia : (use_b & b_nan) ? ib : ic;
-wire [63:0] nan_res  = {nan_pick[63:52], 1'b1, nan_pick[50:29], op_sgl ? 29'd0 : nan_pick[28:0]};
+wire [63:0] nan_pick = (qd.use_a & qa.nan) ? a_q : (qd.use_b & qb.nan) ? b_q : c_q;
+wire [63:0] nan_res  = {nan_pick[63:52], 1'b1, nan_pick[50:29], qd.sgl ? 29'd0 : nan_pick[28:0]};
 
 always_comb begin : special_results
 	logic is_nan;   // the special result is a NaN (never negated)
@@ -263,123 +298,123 @@ always_comb begin : special_results
 	sp_fprf_we = 1'b1;
 	is_nan     = 1'b0;
 
-	case (ictl.op)
+	case (ctl_q.op)
 	FPU_ADD, FPU_SUB: begin
-		if (nan_any) begin
+		if (q_nan_any) begin
 			sp_valid = 1; sp_result = nan_res; is_nan = 1;
 		end
-		else if (a_inf & b_inf) begin
+		else if (qa.inf & qb.inf) begin
 			sp_valid = 1;
-			if (a_s != sb_eff) begin sp_set[B_VXISI] = 1; sp_result = QNAN; is_nan = 1; end
-			else sp_result = {a_s, 11'h7FF, 52'd0};
+			if (qa.s != q_sb_eff) begin sp_set[B_VXISI] = 1; sp_result = QNAN; is_nan = 1; end
+			else sp_result = {qa.s, 11'h7FF, 52'd0};
 		end
-		else if (a_inf) begin sp_valid = 1; sp_result = {a_s, 11'h7FF, 52'd0}; end
-		else if (b_inf) begin sp_valid = 1; sp_result = {sb_eff, 11'h7FF, 52'd0}; end
-		else if (a_zero & b_zero) begin
-			sp_valid = 1; sp_result = {(a_s == sb_eff) ? a_s : rn_down, 63'd0};
+		else if (qa.inf) begin sp_valid = 1; sp_result = {qa.s, 11'h7FF, 52'd0}; end
+		else if (qb.inf) begin sp_valid = 1; sp_result = {q_sb_eff, 11'h7FF, 52'd0}; end
+		else if (qa.zero & qb.zero) begin
+			sp_valid = 1; sp_result = {(qa.s == q_sb_eff) ? qa.s : q_rn_down, 63'd0};
 		end
 	end
 
 	FPU_MUL: begin
-		if (nan_any) begin
+		if (q_nan_any) begin
 			sp_valid = 1; sp_result = nan_res; is_nan = 1;
 		end
-		else if (imz) begin
+		else if (q_imz) begin
 			sp_valid = 1; sp_set[B_VXIMZ] = 1; sp_result = QNAN; is_nan = 1;
 		end
-		else if (a_inf | c_inf) begin sp_valid = 1; sp_result = {s_prod, 11'h7FF, 52'd0}; end
-		else if (a_zero | c_zero) begin sp_valid = 1; sp_result = {s_prod, 63'd0}; end
+		else if (qa.inf | qc.inf) begin sp_valid = 1; sp_result = {q_s_prod, 11'h7FF, 52'd0}; end
+		else if (qa.zero | qc.zero) begin sp_valid = 1; sp_result = {q_s_prod, 63'd0}; end
 	end
 
 	FPU_MADD, FPU_MSUB, FPU_NMADD, FPU_NMSUB: begin
 		// infinity times zero is flagged even beside a NaN operand
-		if (imz) sp_set[B_VXIMZ] = 1;
-		if (nan_any) begin
+		if (q_imz) sp_set[B_VXIMZ] = 1;
+		if (q_nan_any) begin
 			sp_valid = 1; sp_result = nan_res; is_nan = 1;
 		end
-		else if (imz) begin
+		else if (q_imz) begin
 			sp_valid = 1; sp_result = QNAN; is_nan = 1;
 		end
-		else if (a_inf | c_inf) begin
+		else if (qa.inf | qc.inf) begin
 			sp_valid = 1;
-			if (b_inf & (sb_eff != s_prod)) begin sp_set[B_VXISI] = 1; sp_result = QNAN; is_nan = 1; end
-			else sp_result = {s_prod, 11'h7FF, 52'd0};
+			if (qb.inf & (q_sb_eff != q_s_prod)) begin sp_set[B_VXISI] = 1; sp_result = QNAN; is_nan = 1; end
+			else sp_result = {q_s_prod, 11'h7FF, 52'd0};
 		end
-		else if (b_inf) begin sp_valid = 1; sp_result = {sb_eff, 11'h7FF, 52'd0}; end
-		else if ((a_zero | c_zero) & b_zero) begin
-			sp_valid = 1; sp_result = {(s_prod == sb_eff) ? s_prod : rn_down, 63'd0};
+		else if (qb.inf) begin sp_valid = 1; sp_result = {q_sb_eff, 11'h7FF, 52'd0}; end
+		else if ((qa.zero | qc.zero) & qb.zero) begin
+			sp_valid = 1; sp_result = {(q_s_prod == q_sb_eff) ? q_s_prod : q_rn_down, 63'd0};
 		end
 	end
 
 	FPU_DIV: begin
-		if (nan_any) begin
+		if (q_nan_any) begin
 			sp_valid = 1; sp_result = nan_res; is_nan = 1;
 		end
-		else if (a_inf & b_inf) begin
+		else if (qa.inf & qb.inf) begin
 			sp_valid = 1; sp_set[B_VXIDI] = 1; sp_result = QNAN; is_nan = 1;
 		end
-		else if (a_zero & b_zero) begin
+		else if (qa.zero & qb.zero) begin
 			sp_valid = 1; sp_set[B_VXZDZ] = 1; sp_result = QNAN; is_nan = 1;
 		end
-		else if (a_inf) begin sp_valid = 1; sp_result = {a_s ^ b_s, 11'h7FF, 52'd0}; end
-		else if (b_inf) begin sp_valid = 1; sp_result = {a_s ^ b_s, 63'd0}; end
-		else if (b_zero) begin
-			sp_valid = 1; sp_set[B_ZX] = 1; sp_result = {a_s ^ b_s, 11'h7FF, 52'd0};
+		else if (qa.inf) begin sp_valid = 1; sp_result = {qa.s ^ qb.s, 11'h7FF, 52'd0}; end
+		else if (qb.inf) begin sp_valid = 1; sp_result = {qa.s ^ qb.s, 63'd0}; end
+		else if (qb.zero) begin
+			sp_valid = 1; sp_set[B_ZX] = 1; sp_result = {qa.s ^ qb.s, 11'h7FF, 52'd0};
 		end
-		else if (a_zero) begin sp_valid = 1; sp_result = {a_s ^ b_s, 63'd0}; end
+		else if (qa.zero) begin sp_valid = 1; sp_result = {qa.s ^ qb.s, 63'd0}; end
 	end
 
 	FPU_RES: begin
-		if (nan_any) begin
+		if (q_nan_any) begin
 			sp_valid = 1; sp_result = nan_res; is_nan = 1;
 		end
-		else if (b_inf) begin sp_valid = 1; sp_result = {b_s, 63'd0}; end
-		else if (b_zero) begin
-			sp_valid = 1; sp_set[B_ZX] = 1; sp_result = {b_s, 11'h7FF, 52'd0};
+		else if (qb.inf) begin sp_valid = 1; sp_result = {qb.s, 63'd0}; end
+		else if (qb.zero) begin
+			sp_valid = 1; sp_set[B_ZX] = 1; sp_result = {qb.s, 11'h7FF, 52'd0};
 		end
 	end
 
 	FPU_RSP: begin
-		if (nan_any) begin
+		if (q_nan_any) begin
 			sp_valid = 1; sp_result = nan_res; is_nan = 1;
 		end
-		else if (b_inf | b_zero) begin sp_valid = 1; sp_result = ib; end
+		else if (qb.inf | qb.zero) begin sp_valid = 1; sp_result = b_q; end
 	end
 
 	FPU_CTIW, FPU_CTIWZ: begin
 		// The upper word of the result is undefined; the 604 writes FFF80000,
 		// with the lowest bit set when a negative operand converts to zero.
 		sp_fprf_we = 1'b0;
-		if (nan_any) begin
+		if (q_nan_any) begin
 			sp_valid = 1; sp_set[B_VXCVI] = 1; sp_result = 64'hFFF8000080000000;
 		end
-		else if (b_inf) begin
+		else if (qb.inf) begin
 			sp_valid = 1; sp_set[B_VXCVI] = 1;
-			sp_result = b_s ? 64'hFFF8000080000000 : 64'hFFF800007FFFFFFF;
+			sp_result = qb.s ? 64'hFFF8000080000000 : 64'hFFF800007FFFFFFF;
 		end
-		else if (b_zero) begin
-			sp_valid = 1; sp_result = {31'h7FFC0000, b_s, 32'd0};
+		else if (qb.zero) begin
+			sp_valid = 1; sp_result = {31'h7FFC0000, qb.s, 32'd0};
 		end
 	end
 
 	FPU_RSQRTE: begin
-		if (nan_any) begin
+		if (q_nan_any) begin
 			sp_valid = 1; sp_result = nan_res; is_nan = 1;
 		end
-		else if (b_zero) begin
-			sp_valid = 1; sp_set[B_ZX] = 1; sp_result = {b_s, 11'h7FF, 52'd0};
+		else if (qb.zero) begin
+			sp_valid = 1; sp_set[B_ZX] = 1; sp_result = {qb.s, 11'h7FF, 52'd0};
 		end
-		else if (b_s) begin
+		else if (qb.s) begin
 			sp_valid = 1; sp_set[B_VXSQRT] = 1; sp_result = QNAN; is_nan = 1;
 		end
-		else if (b_inf) begin sp_valid = 1; sp_result = 64'd0; end
+		else if (qb.inf) begin sp_valid = 1; sp_result = 64'd0; end
 	end
 
 	default: ;
 	endcase
 
-	if (snan_any) sp_set[B_VXSNAN] = 1'b1;
-	if (op_neg & sp_valid & ~is_nan) sp_result[63] = ~sp_result[63];
+	if (q_snan_any) sp_set[B_VXSNAN] = 1'b1;
+	if (qd.neg & sp_valid & ~is_nan) sp_result[63] = ~sp_result[63];
 end
 
 // ---- state -----------------------------------------------------------------
@@ -747,6 +782,10 @@ wire take     = req_valid & (state == S_IDLE);                            // a r
 wire go       = (OPERAND_REG != 0) ? (state == S_OPND) : take;            // ... and its operands are in hand
 wire start    = go & ~op_simple;
 wire need_pre = (use_a & a_den) | (use_b & b_den) | (use_c & c_den);
+wire sb_eff   = b_s ^ op_sub;                                             // sign frB contributes with
+wire s_prod   = a_s ^ c_s;
+
+logic sp_check;   // the cycle after start: a special result overrides the stage begun
 
 always_ff @(posedge clk) begin
 	case (state)
@@ -755,6 +794,9 @@ always_ff @(posedge clk) begin
 			a_q       <= a;
 			b_q       <= b;
 			c_q       <= c;
+			ka_q      <= cls_a;
+			kb_q      <= cls_b;
+			kc_q      <= cls_c;
 			ctl_q     <= ctl;
 			fpscr_i_q <= fpscr_in;
 			if (OPERAND_REG != 0) state <= S_OPND;
@@ -974,23 +1016,29 @@ always_ff @(posedge clk) begin
 		default: ;
 		endcase
 
-		if (sp_valid) begin
-			fin_result  <= sp_result;
-			fin_set     <= sp_set;
-			fin_fr      <= 1'b0;
-			fin_fi      <= 1'b0;
-			fin_fprf_we <= sp_fprf_we;
-			fin_den     <= 1'b0;
-			state       <= S_DONE;
-		end
-		else if (need_pre) state <= S_PREA;
-		else if (op_div)   state <= S_DIV0;
-		else if (op_rsq)   state <= S_RSQ;
-		else               state <= S_MUL1;
+		if (need_pre)    state <= S_PREA;
+		else if (op_div) state <= S_DIV0;
+		else if (op_rsq) state <= S_RSQ;
+		else             state <= S_MUL1;
+	end
+
+	// the stage begun above is abandoned for a result that needs no arithmetic
+	sp_check <= start;
+	if (sp_check & sp_valid) begin
+		fin_result  <= sp_result;
+		fin_set     <= sp_set;
+		fin_fr      <= 1'b0;
+		fin_fi      <= 1'b0;
+		fin_fprf_we <= sp_fprf_we;
+		fin_den     <= 1'b0;
+		state       <= S_DONE;
 	end
 
 	if (state == S_IDLE) pre_phase <= 1'b0;
-	if (reset | flush) state <= S_IDLE;
+	if (reset | flush) begin
+		state    <= S_IDLE;
+		sp_check <= 1'b0;
+	end
 end
 
 assign req_ready = (state == S_IDLE);
