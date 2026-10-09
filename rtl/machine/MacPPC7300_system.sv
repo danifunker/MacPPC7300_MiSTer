@@ -25,7 +25,8 @@ module MacPPC7300_system
 	parameter int unsigned L2_KB    = 128,          // the L2 cache (MacPPC7300_l2)
 	parameter int unsigned CUDA_FAST_BOOT = 0,      // 1: the test bench's (MacPPC7300_cuda FAST_BOOT)
 	parameter int unsigned TRACE = 1,               // 0: no DDR3 trace (MacPPC7300_trace)
-	parameter int unsigned SOUND_IN_DMA = 1         // 0: DMA channel 9 (sound in) its registers alone
+	parameter int unsigned SOUND_IN_DMA = 1,        // 0: DMA channel 9 (sound in) its registers alone
+	parameter int unsigned PERF = 1                 // 0: no performance counters in the CPU (with TRACE, they go into the trace)
 )
 (
 	input  logic         clk,             // the CPU's clock
@@ -190,7 +191,10 @@ module MacPPC7300_system
 	output logic [2:0]   trace_dkind,
 	output logic [31:2]  trace_daddr,
 	output logic [3:0]   trace_dbe,
-	output logic [31:0]  trace_dwdata
+	output logic [31:0]  trace_dwdata,
+
+	// the CPU's performance counters (PERF; see DSPPC604)
+	output logic [27:0][31:0] perf_cnt
 );
 
 logic         c_req, c_we, c_line, c_ack;
@@ -209,7 +213,7 @@ wire          cpu_reset = reset | cuda_reset;
 
 assign cpu_in_reset = cpu_reset;
 
-DSPPC604 cpu (
+DSPPC604 #(.PERF(PERF)) cpu (
 	.clk, .reset(cpu_reset), .reset_pc,
 	.ext_irq, .tb_tick,
 	.mem_req(c_req), .mem_we(c_we), .mem_line(c_line), .mem_addr(c_addr), .mem_be(c_be),
@@ -217,7 +221,8 @@ DSPPC604 cpu (
 	.snoop_req, .snoop_we, .snoop_addr, .snoop_ack,
 	.trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_reg_we, .trace_reg_idx, .trace_reg_val,
 	.trace_cr, .trace_xer, .trace_lr, .trace_ctr, .trace_fpscr, .trace_msr,
-	.trace_dreq, .trace_dwe, .trace_dkind, .trace_daddr, .trace_dbe, .trace_dwdata
+	.trace_dreq, .trace_dwe, .trace_dkind, .trace_daddr, .trace_dbe, .trace_dwdata,
+	.perf_cnt
 );
 
 // the VRAM's path and the video registers, between the machine and the picture side
@@ -309,10 +314,43 @@ MacPPC7300_ddrarb ddrarb_b (
 	.ddr_rd(na_rd), .ddr_din(na_din), .ddr_be(na_be), .ddr_we(na_we)
 );
 
+// kind 12: the CPU's performance counters, every 2^23 cycles, in five parts
+// (byte 1: the part; bytes 4-7: the cycles; then counters 6p+1 to 6p+6).
+// A part waits while a SCSI record goes out; the counters are read as each
+// part is sent, so the parts are a few cycles apart.
+logic         pf_ev = 1'b0;
+logic [255:0] pf_rec;
+logic [2:0]   pf_part = 3'd0;           // 0: none pending; 1-5: the next part
+logic [191:0] pf_payload;
+always_comb begin
+	case (pf_part)
+		3'd2:    pf_payload = {perf_cnt[12], perf_cnt[11], perf_cnt[10], perf_cnt[9],  perf_cnt[8],  perf_cnt[7]};
+		3'd3:    pf_payload = {perf_cnt[18], perf_cnt[17], perf_cnt[16], perf_cnt[15], perf_cnt[14], perf_cnt[13]};
+		3'd4:    pf_payload = {perf_cnt[24], perf_cnt[23], perf_cnt[22], perf_cnt[21], perf_cnt[20], perf_cnt[19]};
+		3'd5:    pf_payload = {64'd0,        perf_cnt[0],  perf_cnt[27], perf_cnt[26], perf_cnt[25]};
+		default: pf_payload = {perf_cnt[6],  perf_cnt[5],  perf_cnt[4],  perf_cnt[3],  perf_cnt[2],  perf_cnt[1]};
+	endcase
+end
+always_ff @(posedge clk) begin
+	if (pf_ev & ~scsi_tr_ev) pf_ev <= 1'b0;
+	if (PERF != 0 && TRACE != 0 && perf_cnt[0][22:0] == 23'd0) pf_part <= 3'd1;
+	else if (pf_part != 3'd0 && (~pf_ev | ~scsi_tr_ev)) begin
+		pf_ev   <= 1'b1;
+		pf_rec  <= {pf_payload, perf_cnt[0], 16'd0, 5'd0, pf_part - 3'd1, 8'd12};
+		pf_part <= (pf_part == 3'd5) ? 3'd0 : pf_part + 3'd1;
+	end
+	if (reset) begin
+		pf_ev   <= 1'b0;
+		pf_part <= 3'd0;
+	end
+end
+wire         tr_ev  = scsi_tr_ev | pf_ev;
+wire [255:0] tr_rec = scsi_tr_ev ? scsi_tr_rec : pf_rec;
+
 generate
 if (TRACE != 0) begin : g_trace
 	MacPPC7300_trace trace (
-		.clk, .ev(scsi_tr_ev), .rec(scsi_tr_rec),
+		.clk, .ev(tr_ev), .rec(tr_rec),
 		.clk_h(clk_b), .reset_h(reset_b),
 		.ddr_busy(tr_busy), .ddr_burstcnt(tr_burstcnt), .ddr_addr(tr_addr), .ddr_rd(tr_rd), .ddr_din(tr_din),
 		.ddr_be(tr_be), .ddr_we(tr_we)

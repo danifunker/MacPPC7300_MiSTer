@@ -610,6 +610,26 @@ void dev_write(void* ctx, uint32_t addr, unsigned size, uint32_t value) {
 
 } // namespace
 
+// The CPU's performance counters (DSPPC604's perf_cnt, PERF): the cycle
+// accounting. Every cycle either sees an operation leave EX or falls in one
+// of the twelve wait classes, so the classes are printed per 100 cycles.
+static void print_perf(const Top* dut) {
+	uint32_t c[28];
+	for (int i = 0; i < 28; i++) c[i] = dut->perf_cnt[i];
+	double cyc = c[0] ? (double)c[0] : 1.0;
+	auto pct = [&](int i) { return 100.0 * c[i] / cyc; };
+	std::printf("perf: %u cycles, %u operations, %u instructions: %.2f cycles per instruction\n",
+		c[0], c[1], c[2], c[2] ? (double)c[0] / c[2] : 0.0);
+	std::printf("  of 100 cycles: %.1f an operation leaves EX; EX waits for MEM: the access granted %.1f, "
+		"not granted %.1f, between two accesses %.1f, the data cache busy %.1f; a load's data %.1f, mul %.1f, "
+		"div %.1f, FPU %.1f, else %.1f; EX empty after a redirect %.1f, for the fetch %.1f, for ID %.1f\n",
+		pct(1), pct(3), pct(4), pct(5), pct(6), pct(7), pct(8), pct(9), pct(10), pct(11), pct(12), pct(13), pct(14));
+	std::printf("  branches %u (taken %u, mispredicted %u, of them taken but predicted not %u); exceptions %u; "
+		"refetches %u; loads %u, stores %u, doubles %u; memory transactions: data cache %u, instruction cache %u; "
+		"fetch wait cycles %u, fetch not granted %u\n",
+		c[15], c[16], c[17], c[18], c[19], c[20], c[21], c[22], c[23], c[24], c[25], c[26], c[27]);
+}
+
 int main(int argc, char** argv) {
 	std::setvbuf(stdout, nullptr, _IOLBF, 0);   // a line at a time, also into a pipe
 	Options opt;
@@ -1820,6 +1840,7 @@ int main(int argc, char** argv) {
 		(unsigned long long)retired, (unsigned long long)(cycles - release_cycle),
 		retired ? (double)(cycles - release_cycle) / retired : 0.0);
 	std::printf("last retired: pc %08X, msr %08X\n", (uint32_t)dut->trace_pc, (uint32_t)dut->trace_msr);
+	print_perf(dut.get());
 	if (opt.lockstep)
 		std::printf("device accesses: %llu reads and %llu writes compared; %llu line reads and %llu line writes "
 			"outside RAM and ROM, %llu reads answered from a cached device line\n",
@@ -1886,6 +1907,7 @@ int main(int argc, char** argv) {
 
 	std::printf("%llu instructions in %llu cycles (%.2f cycles per instruction)\n",
 		(unsigned long long)retired, (unsigned long long)cycles, retired ? (double)cycles / retired : 0.0);
+	print_perf(dut.get());
 	if (!checks.empty())
 		std::printf("recorded-state checks: %ld of %zu reached, %ld failed\n", checked, checks.size(), failed);
 	// the interrupt handlers of progs.py's irqtest count in memory

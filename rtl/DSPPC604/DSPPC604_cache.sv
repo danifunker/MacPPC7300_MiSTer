@@ -68,6 +68,7 @@ module DSPPC604_cache
 	output logic        gnt,
 	output logic        rvalid,
 	output logic [31:0] rdata,
+	output logic        slow,                // busy beyond a lookup: a miss, a write-back, a snoop, a sweep
 
 	// icbi passed on (data cache only; the other side acknowledges)
 	output logic        inv_req,
@@ -268,6 +269,7 @@ wire wr_sclash = wr_pend & (snoop_addr[11:5] == wr_idx_q);
 wire read_hit = (state == S_LOOK) & k_word & hit & ~unc & ~r_we & ~r_snoop;
 wire can_take = ((state == S_IDLE) | read_hit) & ~snoop_req & ~inval_all & ~inval_pend & ~wr_clash;
 assign gnt = can_take & req;
+assign slow = (state != S_IDLE) & (state != S_LOOK);
 
 always_comb begin
 	tag_we    = '0;

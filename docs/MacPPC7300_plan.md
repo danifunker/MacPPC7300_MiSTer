@@ -846,6 +846,59 @@ and the VIA's `t1_left` through `cpu|mem_wdata` (the write-back data off the
 cache RAMs). The CPU's own worst path (the I-cache's tag RAM into the MMU's
 segment-register read-ahead, `mmu|i_sr_q`) was -1.33 ns in build 26.
 
+### Where the cycles go (2026-10-10, the cycles-per-instruction work)
+
+The clock explains 0.58 of the gap to a real 7600/120 on Speedometer's CPU
+tests; the rest, about 2.3x, is cycles per instruction. The 604's numbers
+(its User's Manual, chapter 6, "Instruction Timing"), against this core's:
+
+| | 604 | DSPPC604 |
+|---|---|---|
+| Issue | four instructions a cycle to six units (two single-cycle integer, a multi-cycle integer, the FPU, the load/store unit, the branch unit), out of order, with two reservation stations a unit; four retired a cycle | one operation a cycle, in order |
+| Integer | every one-cycle instruction 1 cycle, forwarded from the result buses; multiply 4 (3 for 32 x 16), divide 20 | 1; multiply and divide behind the unit's handshake |
+| Load | 2 cycles latency, one a cycle | 2 cycles in MEM (the cache answers the cycle after the grant), so the pipeline waits a cycle on every load or store; a use the cycle after waits another (`ex_stall`) |
+| Floating point | `fadd`, `fmul`, `fmadd`, `fcmp` 3 cycles, pipelined one a cycle; `fdivs` 18, `fdiv` 31 | 7-8, 33, one at a time (`docs/DSPPC604_plan.md`, M2) |
+| Branch | the 64-entry BTAC predicts in the fetch cycle (a hit costs nothing), the 512-entry two-bit BHT corrects it at decode (1 cycle), the dispatcher at dispatch (2); a branch resolved in execute costs 3; two branches unresolved at a time | the 128-entry buffer predicts in the fetch cycle; everything else is resolved in EX: 3 cycles for a taken branch the buffer does not know, and for every misprediction |
+| Caches | 16 KB four-way each, a hit in one cycle, the load/store unit pipelined; a line read in 4 bus beats (3x the bus) | 16 KB four-way each, the same hit timing; the line from the L2 or the SDRAM across the clock crossing |
+
+Measured on the golden programs before this work: 1.85 cycles an
+instruction integer, 3.45 floating point; the 7300's ROM in lockstep 1.57.
+
+**The counters** (`DSPPC604_perf`, `PERF = 1`; `perf_cnt`, 28 free-running
+32-bit counters): the cycles, the operations and the instructions retired,
+and a class for every cycle in which no operation leaves EX: EX waiting for
+MEM (the cycle an access is granted, answered in the next: every load and
+store costs it; a cycle the cache does not grant; the memory unit's own
+cycle between the two accesses of a double or a misaligned operand; the
+data cache busy beyond a lookup: a miss, a write-back, a snoop), for a
+load's data (`ex_stall`), for the multiplier, the divider, the FPU, or
+anything else; EX empty in the three cycles after a redirect, empty for the
+fetch (an instruction cache miss, or the one cycle ID holds a word delivered
+late), empty with ID waiting for XER. Then the events: branches, taken,
+mispredicted (and of those, taken while predicted not taken), exceptions,
+refetches (`rfi`, `mtmsr`, the translation changes), loads, stores, doubles
+among them, the two caches' memory transactions, the cycles a fetch waits
+beyond a hit and the cycles the instruction cache does not grant one. The
+benches print the account at the end of every run (`core_main.cpp`,
+`print_perf`); on the board a `PERF = 1`, `TRACE = 1` build writes the
+counters into the DDR3 trace every 2^23 cycles (kind 12, five records) and
+`syn\perf.py` turns a capture, or the ring, into one line per 120 ms
+interval: the cycles per instruction and the classes of every 100 cycles,
+so that each of Speedometer's tests can be read off its own interval.
+
+What the suite's programs said first (2026-10-10, the first version of the
+counters, before the MEM class was split): the floating-point golden program
+(3.46 cycles an instruction, 128 k loads in 282 k instructions) spends 40.6
+of every 100 cycles with EX waiting for MEM, about 3 cycles a load, because
+an 8-byte `lfd` or `stfd` is two word accesses with a cycle between them on
+the 32-bit data path (the 604 moves a double in one); the FPU itself takes
+12.2. The integer golden program's 1.85 is its own shape (26 of 100 cycles
+the fetch: 527 KB of straight-line code, every line a compulsory miss; 18.5
+the divider). The random lockstep programs (2.6, 3.0 with translation on):
+44 an operation leaves EX, 14 (25 translated) MEM, 13 after a redirect
+(half their branches mispredict, as random branches do), 16 the fetch, 9
+the divider. None of them is Mac OS: the board's account decides.
+
 ## Decisions needed
 
 | When | Question |

@@ -58,6 +58,7 @@ module emu
 localparam int CPU_MHZ = 70;            // 60 and 65 also work with the PLL (VCO 1200, 1300 MHz); 70 since 2026-10-09
 localparam int TRACE = 0;               // 1: the DDR3 trace (syn\mister.py trace), for debugging builds
 localparam int SOUND_IN_DMA = 0;        // 1: DMA channel 9 (sound in, which records silence) a real channel
+localparam int PERF = 0;                // 1: the CPU's performance counters, into the trace (syn\perf.py; needs TRACE)
 
 ///////// Default values for ports not used in this core /////////
 
@@ -600,7 +601,7 @@ wire   [7:0] mac_r, mac_g, mac_b;
 assign DDRAM_CLK = clk_mem;
 
 MacPPC7300_system #(.CPU_HZ(CPU_MHZ * 1000000), .TB_HZ(12500000), .SDRAM_MB(128),
-                    .TRACE(TRACE), .SOUND_IN_DMA(SOUND_IN_DMA)) system
+                    .TRACE(TRACE), .SOUND_IN_DMA(SOUND_IN_DMA), .PERF(PERF)) system
 (
 	.clk(clk_cpu),
 	.reset(cpu_reset),
@@ -634,7 +635,8 @@ MacPPC7300_system #(.CPU_HZ(CPU_MHZ * 1000000), .TB_HZ(12500000), .SDRAM_MB(128)
 	.dbg_status, .dbg_passes, .dbg_errors, .dbg_first,
 	.trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_reg_we, .trace_reg_idx, .trace_reg_val,
 	.trace_cr, .trace_xer, .trace_lr, .trace_ctr, .trace_fpscr, .trace_msr,
-	.trace_dreq, .trace_dwe, .trace_dkind, .trace_daddr, .trace_dbe, .trace_dwdata
+	.trace_dreq, .trace_dwe, .trace_dkind, .trace_daddr, .trace_dbe, .trace_dwdata,
+	.perf_cnt()
 );
 
 ///////////////////////   SDRAM   ///////////////////////////////

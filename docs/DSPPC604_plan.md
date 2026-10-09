@@ -1477,6 +1477,15 @@ run on a real 604 can settle.
   representative: every data access takes two cycles until the caches exist.
 - Whether part of the CPU could run on the DE10-Nano's ARM was raised and set
   aside; the FPU's request/response boundary is where such a split would go.
+- The cycle accounting (2026-10-10): `DSPPC604_perf` behind the `PERF`
+  parameter, 24 counters that class every cycle in which no operation leaves
+  EX (MEM's second cycle, the data cache busy, a load's data, the multiplier,
+  the divider, the FPU, the three cycles after a redirect, the fetch, ID) and
+  count the events (branches, mispredictions, exceptions, refetches, loads,
+  stores, the caches' memory transactions). The benches print it; a
+  `PERF = 1`, `TRACE = 1` build writes it into the DDR3 trace for
+  `syn\perf.py`. The 604's own numbers for the comparison are in
+  `docs/MacPPC7300_plan.md`, "Where the cycles go".
 
 ## Decisions needed along the way
 

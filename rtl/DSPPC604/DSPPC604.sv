@@ -86,6 +86,7 @@ module DSPPC604
 	parameter int          BTB_BITS = 7,              // branch target buffer entries, as a power of two
 	parameter int          TLB_BITS = 6,              // entries in each TLB, as a power of two
 	parameter int          FPU_OPERAND_REG = 0,       // 1: the FPU takes its operands into a register first (a cycle each; on 2026-10-06 to 2026-10-09 for timing)
+	parameter int          PERF     = 1,              // 1: the performance counters (perf_cnt; 0 leaves them out)
 	parameter logic [31:0] PVR      = 32'h00040303    // processor version: 604 revision 3.3
 )
 (
@@ -137,7 +138,10 @@ module DSPPC604
 	output logic [2:0]  trace_dkind,
 	output logic [31:2] trace_daddr,
 	output logic [3:0]  trace_dbe,
-	output logic [31:0] trace_dwdata
+	output logic [31:0] trace_dwdata,
+
+	// the performance counters (PERF): the cycle accounting at the end
+	output logic [27:0][31:0] perf_cnt
 );
 
 import DSPPC604_pkg::*;
@@ -320,6 +324,7 @@ logic [3:0]   dm_be;
 logic [255:0] dm_wdata;
 logic         dc_inv_req, dc_inv_ack;      // icbi, from the data cache to the instruction cache
 logic [31:5]  dc_inv_addr;
+logic         dc_slow;                     // the data cache is busy beyond a lookup
 logic         ic_snoop_ack, dc_snoop_ack;
 logic         ic_inval, dc_inval;          // HID0[ICFI], [DCFI]
 
@@ -1276,6 +1281,7 @@ DSPPC604_cache #(.WRITABLE (0)) icache
 	.rvalid     (ib_rvalid),
 	.rdata      (ib_rdata),
 	/* verilator lint_off PINCONNECTEMPTY */
+	.slow       (),
 	.inv_req    (),
 	.inv_addr   (),
 	/* verilator lint_on PINCONNECTEMPTY */
@@ -1312,6 +1318,7 @@ DSPPC604_cache #(.WRITABLE (1), .LATE_ANSWER (0)) dcache
 	.gnt        (db_gnt),
 	.rvalid     (db_rvalid),
 	.rdata      (db_rdata),
+	.slow       (dc_slow),
 	.inv_req    (dc_inv_req),
 	.inv_addr   (dc_inv_addr),
 	.inv_ack    (dc_inv_ack),
@@ -1440,5 +1447,75 @@ assign trace_dkind   = db_kind;
 assign trace_daddr   = db_addr;
 assign trace_dbe     = db_be;
 assign trace_dwdata  = db_wdata;
+
+// ============================================================================
+//  The performance counters: what each cycle went on
+// ============================================================================
+// Every cycle falls in exactly one of the classes 3 to 14 or has an
+// operation leaving EX, so the twelve sum to the cycles minus the
+// operations. EX waits for MEM in the cycle the access is granted (a hit
+// answers in the next, so every load and store costs that cycle), in a
+// cycle the cache does not grant (a pending write to the set, a snoop), in
+// the memory unit's own cycle between the two accesses of a double or a
+// misaligned operand, or while the cache is busy beyond a lookup. A
+// redirect empties IF1, IF2 and ID: the three cycles after it in which EX
+// is empty are its (class 12); an empty EX otherwise is the fetch's (13:
+// an instruction cache miss, or the one cycle ID holds a word the fetch
+// delivered late) or ID's own wait (14: lswx and stswx for XER).
+logic [1:0] pf_shadow;
+always_ff @(posedge clk) begin
+	if (redir) pf_shadow <= 2'd3;
+	else if (pf_shadow != 2'd0) pf_shadow <= pf_shadow - 2'd1;
+	if (reset) pf_shadow <= 2'd0;
+end
+
+wire pf_stalled = ex_valid & ~ex_leave;
+wire pf_s_mem   = pf_stalled & ~mem_ready & ~dc_slow;
+wire pf_s_lduse = pf_stalled & mem_ready & ex_stall;
+wire pf_s_unit  = pf_stalled & mem_ready & ~ex_stall & ~x_pre;
+wire pf_s_mdf   = pf_s_unit & ((ex_dec.unit == UNIT_MUL) | (ex_dec.unit == UNIT_DIV) | is_fpu);
+wire pf_empty   = ~ex_valid;
+wire pf_idhold  = id_valid & ~id_take;
+wire pf_br_mp   = ex_final & is_br & (next_pc != ex_pred);
+wire pf_memop   = ex_leave & ~ex_abort & (ex_dec.mem_rd | ex_dec.mem_wr);
+
+logic [27:0] pf_ev;
+assign pf_ev[0]  = 1'b1;                                            // cycles
+assign pf_ev[1]  = wb_valid;                                        // operations retired
+assign pf_ev[2]  = wb_valid & wb_last;                              // instructions retired
+assign pf_ev[3]  = pf_s_mem & mu_req & mu_gnt;                      // EX waits for MEM: the access granted, answered next cycle
+assign pf_ev[4]  = pf_s_mem & mu_req & ~mu_gnt;                     // ... the cache not granting
+assign pf_ev[5]  = pf_s_mem & ~mu_req;                              // ... the memory unit between two accesses
+assign pf_ev[6]  = pf_stalled & ~mem_ready & dc_slow;               // ... the data cache busy: a miss, a write-back, a snoop
+assign pf_ev[7]  = pf_s_lduse;                                      // a load's data not there yet
+assign pf_ev[8]  = pf_s_unit & (ex_dec.unit == UNIT_MUL);           // the multiplier
+assign pf_ev[9]  = pf_s_unit & (ex_dec.unit == UNIT_DIV);           // the divider
+assign pf_ev[10] = pf_s_unit & is_fpu;                              // the FPU
+assign pf_ev[11] = pf_stalled & mem_ready & ~ex_stall & ~pf_s_mdf;  // anything else
+assign pf_ev[12] = pf_empty & (pf_shadow != 2'd0);                  // EX empty after a redirect
+assign pf_ev[13] = pf_empty & (pf_shadow == 2'd0) & ~pf_idhold;     // EX empty, the fetch late
+assign pf_ev[14] = pf_empty & (pf_shadow == 2'd0) &  pf_idhold;     // EX empty, ID waiting
+assign pf_ev[15] = ex_final & is_br;                                // branches
+assign pf_ev[16] = ex_final & br_taken;                             // ... taken
+assign pf_ev[17] = pf_br_mp;                                        // ... mispredicted
+assign pf_ev[18] = pf_br_mp & br_taken & ~(ex_btb & ex_cnt[1]);     // ... taken, predicted not taken
+assign pf_ev[19] = mem_fault | (ex_leave & ex_exc);                 // exceptions
+assign pf_ev[20] = ex_final & (is_rfi | is_mtmsr | is_xlate);       // refetches
+assign pf_ev[21] = ex_leave & ~ex_abort & ex_dec.mem_rd;            // loads (operations)
+assign pf_ev[22] = ex_leave & ~ex_abort & ex_dec.mem_wr;            // stores
+assign pf_ev[23] = pf_memop & (ex_dec.mem_n == 4'd8);               // ... of them doubles (two accesses each)
+assign pf_ev[24] = dm_req & dm_ack;                                 // the data cache's memory transactions
+assign pf_ev[25] = im_req & im_ack;                                 // the instruction cache's
+assign pf_ev[26] = if2_valid & ~if2_has & ~if_rvalid;               // cycles a fetch waits beyond a hit
+assign pf_ev[27] = if_req & ~if_gnt;                                // cycles the instruction cache does not grant a fetch
+
+generate
+if (PERF != 0) begin : g_perf
+	DSPPC604_perf #(.N (28)) perf (.clk, .reset, .ev (pf_ev), .cnt (perf_cnt));
+end
+else begin : g_no_perf
+	assign perf_cnt = '0;
+end
+endgenerate
 
 endmodule

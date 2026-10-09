@@ -478,6 +478,10 @@ def trace(last, first, fname=None):
             else:
                 print("%s DMA-%d STOPPED in state %d %s res %d status %04x conds w%d b%d i%d"
                       % (t, r[1], y >> 28, c, x >> 16, x & 0xFFFF, (y >> 2) & 1, (y >> 1) & 1, y & 1))
+        elif kind == 12:
+            # the CPU's performance counters (syn/perf.py accounts them): part 0 starts with the cycles
+            words = [int.from_bytes(r[8 + 4 * k:12 + 4 * k], "little") for k in range(6)]
+            print("%5d perf part %d cycles %u: %s" % (i, r[1], us, " ".join("%u" % w for w in words)))
         else:
             print("%s kind %d %s" % (t, kind, r.hex()))
     print("%d records, %d dropped (flags: cd_ok ejected prevent cd_valid tb cdc disks hk)" % (n, drops))

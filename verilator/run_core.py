@@ -86,6 +86,12 @@ def main():
         ok = r.returncode == 0
         stats = next((l for l in lines if "cycles per instruction" in l), "")
         print("%-34s %s  %s" % (label, "pass" if ok else "FAIL", stats))
+        # the cycle accounting (core_main.cpp print_perf), for the runs without wait states
+        if ok and "wait states 0%" in label and "snoop" not in label:
+            for i, l in enumerate(lines):
+                if l.startswith("perf:"):
+                    for p in lines[i + 1:i + 3]:
+                        print("    " + p.strip())
         if not ok:
             failures += 1
             for l in lines[-14:]:
