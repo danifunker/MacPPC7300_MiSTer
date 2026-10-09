@@ -122,8 +122,8 @@ logic [255:0] data_wd;
 // A write decided from the tags just read (a store hit, a line zero, a cache
 // instruction's or a snoop's invalidate) lands at the next edge, from these
 // registers: the tag RAM's output, the compare and the way select are then
-// not in front of the RAMs' write ports. Nothing reads the RAMs in that
-// cycle (the request and snoop ports wait), and no other write can land then.
+// not in front of the RAMs' write ports. Nothing reads that set in that
+// cycle (a request or snoop to it waits), and no other write can land then.
 logic            wr_pend;
 logic [WAYS-1:0] l_tag_we, l_data_we, wr_tag_we, wr_data_we;
 logic [7:0]      l_wwe, wr_wwe;
@@ -261,8 +261,12 @@ wire [31:0] st_word = (hit_word & ~st_mask) | (r_wdata & st_mask);
 wire [7:0]  st_wwe  = 8'd1 << (3'd7 - r_word);
 
 // a read hit being answered: the next request can come in behind it
+// a request or a snoop to the set a pending write lands in waits that cycle (the RAMs
+// would read the set as it was); another set may go ahead
+wire wr_clash  = wr_pend & (addr[11:5] == wr_idx_q);
+wire wr_sclash = wr_pend & (snoop_addr[11:5] == wr_idx_q);
 wire read_hit = (state == S_LOOK) & k_word & hit & ~unc & ~r_we & ~r_snoop;
-wire can_take = ((state == S_IDLE) | read_hit) & ~snoop_req & ~inval_all & ~inval_pend & ~wr_pend;
+wire can_take = ((state == S_IDLE) | read_hit) & ~snoop_req & ~inval_all & ~inval_pend & ~wr_clash;
 assign gnt = can_take & req;
 
 always_comb begin
@@ -288,7 +292,7 @@ always_comb begin
 	mem_line  = 1'b1;
 	mem_addr  = r_addr;
 	mem_be    = r_be;
-	mem_wdata = data_q[r_way];
+	mem_wdata = WRITABLE ? data_q[r_way] : '0;  // a read-only cache writes nothing back
 
 	case (state)
 	S_SWEEP: begin
@@ -342,7 +346,7 @@ always_comb begin
 		end
 	end
 
-	S_WB: begin
+	S_WB: if (WRITABLE) begin                        // (never entered by a read-only cache)
 		mem_req  = 1'b1;
 		mem_we   = 1'b1;
 		mem_addr = {tag_q[r_way].tag, r_idx, 3'b000};
@@ -418,16 +422,18 @@ always_ff @(posedge clk) begin
 			sweep_idx  <= 7'd0;
 			inval_pend <= 1'b0;
 		end
-		else if (snoop_req & ~wr_pend) begin
-			state      <= S_SNOOP;
-			r_addr     <= {snoop_addr, 3'b000};
-			r_snoop    <= 1'b1;
-			r_snoop_we <= snoop_we;
-			r_kind     <= CK_WORD;
-			r_we       <= 1'b0;
-			r_after_wb <= 1'b0;
+		else if (snoop_req) begin                  // (a clashing snoop waits, and so does the request: as gnt)
+			if (~wr_sclash) begin
+				state      <= S_SNOOP;
+				r_addr     <= {snoop_addr, 3'b000};
+				r_snoop    <= 1'b1;
+				r_snoop_we <= snoop_we;
+				r_kind     <= CK_WORD;
+				r_we       <= 1'b0;
+				r_after_wb <= 1'b0;
+			end
 		end
-		else if (req & ~wr_pend) begin             // (as gnt)
+		else if (req & ~wr_clash) begin            // (as gnt)
 			state      <= S_LOOK;
 			r_we       <= we;
 			r_kind     <= kind;

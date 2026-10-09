@@ -85,7 +85,7 @@ module DSPPC604
 #(
 	parameter int          BTB_BITS = 7,              // branch target buffer entries, as a power of two
 	parameter int          TLB_BITS = 6,              // entries in each TLB, as a power of two
-	parameter int          FPU_OPERAND_REG = 1,       // the FPU takes its operands into a register first (a cycle each)
+	parameter int          FPU_OPERAND_REG = 0,       // 1: the FPU takes its operands into a register first (a cycle each; on 2026-10-06 to 2026-10-09 for timing)
 	parameter logic [31:0] PVR      = 32'h00040303    // processor version: 604 revision 3.3
 )
 (

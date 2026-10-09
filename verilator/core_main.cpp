@@ -93,6 +93,7 @@ struct Options {
 	int stall = 0;                 // percent chance of a wait state, per bus per cycle
 	long irq_every = 0;            // raise the external interrupt every N cycles
 	bool tb_run = false;           // time base and decrementer advance every cycle
+	int  snoop_every = 0;          // a read snoop of a random line every N cycles (0: none)
 	unsigned seed = 1;
 	uint64_t max_cycles = 2000000000ull;
 	long show = 10;
@@ -100,7 +101,7 @@ struct Options {
 	bool machine = false;
 	std::string rom;
 	unsigned ram_mb = 16;
-	double cpu_mhz = 65.0, mem_mhz = 100.0;
+	double cpu_mhz = 70.0, mem_mhz = 100.0;
 	uint64_t max_instr = 0;        // stop after this many instructions (0: no limit)
 	uint64_t progress = 0;         // a line every N instructions
 	std::string dev_log;           // every device access, in machref's log format
@@ -304,7 +305,7 @@ void usage() {
 		"usage: machine_tb --machine --rom FILE [options]\n"
 		"  --ram MB         installed RAM (default 16)\n"
 		"  --no-l2          the L2 cache off (PPCMac_l2; on by default)\n"
-		"  --cpu-mhz F      the CPU's clock (default 65)\n"
+		"  --cpu-mhz F      the CPU's clock (default 70)\n"
 		"  --mem-mhz F      the memory's clock (default 100)\n"
 		"  --max-instr N    stop after N instructions\n"
 		"  --progress N     print where the CPU is every N instructions\n"
@@ -361,6 +362,8 @@ void usage() {
 #endif
 		"  --lockstep       compare with dingusppc after every instruction\n"
 		"  --stall P        percent chance of a bus wait state (default 0)\n"
+		"  --snoop-every N  a read snoop of a random line every N cycles, half of them lines\n"
+		"                   the program stored to (the DMA engine's traffic beside the CPU's)\n"
 		"  --seed N         seed for the wait states\n"
 		"  --max-cycles N   give up after N clocks\n"
 		"  --show N         mismatches printed before stopping (default 10)\n"
@@ -620,6 +623,7 @@ int main(int argc, char** argv) {
 		else if (a == "--lockstep") opt.lockstep = true;
 		else if (a == "--trace") opt.trace = true;
 		else if (a == "--stall") opt.stall = std::atoi(next().c_str());
+		else if (a == "--snoop-every") opt.snoop_every = std::atoi(next().c_str());
 		else if (a == "--seed") opt.seed = (unsigned)std::strtoul(next().c_str(), nullptr, 0);
 		else if (a == "--max-cycles") opt.max_cycles = std::strtoull(next().c_str(), nullptr, 0);
 		else if (a == "--show") opt.show = std::atol(next().c_str());
@@ -1332,6 +1336,22 @@ int main(int argc, char** argv) {
 				else wr32(mem, DMA_RESULT, dma_write ? 1 : dma_sum, 0xF);
 				dma_step++;
 				if (dma_step == 4) dma_step = 0;
+			}
+		}
+		// the snoop storm: read snoops change no program state, so any program runs under them
+		else if (opt.snoop_every > 0) {
+			if (snoop_req) {
+				if (snoop_acked) snoop_req = false;
+			}
+			else if (cycles % (uint64_t)opt.snoop_every == 0) {
+				uint32_t a;
+				if (!touched.empty() && (rng() & 1)) {
+					auto it = touched.begin();
+					std::advance(it, rng() % touched.size());
+					a = *it;
+				}
+				else a = (uint32_t)(rng() & 0x00FFFFE0u);
+				snoop_req = true; snoop_we = false; snoop_addr = a;
 			}
 		}
 		cycles++;

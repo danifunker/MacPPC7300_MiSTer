@@ -101,6 +101,12 @@ def main():
     for stall, seed in ((0, 1),) if args.quick else ((0, 1), (25, 2), (60, 3)):
         r = run([tb, "--prog", golden, "--stall", str(stall), "--seed", str(seed)])
         report("  wait states %d%%" % stall, r)
+    # under a storm of read snoops: the DMA engine's traffic against the caches' arbitration
+    # (the speed session's cache gate took an ungranted request only when a snoop and a
+    # request met in one cycle: nothing else here makes that meeting)
+    for stall, every, seed in ((0, 2, 5), (30, 3, 6)):
+        r = run([tb, "--prog", golden, "--stall", str(stall), "--seed", str(seed), "--snoop-every", str(every)])
+        report("  wait states %d%%, a snoop every %d cycles" % (stall, every), r)
 
     # 2. the floating-point vectors the same way
     goldenfp = os.path.join(progs, "goldenfp.prog")
@@ -127,6 +133,9 @@ def main():
                 return 1
             r = run([tb, "--prog", prog, "--stall", str(stall), "--seed", "4"])
             report("  %s, wait states %d%%" % ("integer" if kind == "golden" else "floating point", stall), r)
+            if kind == "golden":                   # the load/store set under the snoop storm too
+                r = run([tb, "--prog", prog, "--stall", str(stall), "--seed", "7", "--snoop-every", "2"])
+                report("  integer, wait states %d%%, a snoop every 2 cycles" % stall, r)
 
     # 3. random floating-point programs, every instruction checked against fpmodel.py
     print("random floating-point programs against the software model:")
@@ -178,8 +187,9 @@ def main():
                 print(r.stdout)
                 return 1
             stall = (0, 15, 40, 70)[seed % 4]
-            r = run([tb, "--prog", prog, "--lockstep", "--stall", str(stall), "--seed", str(seed)])
-            report("  seed %d, wait states %d%%" % (seed, stall), r)
+            storm = ["--snoop-every", "2"] if seed % 5 == 0 else []   # every fifth under the snoop storm
+            r = run([tb, "--prog", prog, "--lockstep", "--stall", str(stall), "--seed", str(seed)] + storm)
+            report("  seed %d, wait states %d%%%s" % (seed, stall, ", snooped" if storm else ""), r)
             for l in r.stdout.splitlines():
                 if l.endswith("per instruction)"):
                     total += int(l.split()[0])

@@ -55,7 +55,7 @@ struct Options {
 	std::string rom, nvram;
 	unsigned ram_mb = 16;
 	unsigned monitor = 16;
-	double cpu_mhz = 65.0, mem_mhz = 100.0;
+	double cpu_mhz = 70.0, mem_mhz = 100.0;
 	bool pause = false;
 };
 

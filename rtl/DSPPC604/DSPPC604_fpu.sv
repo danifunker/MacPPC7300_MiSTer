@@ -21,7 +21,8 @@
 //
 //  One datapath serves every arithmetic instruction:
 //
-//    x * y + z   fadd (y = 1), fmul (z absent), fmadd..., frsp and fctiw
+//    x * y + z   fadd (y = 1), fmul (z absent: the product goes straight to
+//                the back end, a cycle fewer), fmadd..., frsp and fctiw
 //                (product absent, z = operand)
 //    x / z       fdiv, fres (x = 1); two quotient bits per cycle
 //
@@ -809,6 +810,12 @@ always_ff @(posedge clk) begin
 		p_q <= p_sum;
 		{zal, zst} <= align_z(mz, sr);
 		state <= S_ADD;
+		if (z_zero & ~p_zero) begin                  // no addend (fmul): the product is the sum
+			r_q      <= {56'd0, p_sum};
+			r_sign   <= s_p;
+			r_sticky <= 1'b0;
+			state    <= S_LZC;
+		end
 	end
 
 	S_ADD: begin

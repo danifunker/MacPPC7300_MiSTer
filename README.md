@@ -87,7 +87,9 @@ framework), Quartus 17.0, slow 100 C model; this is the number that counts:
 | With GCR sectors as Apple's driver wants them, the clock counted on (build 28, the third release) | 35,642 (85%) | 195 | 49 | 59.4 MHz (slack -1.462 ns). On the board: 400K, 800K and 1440K floppies open in the Finder; the clock right after two minutes off |
 | With the device access from a register in the machine (build 29, the speed session) | 36,743 (88%) | 195 | 49 | 60.7 MHz (slack -1.092 ns, total -12 ns against -186: the device family is gone; what leads is the data cache's store-hit write). On the board: Mac OS 7.6.1 to the Finder in the same time as build 28; Speedometer 4.02's first numbers (`docs/PPCMac_plan.md`, Speed) |
 | With the 128 KB L2 cache (`PPCMac_l2`, build 30) | 37,883 (90%) | 329 | 49 | 57.5 MHz (slack -2.013 ns: the cache's answer into `wb_result`, placed 1.7 ns worse under the L2's pressure). On the board: Speedometer's CPU tests 2-3 % faster, the disk 11 %, the colour tests 6-10 % |
-| With the data cache's tag-decided writes landed a cycle later (build 31) | 37,765 (90%) | 329 | 49 | 64.0 MHz (slack -0.321 ns, total -1.9 ns) |
+| With the data cache's tag-decided writes landed a cycle later (build 31) | 37,765 (90%) | 329 | 49 | 64.0 MHz (slack -0.321 ns, total -1.9 ns). On the board: the Finder's menu bar at 86 s (97-101 s before the L2); Speedometer as build 30 but Towers and Permutations 8-10 % slower (a request right after a store hit waited a cycle) |
+| The same at 70 MHz (build 32) | 38,841 (93%) | 329 | 49 | 62.2 MHz (slack -1.766 ns at 70 asked). On the board: Mac OS 7.6.1 and 9.1 to the Finder, Speedometer's every number 8 % above build 31's, the clock right: 70 MHz is the clock from here |
+| With the cache's wait narrowed to the pending write's set, a read-only cache off the write-back muxes, the FPU's operand register off and `fmul` a cycle shorter, 70 MHz (build 36; build 33, the first form of the narrowed wait, took an ungranted request when a snoop and a request met and bombed on the board; the core bench's snoop storm catches that class now) | 38,452 (92%) | 329 | 49 | slack -2.556 ns at 70 asked (the forwarding into the FPU's first stage, which the operand register was there for). On the board: a clean run; CPU 2.504, Math 106.8, FPU 3.570 against a Quadra 650, Towers and Permutations back; the FP golden program 3.45 cycles per instruction |
 
 On the board (DE10-Nano, 128 MB SDRAM) the memory test passes at every RAM
 size the OSD offers (6 to 96 MB, three or more passes each, no error) at
@@ -230,8 +232,16 @@ not by drift.
 An in-order core at 66-75 MHz executes somewhere around one instruction per
 1.3-1.6 clocks once caches are warm. That is the territory of a Power Macintosh
 6100/60 or a Pippin, and roughly a third of a real 7600/120, whose 604 issues
-several instructions per clock. Measured numbers will replace this estimate
-when the pipeline runs real code.
+several instructions per clock.
+
+Measured (2026-10-09, build 36 at 70 MHz with the 128 KB L2, Speedometer
+4.02 on Mac OS 7.6.1; the whole table and the conditions are in
+`docs/PPCMac_plan.md`, "Speed"): CPU 2.50, Disk 1.56, Math 106.8 against a
+Quadra 605 = 1.0; Dhrystones 46,559 a second; the FPU 3.57 against a Quadra
+650; Mac OS 7.6.1 from the core's load to the Finder's menu bar in 86 s. The
+lockstep runs of the 7300's ROM retire 1.57 cycles an instruction with the L2
+(2.2 before it); the integer golden program 1.85, the floating-point one 3.45.
+A real 7300 is to be measured with the same Speedometer for the comparison.
 
 ## What the real 604 turned out to do
 

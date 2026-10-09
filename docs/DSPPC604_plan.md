@@ -129,6 +129,22 @@ the 8-cycle arithmetic path (a separate add path that skips the multiplier,
 leading-zero anticipation, merging stages that have slack), and let it accept
 a new request every cycle.
 
+The speed session (2026-10-09, the user's request that the FPU be faster
+too): `fmul` skips the add cycle (no addend: S_MUL2 hands the product to the
+back end, 7 cycles), and the operand register is off again
+(`FPU_OPERAND_REG = 0`: the cuts since 2026-10-06 took the forwarding paths
+it was switched on for off the top of the list). Measured: the FP golden
+program 3.53 to 3.45 cycles per instruction, the 7300's 3.81 to 3.73, the
+random FP programs 4.74-5.33 to 4.27-4.83; every vector and the suite as
+before. The add path's alignment cannot fold into one cycle at 70 MHz (the
+exponent difference, the clamp and a 161-bit shift with sticky in series),
+so adds keep their 8; what would shorten them is deciding the alignment
+distance in the request cycle from the operands' exponents. Whether
+independent FP operations may overlap (EX waits for each response, rule 3;
+a scoreboard would join the one hazard mechanism, rule 2) is left to the
+measurements: Speedometer's Matrix Mult. and Fast Fourier are dependent
+chains, where latency, not throughput, is the cost.
+
 ### M3: pipeline, user-mode integer (done)
 
 What was built (`rtl/DSPPC604/DSPPC604.sv` and the modules it instantiates):
@@ -973,8 +989,20 @@ How the rules apply, decided before step 1 and followed in it:
   one cycle, which the memory unit's and the walker's spacing already
   rules out. The golden programs: 1.85, 1.89, 2.04 and 3.53, 3.61 cycles
   per instruction, as before. The hazard mechanism and the commit points
-  are untouched (a cache-internal timing of its RAM writes). Timing: build
-  31.
+  are untouched (a cache-internal timing of its RAM writes). Build 31:
+  -0.32 ns at 65 MHz (64.0 MHz slow corner) from build 30's -2.01 on the
+  same tree. On the board Speedometer's Towers and Permutations lost
+  8-10 %: their recursion stores and asks again in the very next cycle, so
+  the memory unit's spacing does not rule the wait out after all. Refined
+  (2026-10-09): only a request or snoop to the pending write's own set
+  waits (`wr_clash`, `wr_sclash`: the eight word RAMs and the tag RAM
+  conflict at one index only); another set goes ahead. Also a read-only
+  cache no longer muxes its RAMs into the write-back address and data
+  (`WRITABLE` guards on S_WB and `mem_wdata`): the I-cache's tag RAM into
+  the machine's device register through that unused mux was build 31's
+  worst path. Whole suite, `run.py` and the 300 M lockstep green, cycle
+  counts identical. Timing and the board: builds 33 (65 MHz) and 34
+  (70 MHz).
 
 ### M6: real ROM, first MiSTer build
 

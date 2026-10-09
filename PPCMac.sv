@@ -55,7 +55,7 @@ module emu
 	`include "sys/emu_ports.vh"
 );
 
-localparam int CPU_MHZ = 65;            // 60 and 70 also work with the PLL (VCO 1200, 1400 MHz)
+localparam int CPU_MHZ = 70;            // 60 and 65 also work with the PLL (VCO 1200, 1300 MHz); 70 since 2026-10-09
 
 ///////// Default values for ports not used in this core /////////
 
