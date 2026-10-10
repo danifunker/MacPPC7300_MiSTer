@@ -21,7 +21,7 @@ the day a milestone was closed; open ones carry no date.
 | V | Video: Control, RaDACal, the Athens clock chip on Cuda's I2C | Mac OS's screen on the MiSTer's output, in simulation as a frame compared with dingusppc's and on the board as a screenshot | done 2026-10-07, in simulation and on the board |
 | K | ADB keyboard and mouse on Cuda's line | Open Firmware typed on from the keyboard; the cursor following the mouse in Mac OS | done 2026-10-07, on the board |
 | S | SCSI: DBDMA, MESH, a disk image on the SD card | Mac OS booting from a disk image to the Finder | done 2026-10-08 on the board: Mac OS 7.6.1 to the Finder with every extension, Open Transport included; mouse, keyboard, Shut Down |
-| A | Sound: AWACS and its DBDMA channels | the startup chime, and Mac OS's sound | the chime bit-exact in simulation (2026-10-08); on the board, to be heard |
+| A | Sound: AWACS and its DBDMA channels | the startup chime, and Mac OS's sound | done 2026-10-10: the chime bit-exact in simulation (2026-10-08); on the board, heard right by the user once the codec's rate code 2 was 44,100 Hz (build 52; the record in `MacPPC7300_sound.md`) |
 | P | Persistence and the clock: the NVRAM and Cuda's PRAM on the SD card, the clock from the MiSTer's RTC | settings kept across a power-off; Mac OS showing the date | the clock from the RTC and the NVRAM on the SD card, on the board (2026-10-08); a setting's survival still to be shown |
 | X | The PCI bus: Bandit's slots decoded by their BARs, a PCI card (a video card first) | a PCI card found by Open Firmware and driven by Mac OS | later |
 
