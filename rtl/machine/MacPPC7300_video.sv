@@ -158,7 +158,10 @@ MacPPC7300_swatch swatch (
 );
 
 // ---- the line fetch ----------------------------------------------------------------------------
-wire [11:0] width  = 12'((HFP - HAL) * {8'd0, clk_div});
+// clk_div is 2, 4, 8, 1 for the four DAC modes. A shift keeps the same
+// 12-bit wraparound without a DSP multiplier after the width subtraction.
+wire [1:0] width_shift = dcr[7:6] + 2'd1;
+wire [11:0] width  = 12'((HFP - HAL) << width_shift);
 wire        plus16 = (HAL != PIPE + 12'd1) || (pw >= 2'd2);
 // bytes from the cursor's data to the line's last pixel, in 64-bit words
 wire [14:0] lpix   = (pw == 2'd0) ? {3'd0, width} : (pw == 2'd1) ? {2'd0, width, 1'b0} : {1'd0, width, 2'b00};

@@ -145,8 +145,16 @@ import DSPPC604_pkg::*;
 localparam logic [31:0] XER_MASK = 32'hE000FF7F;   // SO OV CA, bits 16-23, byte count: what a 604 keeps (measured)
 
 // ---- architectural state ---------------------------------------------------
-logic [31:0] gpr [33];      // 32 is the sequencer's scratch register
-logic [63:0] fpr [32];
+// Independent prospective instruction and micro-op reads avoid putting
+// ID admission on RAM addresses. Entry 32 is the sequencer's scratch.
+(* ramstyle = "M10K, no_rw_check" *) logic [31:0] gpr_fetch_a [33];
+(* ramstyle = "M10K, no_rw_check" *) logic [31:0] gpr_fetch_b [33];
+(* ramstyle = "M10K, no_rw_check" *) logic [31:0] gpr_fetch_c [33];
+(* ramstyle = "M10K, no_rw_check" *) logic [31:0] gpr_sequence_a [33];
+(* ramstyle = "M10K, no_rw_check" *) logic [31:0] gpr_sequence_c [33];
+(* ramstyle = "M10K, no_rw_check" *) logic [63:0] fpr_a [32];
+(* ramstyle = "M10K, no_rw_check" *) logic [63:0] fpr_b [32];
+(* ramstyle = "M10K, no_rw_check" *) logic [63:0] fpr_c [32];
 logic [31:0] cr;
 logic [31:0] xer;
 logic [31:0] lr;
@@ -186,23 +194,47 @@ logic [3:0]  pir;           // the four bits a 604 keeps
 // ---- pipeline registers ----------------------------------------------------
 // IF1 / IF2
 logic [31:0] pc_f;          // next address to fetch
-logic        if2_valid;     // a fetch is outstanding or its word is held
+logic        if2_valid;     // a fetch is outstanding
 logic        if2_kill;      // ... but it was cancelled: drop the word
-logic        if2_has;       // the word arrived and is waiting for ID
 logic [31:0] if2_pc;
-logic [31:0] if2_insn;
 logic [31:0] if2_pred;      // where the fetch went next
 logic        if2_btb;       // the branch target buffer knew this address
+logic        if2_way;
 logic [1:0]  if2_cnt;       // ... with this taken/not-taken counter
-logic        if2_isi;       // the fetch failed: the word is an ISI instead
-logic [31:0] if2_isi_info;  // ... with these SRR1 bits
+
+// Three completed words plus one reserved response slot. Fetch admission
+// depends only on registered occupancy, never on ID/EX/MEM readiness.
+typedef struct packed {
+	logic [31:0] pc, insn, pred, info;
+	logic        btb, isi, way;
+	logic [1:0]  cnt;
+} fetch_t;
+fetch_t fetch_queue [4];
+logic [1:0] fetch_head, fetch_tail;
+logic [2:0] fetch_count;
+wire fetch_full = (fetch_count >= 3'd3);
+logic fetch_pop;
+logic fetch_bypass;
+logic fetch_deliver;
+fetch_t fetch_word;
+// Two output slots retain one spare at sustained single-word throughput.
+// Their registered occupancy controls FIFO reads, separating the FIFO RAM
+// address/write control from late ID/EX completion readiness.
+fetch_t fetch_stage [2];
+fetch_t fetch_source_word;
+logic fetch_stage_head, fetch_stage_tail;
+logic [1:0] fetch_stage_count;
+wire fetch_stage_ready = (fetch_stage_count != 2'd2);
+wire fetch_stage_push = fetch_pop | fetch_bypass;
 
 // ID
 logic        id_valid;
 logic [31:0] id_pc;
 logic [31:0] id_insn;
 logic [31:0] id_pred;
+logic [31:0] id_cr_select;
 logic        id_btb;
+logic        id_way;
 logic [1:0]  id_cnt;
 logic        id_isi;
 logic [31:0] id_isi_info;
@@ -219,6 +251,8 @@ logic        ex_first;
 logic        ex_last;
 logic [31:0] ex_pred;
 logic        ex_btb;
+logic [31:0] ex_cr_select;
+logic        ex_way;
 logic [1:0]  ex_cnt;
 logic [31:0] ex_a;
 logic [31:0] ex_b;
@@ -227,11 +261,35 @@ logic [63:0] ex_fa;
 logic [63:0] ex_fb;
 logic [63:0] ex_fc;
 
+// Completed, speculative ALU operations behind the long operation in EX.
+// They cannot fault or modify status. After that older operation commits,
+// drain them through the ordinary MEM/WB path before the next EX commits.
+typedef struct packed {
+	logic [31:0] pc, insn, value;
+	logic [5:0] rd;
+} completion_t;
+completion_t completion_queue [8];
+logic [2:0] completion_head, completion_tail;
+logic [3:0] completion_count;
+logic [3:0] completion_older_count;
+logic [7:0] completion_latest_older, completion_latest_younger;
+logic completion_push, completion_pop, id_to_ex;
+// Reserve the FIFO entry at issue, then execute from registered operands.
+// Forward that stage's result to the next registered operands, preserving
+// dependent issue without putting decode and execution in the same path.
+logic completion_exec_valid;
+logic [2:0] completion_exec_slot;
+logic [31:0] completion_exec_a, completion_exec_b;
+int_ctl_t completion_exec_ctl;
+logic [31:0] completion_result;
+wire ex_order_ready = (completion_older_count == 4'd0);
+
 // MEM
 logic        mem_valid;
 logic [31:0] mem_pc;
 logic [31:0] mem_insn;
 logic        mem_last;
+logic        mem_first;
 logic [6:0]  mem_rd;        // bit 6: a floating-point register
 logic        mem_rd_wr;
 logic [63:0] mem_result;    // from EX (a load's comes from memory instead)
@@ -272,6 +330,11 @@ logic        id_take;       // ID's operation moves to EX
 logic        id_leave;      // ... and it was the instruction's last
 logic        ex_leave;
 logic        mem_leave;
+logic        mu_accept;
+logic        mu_valid, mu_ready, mu_pending;
+logic        ex_mem_access;
+logic        ex_stall;
+logic        ex_done;
 
 // exception decisions made in EX (declared here: the units above them use them)
 logic        x_pre;         // known without executing the instruction
@@ -279,10 +342,21 @@ logic        ex_abort;      // the instruction in EX is dropped
 logic        ex_exc;        // an exception is taken as it leaves
 logic [11:0] exc_vector;
 logic [31:0] fpscr_next;
-logic        mem_fault;     // the access in MEM cannot be made: a DSI
+logic        mem_fault;     // MEM exception: DSI, or interrupt before the first grant
+logic        mem_dsi, mem_irq;
 
 wire id_ready  = ~id_valid | id_leave;
-wire ex_ready  = ~ex_valid | ex_leave;
+// Admission uses descriptor capacity, independently of late abort/fault
+// decisions. A redirect annuls the newly admitted operation at the same edge.
+// An abort can leave without descriptor capacity; ID waits in that case and
+// is flushed. Normal completion still requires the memory unit's acceptance.
+// An interrupt cancels both stages; it need not create speculative capacity
+// for the younger ID operation. Use ordinary completion and MEM response
+// capacity here, leaving interrupt/exception entry on the commit controls.
+wire mem_capacity = ~mem_valid | ~(mem_load | mem_store) | mu_resp;
+wire ex_regular_done = ~ex_stall & (is_int ? int_resp : is_fpu ? fpu_resp : 1'b1);
+wire ex_ready  = ~ex_valid | (ex_regular_done & mem_capacity & ex_order_ready &
+                             (~ex_mem_access | mu_ready));
 wire mem_ready = ~mem_valid | mem_leave;
 
 // ---- the buses as the pipeline sees them: through the MMU -------------------
@@ -299,6 +373,8 @@ ck_t         mu_kind;
 logic [29:0] mu_addr;
 logic [3:0]  mu_be;
 logic [31:0] mu_wdata, mu_bus_rdata;
+logic        mu_wide, mu_rwide;
+logic [31:0] mu_wdata_next, mu_rdata_next;
 
 // ---- the buses between the MMU and the caches -------------------------------
 logic        ib_req, ib_gnt, ib_rvalid, ib_ci;
@@ -308,6 +384,8 @@ ck_t         db_kind;
 logic [29:0] db_addr;
 logic [3:0]  db_be;
 logic [31:0] db_wdata, db_rdata;
+logic        db_wide, db_rwide;
+logic [31:0] db_wdata_next, db_rdata_next;
 
 // ---- the caches' memory and invalidate ports --------------------------------
 logic         im_req, im_we, im_line, im_ack;
@@ -319,6 +397,7 @@ logic [31:2]  dm_addr;
 logic [3:0]   dm_be;
 logic [255:0] dm_wdata;
 logic         dc_inv_req, dc_inv_ack;      // icbi, from the data cache to the instruction cache
+logic         dc_inv_ack_q;
 logic [31:5]  dc_inv_addr;
 logic         ic_snoop_ack, dc_snoop_ack;
 logic         ic_inval, dc_inval;          // HID0[ICFI], [DCFI]
@@ -326,47 +405,210 @@ logic         ic_inval, dc_inval;          // HID0[ICFI], [DCFI]
 // ============================================================================
 //  IF1, IF2
 // ============================================================================
-wire        if2_resp  = if2_valid & (if2_has | if_rvalid);
-wire [31:0] if2_word  = if2_has ? if2_insn : if_rdata;
-wire        if2_isi_w = if2_has ? if2_isi  : if_fault;
-wire [31:0] if2_info_w = if2_has ? if2_isi_info : if_srr1;
-wire        if2_leave = if2_resp & (if2_kill | id_ready);
+wire if2_resp = if2_valid & if_rvalid;
+wire fetch_response = if2_resp & ~if2_kill & ~redir;
+wire fetch_push = fetch_response & ~fetch_bypass;
+assign fetch_pop = (fetch_count != 3'd0) & fetch_stage_ready;
+assign fetch_bypass = (fetch_count == 3'd0) & fetch_stage_ready & fetch_response;
+assign fetch_deliver = (fetch_stage_count != 2'd0) & id_ready;
+assign fetch_word = fetch_stage[fetch_stage_head];
+assign fetch_source_word = (fetch_count != 3'd0) ? fetch_queue[fetch_head] :
+                    {if2_pc, if_rdata, if2_pred, if_srr1, if2_btb, if_fault, if2_way, if2_cnt};
 
-assign if_req  = ~reset & (~if2_valid | if2_leave);
+assign if_req  = ~reset & ~fetch_full;
 assign if_addr = pc_f;
 
 wire fetch_go = if_req & if_gnt;
 
 // ---- branch target buffer --------------------------------------------------
-localparam int BTB_SIZE = 1 << BTB_BITS;
-localparam int BTB_TAGW = 30 - BTB_BITS;
+localparam int BTB_SET_BITS = BTB_BITS - 1;
+localparam int BTB_SETS = 1 << BTB_SET_BITS;
+localparam int BTB_TAGW = 30 - BTB_SET_BITS;
 
-logic [BTB_SIZE-1:0] btb_valid;
-logic [BTB_TAGW-1:0] btb_tag    [BTB_SIZE];
-logic [29:0]         btb_target [BTB_SIZE];
-logic [1:0]          btb_cnt    [BTB_SIZE];     // 2 and 3 predict taken
+logic [BTB_SETS-1:0] btb_valid0, btb_valid1, btb_lru;
+logic btb_valid_q0, btb_valid_q1;
+typedef struct packed {
+	logic [BTB_TAGW-1:0] tag;
+	logic [1:0] count;
+	logic call, ret;
+} btb_meta_t;
+(* ramstyle = "no_rw_check" *) btb_meta_t btb_meta0 [BTB_SETS], btb_meta1 [BTB_SETS];
+(* ramstyle = "no_rw_check" *) logic [29:0] btb_target0 [BTB_SETS], btb_target1 [BTB_SETS];
+btb_meta_t btb_meta_ram0, btb_meta_ram1, btb_write_meta;
+logic [29:0] btb_target_ram0, btb_target_ram1, btb_write_target;
+logic btb_forward0, btb_forward1, btb_target_forward0, btb_target_forward1;
+logic [BTB_SET_BITS-1:0] btb_read_idx;
+logic btb_read_valid;
 
-wire [BTB_BITS-1:0] btb_idx  = pc_f[BTB_BITS+1:2];
-wire                btb_hit  = btb_valid[btb_idx] & (btb_tag[btb_idx] == pc_f[31:BTB_BITS+2]);
-wire [1:0]          btb_c    = btb_cnt[btb_idx];
-wire [31:0]         pred_pc  = (btb_hit & btb_c[1]) ? {btb_target[btb_idx], 2'b00} : (pc_f + 32'd4);
+function automatic logic [BTB_SET_BITS-1:0] btb_index(input logic [31:0] address);
+	btb_index = address[BTB_SET_BITS+1:2] ^ address[2*BTB_SET_BITS+1:BTB_SET_BITS+2];
+endfunction
+
+// Speculative call/return prediction is restored from the committed stack
+// on every redirect, including the branch committing at that edge.
+logic [31:0] ras_committed [8], ras_speculative [8];
+logic [2:0] ras_cptr, ras_sptr;
+logic [3:0] ras_ccount, ras_scount;
+logic ras_recover;
+logic ras_commit_write, ras_spec_write;
+logic [2:0] ras_commit_write_ptr, ras_spec_write_ptr;
+logic [31:0] ras_commit_write_data, ras_spec_write_data;
+logic ras_push, ras_pop;
+wire [2:0] ras_cptr_next = ras_push ? ras_cptr + 3'd1 : ras_pop ? ras_cptr - 3'd1 : ras_cptr;
+wire [3:0] ras_ccount_next = ras_push ? ((ras_ccount == 4'd8) ? 4'd8 : ras_ccount + 4'd1) :
+                              ras_pop ? ras_ccount - 4'd1 : ras_ccount;
+wire [2:0] ras_read_ptr = ras_recover ? ras_cptr : ras_sptr;
+wire [3:0] ras_read_count = ras_recover ? ras_ccount : ras_scount;
+wire [2:0] ras_top = ras_read_ptr - 3'd1;
+wire [31:0] ras_commit_target = (ras_commit_write & (ras_commit_write_ptr == ras_top)) ?
+                               ras_commit_write_data : ras_committed[ras_top];
+wire [31:0] ras_spec_target = (ras_spec_write & (ras_spec_write_ptr == ras_top)) ?
+                             ras_spec_write_data : ras_speculative[ras_top];
+wire [31:0] ras_read_target = ras_recover ? ras_commit_target : ras_spec_target;
+
+wire [BTB_SET_BITS-1:0] btb_idx = btb_index(pc_f);
+wire [BTB_SET_BITS-1:0] btb_ridx = btb_index(pc_ahead);
+wire btb_fresh = btb_read_valid & (btb_read_idx == btb_idx);
+wire [$bits(btb_meta_t)-1:0] btb_meta_bits0 = btb_forward0 ? btb_write_meta : btb_meta_ram0;
+wire [$bits(btb_meta_t)-1:0] btb_meta_bits1 = btb_forward1 ? btb_write_meta : btb_meta_ram1;
+btb_meta_t btb_meta_q0, btb_meta_q1;
+assign btb_meta_q0 = btb_meta_bits0;
+assign btb_meta_q1 = btb_meta_bits1;
+wire btb_hit0 = btb_fresh & btb_valid_q0 & (btb_meta_q0.tag == pc_f[31:BTB_SET_BITS+2]);
+wire btb_hit1 = btb_fresh & btb_valid_q1 & (btb_meta_q1.tag == pc_f[31:BTB_SET_BITS+2]);
+wire btb_hit = btb_hit0 | btb_hit1;
+wire btb_way = btb_hit0 ? 1'b0 : btb_hit1 ? 1'b1 :
+               ~btb_valid0[btb_idx] ? 1'b0 : ~btb_valid1[btb_idx] ? 1'b1 : btb_lru[btb_idx];
+// The prediction uses the hitting way. Replacement chooses a way only on
+// a miss, so its valid/LRU lookup need not feed prediction's target mux.
+wire [1:0] btb_c = btb_hit0 ? btb_meta_q0.count : btb_meta_q1.count;
+wire btb_is_call = btb_hit0 ? btb_meta_q0.call : btb_meta_q1.call;
+wire btb_is_return = btb_hit0 ? btb_meta_q0.ret : btb_meta_q1.ret;
+wire [29:0] btb_target_q0 = btb_target_forward0 ? btb_write_target : btb_target_ram0;
+wire [29:0] btb_target_q1 = btb_target_forward1 ? btb_write_target : btb_target_ram1;
+wire [29:0] btb_target = btb_hit0 ? btb_target_q0 : btb_target_q1;
+wire btb_taken = btb_hit & btb_c[1];
+wire [31:0] btb_destination = (btb_is_return & (ras_read_count != 4'd0)) ?
+                              ras_read_target : {btb_target, 2'b00};
+wire [31:0] pred_pc = btb_taken ? btb_destination : (pc_f + 32'd4);
 
 // written from EX (below)
 logic                btb_we;
 logic                btb_wtgt;     // ... including the target
 logic                btb_clr;
-logic [BTB_BITS-1:0] btb_widx;
+logic [BTB_SET_BITS-1:0] btb_widx;
 logic [1:0]          btb_wcnt;
 
+// Resolve both possible rows before the late grant/redirect control. Keep
+// these lookup nodes so synthesis does not move the row selection back
+// in front of the 64-entry validity mux.
+wire [BTB_SET_BITS-1:0] btb_next_idx = btb_index(pred_pc);
+(* keep = "true" *) wire btb_valid_current0 = btb_valid0[btb_idx];
+(* keep = "true" *) wire btb_valid_current1 = btb_valid1[btb_idx];
+(* keep = "true" *) wire btb_valid_next0 = btb_valid0[btb_next_idx];
+(* keep = "true" *) wire btb_valid_next1 = btb_valid1[btb_next_idx];
+(* keep = "true" *) wire btb_write_current = (btb_widx == btb_idx);
+(* keep = "true" *) wire btb_write_next = (btb_widx == btb_next_idx);
+wire btb_write_read = fetch_go ? btb_write_next : btb_write_current;
+
 always_ff @(posedge clk) begin
-	if (btb_we) begin
-		btb_valid[btb_widx]  <= 1'b1;
-		btb_tag[btb_widx]    <= ex_pc[31:BTB_BITS+2];
-		btb_cnt[btb_widx]    <= btb_wcnt;
-		if (btb_wtgt) btb_target[btb_widx] <= redir_pc[31:2];
+	// Read the predicted next set alongside the next fetch address. A redirect
+	// to another set uses the normal fallthrough prediction until a fresh
+	// lookup arrives. Forward a colliding write; RAM collision data is unused.
+	btb_meta_ram0 <= btb_meta0[btb_ridx];
+	btb_meta_ram1 <= btb_meta1[btb_ridx];
+	btb_target_ram0 <= btb_target0[btb_ridx];
+	btb_target_ram1 <= btb_target1[btb_ridx];
+	btb_read_idx <= btb_ridx;
+	btb_read_valid <= ~reset;
+	// Validity is sampled with the same RAM row; forward same-edge updates.
+	btb_valid_q0 <= (btb_clr & ~ex_way & btb_write_read) ? 1'b0 :
+	                (btb_we & ~ex_way & btb_write_read) ? 1'b1 :
+	                fetch_go ? btb_valid_next0 : btb_valid_current0;
+	btb_valid_q1 <= (btb_clr & ex_way & btb_write_read) ? 1'b0 :
+	                (btb_we & ex_way & btb_write_read) ? 1'b1 :
+	                fetch_go ? btb_valid_next1 : btb_valid_current1;
+	// Reuse the parallel current/predicted row comparison, as validity does.
+	// Selecting the row index before comparison puts late fetch control in
+	// front of the six-bit equality check and its forwarding registers.
+	btb_forward0 <= btb_we & ~ex_way & btb_write_read & ~reset;
+	btb_forward1 <= btb_we & ex_way & btb_write_read & ~reset;
+	btb_target_forward0 <= btb_we & btb_wtgt & ~ex_way & (btb_widx == btb_ridx) & ~reset;
+	btb_target_forward1 <= btb_we & btb_wtgt & ex_way & (btb_widx == btb_ridx) & ~reset;
+	btb_write_meta <= {ex_pc[31:BTB_SET_BITS+2], btb_wcnt, ex_dec.br_lk,
+	                  (ex_dec.br == BR_LR) & ~ex_dec.br_lk};
+	btb_write_target <= redir_pc[31:2];
+	if (btb_we & ~ex_way) begin
+		btb_valid0[btb_widx] <= 1'b1;
+		btb_meta0[btb_widx] <= {ex_pc[31:BTB_SET_BITS+2], btb_wcnt, ex_dec.br_lk,
+		                      (ex_dec.br == BR_LR) & ~ex_dec.br_lk};
+		if (btb_wtgt) btb_target0[btb_widx] <= redir_pc[31:2];
 	end
-	if (btb_clr) btb_valid[btb_widx] <= 1'b0;
-	if (reset) btb_valid <= '0;
+	if (btb_we & ex_way) begin
+		btb_valid1[btb_widx] <= 1'b1;
+		btb_meta1[btb_widx] <= {ex_pc[31:BTB_SET_BITS+2], btb_wcnt, ex_dec.br_lk,
+		                      (ex_dec.br == BR_LR) & ~ex_dec.br_lk};
+		if (btb_wtgt) btb_target1[btb_widx] <= redir_pc[31:2];
+	end
+	if (btb_clr & ~ex_way) btb_valid0[btb_widx] <= 1'b0;
+	if (btb_clr & ex_way) btb_valid1[btb_widx] <= 1'b0;
+	if (btb_we) btb_lru[btb_widx] <= ~ex_way;
+	if (reset) begin
+		btb_valid0 <= '0;
+		btb_valid1 <= '0;
+		btb_valid_q0 <= 1'b0;
+		btb_valid_q1 <= 1'b0;
+		btb_lru <= '0;
+	end
+end
+
+always_ff @(posedge clk) begin
+	// Late commit/fetch admission updates the narrow flags and pointers now.
+	// The wide payload writes land one edge later and forward in the meantime.
+	ras_commit_write <= ras_push;
+	ras_commit_write_ptr <= ras_cptr;
+	ras_commit_write_data <= ex_pc + 32'd4;
+	ras_spec_write <= fetch_go & btb_taken & btb_is_call;
+	ras_spec_write_ptr <= ras_read_ptr;
+	ras_spec_write_data <= pc_f + 32'd4;
+	if (ras_commit_write) ras_committed[ras_commit_write_ptr] <= ras_commit_write_data;
+	ras_cptr <= ras_cptr_next;
+	ras_ccount <= ras_ccount_next;
+	// A redirect selects the committed stack on the following cycle. Its
+	// post-edge state already includes that redirecting branch's push/pop.
+	// Restore the speculative array from this registered decision, while
+	// applying any prediction at this edge to the same committed base.
+	ras_recover <= redir;
+	// A simultaneous redirect makes these speculative writes unused: the
+	// registered recovery flag selects the committed base at the next edge.
+	// Therefore the wide array's write path needs no late redirect gate.
+	if (ras_recover) begin
+		for (int i = 0; i < 8; i++)
+			ras_speculative[i] <= (ras_commit_write & (ras_commit_write_ptr == i[2:0])) ?
+			                      ras_commit_write_data : ras_committed[i];
+	end
+	else if (ras_spec_write) ras_speculative[ras_spec_write_ptr] <= ras_spec_write_data;
+	ras_sptr <= ras_read_ptr;
+	ras_scount <= ras_read_count;
+	if (fetch_go & btb_taken) begin
+		if (btb_is_call) begin
+			ras_sptr <= ras_read_ptr + 3'd1;
+			if (ras_read_count != 4'd8) ras_scount <= ras_read_count + 4'd1;
+		end
+		else if (btb_is_return & (ras_read_count != 4'd0)) begin
+			ras_sptr <= ras_read_ptr - 3'd1;
+			ras_scount <= ras_read_count - 4'd1;
+		end
+	end
+	if (reset) begin
+		ras_commit_write <= 1'b0;
+		ras_spec_write <= 1'b0;
+		ras_recover <= 1'b0;
+		ras_cptr <= 3'd0;
+		ras_sptr <= 3'd0;
+		ras_ccount <= 4'd0;
+		ras_scount <= 4'd0;
+	end
 end
 
 // the address pc_f takes at the end of this cycle; the MMU reads its TLB
@@ -376,33 +618,54 @@ wire [31:0] pc_next = reset ? reset_pc : redir ? redir_pc : fetch_go ? pred_pc :
 wire [31:0] pc_ahead = fetch_go ? pred_pc : pc_f;
 
 always_ff @(posedge clk) begin
-	if (if2_valid & ~if2_has & if_rvalid & ~if2_leave) begin
-		if2_has      <= 1'b1;
-		if2_insn     <= if_rdata;
-		if2_isi      <= if_fault;
-		if2_isi_info <= if_srr1;
+	if (fetch_stage_push) begin
+		fetch_stage[fetch_stage_tail] <= fetch_source_word;
+		fetch_stage_tail <= ~fetch_stage_tail;
 	end
-	if (if2_leave) if2_valid <= 1'b0;
+	if (fetch_deliver) fetch_stage_head <= ~fetch_stage_head;
+	case ({fetch_stage_push, fetch_deliver})
+		2'b10: fetch_stage_count <= fetch_stage_count + 2'd1;
+		2'b01: fetch_stage_count <= fetch_stage_count - 2'd1;
+		default: ;
+	endcase
+	if (fetch_push) begin
+		fetch_queue[fetch_tail] <= {if2_pc, if_rdata, if2_pred, if_srr1, if2_btb, if_fault, if2_way, if2_cnt};
+		fetch_tail <= fetch_tail + 2'd1;
+	end
+	if (fetch_pop) fetch_head <= fetch_head + 2'd1;
+	case ({fetch_push, fetch_pop})
+		2'b10: fetch_count <= fetch_count + 3'd1;
+		2'b01: fetch_count <= fetch_count - 3'd1;
+		default: ;
+	endcase
+	if (if2_resp) if2_valid <= 1'b0;
 
 	if (fetch_go) begin
 		if2_valid <= 1'b1;
 		if2_kill  <= redir;      // fetched from the wrong path in this very cycle
-		if2_has   <= 1'b0;
 		if2_pc    <= pc_f;
 		if2_pred  <= pred_pc;
 		if2_btb   <= btb_hit;
+		if2_way   <= btb_way;
 		if2_cnt   <= btb_c;
 	end
 
 	// a fetch still waiting for its word is dropped when the word comes
-	if (redir & if2_valid & ~if2_leave) if2_kill <= 1'b1;
+	if (redir & if2_valid & ~if2_resp) if2_kill <= 1'b1;
+	if (reset | redir) begin
+		fetch_stage_count <= 2'd0;
+		fetch_stage_head <= 1'b0;
+		fetch_stage_tail <= 1'b0;
+		fetch_count <= 3'd0;
+		fetch_head <= 2'd0;
+		fetch_tail <= 2'd0;
+	end
 
 	pc_f <= pc_next;
 
 	if (reset) begin
 		if2_valid <= 1'b0;
 		if2_kill  <= 1'b0;
-		if2_has   <= 1'b0;
 	end
 end
 
@@ -411,6 +674,10 @@ end
 // ============================================================================
 dec_t id_dec;
 dec_t id_uop;
+dec_t fetch_dec;
+logic [5:0] id_completion_ra, id_completion_rb;
+logic id_completion_ra_rd, id_completion_rb_rd, id_completion_b_imm;
+logic id_completion_simple;
 logic id_first;
 logic id_last;
 logic id_wait_xer;
@@ -421,6 +688,16 @@ DSPPC604_decode decode
 	.dec  (id_dec)
 );
 
+// Capture single-operation ALU indices and eligibility with ID, keeping
+// opcode decode out of the queue's dependency-to-fetch-readiness path.
+DSPPC604_decode fetch_decode (.insn(fetch_word.insn), .dec(fetch_dec));
+wire fetch_completion_simple = fetch_dec.valid & (fetch_dec.unit == UNIT_ALU) &
+    (fetch_dec.seq == SEQ_NONE) & fetch_dec.rd_wr & ~fetch_dec.rc_rd &
+    ~fetch_dec.priv & ~fetch_dec.fp_use & ~fetch_dec.trap &
+    ~fetch_dec.mem_rd & ~fetch_dec.mem_wr & (fetch_dec.br == BR_NONE) &
+    ~fetch_dec.ca_wr & ~fetch_dec.ov_wr & ~fetch_dec.cr_wr & ~fetch_dec.fpscr_wr &
+    (fetch_dec.ic.cin != CIN_CA);
+
 // lswx and stswx, from the opcode bits: the sequencer's wait for XER must
 // not come through the decoder (see wait_xer there)
 wire id_strx = (id_insn[31:26] == 6'd31) & ((id_insn[10:1] == 10'd533) | (id_insn[10:1] == 10'd661));
@@ -430,6 +707,7 @@ wire id_strx = (id_insn[31:26] == 6'd31) & ((id_insn[10:1] == 10'd533) | (id_ins
 wire id_ldux_rb = (id_insn[31:26] == 6'd31) & ~id_insn[10] & ~id_insn[8] & (id_insn[6:1] == 6'b110111) &
                   (id_insn[25:21] == id_insn[15:11]);
 
+logic [5:0] seq_next_ra, seq_next_rc;
 DSPPC604_seq seq
 (
 	.clk       (clk),
@@ -445,7 +723,9 @@ DSPPC604_seq seq
 	.uop       (id_uop),
 	.first     (id_first),
 	.last      (id_last),
-	.wait_xer  (id_wait_xer)
+	.wait_xer  (id_wait_xer),
+	.next_ra   (seq_next_ra),
+	.next_rc   (seq_next_rc)
 );
 
 // lswx and stswx read XER's byte count here: wait for anything in EX, the
@@ -453,45 +733,252 @@ DSPPC604_seq seq
 // A redirect in the same cycle does not stop the move: the operation arrives
 // in EX already cancelled.
 wire   id_hold  = id_wait_xer & ex_valid;
-assign id_take  = id_valid & ex_ready & ~id_hold;
-assign id_leave = id_take & (id_last | ~id_dec.valid);
+assign id_to_ex = id_valid & ex_ready & ~id_hold;
+assign id_take  = id_to_ex | completion_push;
+assign id_leave = (id_to_ex & (id_last | ~id_dec.valid)) | completion_push;
 
-// register read, with the value WB is writing in this cycle
-function automatic logic [31:0] rf_read(input logic [5:0] idx);
+// Read the prospective fetched word and next sequencer operation at every
+// edge. Late ID take selects a registered sample, never a RAM address. A
+// stalled operand retains its sample and any subsequent WB write. RB does
+// not change across a sequenced instruction, so it needs only a fetch copy.
+wire gpr_write = wb_valid & wb_rd_wr & ~wb_rd[6];
+wire gpr_seq_take = id_take & ~id_last;
+logic [31:0] gpr_ram_fa, gpr_ram_fb, gpr_ram_fc, gpr_ram_sa, gpr_ram_sc;
+logic [4:0] gpr_collision;
+logic [31:0] gpr_collision_value;
+logic gpr_held_ac, gpr_held_b, gpr_from_sequence;
+logic [31:0] gpr_held_a_value, gpr_held_b_value, gpr_held_c_value;
+always_ff @(posedge clk) begin
+	gpr_ram_fa <= gpr_fetch_a[fetch_dec.ra];
+	gpr_ram_fb <= gpr_fetch_b[fetch_dec.rb];
+	gpr_ram_fc <= gpr_fetch_c[fetch_dec.rc];
+	gpr_ram_sa <= gpr_sequence_a[seq_next_ra];
+	gpr_ram_sc <= gpr_sequence_c[seq_next_rc];
+	if (gpr_write) begin
+		gpr_fetch_a[wb_rd[5:0]] <= wb_result[31:0];
+		gpr_fetch_b[wb_rd[5:0]] <= wb_result[31:0];
+		gpr_fetch_c[wb_rd[5:0]] <= wb_result[31:0];
+		gpr_sequence_a[wb_rd[5:0]] <= wb_result[31:0];
+		gpr_sequence_c[wb_rd[5:0]] <= wb_result[31:0];
+	end
+	gpr_collision[0] <= gpr_write & (wb_rd[5:0] == fetch_dec.ra);
+	gpr_collision[1] <= gpr_write & (wb_rd[5:0] == fetch_dec.rb);
+	gpr_collision[2] <= gpr_write & (wb_rd[5:0] == fetch_dec.rc);
+	gpr_collision[3] <= gpr_write & (wb_rd[5:0] == seq_next_ra);
+	gpr_collision[4] <= gpr_write & (wb_rd[5:0] == seq_next_rc);
+	gpr_collision_value <= wb_result[31:0];
+end
+wire [31:0] id_reg_a = (gpr_write & (wb_rd[5:0] == id_uop.ra)) ? wb_result[31:0] :
+    gpr_held_ac ? gpr_held_a_value :
+    gpr_from_sequence ? (gpr_collision[3] ? gpr_collision_value : gpr_ram_sa) :
+                        (gpr_collision[0] ? gpr_collision_value : gpr_ram_fa);
+wire [31:0] id_reg_b = (gpr_write & (wb_rd[5:0] == id_uop.rb)) ? wb_result[31:0] :
+    gpr_held_b ? gpr_held_b_value :
+    gpr_collision[1] ? gpr_collision_value : gpr_ram_fb;
+wire [31:0] id_reg_c = (gpr_write & (wb_rd[5:0] == id_uop.rc)) ? wb_result[31:0] :
+    gpr_held_ac ? gpr_held_c_value :
+    gpr_from_sequence ? (gpr_collision[4] ? gpr_collision_value : gpr_ram_sc) :
+                        (gpr_collision[2] ? gpr_collision_value : gpr_ram_fc);
+always_ff @(posedge clk) begin
+	gpr_held_a_value <= id_reg_a;
+	gpr_held_b_value <= id_reg_b;
+	gpr_held_c_value <= id_reg_c;
+	gpr_held_ac <= ~(fetch_deliver | gpr_seq_take);
+	gpr_held_b <= ~fetch_deliver;
+	gpr_from_sequence <= ~fetch_deliver;
+	if (reset) begin
+		gpr_held_ac <= 1'b0;
+		gpr_held_b <= 1'b0;
+		gpr_from_sequence <= 1'b0;
+	end
+end
+wire [31:0] id_a = id_uop.ra_rd ? id_reg_a : 32'd0;
+wire [31:0] id_b = id_uop.b_imm ? id_uop.imm : id_reg_b;
+wire [31:0] id_c = id_reg_c;
+
+// Resolve a speculative integer operand in program order: architectural
+// state/WB, MEM, the outstanding EX result, then each completed younger
+// ALU result. A younger write supersedes an older unavailable value. The
+// latest bits give one matching writer per register, so selection is a
+// parallel masked OR rather than eight cascaded value multiplexers.
+function automatic logic [7:0] completion_match(input logic [5:0] idx, input logic before_ex);
+	for (int n = 0; n < 8; n++)
+		completion_match[n] = (before_ex ? completion_latest_older[n] : completion_latest_younger[n]) &
+		                      (completion_queue[n].rd == idx);
+endfunction
+function automatic logic [32:0] completion_read(input logic [5:0] idx, input logic [31:0] rf_value);
+	logic [32:0] value;
+	logic [7:0] writer_mask;
+	logic [31:0] queued_value;
 	begin
-		rf_read = (wb_valid & wb_rd_wr & (wb_rd == {1'b0, idx})) ? wb_result[31:0] : gpr[idx];
+		value = {1'b0, rf_value};
+		if (mem_valid & mem_rd_wr & (mem_rd == {1'b0, idx}))
+			value = {mem_load, mem_result[31:0]};
+		writer_mask = completion_match(idx, 1'b1);
+		queued_value = '0;
+		for (int n = 0; n < 8; n++) queued_value |= completion_queue[n].value & {32{writer_mask[n]}};
+		if (|writer_mask) value = {1'b0, queued_value};
+		if (completion_exec_valid & writer_mask[completion_exec_slot])
+			value = {1'b0, completion_result};
+		if (ex_valid & ex_dec.rd_wr & (ex_dec.rd == idx)) value[32] = 1'b1;
+		writer_mask = completion_match(idx, 1'b0);
+		queued_value = '0;
+		for (int n = 0; n < 8; n++) queued_value |= completion_queue[n].value & {32{writer_mask[n]}};
+		if (|writer_mask) value = {1'b0, queued_value};
+		if (completion_exec_valid & writer_mask[completion_exec_slot])
+			value = {1'b0, completion_result};
+		completion_read = value;
 	end
 endfunction
-
-function automatic logic [63:0] ff_read(input logic [4:0] idx);
-	begin
-		ff_read = (wb_valid & wb_rd_wr & (wb_rd == {2'b10, idx})) ? wb_value : fpr[idx];
+wire [32:0] completion_a = id_completion_ra_rd ? completion_read(id_completion_ra, id_reg_a) : 33'd0;
+wire [32:0] completion_b = id_completion_b_imm ? {1'b0, id_uop.imm} :
+                           id_completion_rb_rd ? completion_read(id_completion_rb, id_reg_b) : 33'd0;
+wire completion_eligible = id_completion_simple & id_first & ~id_isi &
+    (id_pred == id_pc + 32'd4);
+wire completion_wait = ex_valid & ~x_pre & ~ex_stall & ~ex_done &
+    ((ex_dec.unit == UNIT_MUL) | (ex_dec.unit == UNIT_DIV) | (ex_dec.unit == UNIT_FPU));
+assign completion_push = id_valid & completion_eligible & completion_wait &
+    (completion_count < 4'd8) &
+    ~completion_a[32] & ~completion_b[32] & ~mem_fault & ~reset;
+// completion_wait requires ~ex_done, so EX cannot redirect while pushing.
+// Only the older MEM fault can cancel this admission. Avoid putting branch
+// resolution into queue admission and the following ID/fetch readiness.
+DSPPC604_alu completion_alu
+(
+	.ctl (completion_exec_ctl),
+	.a (completion_exec_a),
+	.b (completion_exec_b),
+	.ca_in (1'b0),
+	.result (completion_result),
+	/* verilator lint_off PINCONNECTEMPTY */
+	.sum (), .ca_out (), .ov_out (), .lt (), .gt (), .eq (), .lt_s (), .lt_u ()
+	/* verilator lint_on PINCONNECTEMPTY */
+);
+assign completion_pop = (completion_older_count != 4'd0) &
+                        ~(completion_exec_valid & (completion_exec_slot == completion_head)) &
+                        mem_ready & ~mem_fault & ~reset;
+always_ff @(posedge clk) begin
+	completion_exec_valid <= completion_push;
+	if (completion_exec_valid)
+		completion_queue[completion_exec_slot].value <= completion_result;
+	if (completion_push) begin
+		completion_exec_slot <= completion_tail;
+		completion_exec_a <= completion_a[31:0];
+		completion_exec_b <= completion_b[31:0];
+		completion_exec_ctl <= id_uop.ic;
+		completion_queue[completion_tail].pc <= id_pc;
+		completion_queue[completion_tail].insn <= id_insn;
+		completion_queue[completion_tail].rd <= id_uop.rd;
+		completion_tail <= completion_tail + 3'd1;
+		for (int n = 0; n < 8; n++)
+			if (completion_queue[n].rd == id_uop.rd) completion_latest_younger[n] <= 1'b0;
+		completion_latest_younger[completion_tail] <= 1'b1;
 	end
-endfunction
-
-wire [31:0] id_a  = id_uop.ra_rd ? rf_read(id_uop.ra) : 32'd0;
-wire [31:0] id_b  = id_uop.b_imm ? id_uop.imm : rf_read(id_uop.rb);
-wire [31:0] id_c  = rf_read(id_uop.rc);
+	if (completion_pop) begin
+		completion_head <= completion_head + 3'd1;
+		completion_latest_older[completion_head] <= 1'b0;
+		completion_older_count <= completion_older_count - 4'd1;
+	end
+	case ({completion_push, completion_pop})
+		2'b10: completion_count <= completion_count + 4'd1;
+		2'b01: completion_count <= completion_count - 4'd1;
+		default: ;
+	endcase
+	// The next EX is younger than everything already in the queue. New ALU
+	// completions may append while those older entries drain, allowing the
+	// next long operation and its independent work to overlap retirement.
+	if (ex_leave) begin
+		completion_older_count <= completion_count;
+		completion_latest_older <= completion_latest_younger;
+		completion_latest_younger <= '0;
+	end
+	if (reset | redir) begin
+		completion_exec_valid <= 1'b0;
+		completion_head <= 3'd0;
+		completion_tail <= 3'd0;
+		completion_count <= 4'd0;
+		completion_older_count <= 4'd0;
+		completion_latest_older <= '0;
+		completion_latest_younger <= '0;
+	end
+end
 // Floating-point register numbers sit in fixed fields, so the read does not
 // wait for the decoder. Only a store names its register (frS) elsewhere:
 // opcodes 52-55, and the indexed forms under opcode 31, where nothing else
 // reads a floating-point register.
 wire        id_fp_store = (id_insn[31:28] == 4'b1101) | (id_insn[31:26] == 6'd31);
-wire [63:0] id_fa = ff_read(id_insn[20:16]);
-wire [63:0] id_fb = ff_read(id_fp_store ? id_insn[25:21] : id_insn[15:11]);
-wire [63:0] id_fc = ff_read(id_insn[10:6]);
+// Read the prospective fetch word at the edge that installs it in ID.
+// Three single-read copies give Quartus a simple dual-port RAM per operand.
+// Forward a same-edge write/read collision and the current WB value.
+wire [31:0] fpr_read_insn = fetch_word.insn;
+wire fpr_read_store = (fpr_read_insn[31:28] == 4'b1101) | (fpr_read_insn[31:26] == 6'd31);
+wire [4:0] fpr_read_a = fpr_read_insn[20:16];
+wire [4:0] fpr_read_b = fpr_read_store ? fpr_read_insn[25:21] : fpr_read_insn[15:11];
+wire [4:0] fpr_read_c = fpr_read_insn[10:6];
+logic [63:0] fpr_ram_a, fpr_ram_b, fpr_ram_c, fpr_collision_value;
+logic [63:0] fpr_held_a, fpr_held_b, fpr_held_c;
+logic fpr_held;
+logic fpr_collision_a, fpr_collision_b, fpr_collision_c;
+wire fpr_write = wb_valid & wb_rd_wr & wb_rd[6];
+always_ff @(posedge clk) begin
+	fpr_ram_a <= fpr_a[fpr_read_a];
+	fpr_ram_b <= fpr_b[fpr_read_b];
+	fpr_ram_c <= fpr_c[fpr_read_c];
+	if (fpr_write) begin
+		fpr_a[wb_rd[4:0]] <= wb_value;
+		fpr_b[wb_rd[4:0]] <= wb_value;
+		fpr_c[wb_rd[4:0]] <= wb_value;
+	end
+	fpr_collision_a <= fpr_write & (wb_rd[4:0] == fpr_read_a);
+	fpr_collision_b <= fpr_write & (wb_rd[4:0] == fpr_read_b);
+	fpr_collision_c <= fpr_write & (wb_rd[4:0] == fpr_read_c);
+	fpr_collision_value <= wb_value;
+end
+wire [4:0] id_frb = id_fp_store ? id_insn[25:21] : id_insn[15:11];
+wire [63:0] id_fa = (fpr_write & (wb_rd[4:0] == id_insn[20:16])) ? wb_value :
+                   fpr_held ? fpr_held_a :
+                   fpr_collision_a ? fpr_collision_value : fpr_ram_a;
+wire [63:0] id_fb = (fpr_write & (wb_rd[4:0] == id_frb)) ? wb_value :
+                   fpr_held ? fpr_held_b :
+                   fpr_collision_b ? fpr_collision_value : fpr_ram_b;
+wire [63:0] id_fc = (fpr_write & (wb_rd[4:0] == id_insn[10:6])) ? wb_value :
+                   fpr_held ? fpr_held_c :
+                   fpr_collision_c ? fpr_collision_value : fpr_ram_c;
+
+// The RAM reads the prospective fetch word without ID admission on its
+// address path. Save the ID operands if it stays put; keep WB forwarding
+// live and capture it so a held instruction retains committed writes.
+always_ff @(posedge clk) begin
+	fpr_held <= ~fetch_deliver;
+	// A new ID word selects its fresh RAM sample instead. Its predecessor's
+	// saved operands are unused, so capturing them needs no admission enable.
+	fpr_held_a <= id_fa;
+	fpr_held_b <= id_fb;
+	fpr_held_c <= id_fc;
+	if (reset) fpr_held <= 1'b0;
+end
 
 always_ff @(posedge clk) begin
 	if (id_leave) id_valid <= 1'b0;
-	if (if2_leave & ~if2_kill) begin
+	if (fetch_deliver) begin
 		id_valid    <= 1'b1;
-		id_pc       <= if2_pc;
-		id_insn     <= if2_isi_w ? 32'd0 : if2_word;    // a failed fetch decodes as one illegal operation
-		id_pred     <= if2_pred;
-		id_btb      <= if2_btb;
-		id_cnt      <= if2_cnt;
-		id_isi      <= if2_isi_w;
-		id_isi_info <= if2_info_w;
+		id_pc       <= fetch_word.pc;
+		id_insn     <= fetch_word.isi ? 32'd0 : fetch_word.insn;
+		id_completion_ra <= fetch_dec.ra;
+		id_completion_rb <= fetch_dec.rb;
+		id_completion_ra_rd <= fetch_dec.ra_rd;
+		id_completion_rb_rd <= fetch_dec.rb_rd;
+		id_completion_b_imm <= fetch_dec.b_imm;
+		id_completion_simple <= fetch_completion_simple;
+		id_pred     <= fetch_word.pred;
+		// Branch BI is a fixed instruction field. Decode its one-hot selector
+		// before ID, leaving an AND/reduction on the preceding CR result path.
+		id_cr_select <= 32'h80000000 >> fetch_word.insn[20:16];
+		id_btb      <= fetch_word.btb;
+		id_way      <= fetch_word.way;
+		id_cnt      <= fetch_word.cnt;
+		id_isi      <= fetch_word.isi;
+		id_isi_info <= fetch_word.info;
 	end
 	if (reset | redir) id_valid <= 1'b0;
 end
@@ -536,7 +1023,11 @@ assign fcls_b  = ffb_mem ? mem_cls : ffb_wb ? wb_cls : fp_classify(ex_fb);
 assign fcls_c  = ffc_mem ? mem_cls : ffc_wb ? wb_cls : fp_classify(ex_fc);
 
 // a load's data is not there until it reaches WB
-wire ex_stall = mem_load & (fa_mem | fb_mem | fc_mem | ffa_mem | ffb_mem | ffc_mem);
+wire completion_dependency =
+    ((ex_dec.ra_rd & (|completion_match(ex_dec.ra, 1'b1))) |
+     (ex_use_b & (|completion_match(ex_dec.rb, 1'b1))) |
+     (ex_dec.rc_rd & (|completion_match(ex_dec.rc, 1'b1))));
+assign ex_stall = completion_dependency | (mem_load & (fa_mem | fb_mem | fc_mem | ffa_mem | ffb_mem | ffc_mem));
 
 // ---- integer unit ----------------------------------------------------------
 wire is_int = (ex_dec.unit == UNIT_ALU) | (ex_dec.unit == UNIT_MUL) | (ex_dec.unit == UNIT_DIV);
@@ -569,7 +1060,7 @@ DSPPC604_int_unit int_unit
 	.ca_in      (xer[29]),
 	.so_in      (xer[31]),
 	.resp_valid (int_resp),
-	.resp_ready (mem_ready),
+	.resp_ready (mem_ready & ex_order_ready),
 	.result     (int_result),
 	.sum        (int_sum),
 	.ca_out     (int_ca),
@@ -609,7 +1100,7 @@ DSPPC604_fpu #(.OPERAND_REG (FPU_OPERAND_REG)) fpu
 	.cls_c      (fcls_c),
 	.fpscr_in   (fpscr),
 	.resp_valid (fpu_resp),
-	.resp_ready (mem_ready),
+	.resp_ready (mem_ready & ex_order_ready),
 	.result     (fpu_result),
 	.result_we  (fpu_result_we),
 	.fpscr_out  (fpu_fpscr),
@@ -621,22 +1112,65 @@ DSPPC604_fpu #(.OPERAND_REG (FPU_OPERAND_REG)) fpu
 logic [31:0] fsys_fpscr;
 logic [3:0]  fsys_cr;
 
-DSPPC604_fpscr fpscr_ops
+// FPSCR instructions use only frB's low word. An LFS in WB needs at most
+// its lowest three fraction bits and the two highest denormal bits here,
+// avoiding full normalization and its variable shift.
+function automatic logic [31:0] single_double_low(input logic [31:0] w);
+	begin
+		if (w[30:23] != 8'd0) single_double_low = {w[2:0], 29'd0};
+		else if (w[22]) single_double_low = {w[1:0], 1'b0, 29'd0};
+		else if (w[21]) single_double_low = {w[0], 2'b00, 29'd0};
+		else single_double_low = 32'd0;
+	end
+endfunction
+wire [31:0] wb_fp_low = wb_fsgl ? single_double_low(wb_result[31:0]) : wb_result[31:0];
+
+// Apply each operand before selecting its FPSCR result, placing late
+// forwarding-tag comparison after FEX summarization instead of before it.
+(* keep = "true" *) wire [31:0] fsys_mem_next, fsys_wb_next, fsys_held_next;
+DSPPC604_fpscr fpscr_mem_ops
 (
 	.op         (ex_dec.sys),
 	.insn       (ex_insn),
 	.fpscr      (fpscr),
-	.frb        (fop_b[31:0]),
-	.fpscr_next (fsys_fpscr),
+	.frb        (mem_result[31:0]),
+	.fpscr_next (fsys_mem_next),
+	/* verilator lint_off PINCONNECTEMPTY */
+	.cr_field   ()
+	/* verilator lint_on PINCONNECTEMPTY */
+);
+DSPPC604_fpscr fpscr_wb_ops
+(
+	.op         (ex_dec.sys),
+	.insn       (ex_insn),
+	.fpscr      (fpscr),
+	.frb        (wb_fp_low),
+	.fpscr_next (fsys_wb_next),
+	/* verilator lint_off PINCONNECTEMPTY */
+	.cr_field   ()
+	/* verilator lint_on PINCONNECTEMPTY */
+);
+DSPPC604_fpscr fpscr_held_ops
+(
+	.op         (ex_dec.sys),
+	.insn       (ex_insn),
+	.fpscr      (fpscr),
+	.frb        (ex_fb[31:0]),
+	.fpscr_next (fsys_held_next),
 	.cr_field   (fsys_cr)
 );
+assign fsys_fpscr = ffb_mem ? fsys_mem_next : ffb_wb ? fsys_wb_next : fsys_held_next;
 
-wire ex_done = x_pre | (~ex_stall & (is_int ? int_resp : is_fpu ? fpu_resp : 1'b1));
-assign ex_leave = ex_valid & ex_done & mem_ready & ~mem_fault;
+assign ex_done = x_pre | (~ex_stall & (is_int ? int_resp : is_fpu ? fpu_resp : 1'b1));
+// These outer guards already qualify mu_valid. For a non-aborted memory
+// operation, mu_ready is therefore sufficient here; using mu_accept repeats
+// the same completion/backpressure guards in the EX-leave timing cone.
+assign ex_leave = ex_valid & ex_done & mem_ready & ex_order_ready & ~mem_fault &
+                  (ex_abort | ~ex_mem_access | mu_ready);
 
 // ---- branch ----------------------------------------------------------------
 wire        is_br    = (ex_dec.br != BR_NONE);
-wire        cr_bit   = cr[5'd31 - ex_dec.bi];
+wire        cr_bit   = |(cr & ex_cr_select);
 wire [31:0] ctr_m1   = ctr - 32'd1;
 wire        br_count = is_br & ~ex_dec.bo[2];
 wire        ctr_ok   = ex_dec.bo[2] | ((ctr_m1 != 32'd0) ^ ex_dec.bo[1]);
@@ -669,9 +1203,12 @@ wire        is_xlate  = is_tlbie | (is_sys & ((ex_dec.sys == SYS_MTSR) | (ex_dec
                         (is_mtspr & ((ex_dec.spr == 10'd25) | (ex_dec.spr[9:4] == 6'b100001) | (ex_dec.spr == 10'd1008)));
 wire [31:0] next_pc   = is_rfi ? {srr0[31:2], 2'b00} : br_taken ? br_target : ex_pc4;
 wire [31:0] vec_base  = {{12{msr[MSR_IP]}}, 8'h00, 12'h000};
-assign redir_pc = mem_fault ? (vec_base | (mu_falign ? 32'h600 : 32'h300)) :
+assign redir_pc = mem_fault ? (vec_base | (mem_irq ? (ext_irq ? 32'h500 : 32'h900) :
+                                                         (mu_falign ? 32'h600 : 32'h300))) :
                   ex_exc    ? (vec_base | {20'd0, exc_vector}) : next_pc;
 wire   ex_final = ex_leave & ~ex_exc & ex_last;
+assign ras_push = ex_final & br_taken & ex_dec.br_lk;
+assign ras_pop = ex_final & br_taken & (ex_dec.br == BR_LR) & ~ex_dec.br_lk & (ras_ccount != 4'd0);
 assign redir    = mem_fault |
                   (ex_leave & (ex_exc | (ex_last & (is_rfi | is_mtmsr | is_xlate | (next_pc != ex_pred)))));
 
@@ -679,7 +1216,7 @@ assign redir    = mem_fault |
 // one that was not taken is weakened, and an entry that fired for something
 // that is no branch at all is removed.
 always_comb begin
-	btb_widx = ex_pc[BTB_BITS+1:2];
+	btb_widx = btb_index(ex_pc);
 	btb_we   = 1'b0;
 	btb_wtgt = 1'b0;
 	btb_clr  = 1'b0;
@@ -897,6 +1434,7 @@ logic mem_resv_clr;    // ... stwcx.'s, and was made
 wire  mem_done_ok = mem_leave & ~mem_fault;
 wire  resv_next   = (resv_valid | (mem_done_ok & mem_resv_set)) & ~(mem_done_ok & mem_resv_clr);
 wire  stwcx_store = (ex_dec.resv == RESV_STORE) & resv_next;
+assign ex_mem_access = ex_dec.mem_rd | (ex_dec.mem_wr & ((ex_dec.resv != RESV_STORE) | stwcx_store));
 
 logic [31:0] cr_next;
 logic [31:0] xer_next;
@@ -984,14 +1522,31 @@ wire [63:0] ex_result = is_fpu ? fpu_result :
 wire [6:0]  ex_rd     = ex_dec.frd_wr ? {2'b10, ex_dec.frd} : {1'b0, ex_dec.rd};
 wire        ex_rd_wr  = ex_dec.rd_wr | (ex_dec.frd_wr & (~is_fpu | fpu_result_we));
 
-// what a store writes
+// A forwarded LFS still carries its original single in WB. STFS can use that
+// word directly: converting to double and back preserves every single bit.
+// Keep the conversion input free of that WB path so synthesis can remove the
+// single-to-double normalization from the store's timing cone. MEM forwarding
+// has priority; unavailable MEM loads already hold EX until their WB result.
+wire [63:0] store_fp_double = ffb_mem ? mem_result :
+                             (ffb_wb & ~wb_fsgl) ? wb_result : ex_fb;
+wire [31:0] store_fp_single = (ffb_wb & wb_fsgl & ~ffb_mem) ? wb_result[31:0] :
+                             fp_double_to_single(store_fp_double);
+
+// Doubleword stores retain the full converted forwarding value.
 wire [63:0] ex_wdata  = ~ex_dec.mem_fp   ? {32'd0, op_c} :
-                        ex_dec.mem_fsgl  ? {32'd0, fp_double_to_single(fop_b)} : fop_b;
+                        ex_dec.mem_fsgl  ? {32'd0, store_fp_single} : fop_b;
+
+// MTSR/MTSPR have no memory descriptor or long-unit response. Their
+// writes use ordinary capacity directly, then precise abort/fault/order
+// guards, instead of the generic EX-leave mux feeding wide register banks.
+wire sys_reg_write = is_sys & ((ex_dec.sys == SYS_MTSR) | (ex_dec.sys == SYS_MTSPR));
+wire sys_write_commit = ex_valid & sys_reg_write & ~ex_stall & mem_capacity &
+                        ex_order_ready & ~mem_fault & ~ex_abort;
 
 always_ff @(posedge clk) begin
 	if (ex_leave) ex_valid <= 1'b0;
 
-	if (id_take) begin
+	if (id_to_ex) begin
 		ex_valid <= ~redir;
 		ex_pc    <= id_pc;
 		ex_insn  <= id_insn;
@@ -1003,6 +1558,11 @@ always_ff @(posedge clk) begin
 		ex_last  <= id_last | ~id_dec.valid;
 		ex_pred  <= id_pred;
 		ex_btb   <= id_btb;
+		// The preceding EX commits CR at this edge; MEM and queued ALUs cannot
+		// change it. Select the branch condition from that registered state in
+		// EX instead of appending selection to the predecessor's CR datapath.
+		ex_cr_select <= id_cr_select;
+		ex_way   <= id_way;
 		ex_cnt   <= id_cnt;
 		ex_a     <= id_a;
 		ex_b     <= id_b;
@@ -1041,11 +1601,14 @@ always_ff @(posedge clk) begin
 		fpscr <= fpscr_next;
 		msr   <= msr_next;
 
-		if (is_sys & (ex_dec.sys == SYS_MTSR)) sr[sr_idx] <= op_a;
+	end
+
+	if (sys_write_commit) begin
+		if (ex_dec.sys == SYS_MTSR) sr[sr_idx] <= op_a;
 
 		// the bits each register keeps are the measured ones (7300 run, two
 		// patterns written to and read back from every supervisor register)
-		if (is_sys & (ex_dec.sys == SYS_MTSPR)) begin
+		if (ex_dec.sys == SYS_MTSPR) begin
 			case (ex_dec.spr)
 				10'd18:   dsisr <= op_a;
 				10'd19:   dar   <= op_a;
@@ -1095,8 +1658,11 @@ always_ff @(posedge clk) begin
 		srr0  <= mem_pc;
 		srr1  <= msr & SRR1_MASK;
 		msr   <= msr_exc;
-		dar   <= mu_dar;
-		dsisr <= mu_falign ? align_info(mem_insn) : mu_dsisr;
+		if (mem_dsi) begin
+			dar   <= mu_dar;
+			dsisr <= mu_falign ? align_info(mem_insn) : mu_dsisr;
+		end
+		if (mem_irq & ~ext_irq) dec_pending <= 1'b0;
 	end
 
 	if (reset) begin
@@ -1125,20 +1691,23 @@ logic        mu_falign;     // ... and it is an alignment exception, not a DSI
 logic [63:0] mu_rdata;
 logic [31:0] mu_dsisr;
 logic [31:0] mu_dar;
+logic [31:0] mu_ea;
 
 DSPPC604_mem_unit mem_unit
 (
 	.clk         (clk),
-	.reset       (reset),
-	.req_valid   (mem_valid & (mem_load | mem_store)),
-	.we          (mem_store),
-	.kind        (mem_cop),
-	.addr        (mem_ea),
-	.nbytes      (mem_n),
-	.sext        (mem_sext),
-	.brev        (mem_brev),
-	.ljust       (mem_ljust),
-	.wdata       (mem_sdata),
+	.reset       (reset | mem_irq),
+	.req_valid   (mu_valid),
+	.req_ready   (mu_ready),
+	.pending_ungranted (mu_pending),
+	.we          (ex_dec.mem_wr),
+	.kind        (ex_dec.cop),
+	.addr        (ex_ea),
+	.nbytes      (ex_dec.mem_n),
+	.sext        (ex_dec.mem_sext),
+	.brev        (ex_dec.mem_brev),
+	.ljust       (ex_dec.mem_ljust),
+	.wdata       (ex_wdata),
 	.resp_valid  (mu_resp),
 	.resp_fault  (mu_fault),
 	.rdata       (mu_rdata),
@@ -1146,18 +1715,30 @@ DSPPC604_mem_unit mem_unit
 	.dbus_we     (mu_we),
 	.dbus_kind   (mu_kind),
 	.dbus_addr   (mu_addr),
+	.dbus_ea     (mu_ea),
 	.dbus_be     (mu_be),
 	.dbus_wdata  (mu_wdata),
+	.dbus_wide   (mu_wide),
+	.dbus_wdata_next (mu_wdata_next),
 	.dbus_gnt    (mu_gnt),
 	.dbus_rvalid (mu_rvalid),
 	.dbus_fault  (mu_bfault),
-	.dbus_rdata  (mu_bus_rdata)
+	.dbus_rdata  (mu_bus_rdata),
+	.dbus_rwide  (mu_rwide),
+	.dbus_rdata_next (mu_rdata_next)
 );
 
-assign mem_leave = mem_valid & (~(mem_load | mem_store) | mu_resp);
-assign mem_fault = mem_valid & mu_resp & mu_fault;
+assign mu_valid = ex_valid & ex_done & mem_ready & ex_order_ready & ~mem_fault & ~ex_abort & ex_mem_access;
+assign mu_accept = mu_valid & mu_ready;
+// Before its first grant, a saved descriptor has no memory side effect.
+// Preserve the old interrupt boundary while decoupling EX admission from
+// translation/cache readiness. Later micro-ops finish before an interrupt.
+assign mem_irq = mem_valid & mem_first & mu_pending & msr[MSR_EE] & (ext_irq | dec_pending);
+assign mem_leave = mem_valid & (~(mem_load | mem_store) | mu_resp | mem_irq);
+assign mem_dsi = mem_valid & mu_resp & mu_fault;
+assign mem_fault = mem_dsi | mem_irq;
 
-DSPPC604_mmu #(.TLB_BITS (TLB_BITS)) mmu
+DSPPC604_mmu #(.TLB_BITS (TLB_BITS), .CANDIDATE_D_ADDR (1'b1)) mmu
 (
 	.clk         (clk),
 	.reset       (reset),
@@ -1172,7 +1753,8 @@ DSPPC604_mmu #(.TLB_BITS (TLB_BITS)) mmu
 	.tlbie_ea    (op_b),
 	.i_req       (if_req),
 	.i_addr      (if_addr),
-	.i_addr_next (pc_ahead),
+	.i_cancel    (redir),
+	.i_addr_next (pred_pc),
 	.i_gnt       (if_gnt),
 	.i_rvalid    (if_rvalid),
 	.i_rdata     (if_rdata),
@@ -1192,10 +1774,15 @@ DSPPC604_mmu #(.TLB_BITS (TLB_BITS)) mmu
 	.d_addr      (mu_addr),
 	.d_be        (mu_be),
 	.d_wdata     (mu_wdata),
-	.d_ea        (mem_ea),
+	.d_wide      (mu_wide),
+	.d_wdata_next (mu_wdata_next),
+	.d_ea        (mu_ea),
+	.d_cancel    (redir),
 	.d_gnt       (mu_gnt),
 	.d_rvalid    (mu_rvalid),
 	.d_rdata     (mu_bus_rdata),
+	.d_rwide     (mu_rwide),
+	.d_rdata_next (mu_rdata_next),
 	.d_fault     (mu_bfault),
 	.d_falign    (mu_falign),
 	.d_dsisr     (mu_dsisr),
@@ -1206,11 +1793,15 @@ DSPPC604_mmu #(.TLB_BITS (TLB_BITS)) mmu
 	.dbus_addr   (db_addr),
 	.dbus_be     (db_be),
 	.dbus_wdata  (db_wdata),
+	.dbus_wide   (db_wide),
+	.dbus_wdata_next (db_wdata_next),
 	.dbus_ci     (db_ci),
 	.dbus_wt     (db_wt),
 	.dbus_gnt    (db_gnt),
 	.dbus_rvalid (db_rvalid),
-	.dbus_rdata  (db_rdata)
+	.dbus_rdata  (db_rdata),
+	.dbus_rwide  (db_rwide),
+	.dbus_rdata_next (db_rdata_next)
 );
 
 // ============================================================================
@@ -1250,12 +1841,19 @@ end
 // (the icbi is served as soon as the instruction cache's part of an external
 // snoop is done, so that a data cache waiting on it cannot hold the snoop up)
 wire        ic_ext        = snoop_req & ~ic_snoop_done;
-wire        ic_snoop_req  = ic_ext | dc_inv_req;
+wire        ic_snoop_req  = ic_ext | (dc_inv_req & ~dc_inv_ack_q);
 wire        ic_snoop_we   = ic_ext ? snoop_we   : 1'b1;
 wire [31:5] ic_snoop_addr = ic_ext ? snoop_addr : dc_inv_addr;
 wire        dc_snoop_req  = snoop_req & ~dc_snoop_done;
 assign snoop_ack  = snoop_req & (ic_snoop_ack | ic_snoop_done) & (dc_snoop_ack | dc_snoop_done);
-assign dc_inv_ack = ~ic_ext & ic_snoop_ack;
+// Complete icbi from a registered I-cache acknowledge. Suppress another
+// internal snoop while that acknowledge is delivered; an external snoop
+// keeps its usual priority and can start in the meantime.
+always_ff @(posedge clk) begin
+	dc_inv_ack_q <= dc_inv_req & ~ic_ext & ic_snoop_ack;
+	if (reset) dc_inv_ack_q <= 1'b0;
+end
+assign dc_inv_ack = dc_inv_ack_q;
 
 DSPPC604_cache #(.WRITABLE (0)) icache
 (
@@ -1270,12 +1868,16 @@ DSPPC604_cache #(.WRITABLE (0)) icache
 	.addr       (ib_addr[31:2]),
 	.be         (4'b1111),
 	.wdata      (32'd0),
+	.wide       (1'b0),
+	.wdata_next (32'd0),
 	.ci         (ib_ci),
 	.wt         (1'b0),
 	.gnt        (ib_gnt),
 	.rvalid     (ib_rvalid),
 	.rdata      (ib_rdata),
 	/* verilator lint_off PINCONNECTEMPTY */
+	.rvalid_wide (),
+	.rdata_next (),
 	.inv_req    (),
 	.inv_addr   (),
 	/* verilator lint_on PINCONNECTEMPTY */
@@ -1307,11 +1909,15 @@ DSPPC604_cache #(.WRITABLE (1), .LATE_ANSWER (0)) dcache
 	.addr       (db_addr),
 	.be         (db_be),
 	.wdata      (db_wdata),
+	.wide       (db_wide),
+	.wdata_next (db_wdata_next),
 	.ci         (db_ci),
 	.wt         (db_wt),
 	.gnt        (db_gnt),
 	.rvalid     (db_rvalid),
 	.rdata      (db_rdata),
+	.rvalid_wide (db_rwide),
+	.rdata_next (db_rdata_next),
 	.inv_req    (dc_inv_req),
 	.inv_addr   (dc_inv_addr),
 	.inv_ack    (dc_inv_ack),
@@ -1340,31 +1946,56 @@ always_ff @(posedge clk) begin
 	end
 	if (reset) mem_busy <= 1'b0;
 end
-wire sel_i = mem_busy ? mem_owner_i : ~dm_req;
-assign mem_req   = sel_i ? im_req   : dm_req;
+// An ACK still belongs to the saved owner after its request drops. Drain
+// that level before presenting another request, and deliver it only once.
+wire sel_i = (mem_busy | mem_ack) ? mem_owner_i : ~dm_req;
+assign mem_req   = (mem_busy | ~mem_ack) & (sel_i ? im_req : dm_req);
 assign mem_we    = sel_i ? im_we    : dm_we;
 assign mem_line  = sel_i ? im_line  : dm_line;
 assign mem_addr  = sel_i ? im_addr  : dm_addr;
 assign mem_be    = sel_i ? im_be    : dm_be;
 assign mem_wdata = sel_i ? im_wdata : dm_wdata;
-assign im_ack    = mem_ack &  sel_i;
-assign dm_ack    = mem_ack & ~sel_i;
+assign im_ack    = mem_ack & mem_busy &  mem_owner_i;
+assign dm_ack    = mem_ack & mem_busy & ~mem_owner_i;
 
-// The operation leaving EX enters MEM. Only mem_valid waits for the abort
-// decision, the last thing EX knows: the data registers load whenever EX
-// leaves, a dropped operation's values included, because everything that
-// reads them (the memory unit's request, the forwarding compares, the
-// fault, WB) is qualified by mem_valid, so an aborted operation's values
-// are never seen. That keeps ex_abort's fan-out to the registers that
-// commit state.
+// Capture completed EX payload when MEM has ordinary response capacity.
+// The payload may be speculative while descriptor acceptance/abort/fault
+// decides mem_valid. All readers qualify it with mem_valid. An unfinished
+// older MEM operation retains its payload; queued completions have priority
+// through ex_order_ready. This separates the wide capture enables from the
+// late commit/descriptor controls without adding a pipeline cycle.
+wire mem_payload_take = ex_valid & ex_regular_done & mem_capacity & ex_order_ready;
 always_ff @(posedge clk) begin
 	if (mem_leave) mem_valid <= 1'b0;
 	if (ex_leave & ~ex_abort) mem_valid <= 1'b1;
+	if (completion_pop) begin
+		mem_valid <= 1'b1;
+		mem_pc <= completion_queue[completion_head].pc;
+		mem_insn <= completion_queue[completion_head].insn;
+		mem_last <= 1'b1;
+		mem_first <= 1'b1;
+		mem_rd <= {1'b0, completion_queue[completion_head].rd};
+		mem_rd_wr <= 1'b1;
+		mem_result <= {32'd0, completion_queue[completion_head].value};
+		mem_load <= 1'b0;
+		mem_store <= 1'b0;
+		mem_resv_set <= 1'b0;
+		mem_resv_clr <= 1'b0;
+		mem_fp <= 1'b0;
+		mem_fsgl <= 1'b0;
+		mem_t_cr <= cr;
+		mem_t_xer <= xer;
+		mem_t_lr <= lr;
+		mem_t_ctr <= ctr;
+		mem_t_fpscr <= fpscr;
+		mem_t_msr <= msr;
+	end
 
-	if (ex_leave) begin
+	if (mem_payload_take) begin
 		mem_pc     <= ex_pc;
 		mem_insn   <= ex_insn;
 		mem_last   <= ex_last;
+		mem_first  <= ex_first;
 		mem_rd     <= ex_rd;
 		mem_rd_wr  <= ex_rd_wr;
 		mem_result <= ex_result;
@@ -1413,11 +2044,6 @@ always_ff @(posedge clk) begin
 		wb_t_msr   <= mem_t_msr;
 	end
 
-	if (wb_valid & wb_rd_wr) begin
-		if (wb_rd[6]) fpr[wb_rd[4:0]] <= wb_value;
-		else          gpr[wb_rd[5:0]] <= wb_result[31:0];
-	end
-
 	if (reset) wb_valid <= 1'b0;
 end
 
@@ -1440,5 +2066,50 @@ assign trace_dkind   = db_kind;
 assign trace_daddr   = db_addr;
 assign trace_dbe     = db_be;
 assign trace_dwdata  = db_wdata;
+
+// Simulation-only observation: no counters or extra ports in the FPGA.
+// Events overlap; the bench reports them separately from exclusive cycle buckets.
+/* synthesis translate_off */
+always_ff @(posedge clk) begin
+	if (~reset) begin
+		if (fetch_go & if2_valid & ~if_rvalid) $fatal(1, "fetch response overtaken");
+		if (fetch_count > 3'd4) $fatal(1, "fetch queue overflow");
+		if (fetch_push & (fetch_count == 3'd4) & ~fetch_pop) $fatal(1, "unreserved fetch response");
+		if (mu_resp & ~(mem_valid & (mem_load | mem_store))) $fatal(1, "unowned memory response");
+		if (completion_count > 4'd8) $fatal(1, "completion queue overflow");
+		if (completion_pop & ex_leave) $fatal(1, "two operations entered MEM");
+		if (mem_payload_take & mem_valid & ~mem_leave)
+			$fatal(1, "EX payload overwrote an unfinished MEM operation");
+		if (mem_payload_take & completion_pop)
+			$fatal(1, "EX payload overwrote a queued completion");
+		if (ex_leave & ~ex_abort & ~mem_payload_take)
+			$fatal(1, "committed EX operation did not capture its MEM payload");
+		if (completion_push & redir) $fatal(1, "completion admitted during redirect");
+		if (ex_valid & sys_reg_write & ex_mem_access)
+			$fatal(1, "system register write has a memory descriptor");
+		if (sys_write_commit != (ex_leave & ~ex_abort & sys_reg_write))
+			$fatal(1, "system write commit differs from architectural EX commit");
+		if (id_to_ex & ex_valid & ~ex_leave & ~redir)
+			$fatal(1, "ID admission overwrote a live EX operation");
+		if (~ex_order_ready & mu_accept) $fatal(1, "memory access overtook queued result");
+		if (completion_older_count > completion_count) $fatal(1, "completion queue order lost");
+		if (completion_exec_valid & (completion_count == 4'd0)) $fatal(1, "unreserved completion execution");
+	end
+end
+wire [19:0] perf_events /* verilator public_flat_rd */ = {
+    completion_pop & completion_push,
+    completion_pop, completion_push,
+    mmu.walk_cancel_event,
+    ex_leave | completion_pop, fetch_full, if2_valid & if2_kill, redir,
+    fetch_go, dm_req & ~dm_ack, im_req & ~im_ack,
+    ex_final & is_br & (next_pc != ex_pred),
+    ex_ready & ~id_valid,
+    ex_valid & ex_done & (~mem_ready | (ex_mem_access & ~mu_accept & ~ex_abort)),
+    ex_valid & ~ex_stall & is_fpu & ~fpu_resp,
+    ex_valid & ~ex_stall & is_int & ~int_resp,
+    (mem_valid & (mem_load | mem_store) & ~mu_resp) | (ex_valid & ex_mem_access & ~ex_abort & ~mu_accept),
+    ex_valid & ex_stall, id_take, wb_valid & wb_last
+};
+/* synthesis translate_on */
 
 endmodule

@@ -7,9 +7,9 @@
 //  that a store writes one whole word and a fill all eight: Quartus 17
 //  infers these, and not a byte-enabled write to a wide array. Word j of
 //  the line is bits 32j+31 downward; the cache puts the lowest address in
-//  word 7. Read and write addresses never coincide in the same cycle
-//  (DSPPC604_cache sees to that), so no read-during-write logic is asked
-//  for.
+//  word 7. A colliding read has an unspecified value for the written words;
+//  DSPPC604_cache forwards the registered write instead, so the RAM needs
+//  no read-during-write logic.
 //
 //============================================================================
 

@@ -788,6 +788,15 @@ for this work (it is in build mode: no edits, commits, pushes or fetches).
 
 ## Speed (2026-10-08, the speed session: `RESUME_speed.md`)
 
+**Current handoff, 2026-10-10 12:24 PDT:** work is paused at the user's
+request; [RESUME_speed.md](../RESUME_speed.md) supersedes historical speed
+session state below. Test board10.0.2.14 has the requested Main261009 and
+saved original Main. It runs baseline55 with an MGL mounting exactly one
+SC0 Quadra-derived disk. Mac OS8.1 reaches the desktop but Finder reports
+the missing-disk alert; clean shutdown is unconfirmed. No Speedometer or
+hardware before/after scores exist. All owned simulation/build jobs are
+terminal; retained AT is unchanged and70MHz/overall2x gates remain open.
+
 The measure is Speedometer 4.02 on the board, always under the same
 conditions: `os761ot.hda` on SCSI disk 0 (Mac OS 7.6.1 with Open Transport,
 as the image is: 256 colours, virtual memory on), RAM 120 MB, the 16-inch
@@ -850,6 +859,7 @@ segment-register read-ahead, `mmu|i_sr_q`) was -1.33 ns in build 26.
 
 | When | Question |
 |---|---|
+| CPU performance, 2026-10-09 | The user authorized the five review findings, targeting 2x CPU performance at fixed 70 MHz with timing closure before a higher clock: buffered fetch, grant-independent cache reads, pipelined word/doubleword L1 accesses with write forwarding, a two-way BTB/return stack, and bounded speculative ALU completion with ordered MEM/WB retirement. Root now matches verified AT CPU/video hashes, including synchronous integer register RAMs with explicit collision forwarding. CPU/lint, 16 checked mixes, collision-poisoned tests with shadow architectural GPR checks, 6 MB memtest and 300 M ROM lockstep pass; the root suite/lint rerun also passes. Full-machine AT with retiming off fits at 34,701 ALMs (83%); CPU timing fails at 60.38 MHz / -2.278 ns, an improvement of 2.41 MHz and 1,930 ALMs versus AF. The 100 MHz memory domain passes all corners with only +0.001 ns minimum setup; hold passes (+0.087 ns). Root PLL/clocks/QSF/SDC are unchanged. Further isolated cuts remain under test. Measurements and remaining Quartus/board gates are in the [CPU performance goal](DSPPC604_plan.md#cpu-performance-goal-2026-10-09). General 2x performance and 70 MHz closure remain unproved; no bitstream deployed. |
 | ~~now~~ | ~~The order of the milestones after I.~~ Decided 2026-10-07: the order above, the serial console first, as soon as possible, for running validation tests from Open Firmware over the modem port. |
 | ~~V~~ | ~~VRAM in the HPS's DDR3 or in the SDRAM?~~ Decided 2026-10-07: the DDR3, all 4 MB, block RAM for the line buffer and the colour table only. |
 | X | Added 2026-10-07: the PCI bus and a card in a slot, for later. Which card first? |

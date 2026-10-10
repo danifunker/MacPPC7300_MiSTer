@@ -14,7 +14,8 @@
 //    and fpscr_in steady until the response is taken. resp_valid stays high,
 //    with the results, until a cycle in which resp_ready is high too.
 //
-//    fmr fneg fabs fnabs fsel fcmpu fcmpo   same cycle (combinational)
+//    fmr fneg fabs fnabs fsel                same cycle (combinational)
+//    fcmpu fcmpo                            operand + response registers
 //    everything else                        several cycles, see the stages
 //
 //    result_we is low when an enabled invalid-operation or zero-divide
@@ -36,8 +37,9 @@
 //
 //  OPERAND_REG = 1 takes the operands, control and FPSCR into registers in
 //  the request cycle and works from those a cycle later, so the requester's
-//  forwarding network ends at a register; every instruction then takes one
-//  cycle more (the moves and compares one instead of none).
+//  forwarding network ends at a register; arithmetic, moves and selects then
+//  take one cycle more. Compares always use the operand registers and then
+//  register their condition/FPSCR response, independently of OPERAND_REG.
 //
 //  The results that need no arithmetic (NaN operands, infinities, zeros, the
 //  invalid operations) are found in the cycle after the request, from the
@@ -221,26 +223,36 @@ wire op_neg    = od.neg;
 wire use_a     = od.use_a, use_b = od.use_b, use_c = od.use_c;
 wire op_sgl    = od.sgl;
 
-// ---- moves, select and compare: combinational ------------------------------
+// ---- moves and select: combinational; compare: registered operands ----------
 logic [63:0] simple_result;
 logic [31:0] simple_fpscr;
 logic [3:0]  simple_cr;
 
-wire cmp_un = a_nan | b_nan;
-wire cmp_bz = a_zero & b_zero;
-wire cmp_lt = ~cmp_un & ~cmp_bz & ((a_s & ~b_s) |
-              (~a_s & ~b_s & (ia[62:0] < ib[62:0])) | (a_s & b_s & (ia[62:0] > ib[62:0])));
-wire cmp_eq = ~cmp_un & (cmp_bz | (ia == ib));
+// Compare always uses the captured request. This separates forwarded LFS
+// normalization from the magnitude comparison, including OPERAND_REG=0.
+wire cmp_un = ka_q.nan | kb_q.nan;
+wire cmp_bz = ka_q.zero & kb_q.zero;
+wire cmp_lt = ~cmp_un & ~cmp_bz & ((ka_q.s & ~kb_q.s) |
+              (~ka_q.s & ~kb_q.s & (a_q[62:0] < b_q[62:0])) |
+              (ka_q.s & kb_q.s & (a_q[62:0] > b_q[62:0])));
+wire cmp_eq = ~cmp_un & (cmp_bz | (a_q == b_q));
 wire cmp_gt = ~cmp_un & ~cmp_lt & ~cmp_eq;
 wire [3:0] cmp_cc = {cmp_lt, cmp_gt, cmp_eq, cmp_un};
+logic [31:0] cmp_fpscr;
+
+always_comb begin : compare_fpscr
+	logic [31:0] set_bits;
+	logic cmp_snan;
+	set_bits = 32'd0;
+	cmp_snan = ka_q.snan | kb_q.snan;
+	set_bits[B_VXSNAN] = cmp_snan;
+	if (ctl_q.op == FPU_CMPO)
+		set_bits[B_VXVC] = cmp_snan ? ~fpscr_i_q[B_VE] : cmp_un;
+	cmp_fpscr = fpscr_update(fpscr_i_q, set_bits, 1'b0, 1'b0, 1'b0,
+	                         1'b1, {fpscr_i_q[16], cmp_cc});
+end
 
 always_comb begin : simple_ops
-	logic [31:0] set_bits;
-	logic        cmp_snan;
-
-	set_bits = 32'd0;
-	cmp_snan = a_snan | b_snan;
-
 	simple_result = ib;
 	simple_fpscr  = ifpscr;
 	simple_cr     = ifpscr[31:28];
@@ -250,14 +262,6 @@ always_comb begin : simple_ops
 		FPU_ABS:  simple_result = {1'b0, ib[62:0]};
 		FPU_NABS: simple_result = {1'b1, ib[62:0]};
 		FPU_SEL:  simple_result = (~a_nan & (a_zero | ~a_s)) ? ic : ib;
-		FPU_CMPU, FPU_CMPO: begin
-			set_bits[B_VXSNAN] = cmp_snan;
-			if (ictl.op == FPU_CMPO)
-				set_bits[B_VXVC] = cmp_snan ? ~ifpscr[B_VE] : cmp_un;
-			simple_fpscr = fpscr_update(ifpscr, set_bits, 1'b0, 1'b0, 1'b0,
-			                            1'b1, {ifpscr[16], cmp_cc});
-			simple_cr = cmp_cc;
-		end
 		default: ;
 	endcase
 end
@@ -464,6 +468,9 @@ logic        fin_fr;
 logic        fin_fi;
 logic        fin_fprf_we;
 logic        fin_den;      // the result was denormalised in its own format
+logic        fin_compare;
+logic [31:0] fin_cmp_fpscr;
+logic [3:0]  fin_cmp_cr;
 
 wire ue = fpscr_q[B_UE];
 wire oe = fpscr_q[B_OE];
@@ -807,6 +814,7 @@ end
 wire take     = req_valid & (state == S_IDLE);                            // a request arrives
 wire go       = (OPERAND_REG != 0) ? (state == S_OPND) : take;            // ... and its operands are in hand
 wire start    = go & ~op_simple;
+wire op_compare = (ictl.op == FPU_CMPU) | (ictl.op == FPU_CMPO);
 wire need_pre = (use_a & a_den) | (use_b & b_den) | (use_c & c_den);
 wire sb_eff   = b_s ^ op_sub;                                             // sign frB contributes with
 wire s_prod   = a_s ^ c_s;
@@ -825,12 +833,13 @@ always_ff @(posedge clk) begin
 			kc_q      <= cls_c;
 			ctl_q     <= ctl;
 			fpscr_i_q <= fpscr_in;
-			if (OPERAND_REG != 0) state <= S_OPND;
+			if ((OPERAND_REG != 0) | (ctl.op == FPU_CMPU) | (ctl.op == FPU_CMPO))
+				state <= S_OPND;
 		end
 	end
 
 	S_OPND: begin
-		// a move, select or compare answers from here; the rest start below
+		// Moves and selects answer here; compares register their result below.
 		if (op_simple & resp_ready) state <= S_IDLE;
 	end
 
@@ -996,7 +1005,16 @@ always_ff @(posedge clk) begin
 	end
 	endcase
 
+	if ((state == S_OPND) & ((ctl_q.op == FPU_CMPU) | (ctl_q.op == FPU_CMPO))) begin
+		fin_result    <= b_q;
+		fin_cmp_fpscr <= cmp_fpscr;
+		fin_cmp_cr    <= cmp_cc;
+		fin_compare   <= 1'b1;
+		state         <= S_DONE;
+	end
+
 	if (start) begin
+		fin_compare <= 1'b0;
 		sgl_q   <= op_sgl;
 		int_q   <= op_int;
 		div_q   <= op_div;
@@ -1064,6 +1082,7 @@ always_ff @(posedge clk) begin
 	if (reset | flush) begin
 		state    <= S_IDLE;
 		sp_check <= 1'b0;
+		fin_compare <= 1'b0;
 	end
 end
 
@@ -1082,16 +1101,19 @@ always_comb begin
 	if (state == S_DONE) begin
 		resp_valid = req_valid;
 		result     = fin_result;
-		result_we  = ~done_suppress;
-		fpscr_out  = done_fpscr;
-		cr_out     = done_fpscr[31:28];
+		result_we  = fin_compare | ~done_suppress;
+		fpscr_out  = fin_compare ? fin_cmp_fpscr : done_fpscr;
+		cr_out     = fin_compare ? fin_cmp_cr : done_fpscr[31:28];
 	end
 	else begin
-		resp_valid = req_valid & go & op_simple;
+		resp_valid = req_valid & go & op_simple & ~op_compare;
 		result     = simple_result;
 		result_we  = 1'b1;
-		fpscr_out  = simple_fpscr;
-		cr_out     = simple_cr;
+		// Compare has no response until S_DONE. Keep its speculative condition
+		// and exception update off the requester's commit/redirect network;
+		// the registered fields above carry the valid response.
+		fpscr_out  = op_compare ? ifpscr : simple_fpscr;
+		cr_out     = op_compare ? ifpscr[31:28] : simple_cr;
 	end
 	fex = fpscr_out[30];
 end

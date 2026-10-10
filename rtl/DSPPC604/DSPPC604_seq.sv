@@ -37,7 +37,9 @@ module DSPPC604_seq
 	output DSPPC604_pkg::dec_t uop,
 	output logic        first,        // first operation of the instruction
 	output logic        last,         // last operation of the instruction
-	output logic        wait_xer      // XER's byte count must be final first
+	output logic        wait_xer,     // XER's byte count must be final first
+	output logic [5:0]  next_ra,      // prospective next micro-op, independent of take
+	output logic [5:0]  next_rc
 );
 
 import DSPPC604_pkg::*;
@@ -60,6 +62,12 @@ wire [4:0]  str_r   = base_r + word_i[4:0];
 // enable; it is decided from the opcode bits the pipeline compares directly,
 // not from the decoder's seq field, which keeps the decoder out of that chain.
 assign wait_xer = strx & (step == 6'd0);
+// The next operation is read speculatively even while this one stalls.
+// Only a non-last take consumes these RAM samples; the next fetched word
+// has independent register-file copies. RB is unchanged throughout a macro.
+wire [4:0] next_word_i = strx ? step[4:0] : (step[4:0] + 5'd1);
+assign next_ra = (strx | ldux_rb) ? REG_TEMP : dec.ra;
+assign next_rc = {1'b0, base_r + next_word_i};
 
 always_comb begin
 	uop      = dec;

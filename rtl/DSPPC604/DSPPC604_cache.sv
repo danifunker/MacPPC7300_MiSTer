@@ -63,11 +63,15 @@ module DSPPC604_cache
 	input  logic [31:2] addr,
 	input  logic [3:0]  be,
 	input  logic [31:0] wdata,
+	input  logic        wide,                // two adjacent words, within one line
+	input  logic [31:0] wdata_next,
 	input  logic        ci,                  // cache-inhibited (WIMG I)
 	input  logic        wt,                  // write-through (WIMG W)
 	output logic        gnt,
 	output logic        rvalid,
 	output logic [31:0] rdata,
+	output logic        rvalid_wide,
+	output logic [31:0] rdata_next,
 
 	// icbi passed on (data cache only; the other side acknowledges)
 	output logic        inv_req,
@@ -109,6 +113,8 @@ typedef struct packed {
 (* ramstyle = "no_rw_check" *) tag_t tag_mem [WAYS][SETS];
 tag_t         tag_q  [WAYS];
 logic [255:0] data_q [WAYS];
+tag_t         tag_ram_q [WAYS];
+logic [255:0] data_ram_q [WAYS];
 logic [2:0]   plru   [SETS];                // pseudo-LRU tree: [0] ways 01 vs 23, [1] 0 vs 1, [2] 2 vs 3
 
 logic [6:0]   rd_idx;                       // the set read at this edge
@@ -122,8 +128,9 @@ logic [255:0] data_wd;
 // A write decided from the tags just read (a store hit, a line zero, a cache
 // instruction's or a snoop's invalidate) lands at the next edge, from these
 // registers: the tag RAM's output, the compare and the way select are then
-// not in front of the RAMs' write ports. Nothing reads that set in that
-// cycle (a request or snoop to it waits), and no other write can land then.
+// not in front of the RAMs' write ports. A following word hit may use that
+// set immediately: the pending write and a write coinciding with the RAM
+// read are forwarded below. Snoops still wait for a pending same-set write.
 logic            wr_pend;
 logic [WAYS-1:0] l_tag_we, l_data_we, wr_tag_we, wr_data_we;
 logic [7:0]      l_wwe, wr_wwe;
@@ -133,7 +140,7 @@ logic [255:0]    l_data_wd, wr_data_wd;
 
 always_ff @(posedge clk) begin
 	for (int w = 0; w < WAYS; w++) begin
-		tag_q[w] <= tag_mem[w][rd_idx];
+		tag_ram_q[w] <= tag_mem[w][rd_idx];
 		if (tag_we[w]) tag_mem[w][wr_idx] <= tag_wd;
 	end
 end
@@ -145,7 +152,7 @@ generate
 		(
 			.clk   (clk),
 			.raddr (rd_idx),
-			.q     (data_q[gw]),
+			.q     (data_ram_q[gw]),
 			.we    ({8{data_we[gw]}} & data_wwe),
 			.waddr (wr_idx),
 			.d     (data_wd)
@@ -172,12 +179,16 @@ ck_t         r_kind;
 logic [31:2] r_addr;
 logic [3:0]  r_be;
 logic [31:0] r_wdata;
+logic [31:0] r_wdata_next;
+logic        r_wide;
 logic        r_ci;
 logic        r_wt;
 logic        r_snoop;        // the request in hand is the snoop's
 logic        r_snoop_we;
 logic [1:0]  r_way;          // the way chosen for a write-back or fill
 logic        r_after_wb;     // the write-back is followed by a fill
+logic [255:0] wb_data;
+logic [TAGW-1:0] wb_tag;
 logic        inval_pend;
 logic [6:0]  sweep_idx;
 
@@ -185,15 +196,60 @@ wire [6:0]       r_idx  = r_addr[11:5];
 wire [TAGW-1:0]  r_tag  = r_addr[31:12];
 wire [2:0]       r_word = r_addr[4:2];
 
+// RAM read-during-write values are deliberately unspecified. Register the
+// colliding write's enables and value at the read edge, then replace every
+// affected word/tag. A queued write is newer and takes priority; this also
+// permits back-to-back byte stores to merge against the latest whole word.
+logic [WAYS-1:0] landed_tag_we;
+logic [7:0] landed_data_we [WAYS];
+tag_t landed_tag;
+logic [255:0] landed_data;
+logic pending_set_match;
+always_ff @(posedge clk) begin
+	// The pending write is from r_idx at this edge; the response's data and
+	// tags are from rd_idx at this same edge. Register that set comparison
+	// beside the RAM read instead of putting it in front of load forwarding.
+	pending_set_match <= (rd_idx == r_idx);
+	for (int w = 0; w < WAYS; w++) begin
+		landed_tag_we[w] <= tag_we[w] & (wr_idx == rd_idx) & ~reset;
+		landed_data_we[w] <= {8{data_we[w] & (wr_idx == rd_idx) & ~reset}} & data_wwe;
+	end
+	landed_tag <= tag_wd;
+	landed_data <= data_wd;
+end
+wire forward_pending = wr_pend & pending_set_match;
+always_comb begin
+	for (int w = 0; w < WAYS; w++) begin
+		tag_q[w] = (forward_pending & wr_tag_we[w]) ? wr_tag_wd :
+		           landed_tag_we[w] ? landed_tag : tag_ram_q[w];
+		for (int j = 0; j < 8; j++)
+			data_q[w][32*j +: 32] = (forward_pending & wr_data_we[w] & wr_wwe[j]) ? wr_data_wd[32*j +: 32] :
+			                          landed_data_we[w][j] ? landed_data[32*j +: 32] : data_ram_q[w][32*j +: 32];
+	end
+end
+
 // hit? One bit per way; the answer's way select takes these directly
 // (each way's hit gates its own word), the encoded number serves the rest.
 logic [WAYS-1:0] hit_w;
-logic            hit;
+// Compare each candidate before selecting the newest forwarded tag. A
+// pending write takes priority over the colliding write, then the RAM.
+// Keep the comparisons separate so the wide tag mux is off the hit path.
+(* keep = "true" *) wire pending_tag_hit = wr_tag_wd.valid && wr_tag_wd.tag == r_tag;
+(* keep = "true" *) wire landed_tag_hit = landed_tag.valid && landed_tag.tag == r_tag;
+(* keep = "true" *) wire [WAYS-1:0] ram_tag_hit;
+genvar gh;
+generate
+	for (gh = 0; gh < WAYS; gh++) begin : parallel_tag_compare
+		assign ram_tag_hit[gh] = tag_ram_q[gh].valid && tag_ram_q[gh].tag == r_tag;
+	end
+endgenerate
+logic            hit /* verilator public_flat_rd */;
 logic [1:0]      hit_sel;
 always_comb begin
 	hit_sel = 2'd0;
 	for (int w = 0; w < WAYS; w++) begin
-		hit_w[w] = tag_q[w].valid && tag_q[w].tag == r_tag;
+		hit_w[w] = (forward_pending & wr_tag_we[w]) ? pending_tag_hit :
+		           landed_tag_we[w] ? landed_tag_hit : ram_tag_hit[w];
 		if (hit_w[w]) hit_sel = w[1:0];
 	end
 	hit = |hit_w;
@@ -235,23 +291,50 @@ wire [1:0] wsel = hit ? hit_sel : victim;   // the way a line-zero takes
 // the answer: as decided in this cycle, or from a register a cycle later
 logic        ans_now, ans_q;
 logic [31:0] ans_data, ans_data_q;
+logic        ans_wide, ans_wide_q;
+logic [31:0] ans_data_next, ans_data_next_q;
 always_ff @(posedge clk) begin
 	ans_q      <= ans_now & ~reset;
 	ans_data_q <= ans_data;
+	ans_wide_q <= ans_wide;
+	ans_data_next_q <= ans_data_next;
 end
 assign rvalid = LATE_ANSWER ? ans_q      : ans_now;
 assign rdata  = LATE_ANSWER ? ans_data_q : ans_data;
+assign rvalid_wide = LATE_ANSWER ? ans_wide_q : ans_wide;
+assign rdata_next = LATE_ANSWER ? ans_data_next_q : ans_data_next;
 
 // the word a read delivers: the word is picked within each way first
 // (its index is known before the tags are compared), the way last, so that
 // only a four-way choice follows the compare
 logic [31:0] way_word [WAYS];
+logic [31:0] way_word_next [WAYS];
+wire [2:0] r_word_next = r_word + 3'd1;
+wire [2:0] word_bit = 3'd7 - r_word;
+wire [2:0] word_bit_next = 3'd7 - r_word_next;
+wire [31:0] pending_word = wr_data_wd[255 - 32*r_word -: 32];
+wire [31:0] pending_word_next = wr_data_wd[255 - 32*r_word_next -: 32];
+wire [31:0] landed_word = landed_data[255 - 32*r_word -: 32];
+wire [31:0] landed_word_next = landed_data[255 - 32*r_word_next -: 32];
 always_comb
-	for (int w = 0; w < WAYS; w++) way_word[w] = data_q[w][255 - 32*r_word -: 32];
+	for (int w = 0; w < WAYS; w++) begin
+		// Select the raw word before forwarding. The late pending/collision
+		// decision then drives a word mux, rather than a full-line mux followed
+		// by the eight-word selector. Write-back still uses the complete line.
+		way_word[w] = (forward_pending & wr_data_we[w] & wr_wwe[word_bit]) ? pending_word :
+		              landed_data_we[w][word_bit] ? landed_word : data_ram_q[w][255 - 32*r_word -: 32];
+		way_word_next[w] = (forward_pending & wr_data_we[w] & wr_wwe[word_bit_next]) ? pending_word_next :
+		                   landed_data_we[w][word_bit_next] ? landed_word_next : data_ram_q[w][255 - 32*r_word_next -: 32];
+	end
 logic [31:0] hit_word;
+logic [31:0] hit_word_next;
 always_comb begin
 	hit_word = '0;
-	for (int w = 0; w < WAYS; w++) hit_word |= way_word[w] & {32{hit_w[w]}};
+	hit_word_next = '0;
+	for (int w = 0; w < WAYS; w++) begin
+		hit_word |= way_word[w] & {32{hit_w[w]}};
+		hit_word_next |= way_word_next[w] & {32{hit_w[w]}};
+	end
 end
 
 // the store's bytes merged into that word, which is then written whole
@@ -259,14 +342,14 @@ logic [31:0] st_mask;
 always_comb for (int j = 0; j < 4; j++) st_mask[8*j +: 8] = {8{r_be[j]}};
 wire [31:0] st_word = (hit_word & ~st_mask) | (r_wdata & st_mask);
 wire [7:0]  st_wwe  = 8'd1 << (3'd7 - r_word);
+wire wide_hit = r_wide & (r_word != 3'd7);
+wire [7:0] st_wwe_next = 8'd1 << (3'd6 - r_word);
 
-// a read hit being answered: the next request can come in behind it
-// a request or a snoop to the set a pending write lands in waits that cycle (the RAMs
-// would read the set as it was); another set may go ahead
-wire wr_clash  = wr_pend & (addr[11:5] == wr_idx_q);
+// A cached word hit can admit the next request. Writes to the same set are
+// covered by forwarding; a write-through store still waits for memory.
 wire wr_sclash = wr_pend & (snoop_addr[11:5] == wr_idx_q);
-wire read_hit = (state == S_LOOK) & k_word & hit & ~unc & ~r_we & ~r_snoop;
-wire can_take = ((state == S_IDLE) | read_hit) & ~snoop_req & ~inval_all & ~inval_pend & ~wr_clash;
+wire word_hit = (state == S_LOOK) & k_word & hit & ~unc & (~r_we | ~r_wt) & ~r_snoop;
+wire can_take = ((state == S_IDLE) | word_hit) & ~snoop_req & ~inval_all & ~inval_pend;
 assign gnt = can_take & req;
 
 always_comb begin
@@ -281,9 +364,14 @@ always_comb begin
 	l_wwe     = '1;
 	l_tag_wd  = {1'b1, 1'b0, r_tag};
 	l_data_wd = {8{st_word}};
-	rd_idx    = (state == S_IDLE) ? (snoop_req ? snoop_addr[11:5] : addr[11:5]) : gnt ? addr[11:5] : r_idx;
+	// Read the candidate set even if it is not granted. Only a granted
+	// request consumes that read; preserve a dirty victim before replacing it.
+	rd_idx    = (state == S_IDLE) ? (snoop_req ? snoop_addr[11:5] : addr[11:5]) :
+	            (state == S_LOOK) ? addr[11:5] : r_idx;
 	ans_now    = 1'b0;
 	ans_data     = hit_word;
+	ans_wide = 1'b0;
+	ans_data_next = hit_word_next;
 	snoop_ack = 1'b0;
 	inv_req   = 1'b0;
 	inv_addr  = r_addr[31:5];
@@ -292,7 +380,7 @@ always_comb begin
 	mem_line  = 1'b1;
 	mem_addr  = r_addr;
 	mem_be    = r_be;
-	mem_wdata = WRITABLE ? data_q[r_way] : '0;  // a read-only cache writes nothing back
+	mem_wdata = WRITABLE ? wb_data : '0;
 
 	case (state)
 	S_SWEEP: begin
@@ -306,9 +394,15 @@ always_comb begin
 		else if (~enable) ans_now = 1'b1;                 // a cache instruction with the cache off
 		else if (k_word & hit) begin
 			ans_now = 1'b1;
+			ans_wide = wide_hit;
 			if (WRITABLE & r_we) begin
 				l_data_we[hit_sel] = 1'b1;
 				l_wwe = st_wwe;
+				if (wide_hit) begin
+					l_wwe = st_wwe | st_wwe_next;
+					for (int j = 0; j < 8; j++)
+						if (j[2:0] == (3'd6 - r_word)) l_data_wd[32*j +: 32] = r_wdata_next;
+				end
 				l_tag_we[hit_sel] = ~r_wt;               // dirty, unless memory gets it too
 				l_tag_wd = {1'b1, 1'b1, r_tag};
 				if (r_wt) ans_now = 1'b0;                 // -> S_UNC
@@ -349,12 +443,12 @@ always_comb begin
 	S_WB: if (WRITABLE) begin                        // (never entered by a read-only cache)
 		mem_req  = 1'b1;
 		mem_we   = 1'b1;
-		mem_addr = {tag_q[r_way].tag, r_idx, 3'b000};
+		mem_addr = {wb_tag, r_idx, 3'b000};
 		if (mem_ack) begin
 			// the line is clean now; gone, if it was flushed, snooped for a
 			// write, or is making room for a line-zero
 			tag_we[r_way] = 1'b1;
-			tag_wd = {~(r_snoop_we | k_flush | k_zero), 1'b0, tag_q[r_way].tag};
+			tag_wd = {~(r_snoop_we | k_flush | k_zero), 1'b0, wb_tag};
 			if (~r_after_wb & ~k_zero) begin
 				ans_now    = ~r_snoop;
 				snoop_ack = r_snoop;
@@ -408,6 +502,10 @@ always_ff @(posedge clk) begin
 end
 
 always_ff @(posedge clk) begin
+	if ((state == S_LOOK) | (state == S_SNOOP)) begin
+		wb_data <= data_q[wsel];
+		wb_tag <= tag_q[wsel].tag;
+	end
 	if (inval_all) inval_pend <= 1'b1;
 
 	case (state)
@@ -433,13 +531,15 @@ always_ff @(posedge clk) begin
 				r_after_wb <= 1'b0;
 			end
 		end
-		else if (req & ~wr_clash) begin            // (as gnt)
+		else if (req) begin                       // (as gnt)
 			state      <= S_LOOK;
 			r_we       <= we;
 			r_kind     <= kind;
 			r_addr     <= addr;
 			r_be       <= be;
 			r_wdata    <= wdata;
+			r_wdata_next <= wdata_next;
+			r_wide <= wide;
 			r_ci       <= ci;
 			r_wt       <= wt;
 			r_snoop    <= 1'b0;
@@ -455,12 +555,14 @@ always_ff @(posedge clk) begin
 			plru[r_idx] <= touch(tree, hit_sel);
 			state <= (WRITABLE & r_we & r_wt) ? S_UNC : gnt ? S_LOOK : S_IDLE;
 			if (gnt) begin
-				// the next request, taken behind this read hit
+				// the next request, taken behind this word hit
 				r_we       <= we;
 				r_kind     <= kind;
 				r_addr     <= addr;
 				r_be       <= be;
 				r_wdata    <= wdata;
+				r_wdata_next <= wdata_next;
+				r_wide <= wide;
 				r_ci       <= ci;
 				r_wt       <= wt;
 				r_after_wb <= 1'b0;

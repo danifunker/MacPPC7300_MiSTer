@@ -11,7 +11,7 @@ import subprocess
 import sys
 import time
 
-MISTER = [sys.executable, r"C:\Temp\mistercore\PPC_Mac\syn\mister.py"]
+MISTER = [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "mister.py")]
 
 
 def mister(*args):

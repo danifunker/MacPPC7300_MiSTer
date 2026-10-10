@@ -15,9 +15,9 @@ import time
 import json
 from PIL import Image, ImageStat
 
-MISTER = [sys.executable, r"C:\Temp\mistercore\PPC_Mac\syn\mister.py"]
-CMD = 56        # the PC's Alt is the Mac's Command
 HERE = os.path.dirname(os.path.abspath(__file__))
+MISTER = [sys.executable, os.path.join(HERE, "mister.py")]
+CMD = 56        # the PC's Alt is the Mac's Command
 POINTER = json.load(open(os.path.join(HERE, "pointer.json")))   # the arrow's black and white pixels from its tip
 
 

@@ -40,7 +40,8 @@
 
 module DSPPC604_mmu
 #(
-	parameter int TLB_BITS = 6                // entries in each TLB, as a power of two
+	parameter int TLB_BITS = 6,               // entries in each TLB, as a power of two
+	parameter bit CANDIDATE_D_ADDR = 1'b0     // current bus address is already the candidate next request
 )
 (
 	input  logic        clk,
@@ -60,6 +61,7 @@ module DSPPC604_mmu
 	input  logic        i_req,
 	input  logic [31:0] i_addr,
 	input  logic [31:0] i_addr_next,
+	input  logic        i_cancel,             // discard an ungranted speculative walk
 	output logic        i_gnt,
 	output logic        i_rvalid,
 	output logic [31:0] i_rdata,
@@ -82,10 +84,15 @@ module DSPPC604_mmu
 	input  logic [29:0] d_addr,               // word address
 	input  logic [3:0]  d_be,
 	input  logic [31:0] d_wdata,
+	input  logic        d_wide,
+	input  logic [31:0] d_wdata_next,
 	input  logic [31:0] d_ea,                 // the access's effective address, for DAR
+	input  logic        d_cancel,             // an ungranted EX request was flushed
 	output logic        d_gnt,
 	output logic        d_rvalid,
 	output logic [31:0] d_rdata,
+	output logic        d_rwide,
+	output logic [31:0] d_rdata_next,
 	output logic        d_fault,              // with d_rvalid: not done, a DSI instead
 	output logic        d_falign,             // ... or an alignment exception (dcbz)
 	output logic [31:0] d_dsisr,
@@ -97,11 +104,15 @@ module DSPPC604_mmu
 	output logic [29:0] dbus_addr,
 	output logic [3:0]  dbus_be,
 	output logic [31:0] dbus_wdata,
+	output logic        dbus_wide,
+	output logic [31:0] dbus_wdata_next,
 	output logic        dbus_ci,              // the page is cache-inhibited
 	output logic        dbus_wt,              // ... write-through
 	input  logic        dbus_gnt,
 	input  logic        dbus_rvalid,
-	input  logic [31:0] dbus_rdata
+	input  logic [31:0] dbus_rdata,
+	input  logic        dbus_rwide,
+	input  logic [31:0] dbus_rdata_next
 );
 
 import DSPPC604_pkg::*;
@@ -238,8 +249,8 @@ endfunction
 //  The TLBs
 // ============================================================================
 // One write port (the walker) and one read port each, read a cycle ahead.
-// Nothing reads an entry in the cycle it is written (the sides retry a
-// cycle later), so the RAM needs no read-during-write logic.
+// Retry and read-collision freshness discard an entry sampled while it is
+// written, so the RAM needs no read-during-write logic.
 (* ramstyle = "no_rw_check" *) tlbe_t itlb_mem [TLB_SIZE];
 (* ramstyle = "no_rw_check" *) tlbe_t dtlb_mem [TLB_SIZE];
 logic [TLB_SIZE-1:0] itlb_valid;
@@ -248,6 +259,7 @@ tlbe_t itlb_q;
 tlbe_t dtlb_q;
 logic [19:0] i_page_q;         // the page itlb_q was read for
 logic [19:0] d_page_q;         // ... and dtlb_q
+logic i_tlb_collision, d_tlb_collision;
 
 // written by the walker
 logic              w_we;
@@ -258,8 +270,8 @@ tlbe_t             w_entry;
 wire [19:0]         d_page   = d_addr[29:10];
 // a segment register written since the read-ahead makes it stale too
 logic               i_stale, d_stale;
-wire                i_fresh  = (i_page_q == i_addr[31:12]) & ~i_stale;
-wire                d_fresh  = (d_page_q == d_page) & ~d_stale;
+wire                i_fresh  = (i_page_q == i_addr[31:12]) & ~i_stale & ~i_tlb_collision;
+wire                d_fresh  = (d_page_q == d_page) & ~d_stale & ~d_tlb_collision;
 logic               d_rd;                          // read the DTLB for d_page now
 wire [TLB_BITS-1:0] i_idx    = i_addr[12 +: TLB_BITS];
 wire [TLB_BITS-1:0] d_idx    = d_page[TLB_BITS-1:0];
@@ -268,28 +280,44 @@ wire [TLB_BITS-1:0] d_idx    = d_page[TLB_BITS-1:0];
 // the segment register goes with them, so that its 16:1 choice is not in
 // the lookup's cycle (a fresh page means a fresh segment register too)
 wire [19:0]         i_rpage  = i_fresh ? i_addr_next[31:12] : i_addr[31:12];
-wire [19:0]         d_rpage  = d_pre ? d_ea_next[31:12] : d_page;
+wire                d_read   = CANDIDATE_D_ADDR | d_pre | d_rd;
+wire [19:0]         d_rpage  = CANDIDATE_D_ADDR ? d_page : d_pre ? d_ea_next[31:12] : d_page;
 logic [31:0]        i_sr_q, d_sr_q;
 
 always_ff @(posedge clk) begin
 	itlb_q   <= itlb_mem[i_rpage[TLB_BITS-1:0]];
 	i_page_q <= i_rpage;
 	i_sr_q   <= sr[i_rpage[19:16]];
-	if (d_pre | d_rd) begin
+	i_tlb_collision <= w_we & w_side & (w_idx == i_rpage[TLB_BITS-1:0]);
+	if (d_read) begin
 		dtlb_q   <= dtlb_mem[d_rpage[TLB_BITS-1:0]];
 		d_page_q <= d_rpage;
 		d_sr_q   <= sr[d_rpage[19:16]];
+		d_tlb_collision <= w_we & ~w_side & (w_idx == d_rpage[TLB_BITS-1:0]);
 	end
 	// mtsr: what was read ahead is read again (the write lands at this edge)
 	if (sr_changed)      begin i_stale <= 1'b1; d_stale <= 1'b1; end
 	else begin
 		if (~i_fresh)        i_stale <= 1'b0;
-		if (d_pre | d_rd)    d_stale <= 1'b0;
+		if (d_read)          d_stale <= 1'b0;
 	end
-	if (reset) begin i_stale <= 1'b0; d_stale <= 1'b0; end
+	if (reset) begin
+		i_stale <= 1'b0; d_stale <= 1'b0;
+		i_tlb_collision <= 1'b0; d_tlb_collision <= 1'b0;
+	end
 	if (w_we &  w_side) itlb_mem[w_idx] <= w_entry;
 	if (w_we & ~w_side) dtlb_mem[w_idx] <= w_entry;
 end
+
+/* synthesis translate_off */
+always_ff @(posedge clk) begin
+	// The CPU presents a descriptor's first address before admission, so
+	// the bus page is its look-ahead page whenever that descriptor starts.
+	if (CANDIDATE_D_ADDR & ~reset & d_pre & d_req)
+		if (d_ea_next[31:12] != d_page)
+			$fatal(1, "candidate data page differs from accepted descriptor");
+end
+/* synthesis translate_on */
 
 always_ff @(posedge clk) begin
 	if (w_we &  w_side) itlb_valid[w_idx] <= 1'b1;
@@ -311,11 +339,38 @@ wire [31:0] d_ea_w = {d_addr, 2'b00};
 
 wire d_line = (d_kind == CK_ZERO);
 
-xl_t ixl, dxl;
+xl_t ixl, dxl, d_lookup_load, d_lookup_store;
+xl_t d_cached_load, d_cached_store;
+logic [31:0] d_cached_sr;
+logic d_cached_valid;
+logic [19:0] d_cached_page;
+logic d_cached_dr, d_cached_pr;
+wire d_cached_hit = d_cached_valid & (d_cached_page == d_page) &
+                    (d_cached_dr == msr_dr) & (d_cached_pr == msr_pr);
 assign ixl = translate(msr_ir, 1'b1, 1'b0, 1'b0, msr_pr, i_addr, bat[7:0],  i_sr_q,
                        itlb_valid[i_idx], itlb_q);
-assign dxl = translate(msr_dr, 1'b0, d_we, d_line, msr_pr, d_ea_w, bat[15:8], d_sr_q,
-                       dtlb_valid[d_idx], dtlb_q);
+// Resolve a page from the registered read-ahead address. The fresh-page
+// check qualifies installation, so neither the EA adder nor forwarding
+// feeds the BAT permission/physical-page datapath in this cycle.
+assign d_lookup_load = translate(msr_dr, 1'b0, 1'b0, 1'b0, msr_pr,
+                                {d_page_q, 12'd0}, bat[15:8], d_sr_q,
+                                dtlb_valid[d_page_q[TLB_BITS-1:0]], dtlb_q);
+assign d_lookup_store = translate(msr_dr, 1'b0, 1'b1, 1'b0, msr_pr,
+                                 {d_page_q, 12'd0}, bat[15:8], d_sr_q,
+                                 dtlb_valid[d_page_q[TLB_BITS-1:0]], dtlb_q);
+always_comb begin
+	dxl = d_cached_hit ? (d_we ? d_cached_store : d_cached_load) : '0;
+	// All addresses within a page have the same translation and protection.
+	dxl.pa[11:0] = d_ea_w[11:0];
+	// Protection precedes dcbz's W/I alignment exception, which precedes a
+	// store's changed-bit walk. Keep that priority from translate().
+	if (d_cached_hit & ~dxl.fault & d_line & (dxl.wimg[3] | dxl.wimg[2])) begin
+		dxl.ok = 1'b0;
+		dxl.fault = 1'b1;
+		dxl.align = 1'b1;
+		dxl.cwalk = 1'b0;
+	end
+end
 
 // ============================================================================
 //  The walker
@@ -378,9 +433,12 @@ always_ff @(posedge clk) begin
 		w_state      <= W_RD0;
 		w_side_q     <= ~w_start_d;
 		w_ea         <= w_start_d ? d_ea_w : i_addr;
-		w_vsid       <= w_start_d ? sr[d_ea_w[31:28]][23:0] : sr[i_addr[31:28]][23:0];
-		w_key        <= w_start_d ? (msr_pr ? sr[d_ea_w[31:28]][29] : sr[d_ea_w[31:28]][30])
-		                          : (msr_pr ? sr[i_addr[31:28]][29] : sr[i_addr[31:28]][30]);
+		// Walk admission already requires a fresh lookup. Its segment payload
+		// is registered with that lookup, so the late I/D arbitration need not
+		// drive another 16-way segment-register mux before these registers.
+		w_vsid       <= w_start_d ? d_cached_sr[23:0] : i_sr_q[23:0];
+		w_key        <= w_start_d ? (msr_pr ? d_cached_sr[29] : d_cached_sr[30])
+		                          : (msr_pr ? i_sr_q[29] : i_sr_q[30]);
 		w_store      <= w_start_d & d_we;
 		w_line       <= w_start_d & d_line;
 		w_cstore     <= 1'b0;
@@ -467,12 +525,34 @@ typedef enum logic [1:0] {
 } dstate_t;
 
 dstate_t     d_state;
+logic        d_cancelled;
+/* synthesis translate_off */
+wire walk_cancel_event = d_cancel & (d_state == D_WALK);
+/* synthesis translate_on */
 logic [31:0] d_info_q;
 logic [31:0] d_dar_q;
 logic        d_align_q;
 
-wire         d_ready = ~msr_dr | d_fresh;
+wire         d_lookup_ready = d_fresh;
+wire         d_ready = d_cached_hit;
 wire [31:0]  d_dar_now = (d_addr == d_ea[31:2]) ? d_ea : d_ea_w;
+
+// Register a page's lookup before it can grant a request. Repeated accesses
+// use the registered load/store outcomes without a BAT mux behind the EA
+// adder. A cold page waits here; the elastic memory unit holds its descriptor.
+// Redirects cover MSR, BAT and SDR1 changes; SR/TLB writes also invalidate it.
+always_ff @(posedge clk) begin
+	if ((d_state == D_IDLE) & d_req & ~d_cached_hit & d_lookup_ready) begin
+		d_cached_page <= d_page_q;
+		d_cached_dr <= msr_dr;
+		d_cached_pr <= msr_pr;
+		d_cached_load <= d_lookup_load;
+		d_cached_store <= d_lookup_store;
+		d_cached_sr <= d_sr_q;
+		d_cached_valid <= 1'b1;
+	end
+	if (reset | d_cancel | sr_changed | tlbie | w_we) d_cached_valid <= 1'b0;
+end
 
 // the data side's own bus request
 wire d_dreq = (d_state == D_IDLE) & d_req & d_ready & dxl.ok & ~w_bus;
@@ -483,12 +563,13 @@ always_comb begin
 	d_gnt   = 1'b0;
 	case (d_state)
 		D_IDLE: if (d_req) begin
-			if (~d_ready)                   d_rd  = 1'b1;
+			if (~d_lookup_ready & ~d_ready)  d_rd  = 1'b1;
+			else if (~d_ready)              ;      // wait for the registered lookup
 			else if (dxl.ok)                d_gnt = dbus_gnt & ~w_bus;
 			else if (dxl.fault)             d_gnt = 1'b1;
 			else                            w_req_d = 1'b1;     // miss or cwalk
 		end
-		D_WALK: if (w_done) begin
+		D_WALK: if (w_done & ~d_cancelled & d_req) begin
 			if (~w_found | w_pfault)        d_gnt = 1'b1;
 		end
 		D_RETRY:                            d_rd  = 1'b1;
@@ -505,10 +586,14 @@ always_ff @(posedge clk) begin
 				d_align_q <= dxl.align;
 				d_dar_q   <= d_dar_now;
 			end
-			else if (~dxl.ok & w_start_d) d_state <= D_WALK;
+			else if (~dxl.ok & w_start_d) begin
+				d_state <= D_WALK;
+				d_cancelled <= 1'b0;
+			end
 		end
 		D_WALK: if (w_done) begin
-			if (~w_found) begin
+			if (d_cancelled | d_cancel | ~d_req) d_state <= D_IDLE;
+			else if (~w_found) begin
 				d_state   <= D_FAULT;
 				d_info_q  <= X_NOPAGE | (d_we ? X_STORE : 32'd0);
 				d_align_q <= 1'b0;
@@ -525,18 +610,22 @@ always_ff @(posedge clk) begin
 		D_RETRY: d_state <= D_IDLE;
 		default: d_state <= D_IDLE;         // D_FAULT
 	endcase
+	if (d_cancel & (d_state == D_WALK)) d_cancelled <= 1'b1;
 
-	if (d_dreq & dbus_gnt) d_outstanding <= 1'b1;
 	if (d_outstanding & dbus_rvalid) d_outstanding <= 1'b0;
+	if (d_dreq & dbus_gnt) d_outstanding <= 1'b1;
 
 	if (reset) begin
 		d_state       <= D_IDLE;
 		d_outstanding <= 1'b0;
+		d_cancelled   <= 1'b0;
 	end
 end
 
 assign d_rvalid = (d_outstanding & dbus_rvalid) | (d_state == D_FAULT);
 assign d_rdata  = dbus_rdata;
+assign d_rwide  = d_outstanding & dbus_rwide;
+assign d_rdata_next = dbus_rdata_next;
 assign d_fault  = (d_state == D_FAULT);
 assign d_falign = d_align_q;
 assign d_dsisr  = d_info_q;
@@ -546,9 +635,13 @@ assign d_dar    = d_dar_q;
 assign dbus_req   = w_bus ? w_dreq        : d_dreq;
 assign dbus_we    = w_bus ? w_dwe         : d_we;
 assign dbus_kind  = w_bus ? CK_WORD       : d_kind;
-assign dbus_addr  = w_bus ? w_daddr[31:2] : dxl.pa[31:2];
+// Translation never changes the page offset. Keep the RAM's set index
+// independent of BAT/TLB hit and protection decisions, including on misses.
+assign dbus_addr  = w_bus ? w_daddr[31:2] : {dxl.pa[31:12], d_addr[9:0]};
 assign dbus_be    = w_bus ? w_dbe         : d_be;
 assign dbus_wdata = w_bus ? w_dwdata      : d_wdata;
+assign dbus_wide = ~w_bus & d_wide;
+assign dbus_wdata_next = w_bus ? 32'd0 : d_wdata_next;
 assign dbus_ci    = ~w_bus & dxl.wimg[2];
 assign dbus_wt    = ~w_bus & dxl.wimg[3];
 
@@ -564,6 +657,8 @@ typedef enum logic [1:0] {
 
 istate_t     i_state;
 logic [31:0] i_info_q;
+logic        i_outstanding;
+logic        i_cancelled;
 
 // the fetch the walk was for is still wanted
 wire i_same  = i_req & (i_addr[31:12] == w_ea[31:12]);
@@ -575,25 +670,30 @@ always_comb begin
 	case (i_state)
 		I_IDLE: if (i_req & i_ready) begin
 			if (ixl.ok)                     i_gnt = ibus_gnt;
-			else if (ixl.fault)             i_gnt = 1'b1;
-			else                            w_req_i = 1'b1;
+			else if (~i_outstanding) begin
+				if (ixl.fault)             i_gnt = 1'b1;
+				else                      w_req_i = 1'b1;
+			end
 		end
-		I_WALK: if (w_done & i_same & ~w_abort & (~w_found | w_pfault)) i_gnt = 1'b1;
+		I_WALK: if (w_done & i_same & ~i_cancel & ~i_cancelled & ~w_abort & (~w_found | w_pfault)) i_gnt = 1'b1;
 		default: ;
 	endcase
 end
 
 always_ff @(posedge clk) begin
 	case (i_state)
-		I_IDLE: if (i_req & i_ready) begin
+		I_IDLE: if (i_req & i_ready & ~i_outstanding) begin
 			if (ixl.fault) begin
 				i_state  <= I_FAULT;
 				i_info_q <= ixl.info;
 			end
-			else if (~ixl.ok & w_start_i) i_state <= I_WALK;
+			else if (~ixl.ok & w_start_i) begin
+				i_state <= I_WALK;
+				i_cancelled <= 1'b0;
+			end
 		end
 		I_WALK: if (w_done) begin
-			if (~i_same | w_abort) i_state <= I_IDLE;
+			if (~i_same | w_abort | i_cancel | i_cancelled) i_state <= I_IDLE;
 			else if (~w_found)  begin i_state <= I_FAULT; i_info_q <= X_NOPAGE; end
 			else if (w_pfault)  begin i_state <= I_FAULT; i_info_q <= X_PROT; end
 			else                i_state <= I_RETRY;
@@ -601,12 +701,21 @@ always_ff @(posedge clk) begin
 		I_RETRY: i_state <= I_IDLE;
 		default: i_state <= I_IDLE;         // I_FAULT
 	endcase
+	if (i_cancel & (i_state == I_WALK)) i_cancelled <= 1'b1;
 
-	if (reset) i_state <= I_IDLE;
+	// A speculative next fetch must not return an ISI ahead of an older
+	// cache response. Cache hits can still accept a new request each cycle.
+	if (ibus_rvalid) i_outstanding <= 1'b0;
+	if (ibus_req & ibus_gnt) i_outstanding <= 1'b1;
+	if (reset) begin
+		i_state <= I_IDLE;
+		i_outstanding <= 1'b0;
+		i_cancelled <= 1'b0;
+	end
 end
 
 assign ibus_req  = (i_state == I_IDLE) & i_req & i_ready & ixl.ok;
-assign ibus_addr = ixl.pa;
+assign ibus_addr = {ixl.pa[31:12], i_addr[11:0]};
 assign ibus_ci   = ixl.wimg[2];
 assign i_rvalid  = ibus_rvalid | (i_state == I_FAULT);
 assign i_rdata   = ibus_rdata;

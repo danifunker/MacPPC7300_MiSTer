@@ -29,6 +29,7 @@ Runs from Windows (through WSL) or directly under Linux.
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 
@@ -52,7 +53,7 @@ def main():
     if args.quick:
         args.seeds = 4
 
-    cache = os.path.join(os.path.expanduser("~"), ".cache", "macppc7300")
+    cache = os.environ.get("MACPPC7300_CACHE") or os.path.join(os.path.expanduser("~"), ".cache", "macppc7300")
     build = os.environ.get("MACPPC7300_BUILD") or os.path.join(cache, "verilator")
     # the compilers' temporary files go in a directory of this build's own:
     # other WSL sessions working at the same time have deleted files in /tmp
@@ -155,13 +156,26 @@ def main():
         ("each exception once", ["exctest"], ["--stall", "10"]),
         ("update forms, rD = rB", ["updtest"], []),
         ("update forms, with wait states", ["updtest"], ["--stall", "40", "--seed", "9"]),
-        ("floating-point enabled exceptions", ["fpexctest"], []),
+        ("floating-point enabled exceptions", ["fpexctest"], ["--profile"]),
         ("address translation, DSI, ISI", ["mmutest"], ["--stall", "20", "--seed", "5"]),
         ("lwarx/stwcx., dcbz, cache ops", ["resvtest"], ["--stall", "25"]),
         ("caches, cache ops, HID0, DMA", ["cachetest"], ["--stall", "30", "--seed", "7"]),
+        ("doubleword cache aliases", ["widecachetest"], []),
+        ("doublewords, wait states, snoops", ["widecachetest"], ["--stall", "70", "--seed", "19", "--snoop-every", "3"]),
+        ("I/D ownership, held ACK", ["acktest"], ["--lockstep", "--ack-hold", "1"]),
+        ("I/D ownership, longer held ACK", ["acktest"], ["--lockstep", "--ack-hold", "4", "--stall", "40", "--seed", "23"]),
+        ("doublewords, held ACK, snoops", ["widecachetest"], ["--lockstep", "--ack-hold", "2", "--stall", "30", "--snoop-every", "3"]),
         ("external interrupts", ["irqtest", "3000"], ["--irq-every", "97", "--stall", "10"]),
         ("decrementer interrupts", ["irqtest", "3000"], ["--tb-run"]),
         ("both, with wait states", ["irqtest", "3000"], ["--irq-every", "61", "--tb-run", "--stall", "30"]),
+        ("overlap queue, external interrupts", ["irqoverlaptest", "3000"], ["--irq-every", "97", "--profile", "--stall", "20"]),
+        ("overlap queue, both interrupts", ["irqoverlaptest", "3000"], ["--irq-every", "61", "--tb-run", "--profile", "--stall", "30"]),
+        ("interrupts during page walks", ["irqwalktest", "1000"], ["--irq-every", "97", "--stall", "40", "--seed", "11"]),
+        ("page walks, both interrupts", ["irqwalktest", "1000"], ["--irq-every", "61", "--tb-run", "--stall", "30", "--seed", "12"]),
+        ("cancelled walks that would fault", ["irqwalkfaulttest", "1000"],
+         ["--irq-every", "127", "--stall", "70", "--seed", "17", "--profile", "--max-cycles", "2000000"]),
+        ("late fault after cancelled walk", ["irqwalkfaulttest", "1000"],
+         ["--irq-every", "97", "--stall", "90", "--seed", "11", "--profile", "--max-cycles", "2000000"]),
     ):
         prog = os.path.join(progs, "exc.prog")
         r = run([sys.executable, os.path.join(HERE, "progs.py"), gen[0], prog] + gen[1:])
@@ -170,6 +184,16 @@ def main():
             return 1
         r = run([tb, "--prog", prog] + tb_args)
         report("  " + name, r)
+        if gen[0] == "irqwalkfaulttest":
+            cancels = re.search(r"event walk_cancel\s+(\d+)", r.stdout)
+            if not cancels or int(cancels.group(1)) == 0:
+                failures += 1
+                print("    FAIL: no page-table walk cancellation exercised")
+        if gen[0] in ("irqoverlaptest", "fpexctest"):
+            events = dict((k, int(v)) for k, v in re.findall(r"event\s+(\w+)\s+(\d+)", r.stdout))
+            if not events.get("overlap_execute", 0):
+                failures += 1
+                print("    FAIL: no speculative ALU completion exercised")
 
     # 5. random programs in lockstep, exceptions and supervisor instructions
     #    included; then the same with address translation on (page faults,
@@ -194,6 +218,12 @@ def main():
                 if l.endswith("per instruction)"):
                     total += int(l.split()[0])
     print("%d random instructions compared" % total)
+
+    # Checked mixes exercise the completion FIFO's simultaneous append/pop,
+    # wraparound and younger writes replacing a pending long-unit destination.
+    r = run([sys.executable, os.path.join(HERE, "perf.py"), "--tb", tb,
+             "--out", os.path.join(progs, "perf"), "--loops", "100", "--lockstep", "--require-overlap"])
+    report("checked execution-overlap mixes", r)
 
     # 6. the memory port across two clocks
     r = run(["make", "-s", "-C", HERE, "cdc", "BUILD=" + build])
