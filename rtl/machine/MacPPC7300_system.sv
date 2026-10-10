@@ -26,7 +26,8 @@ module MacPPC7300_system
 	parameter int unsigned CUDA_FAST_BOOT = 0,      // 1: the test bench's (MacPPC7300_cuda FAST_BOOT)
 	parameter int unsigned TRACE = 1,               // 0: no DDR3 trace (MacPPC7300_trace)
 	parameter int unsigned SOUND_IN_DMA = 1,        // 0: DMA channel 9 (sound in) its registers alone
-	parameter int unsigned PERF = 1                 // 0: no performance counters in the CPU (with TRACE, they go into the trace)
+	parameter int unsigned PERF = 1,                // 0: no performance counters in the CPU (with TRACE, they go into the trace)
+	parameter int unsigned SND_TRACE = 0            // 1: the codec's output frames into the trace (kind 13; needs TRACE)
 )
 (
 	input  logic         clk,             // the CPU's clock
@@ -249,6 +250,7 @@ logic [10:0]  net_tx_len, net_rx_len;
 logic [47:0]  net_mac;
 logic         scsi_tr_ev;
 logic [255:0] scsi_tr_rec;
+logic         snd_frame;
 
 MacPPC7300_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_FAST_BOOT(CUDA_FAST_BOOT),
                      .SOUND_IN_DMA(SOUND_IN_DMA)) machine (
@@ -261,7 +263,7 @@ MacPPC7300_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_
 	.sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr, .disk_busy, .cd_left, .cd_right,
 	.fd_mounted, .fd_lba, .fd_rd, .fd_blk_cnt, .fd_ack,
 	.dma_wr, .dma_wr_line, .dma_wr_addr, .dma_wr_be, .dma_wr_data,
-	.modem_txd, .modem_rxd, .modem_cts, .modem_rts, .snd_left, .snd_right,
+	.modem_txd, .modem_rxd, .modem_cts, .modem_rts, .snd_left, .snd_right, .snd_frame,
 	.net_link, .net_tx_we, .net_tx_wa, .net_tx_wd, .net_tx_go, .net_tx_len, .net_tx_done,
 	.net_rx_ra, .net_rx_q, .net_rx_avail, .net_rx_len, .net_rx_done, .net_mac, .net_mac_ok,
 	.nv_ld_we, .nv_ld_re, .nv_ld_addr, .nv_ld_data, .nv_ld_rack, .nv_ld_q, .nv_wr_cpu,
@@ -344,8 +346,36 @@ always_ff @(posedge clk) begin
 		pf_part <= 3'd0;
 	end
 end
-wire         tr_ev  = scsi_tr_ev | pf_ev;
-wire [255:0] tr_rec = scsi_tr_ev ? scsi_tr_rec : pf_rec;
+// kind 13 (SND_TRACE): the codec's output, seven frames a record (bytes 4-31,
+// the oldest first, left then right) with a frame count in bytes 1-3; a
+// record waits behind a SCSI or counter record (syn/sndtrace.py reads them)
+logic         sn_tick;                  // the frame's samples are there
+logic [191:0] sn_buf;
+logic [2:0]   sn_n = 3'd0;
+logic [23:0]  sn_cnt = 24'd0;
+logic         sn_ev = 1'b0;
+logic [255:0] sn_rec;
+always_ff @(posedge clk) begin
+	sn_tick <= snd_frame;
+	if (sn_ev & ~scsi_tr_ev & ~pf_ev) sn_ev <= 1'b0;
+	if (SND_TRACE != 0 && TRACE != 0 && sn_tick) begin
+		sn_buf <= {sn_buf[159:0], snd_left, snd_right};
+		sn_cnt <= sn_cnt + 24'd1;
+		if (sn_n == 3'd6) begin
+			sn_n   <= 3'd0;
+			sn_ev  <= 1'b1;
+			sn_rec <= {sn_buf, snd_left, snd_right, sn_cnt + 24'd1, 8'd13};
+		end
+		else sn_n <= sn_n + 3'd1;
+	end
+	if (reset) begin
+		sn_ev  <= 1'b0;
+		sn_n   <= 3'd0;
+		sn_cnt <= 24'd0;
+	end
+end
+wire         tr_ev  = scsi_tr_ev | pf_ev | sn_ev;
+wire [255:0] tr_rec = scsi_tr_ev ? scsi_tr_rec : pf_ev ? pf_rec : sn_rec;
 
 generate
 if (TRACE != 0) begin : g_trace

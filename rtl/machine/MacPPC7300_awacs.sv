@@ -81,7 +81,8 @@ module MacPPC7300_awacs
 
 	// the samples played, signed, changing at the frame rate
 	output logic [15:0] left,
-	output logic [15:0] right
+	output logic [15:0] right,
+	output logic        frame_tick       // one clock a frame (left and right take the frame's value the clock after)
 );
 
 logic [31:0] snd_ctrl, codec_ctrl, clip_count, frame_count;
@@ -128,6 +129,7 @@ always_comb begin
 	endcase
 end
 wire frame = snd_tick && ftick + 4'd1 >= fdiv;
+assign frame_tick = frame;
 
 // ---- out: an 8-byte FIFO ------------------------------------------------------------------
 logic [7:0] ob [8];

@@ -478,6 +478,12 @@ def trace(last, first, fname=None):
             else:
                 print("%s DMA-%d STOPPED in state %d %s res %d status %04x conds w%d b%d i%d"
                       % (t, r[1], y >> 28, c, x >> 16, x & 0xFFFF, (y >> 2) & 1, (y >> 1) & 1, y & 1))
+        elif kind == 13:
+            # the codec's output frames (syn/sndtrace.py turns them into a WAV)
+            cnt = int.from_bytes(r[1:4], "little")
+            fr = ["%d/%d" % (int.from_bytes(r[k:k+2], "little", signed=True), int.from_bytes(r[k+2:k+4], "little", signed=True))
+                  for k in range(28, 0, -4)]
+            print("%5d sound frames %d-%d: %s" % (i, cnt - 6, cnt, " ".join(fr)))
         elif kind == 12:
             # the CPU's performance counters (syn/perf.py accounts them): part 0 starts with the cycles
             words = [int.from_bytes(r[8 + 4 * k:12 + 4 * k], "little") for k in range(6)]
