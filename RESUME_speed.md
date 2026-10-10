@@ -29,23 +29,21 @@ user hears the system sounds and the ROM's "100 % correct".
    plan's Speed table and README's build table. The
    user asked (2026-10-10, 06:00) to stay off the MiSTer while the NeXT
    core is finished: ask before taking it.
-2. **Altair's startup sound** (the user's recording, `C:\temp\2026101006030083.mp4`
-   at 11.8-12.8 s; `Scratch\altair.wav`): one second of near-full-scale
-   buzz made of 2 ms segments with a jump between each (359 jumps, most 2.0-
-   2.9 ms apart), while the app loads from disk; the game's later sounds
-   are clean. The Sound Manager plays a chain of 1 ms OUTPUT_LAST commands
-   (176 bytes each; the Finder's sound in `Scratch\speedo_b48\trace.bin`)
-   that the CPU refills ahead of the hardware. Suspects: the refill late
-   under the disk load (the 3x slower CPU, interrupt latency) so stale data
-   plays, or a command boundary mishandled while MESH's DMA competes. The
-   measurement: a `TRACE = 1` build (build 48 has it, with the old rate
-   table; make one from the current tree) and a capture (`mister.py
-   trace-capture`, `--trace-mesh` in `cfg` for MESH's records) during the
-   app's start: channel 8's fetch/done records (kinds 8, 5) with their
-   times against the interrupt (kind 11) show whether commands complete on
-   time and whether the CPU writes the next ones before they are fetched.
-3. Then a release (`releases/`, its README, the Main it was tested with):
-   ask the user first.
+2. **Altair's startup sound: parked** (the plan's sound row has the
+   measurements, 2026-10-10: the DMA, its interrupts and the codec are
+   right; the buzz is the Sound Manager's 8-bit expansion without the sign
+   flip on some chunks; the same from a RAM disk, so not the SCSI path; the
+   same on the Quadra core, so not the CPU). It is the app's startup racing
+   the Sound Manager on a slower machine; re-judge after the speed work, or
+   when the user tries Altair on the real 7300. Build 53 (`Scratch\qbuild16`:
+   the current tree with `TRACE = 1`) and build 50 (`SND_TRACE`) are the
+   diagnostic bitstreams; `Scratch\ramdisk\macui.py`-style driving (the
+   scratchpad's helper, not in the repo: `speedo_run.py`'s pointer-finding
+   clicks) did the RAM disk experiment. The board was left with build 52 in
+   `_Unstable`, `os761mb.hda` (Altair; its RAM disk of 12 MB still set in the
+   Memory control panel, the app copy on it) on slot 0, Mac OS shut down.
+3. A release of build 52 (`releases/`, its README, the Main it was tested
+   with): ask the user first.
 
 The speed work resumes later from `docs/MacPPC7300_plan.md`, "Where the
 cycles go" (the account and the ranked cuts; the first needs the user's
