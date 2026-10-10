@@ -330,6 +330,9 @@ wire [63:0] wb_value = wb_fsgl ? fp_single_to_double(wb_result[31:0]) : wb_resul
 // ---- stage handshakes ------------------------------------------------------
 logic        redir;         // EX redirects the fetch at the end of this cycle
 logic [31:0] redir_pc;
+logic        br_taken;      // EX's branch is taken (the BTB reads the redirect's set from it)
+logic [31:0] br_target;
+logic [31:0] ex_pc4;
 logic        id_take;       // ID's operation moves to EX
 logic        id_leave;      // ... and it was the instruction's last
 logic        ex_leave;
@@ -472,7 +475,15 @@ wire [31:0] ras_spec_target = (ras_spec_write & (ras_spec_write_ptr == ras_top))
 wire [31:0] ras_read_target = ras_recover ? ras_commit_target : ras_spec_target;
 
 wire [BTB_SET_BITS-1:0] btb_idx = btb_index(pc_f);
-wire [BTB_SET_BITS-1:0] btb_ridx = btb_index(pc_ahead);
+// A redirect reads the set of its own target, so the first fetch there is
+// predicted (a loop's exit followed by the outer loop's branch). Both
+// candidates' rows are indexed in parallel; the late taken/redirect
+// decision only selects. An exception's vector reads an unrelated set and
+// goes unpredicted, as before.
+wire [BTB_SET_BITS-1:0] btb_tgt_idx = btb_index(br_target);
+wire [BTB_SET_BITS-1:0] btb_seq_idx = btb_index(ex_pc4);
+wire [BTB_SET_BITS-1:0] btb_redir_idx = br_taken ? btb_tgt_idx : btb_seq_idx;
+wire [BTB_SET_BITS-1:0] btb_ridx = redir ? btb_redir_idx : btb_index(pc_ahead);
 wire btb_fresh = btb_read_valid & (btb_read_idx == btb_idx);
 wire [$bits(btb_meta_t)-1:0] btb_meta_bits0 = btb_forward0 ? btb_write_meta : btb_meta_ram0;
 wire [$bits(btb_meta_t)-1:0] btb_meta_bits1 = btb_forward1 ? btb_write_meta : btb_meta_ram1;
@@ -514,12 +525,21 @@ wire [BTB_SET_BITS-1:0] btb_next_idx = btb_index(pred_pc);
 (* keep = "true" *) wire btb_valid_next1 = btb_valid1[btb_next_idx];
 (* keep = "true" *) wire btb_write_current = (btb_widx == btb_idx);
 (* keep = "true" *) wire btb_write_next = (btb_widx == btb_next_idx);
-wire btb_write_read = fetch_go ? btb_write_next : btb_write_current;
+(* keep = "true" *) wire btb_valid_tgt0 = btb_valid0[btb_tgt_idx];
+(* keep = "true" *) wire btb_valid_tgt1 = btb_valid1[btb_tgt_idx];
+(* keep = "true" *) wire btb_valid_seq0 = btb_valid0[btb_seq_idx];
+(* keep = "true" *) wire btb_valid_seq1 = btb_valid1[btb_seq_idx];
+(* keep = "true" *) wire btb_write_tgt = (btb_widx == btb_tgt_idx);
+(* keep = "true" *) wire btb_write_seq = (btb_widx == btb_seq_idx);
+wire btb_valid_redir0 = br_taken ? btb_valid_tgt0 : btb_valid_seq0;
+wire btb_valid_redir1 = br_taken ? btb_valid_tgt1 : btb_valid_seq1;
+wire btb_write_read = redir ? (br_taken ? btb_write_tgt : btb_write_seq) :
+                      fetch_go ? btb_write_next : btb_write_current;
 
 always_ff @(posedge clk) begin
-	// Read the predicted next set alongside the next fetch address. A redirect
-	// to another set uses the normal fallthrough prediction until a fresh
-	// lookup arrives. Forward a colliding write; RAM collision data is unused.
+	// Read the predicted next set alongside the next fetch address, or the
+	// redirect's target set. Forward a colliding write; RAM collision data
+	// is unused.
 	btb_meta_ram0 <= btb_meta0[btb_ridx];
 	btb_meta_ram1 <= btb_meta1[btb_ridx];
 	btb_target_ram0 <= btb_target0[btb_ridx];
@@ -529,10 +549,10 @@ always_ff @(posedge clk) begin
 	// Validity is sampled with the same RAM row; forward same-edge updates.
 	btb_valid_q0 <= (btb_clr & ~ex_way & btb_write_read) ? 1'b0 :
 	                (btb_we & ~ex_way & btb_write_read) ? 1'b1 :
-	                fetch_go ? btb_valid_next0 : btb_valid_current0;
+	                redir ? btb_valid_redir0 : fetch_go ? btb_valid_next0 : btb_valid_current0;
 	btb_valid_q1 <= (btb_clr & ex_way & btb_write_read) ? 1'b0 :
 	                (btb_we & ex_way & btb_write_read) ? 1'b1 :
-	                fetch_go ? btb_valid_next1 : btb_valid_current1;
+	                redir ? btb_valid_redir1 : fetch_go ? btb_valid_next1 : btb_valid_current1;
 	// Reuse the parallel current/predicted row comparison, as validity does.
 	// Selecting the row index before comparison puts late fetch control in
 	// front of the six-bit equality check and its forwarding registers.
@@ -1180,9 +1200,8 @@ wire [31:0] ctr_m1   = ctr - 32'd1;
 wire        br_count = is_br & ~ex_dec.bo[2];
 wire        ctr_ok   = ex_dec.bo[2] | ((ctr_m1 != 32'd0) ^ ex_dec.bo[1]);
 wire        cond_ok  = ex_dec.bo[4] | (cr_bit == ex_dec.bo[3]);
-wire        br_taken = is_br & ctr_ok & cond_ok;
+assign br_taken = is_br & ctr_ok & cond_ok;
 
-logic [31:0] br_target;
 always_comb begin
 	case (ex_dec.br)
 		BR_LR:   br_target = {lr[31:2], 2'b00};
@@ -1191,7 +1210,7 @@ always_comb begin
 	endcase
 end
 
-wire [31:0] ex_pc4 = ex_pc + 32'd4;
+assign ex_pc4 = ex_pc + 32'd4;
 
 // Where this instruction really continues, against where the fetch went.
 // Only an instruction's last operation decides. An exception goes to its
