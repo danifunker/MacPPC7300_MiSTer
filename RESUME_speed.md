@@ -1,31 +1,50 @@
-# Resume prompt: the sound first (the chime low and crackly; Mac OS's sounds wrong after 40 ms); the speed work paused with its account in the plan
+# Resume prompt: build 52 to prove on the board (the sound's rate fix, the fallback video), then Altair's startup glitch; the speed work paused with its account in the plan
 
-(Rewritten 2026-10-10 at the end of the cycle-accounting session (builds
-47, 48) for a Claude Fable session. It is the only resume prompt:
-everything it needs is here or in the files it names; the board's tools,
-the Main, the rules and the environment are at the end.)
+(Rewritten 2026-10-10 at the end of the sound session (builds 49-52) for a
+Claude Fable session. It is the only resume prompt: everything it needs is
+here or in the files it names; the board's tools, the Main, the rules and
+the environment are at the end.)
 
-**The user's decision, 2026-10-10: the sound issues come first; the speed
-work stops after build 48.** So the next session is a **machine session**
-(the usual rule: it never changes the CPU) on the sound:
+**Where the sound stands (2026-10-10).** The chime and Mac OS's sounds were
+an octave low on the board: the codec's rate code 2 is 44,100 Hz on a real
+7300, not the 22,050 of dingusppc's and Linux's tables (committed 816eb29:
+`MacPPC7300_awacs`'s table; the plan's decisions table, "sound", has the
+whole trail: the trace timed the chime, the bench's WAV and the sound trace
+(build 50, `SND_TRACE`, `syn\sndtrace.py`) proved the codec's output
+frame-exact and its clock right, the user's ear on build 49 settled the
+rate). The crackle was the user's hung MT32-pi mixed in. With build 49 the
+user hears the system sounds and the ROM's "100 % correct".
 
-1. **The startup chime on the board is far too low and crackly** (the user,
-   by ear, on build 47; never listened to before: milestone A's proof was
-   the chime bit-exact in simulation, "on the board, to be heard"). First
-   have the user compare build 38 (`releases/`) by ear: if 38 is clean, the
-   suspect is build 43's area cut, which made DMA channel 8 fetch a word per
-   memory access instead of a 32-byte line (`MacPPC7300_dbdma`'s `LINE` 0
-   for channel 8; AWACS's FIFO lasts about three frames, 68 µs): put channel
-   8 back on lines. The level is a separate fault: AWACS's attenuation
-   fields or the scaling into the 16-bit output; measure it in the bench
-   (`run_scsi.py` test 14 drives the chime's path) against the ROM's sample
-   values and the MiSTer's audio output in `MacPPC7300.sv`.
-2. **Sound in games** (open since 2026-10-09): after its first 40 ms a
-   sound's content is wrong; the Sound Manager refills its buffers far ahead
-   of the hardware and polls channel 8's status until ACTIVE clears. The
-   plan's decisions table, "sound", has the analysis; build 42 (`TRACE = 1`)
-   records channel 8's commands and interrupt. A diagnostic build needs
-   `TRACE = 1` in `MacPPC7300.sv` (and `PERF = 1` only for the counters).
+**Next, a machine session** (the usual rule: it never changes the CPU):
+
+1. **Build 52 on the board** (`Scratch\build1\MacPPC7300_b52.rbf`, from
+   `Scratch\qbuild15`: -2.313 ns, 35,362 ALMs; release flags): the rate fix
+   plus the **fallback video** (uncommitted in `MacPPC7300_control.sv`'s
+   Swatch and `MacPPC7300_video.sv`: a fixed black 640 x 480 at 60 Hz
+   whenever the Mac's timing is off, so the framework has a picture from
+   power-up as every other core gives it; the bench's early frame capture
+   is its only proof so far). Check: the ROM's grey picture and Mac OS's
+   modes still come up, the chime, Mac OS 9.1, then commit the fallback and
+   record build 52 in the plan's Speed table and README's build table. The
+   user asked (2026-10-10, 06:00) to stay off the MiSTer while the NeXT
+   core is finished: ask before taking it.
+2. **Altair's startup sound** (the user's recording, `C:\temp\2026101006030083.mp4`
+   at 11.8-12.8 s; `Scratch\altair.wav`): one second of near-full-scale
+   buzz made of 2 ms segments with a jump between each (359 jumps, most 2.0-
+   2.9 ms apart), while the app loads from disk; the game's later sounds
+   are clean. The Sound Manager plays a chain of 1 ms OUTPUT_LAST commands
+   (176 bytes each; the Finder's sound in `Scratch\speedo_b48\trace.bin`)
+   that the CPU refills ahead of the hardware. Suspects: the refill late
+   under the disk load (the 3x slower CPU, interrupt latency) so stale data
+   plays, or a command boundary mishandled while MESH's DMA competes. The
+   measurement: a `TRACE = 1` build (build 48 has it, with the old rate
+   table; make one from the current tree) and a capture (`mister.py
+   trace-capture`, `--trace-mesh` in `cfg` for MESH's records) during the
+   app's start: channel 8's fetch/done records (kinds 8, 5) with their
+   times against the interrupt (kind 11) show whether commands complete on
+   time and whether the CPU writes the next ones before they are fetched.
+3. Then a release (`releases/`, its README, the Main it was tested with):
+   ask the user first.
 
 The speed work resumes later from `docs/MacPPC7300_plan.md`, "Where the
 cycles go" (the account and the ranked cuts; the first needs the user's
@@ -75,6 +94,7 @@ I'm building a MiSTer FPGA core (DE10-Nano, Cyclone V) with my own PowerPC CPU, 
   FPU tests, the clock 1.71x of ours. A release build keeps `PERF = 0`.
   The whole run's capture: `Scratch\speedo_b48\` (`perf.csv`, the
   screenshots); the first 48 s of a capture are the previous run's ring.
+- **The sound session's bitstreams:** b49 (`Scratch\qbuild12`: code 2 at 44,100 by a scratch edit, the user's proof), b50 (`qbuild13`: TRACE and SND_TRACE), b51 (`qbuild14`: the fallback video with the old table, superseded), b52 (`qbuild15`: the rate fix and the fallback, release flags; to be proved on the board) in `Scratch\build1\`.
 - **The bitstreams:** b47 (`Scratch\qbuild10`), b48 (`qbuild11`) in
   `Scratch\build1\`; the board was left with build 46 in `_Unstable`,
   Debian on slot 0, the machine off.
@@ -85,7 +105,7 @@ I'm building a MiSTer FPGA core (DE10-Nano, Cyclone V) with my own PowerPC CPU, 
 - **The bug of build 33, worth remembering:** every simulation gate was green and the board bombed within minutes (Mac OS 7.6.1 "error type 10" in the Finder, 9.1 stuck at the grey screen): the D-cache's S_IDLE took a request it had not granted when a snoop to the pending write's set and a CPU request to another set met in one cycle. The lockstep's disk-less boot has almost no DMA; the board's disk DMA finds such a race at once. The snoop storm in `run_core.py` fails on that cache within a few thousand instructions on every seed. **Any change to a cache's or the machine's arbitration must run `run_core.py` (the storm is in it) and then the board with a disk.**
 - **The board, as left on 2026-10-10:** build 46 in `_Unstable/MacPPC7300.rbf` (the release is still build 38), the Main c641b24f (`MiSTer.9e88154e`, `MiSTer.a2546ea7`, `MiSTer.official` kept on the card); `games/MacPPC7300/`, `config/MacPPC7300.*`, `screenshots/MacPPC7300/`; the machine off, slot 0 Debian (`linux_debian711.hda`), slot 4 the Open Transport CD, slot 1 empty, 120 MB, eth0, the L2 on. For a Speedometer run put `os761ot.hda` on slot 0 first (`mister.py mount 0 games/MacPPC7300/os761ot.hda`: a config file read at the core's next start, so it can be set while another core runs) and Debian back after (`mount 0 games/MacPPC7300/linux_debian711.hda`). The user shares the board: ask before taking it if they may be using it.
 - **Open from build 38's test:** the first time 7.6.1's Finder opened `os753.hda` on ID 1 it stopped with a bus error; not seen again. If it comes back, suspect a race in the disks' DMA first and give `run_scsi.py` a disk on ID 1.
-- **Sound in games (open):** after its first 40 ms a sound's content is wrong (the Sound Manager refills its buffers far ahead of the hardware; it polls channel 8's status until ACTIVE clears). The plan's decisions table, "sound", has the analysis; build 42 (`TRACE = 1`) records channel 8's commands and interrupt. A new diagnostic build needs `TRACE = 1` in `MacPPC7300.sv`.
+- **Sound in games (open):** Altair's startup sound, above. The earlier "wrong after 40 ms" observation (2026-10-09) was with the rate table wrong; re-judge it after build 52. Diagnostic builds: `TRACE = 1` in `MacPPC7300.sv` (channel 8's commands and interrupt), `SND_TRACE = 1` for the codec's frames (seven a record; the trace path keeps about 270 records a second under the Mac's video traffic, all of them with the video idle), `PERF = 1` for the counters.
 - **The user's request for later:** an OSD "Power" button that presses the ADB power key.
 - **The SCSI disks' writes go through the Main's Mac-family write cache** (`support/mac/mac_disk.cpp` in `..\Main_MiSTer`): the Disk numbers are with it.
 - **The disk image:** Speedometer 4.02 is at the root of `os761ot.hda`; `games/MacPPC7300/os761ot_backup.zip` (67 MB, zip64) is its backup: unzip it over the image on a PC if a CPU change ever corrupts the volume.
@@ -107,9 +127,9 @@ Build 45: -1.350 ns; 210 of the 400 worst paths from the D-cache's tag RAM into 
 - `make -s lint` in `verilator\`.
 - The CPU suites: `python verilator\run_core.py` (15 minutes; record the golden programs' cycle counts: 1.85/1.89/2.04 integer, 3.46/3.53 FP, 1.87 and 3.70 on the 7300's) and `python verilator\run.py` (and `run.py --csv ppctest\runs\results_604_7300_of_run1.csv`, the 7300's vectors).
 - `python verilator\run_cuda.py`, `python verilator\run_scsi.py` for machine changes.
-- `python verilator\run_machine.py --max-instr 300000000 --progress 50000000` (12 minutes): the 7300's ROM in lockstep with dingusppc into Mac OS. **Open Firmware waits about 150 M instructions for the chime's DMA (pc FF808768: not stuck); Mac OS starts near 200 M.** With memory-path changes also `--no-lockstep --ram 120 --max-instr 3000000 --dev-log FILE`: the writes to F80001C0-F80004F0 must put the banks at 0, 64, 96 and 112 MB.
+- `python verilator\run_machine.py --max-instr 300000000 --progress 50000000` (12 minutes): the 7300's ROM in lockstep with dingusppc into Mac OS. **Open Firmware waits about 70 M instructions for the chime's DMA (pc FF808764: not stuck; 150 M before the rate fix); Mac OS starts before 100 M (300 M: 1.71 cycles an instruction, identical).** With memory-path changes also `--no-lockstep --ram 120 --max-instr 3000000 --dev-log FILE`: the writes to F80001C0-F80004F0 must put the banks at 0, 64, 96 and 112 MB.
 - **One WSL job at a time**: two benches at once in WSL hung `run_core.py` for 25 minutes twice. From PowerShell, never end a bench's pipeline with `Select-Object -First N`: it stops the bench once it has its lines.
-- A Quartus build (25 minutes, a `Scratch\qbuild*` copy; keep bitstreams as `Scratch\build1\MacPPC7300_bN.rbf`, numbering on from 46) and its timing report (`quartus_sta.exe -t worstNN.tcl` in the build directory, then `syn\sta_families.py`).
+- A Quartus build (25 minutes, a `Scratch\qbuild*` copy; keep bitstreams as `Scratch\build1\MacPPC7300_bN.rbf`, numbering on from 52) and its timing report (`quartus_sta.exe -t worstNN.tcl` in the build directory, then `syn\sta_families.py`).
 - The board: Mac OS 7.6.1 to the Finder and Speedometer under the fixed conditions (`os761ot.hda`, RAM 120 MB, the 16-inch monitor, 256 colours, Ethernet eth0, nothing else mounted); Mac OS 9.1, a floppy and the CD now and then.
 - Commit at each verified step (explicit paths, the message from a file, `MacPPC7300.qsf` only through a patch of your own lines). When a faster build is proven, it is a candidate for `releases/` (ask me first).
 
