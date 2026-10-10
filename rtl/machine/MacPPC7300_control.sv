@@ -240,54 +240,73 @@ module MacPPC7300_swatch
 	output logic         fetch,           // a line starts: fetch the next active one
 	output logic [10:0]  fetch_y,
 	output logic         vbl_start_tog,
-	output logic         vbl_end_tog
+	output logic         vbl_end_tog,
+	output logic         fallback         // the fixed timing runs: the picture is to be black
 );
 
+// While the Mac's timing is off (from power-up to the ROM's picture, and at
+// Mac OS's mode changes) the counters run a fixed 640 x 480 at 60 Hz with
+// negative syncs at a 25 MHz dot clock, so that the framework always has a
+// picture (black: MacPPC7300_video blanks it, and nothing is fetched). The
+// framework's video pipeline and the HDMI audio with it need a signal.
 logic [1:0]  on_s;
-wire         run = on_s[1];
+wire         use_fb = ~on_s[1];
+logic        fb_q;
+logic [1:0]  fb_div;
+wire         ce_fb  = fb_div == 2'd0;
+wire         ce_eff = use_fb ? ce_fb : ce_dot;
+wire [3:0]   div_eff = use_fb ? 4'd1 : clk_div;
+wire         hsp_eff = use_fb ? 1'b0 : hs_pos;
+wire         vsp_eff = use_fb ? 1'b0 : vs_pos;
+assign       fallback = fb_q;
 
-wire [11:0] VBPEQ = sw_params[12 * 4 +: 12];
-wire [11:0] VFP   = sw_params[12 * 1 +: 12];
-wire [11:0] VAL   = sw_params[12 * 2 +: 12];
-wire [11:0] VSYNC = sw_params[12 * 5 +: 12];
-wire [11:0] VHL   = sw_params[12 * 6 +: 12];
-wire [11:0] HPIX  = sw_params[12 * 8 +: 12];
-wire [11:0] HFP   = sw_params[12 * 9 +: 12];
-wire [11:0] HAL   = sw_params[12 * 10 +: 12];
-wire [11:0] HBWAY = sw_params[12 * 11 +: 12];
-wire [11:0] HSP   = sw_params[12 * 12 +: 12];
+// (the fallback's values: 800 dots a line, 144 to 784 active, the sync the
+// last 96; 525 lines as 1,050 half-lines, 70 to 1030 active, the sync the
+// last 4)
+wire [11:0] VBPEQ = use_fb ? 12'd0    : sw_params[12 * 4 +: 12];
+wire [11:0] VFP   = use_fb ? 12'd1030 : sw_params[12 * 1 +: 12];
+wire [11:0] VAL   = use_fb ? 12'd70   : sw_params[12 * 2 +: 12];
+wire [11:0] VSYNC = use_fb ? 12'd1046 : sw_params[12 * 5 +: 12];
+wire [11:0] VHL   = use_fb ? 12'd1050 : sw_params[12 * 6 +: 12];
+wire [11:0] HPIX  = use_fb ? 12'd798  : sw_params[12 * 8 +: 12];
+wire [11:0] HFP   = use_fb ? 12'd784  : sw_params[12 * 9 +: 12];
+wire [11:0] HAL   = use_fb ? 12'd144  : sw_params[12 * 10 +: 12];
+wire [11:0] HBWAY = use_fb ? 12'd0    : sw_params[12 * 11 +: 12];
+wire [11:0] HSP   = use_fb ? 12'd704  : sw_params[12 * 12 +: 12];
 
 logic [2:0]  sub;                         // the dot within the count
 logic [11:0] h, v;
 logic [11:0] xa;                          // the active line's dot, counted up
 
 wire [11:0] v_next  = (v + 12'd2 >= VHL) ? 12'd0 : v + 12'd2;
-wire        last_d  = ({1'b0, sub} == clk_div - 4'd1);
+wire        last_d  = ({1'b0, sub} == div_eff - 4'd1);
 wire        last_h  = h >= HPIX + 12'd1;
 wire        v2_act  = (v_next >= VAL) && (v_next < VFP);
 
 always_ff @(posedge clk_v) begin
 	on_s   <= {on_s[0], timing_on};
+	fb_q   <= use_fb;
+	fb_div <= fb_div + 2'd1;
 	ce_pix <= 1'b0;
 	fetch  <= 1'b0;
 
-	if (!run) begin
+	if (fb_q != use_fb) begin                // the timing changes hands: the counters start over
 		sub    <= 3'd0;
 		h      <= 12'd0;
 		v      <= 12'd0;
 		xa     <= 12'd0;
-		hs     <= ~hs_pos;
-		vs     <= ~vs_pos;
+		hs     <= ~hsp_eff;
+		vs     <= ~vsp_eff;
 		hblank <= 1'b1;
 		vblank <= 1'b1;
 	end
-	else if (ce_dot) begin
+	else if (ce_eff) begin
 		ce_pix <= 1'b1;
 		// the outputs for the dot at (h, v, sub)
 		hblank <= ~((h >= HAL) && (h < HFP));
 		vblank <= ~((v >= VAL) && (v < VFP));
-		hs     <= ((h >= HSP) || (h < HBWAY)) ? hs_pos : ~hs_pos;
-		vs     <= ((v >= VSYNC) || (v < VBPEQ)) ? vs_pos : ~vs_pos;
+		hs     <= ((h >= HSP) || (h < HBWAY)) ? hsp_eff : ~hsp_eff;
+		vs     <= ((v >= VSYNC) || (v < VBPEQ)) ? vsp_eff : ~vsp_eff;
 		x      <= xa;
 		y      <= 11'((v - VAL) >> 1);
 		if ((h >= HAL) && (h < HFP)) xa <= xa + 12'd1;
@@ -301,13 +320,13 @@ always_ff @(posedge clk_v) begin
 				h  <= 12'd0;
 				xa <= 12'd0;
 				v  <= v_next;
-				if (v_next == VFP) vbl_start_tog <= ~vbl_start_tog;
-				if (v_next == VAL) vbl_end_tog   <= ~vbl_end_tog;
+				if (v_next == VFP && !use_fb) vbl_start_tog <= ~vbl_start_tog;
+				if (v_next == VAL && !use_fb) vbl_end_tog   <= ~vbl_end_tog;
 			end
 		end
 		// a line starts: fetch the line after it if that one is active
 		if (h == 12'd0 && sub == 3'd0) begin
-			fetch   <= v2_act;
+			fetch   <= v2_act && !use_fb;
 			fetch_y <= 11'((v_next - VAL) >> 1);
 		end
 	end
@@ -317,6 +336,8 @@ initial begin
 	vbl_start_tog = 1'b0;
 	vbl_end_tog   = 1'b0;
 	on_s          = 2'b00;
+	fb_q          = 1'b1;
+	fb_div        = 2'd0;
 end
 
 endmodule

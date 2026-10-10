@@ -103,7 +103,8 @@ DSPPC604 cpu
 	.trace_dkind   (),
 	.trace_daddr   (),
 	.trace_dbe     (),
-	.trace_dwdata  ()
+	.trace_dwdata  (),
+	.perf_cnt      ()
 );
 /* verilator lint_on PINCONNECTEMPTY */
 

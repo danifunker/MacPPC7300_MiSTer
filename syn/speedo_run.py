@@ -3,9 +3,11 @@ bitstream on the card, load it, boot Mac OS 7.6.1 (os761ot.hda, Speedometer
 4.02 at the root of the disk), run all tests, photograph the results, quit,
 shut down. Everything by keyboard except Speedometer's "save?" alert.
 
-    python speedo_run.py OUTDIR RBF [--l2 off]
+    python speedo_run.py OUTDIR RBF [--l2 off] [--shots]
 
-Screenshots and log in OUTDIR. Leaves the machine off (dark)."""
+Screenshots and log in OUTDIR. Leaves the machine off (dark). --shots: a
+screenshot every few seconds while the tests run (which test is on, for the
+trace's performance records: syn/perf.py)."""
 
 import os
 import subprocess
@@ -163,7 +165,17 @@ def main():
     shot("graf")
     ws("kbdRaw:28")
     say("tests running")
-    time.sleep(100)
+    if "--shots" in a:
+        # a screenshot every few seconds while the tests run: which test is on
+        # (for the trace's performance records, syn/perf.py)
+        t1 = time.time()
+        while time.time() - t1 < 100:
+            el = time.time() - t1
+            mister("shot", os.path.join(out, "test%03d.png" % int(el)))
+            say("test shot at %.0f s" % el)
+            time.sleep(3)
+    else:
+        time.sleep(100)
     shot("done")
     ws("kbdRaw:28", "sleep:2")                    # The tests are done!
     shot("results")

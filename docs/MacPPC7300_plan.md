@@ -21,7 +21,7 @@ the day a milestone was closed; open ones carry no date.
 | V | Video: Control, RaDACal, the Athens clock chip on Cuda's I2C | Mac OS's screen on the MiSTer's output, in simulation as a frame compared with dingusppc's and on the board as a screenshot | done 2026-10-07, in simulation and on the board |
 | K | ADB keyboard and mouse on Cuda's line | Open Firmware typed on from the keyboard; the cursor following the mouse in Mac OS | done 2026-10-07, on the board |
 | S | SCSI: DBDMA, MESH, a disk image on the SD card | Mac OS booting from a disk image to the Finder | done 2026-10-08 on the board: Mac OS 7.6.1 to the Finder with every extension, Open Transport included; mouse, keyboard, Shut Down |
-| A | Sound: AWACS and its DBDMA channels | the startup chime, and Mac OS's sound | the chime bit-exact in simulation (2026-10-08); on the board, to be heard |
+| A | Sound: AWACS and its DBDMA channels | the startup chime, and Mac OS's sound | done 2026-10-10: the chime bit-exact in simulation (2026-10-08); on the board, heard right by the user once the codec's rate code 2 was 44,100 Hz (build 52; the record in `MacPPC7300_sound.md`) |
 | P | Persistence and the clock: the NVRAM and Cuda's PRAM on the SD card, the clock from the MiSTer's RTC | settings kept across a power-off; Mac OS showing the date | the clock from the RTC and the NVRAM on the SD card, on the board (2026-10-08); a setting's survival still to be shown |
 | X | The PCI bus: Bandit's slots decoded by their BARs, a PCI card (a video card first) | a PCI card found by Open Firmware and driven by Mac OS | later |
 
@@ -826,6 +826,10 @@ are the slow 100 C model's for the CPU clock (`general[1]`).
 | 44 (the FPU's special result a cycle later: NaN, infinity and zero operands found in the cycle after the request, from the operand registers) | 70 | 128 KB | -2.074 ns, seed 1 (the FPU family gone from the 400 worst; the worst is `wb_result` through the conversion into `fop_b`, the compare's NaN class, FPSCR[FEX], `x_fpen` and `redir_pc` into `pc_f`: the enabled-exception trap of a combinational `fcmp`) | 35,657 (85 %), 322 | not run on the board | not run on the board |
 | 45 (+ the operands' classes from the core, beside the conversion: a forwarded single classed from its own fields) | 70 | 128 KB | -1.350 ns, seed 1 (no FPU path among the 400 worst; the worst: the D-cache's tag RAM into the I-cache's PLRU address, 210 paths, then CPU paths into RAMs, -1.07) | 35,725 (85 %), 322 | the menu bar at 85 s | CPU 2.503, Graphics skipped, Disk 1.571, Math 106.797. Benchmark Mix: KWhetstones/s 15,953.797 (54.248), Dhrystones/s 46,560.137 (2.695), Towers 0.204 s (3.132), Quick Sort 0.153 (4.664), Bubble Sort 0.275 (2.767), Queens 0.146 (2.759), Puzzle 0.266 (4.111), Permutations 0.252 (3.223), Int. Matrix 0.168 (4.794), Sieve 0.451 (3.043), average 8.544. Color: 8-bit 7.381 s (1.435), 16-bit 10.721 s (1.267), average 1.351. FPU: KWhetstones/s 17,135.317 (3.290), Matrix Mult. 0.170 s (4.159), Fast Fourier 0.088 s (3.247), average 3.566. Build 38's numbers within noise: the cuts change no cycle count but the special operands' |
 | 46 (S_LZC skipped where the leading-zero count is known: `fmul` 6 cycles, `fdiv` 33, `frsp` and `fctiw` 7, a sum with a pinned addend or a dominant product 7; an addend-dominant sum still 8) | 70 | 128 KB | -2.249 ns, seed 1 (the fetch address into the I-cache's way RAMs and PLRU, the family that limited build 45, placed 0.9 ns worse; no FPU path among the 400 worst); -3.356 ns with seed 2 (`Scratch\qbuild9`, 35,217 ALMs: all 400 the I-cache's tag RAM into its PLRU address, no FPU path either). Three fits of a near-identical CPU at -1.35, -2.25 and -3.36: the fetch-address family's placement swings 2 ns, and it is the family to cut next | 35,238 (84 %), 322 | the menu bar at 85 s | CPU 2.504, Graphics skipped, Disk 1.573, Math 108.111. Benchmark Mix: KWhetstones/s 16,153.262 (54.927), Dhrystones/s 46,528.724 (2.693), Towers 0.204 s (3.129), Quick Sort 0.153 (4.662), Bubble Sort 0.275 (2.768), Queens 0.146 (2.758), Puzzle 0.266 (4.109), Permutations 0.252 (3.223), Int. Matrix 0.168 (4.794), Sieve 0.451 (3.046), average 8.611. Color: 8-bit 7.382 s (1.435), 16-bit 10.720 s (1.267), average 1.351. FPU: KWhetstones/s 17,316.017 (3.325), Matrix Mult. 0.169 s (4.174), Fast Fourier 0.087 s (3.299), average 3.600. Against build 45: Math 1.2 % and the FPU tests 1 % faster, the rest unchanged. Matrix Mult. hardly moves because a dot product's running sum is larger than each product: the addend-dominant sum, the one case that still counts in S_LZC |
+| 47 (build 46 + the performance counters and the trace: `PERF = 1`, `TRACE = 1`; a measuring build) | 70 | 128 KB | -2.301 ns, seed 1 | 37,550 (90 %), 322 | the menu bar at 85 s | CPU 2.505, Graphics skipped, Disk 1.462 (the trace's DDR3 writes and the ARM reading the ring take from the disk path), Math 108.076. Benchmark Mix: KWhetstones/s 16,091.140 (54.715), Dhrystones/s 46,643.357 (2.700), Towers 0.204 s (3.130), Quick Sort 0.153 (4.662), Bubble Sort 0.275 (2.768), Queens 0.146 (2.756), Puzzle 0.266 (4.114), Permutations 0.252 (3.223), Int. Matrix 0.168 (4.792), Sieve 0.451 (3.046), average 8.591. Color: 8-bit 7.433 s (1.425), 16-bit 10.757 s (1.262), average 1.344. FPU: KWhetstones/s 17,278.319 (3.318), Matrix Mult. 0.170 s (4.166), Fast Fourier 0.087 s (3.303), average 3.596. Build 46's numbers: the counters cost nothing |
+| 48 (the counters refined to 28: MEM's wait split four ways, the doubles counted) | 70 | 128 KB | -2.077 ns, seed 1 | 37,402 (89 %), 322 | the menu bar at 86 s | CPU 2.503, Graphics skipped, Disk 1.157 (the trace captured through the whole run, `trstream.py` polling the ring), Math 107.975. Benchmark Mix: KWhetstones/s 16,057.808 (54.602), Dhrystones/s 46,644.575 (2.700), Towers 0.204 s (3.133), Quick Sort 0.153 (4.662), Bubble Sort 0.275 (2.766), Queens 0.146 (2.761), Puzzle 0.265 (4.116), Permutations 0.253 (3.221), Int. Matrix 0.168 (4.794), Sieve 0.451 (3.041), average 8.580. Color: 8-bit 7.413 s (1.429), 16-bit 10.789 s (1.259), average 1.344. FPU: KWhetstones/s 17,466.333 (3.354), Matrix Mult. 0.169 s (4.174), Fast Fourier 0.087 s (3.303), average 3.610. The account of this run is below, "Where the cycles go" |
+| 49-52 (the sound session, 2026-10-10: 49 a scratch build with rate code 2 at 44,100 Hz, the user's proof; 50 the sound trace; 51 the fallback video alone; 52 the rate fix and the fallback video, release flags: **the sixth release**, `releases/MacPPC7300_20261010.rbf`) | 70 | 128 KB | 52: -2.313 ns, seed 1 | 52: 35,362 (84 %), 322 | the grey picture at 30 s from the launch | not run (no CPU change: build 46's logic). On the board: the chime and Mac OS's sounds right by the user's ear; a screenshot after Mac OS's shutdown returns the fallback's black 640 x 480 frame (it failed before, there being no video); Mac OS 7.6.1 and 9.1 to the Finder and shut down, the black frame after each |
+| **The real Power Macintosh 7300/120** (the user's, 2026-10-10: a 604 at 120 MHz on a 40 MHz bus, 256 MB, ROM 077D; the same Speedometer 4.02, Mac OS 7.6.1, 832 x 624, 256 colours) | 120 | the board's | | | | CPU 7.800, Graphics skipped (the monochrome, 2- and 4-bit tests 0.000 with 0 iterations: a real 7300 skips them too), Disk 3.544, Math 320.232, PR not given. Benchmark Mix: KWhetstones/s 51,514.527 (175.168), Dhrystones/s 162,591.579 (9.413), Towers 0.057 s (11.192), Quick Sort 0.050 (14.182), Bubble Sort 0.079 (9.640), Queens 0.048 (8.448), Puzzle 0.067 (16.248), Permutations 0.076 (10.776), Int. Matrix 0.057 (14.173), Sieve 0.121 (11.343), average 28.058. Color: 8-bit 3.379 s (3.136), 16-bit 4.334 s (3.134), average 3.135. FPU: KWhetstones/s 52,518.250 (10.086), Matrix Mult. 0.038 s (18.838), Fast Fourier 0.020 s (14.065), average 14.329. **Against build 48**: CPU 3.12x, Disk 3.06x, Math 2.97x; Dhrystones 3.49x, KWhetstones 3.21x, Towers 3.58x, Quick Sort 3.06x, Bubble Sort 3.48x, Queens 3.04x, Puzzle 3.96x, Permutations 3.33x, Int. Matrix 2.95x, Sieve 3.73x; Color 8-bit 2.19x, 16-bit 2.49x; FPU KWhetstones 3.01x, Matrix Mult. 4.45x, Fast Fourier 4.35x. The clock is 1.71x of it (120 against 70), so the cycles-per-instruction gap is 1.7-2.3x on the integer tests, 2.5-2.6x on the FPU's matrix and FFT, 1.3-1.5x on Color |
 
 Speedometer 4.02 is at the root of `os761ot.hda` (copied from the floppy
 image `games/MacPPC7300/floppy/speedo.img`, the volume of `Speedo402.sit`'s
@@ -840,9 +844,10 @@ pointer in a screenshot and correct: 7.5 minutes). Builds 28 and 29 agree
 within 1 % on every number but KWhetstones/s, which swings 15 % between runs
 (13.7-16.2 k): a timed test, not a counted one. It skips the Graf
 Test and the 1-, 2- and 4-bit colour tests: "This machine does not support
-monochrome graphics" (Mac OS 7.6.1 at 832 x 624 in 256 colours). Open: whether
-a real 7300 offers 1 bit there (the Monitors control panel), and so whether
-the Control driver should see something it does not see here.
+monochrome graphics" (Mac OS 7.6.1 at 832 x 624 in 256 colours). Answered
+2026-10-10 by the user's run on a real 7300/120 (the reference row above):
+it skips them too (0.000, 0 iterations), so the Control driver sees what a
+real one sees.
 
 Where build 28's time goes (TimeQuest, `Scratch\qbuild\worst28.tcl`): its 60
 worst paths are one family, the data cache's tag RAM (the M10K's 2.5 ns
@@ -854,6 +859,116 @@ delay, 83 % of it routing. Build 26's were the same family into `gc|nv_hi`
 and the VIA's `t1_left` through `cpu|mem_wdata` (the write-back data off the
 cache RAMs). The CPU's own worst path (the I-cache's tag RAM into the MMU's
 segment-register read-ahead, `mmu|i_sr_q`) was -1.33 ns in build 26.
+
+### Where the cycles go (2026-10-10, the cycles-per-instruction work)
+
+The clock explains 0.58 of the gap to a real 7600/120 on Speedometer's CPU
+tests; the rest, about 2.3x, is cycles per instruction. The 604's numbers
+(its User's Manual, chapter 6, "Instruction Timing"), against this core's:
+
+| | 604 | DSPPC604 |
+|---|---|---|
+| Issue | four instructions a cycle to six units (two single-cycle integer, a multi-cycle integer, the FPU, the load/store unit, the branch unit), out of order, with two reservation stations a unit; four retired a cycle | one operation a cycle, in order |
+| Integer | every one-cycle instruction 1 cycle, forwarded from the result buses; multiply 4 (3 for 32 x 16), divide 20 | 1; multiply and divide behind the unit's handshake |
+| Load | 2 cycles latency, one a cycle | 2 cycles in MEM (the cache answers the cycle after the grant), so the pipeline waits a cycle on every load or store; a use the cycle after waits another (`ex_stall`) |
+| Floating point | `fadd`, `fmul`, `fmadd`, `fcmp` 3 cycles, pipelined one a cycle; `fdivs` 18, `fdiv` 31 | 7-8, 33, one at a time (`docs/DSPPC604_plan.md`, M2) |
+| Branch | the 64-entry BTAC predicts in the fetch cycle (a hit costs nothing), the 512-entry two-bit BHT corrects it at decode (1 cycle), the dispatcher at dispatch (2); a branch resolved in execute costs 3; two branches unresolved at a time | the 128-entry buffer predicts in the fetch cycle; everything else is resolved in EX: 3 cycles for a taken branch the buffer does not know, and for every misprediction |
+| Caches | 16 KB four-way each, a hit in one cycle, the load/store unit pipelined; a line read in 4 bus beats (3x the bus) | 16 KB four-way each, the same hit timing; the line from the L2 or the SDRAM across the clock crossing |
+
+Measured on the golden programs before this work: 1.85 cycles an
+instruction integer, 3.45 floating point; the 7300's ROM in lockstep 1.57.
+
+**The counters** (`DSPPC604_perf`, `PERF = 1`; `perf_cnt`, 28 free-running
+32-bit counters): the cycles, the operations and the instructions retired,
+and a class for every cycle in which no operation leaves EX: EX waiting for
+MEM (the cycle an access is granted, answered in the next: every load and
+store costs it; a cycle the cache does not grant; the memory unit's own
+cycle between the two accesses of a double or a misaligned operand; the
+data cache busy beyond a lookup: a miss, a write-back, a snoop), for a
+load's data (`ex_stall`), for the multiplier, the divider, the FPU, or
+anything else; EX empty in the three cycles after a redirect, empty for the
+fetch (an instruction cache miss, or the one cycle ID holds a word delivered
+late), empty with ID waiting for XER. Then the events: branches, taken,
+mispredicted (and of those, taken while predicted not taken), exceptions,
+refetches (`rfi`, `mtmsr`, the translation changes), loads, stores, doubles
+among them, the two caches' memory transactions, the cycles a fetch waits
+beyond a hit and the cycles the instruction cache does not grant one. The
+benches print the account at the end of every run (`core_main.cpp`,
+`print_perf`); on the board a `PERF = 1`, `TRACE = 1` build writes the
+counters into the DDR3 trace every 2^23 cycles (kind 12, five records) and
+`syn\perf.py` turns a capture, or the ring, into one line per 120 ms
+interval: the cycles per instruction and the classes of every 100 cycles,
+so that each of Speedometer's tests can be read off its own interval.
+
+What the suite's programs said first (2026-10-10, the first version of the
+counters, before the MEM class was split): the floating-point golden program
+(3.46 cycles an instruction, 128 k loads in 282 k instructions) spends 40.6
+of every 100 cycles with EX waiting for MEM, about 3 cycles a load, because
+an 8-byte `lfd` or `stfd` is two word accesses with a cycle between them on
+the 32-bit data path (the 604 moves a double in one); the FPU itself takes
+12.2. The integer golden program's 1.85 is its own shape (26 of 100 cycles
+the fetch: 527 KB of straight-line code, every line a compulsory miss; 18.5
+the divider). The random lockstep programs (2.6, 3.0 with translation on):
+44 an operation leaves EX, 14 (25 translated) MEM, 13 after a redirect
+(half their branches mispredict, as random branches do), 16 the fetch, 9
+the divider. None of them is Mac OS: the board's account decides.
+
+**The board's account (build 48, 2026-10-10; `Scratch\speedo_b48\perf.csv`,
+one row per 120 ms; the tests identified by their profile and the run's
+screenshots).** Of every 100 cycles:
+
+| Phase | CPI | an operation leaves EX | MEM: granted | not granted | between a double's accesses | data cache busy | load-use | mul | div | FPU | after a redirect | the fetch | branches of instructions, mispredicted | loads, stores of 100 instructions |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Dhrystones (9 s) | 1.39 | 75 | 13 | 0.5 | 0.2 | 1.6 | 0.1 | 0 | 0 | 0 | 3 | 6 | 29 %, 4.5 % | 17, 0.8 |
+| KWhetstones (CPU and FPU lists) | 5.4 | 19 | 2 | 0.2 | 0.7 | 0.4 | 0.6 | 3 | 53 | 19 | 0.6 | 1.3 | 12 %, 9 % | 6, 1.3 |
+| the integer tests (Towers to Sieve, 20 s) | 1.2-2.0 | 55-81 | 11-25 | 0.2-5 | 0-0.6 | 0.4-7 | 2.5-9 | 0-6 | 0-8 | 0 | 3-9 | 1-4 | 7-17 %, 7-34 % | 4-24, 1-22 |
+| the FPU tests (Matrix Mult., Fast Fourier) | 1.9-2.1 | 50-54 | 12-16 | 0.6-1.4 | 0.1-0.3 | 0.6-1.4 | 2.3-2.7 | 0.4 | 0-7 | 18-27 | 1-1.4 | 1.5 | 4-8 %, 8-17 % | 15-25, 6-7 |
+| Color 8- and 16-bit | 5-9 (peaks 10.6) | 10-25 | 8-13 | 0.3-2 | 4-8 | 48-72 | 0.1 | 0 | 0 | 0 | 1-3 | 2-4 | 16-25 %, 10-20 % | 5-28, 18-42 (38-43 % doubles) |
+| the Finder idle (between the tests, and after) | 2.90 | 40 | 10 | 1.9 | 1.8 | 7.8 | 0.1 | 0 | 0 | 0 | 18 | 21 | 30 %, 58 % | 22, 3 |
+
+What it says, in the order of the cycles it would give back on the CPU
+tests, against the 1.7-2.3x gap to the real 7300/120 at the same clock:
+
+1. **MEM's granted cycle** (11-25 of 100 cycles in the integer tests, 13 in
+   Dhrystones, 12-16 in the FPU tests): every load and store holds EX a
+   cycle because MEM takes two (the request, then the answer) and the next
+   operation cannot enter it until the answer. MEM as two stages, the
+   request's and the answer's, would take an access a cycle, as the cache
+   already grants a read hit behind another. The forwarding then has one
+   more source and `ex_stall` one more case, and a store's data must be
+   held across the second stage: rule 2 of `docs/DSPPC604_plan.md` (how a
+   hazard is handled) **needs the user's go-ahead**. Worth about 0.15-0.3
+   cycles an instruction on the integer tests.
+2. **Load-use** (2.5-9): a load's data reaches EX only from WB. With MEM in
+   two stages it could be forwarded from the answer stage, the same cycle
+   count as now (the 604's loads are two cycles too), so this is part of 1,
+   not a separate cut; it does not shrink without a cut rule 2 forbids.
+3. **Redirects** (3-9 in the integer tests, 6-9 where the sorts and Puzzle
+   branch most; 18 in the Finder's idle loop, whose branches mispredict 58
+   %): a return-address stack for `blr` and a branch target buffer of 512
+   or 1,024 entries in M10K (128 today, in registers; the plan's M5 notes
+   record the RAM form that was tried and why it mispredicted the entry it
+   had just written). A better predictor leaves the handshakes alone: no
+   go-ahead needed.
+4. **The divider** (53 of 100 cycles in Whetstones, up to 8 in the integer
+   tests that divide): 35 cycles against the 604's 20; a radix-4 divider
+   (two quotient bits a cycle, 18 cycles) is a cut inside the unit.
+5. **The FPU** (18-27 in its tests, 19 in Whetstones): 7-8 cycles one at a
+   time against the 604's 3 pipelined; the latency list in M2 and overlap
+   are the known work, deferred.
+6. **The Color tests** are not the CPU's: 48-72 of 100 cycles the data
+   cache sits in an uncached access (the frame buffer, write-through or
+   cache-inhibited), 38-43 % of the operations doubles, 8 of 100 cycles the
+   memory unit's gap between a double's two words. A posted write for
+   uncached stores (the 604 has one) and a 64-bit path for a double would
+   take most of it; the gap to the 7300 there is 1.3-1.5x at the clock.
+7. **The fetch** is small during the tests (1-6) and large only in the
+   Finder's idle loop (21) and the boot (10-20), where the instruction
+   cache misses to the L2: not a benchmark matter.
+
+The user's decision, 2026-10-10, after build 48: the speed work stops here
+and the sound issues come first; this account is the starting point when it
+resumes, with 1 (the go-ahead question), 3 and 4 the first cuts.
 
 ## Decisions needed
 
@@ -901,3 +1016,5 @@ segment-register read-ahead, `mmu|i_sr_q`) was -1.33 ns in build 26.
 | sound | Reported to the user, 2026-10-09: sound glitches in games, on this core and the Quadra 800 core (no game or kind of glitch named yet). Found by the session, without the board (the user's wish): AWACS kept a part frame a stopped DMA channel left in its FIFO, so every frame after the next start came byte-shifted (distorted sound until another stop realigned it; a stop leaves a part frame only within the few clocks of a refill or a line fetch, about one stop in a hundred), and played 0 for a frame the channel had not delivered (a click). Decided by the session: the part frame is dropped once the channel stops, and a late frame holds the last one (MAME's and the Quadra core's EASC behaviour); `run_scsi.py` test 14 drives DMA channel 8 into AWACS and fails on the old RTL. Measured there: the FIFO lasts about three frames (68 µs at 44,100 Hz) against the DMA's line fetch, and the caches answer a DMA snoop before the CPU's next access, so starvation is unlikely. Not changed: the Quadra core (read only); its EASC holds the last sample, runs at 22,252 Hz from 33 MHz, and interrupts at half empty as MAME's, so nothing there was found wrong in its sound chip. Then on the board (the user's video of Altair 2.0's splash, build 39): every sound played at exactly half speed (the capture matches the game's own 'snd ' resources at half rate, correlation 0.99-1.00), and after about 0.6 s the splash turned to noise. MacsBug read the control register as the chime's 22,050 Hz; the board's trace (build 40, AWACS accesses added) showed Mac OS doing two read-modify-writes of it through little-endian accessors, the first setting 44,100 Hz, and our register reading back byte-swapped, so the second put 22,050 back. Decided by the session: the little-endian registers read back as written (dingusppc has the same asymmetry); byte and halfword writes are taken too (they were dropped; none seen from Mac OS). The bench replays the trace's sequence. |
 | area | Asked by the user, 2026-10-09 (tired of re-rolling fitter seeds at 91 % of the ALMs, fits swinging -1.97 to -3.30 ns): build flags for the trace and for DMA channel 9, both off, and the DMA channels' line buffers made cheaper; the FPU's timing cuts left to a CPU session (`RESUME_speed.md`). Done: `TRACE` and `SOUND_IN_DMA` in `MacPPC7300.sv` (0; the modules default to 1, so the benches keep both): without the trace its records lose their load and synthesis drops them; channel 9 becomes its registers alone (ACTIVE never set: a recording program would wait for ever; it only ever recorded silence). Decided by the session: `MacPPC7300_dbdma`'s `LINE` 0 for channels 1, 2, 3, 8 and 9 (floppy, Ethernet, sound: at most 1.25 MB/s), a 4-byte buffer and a memory access a word instead of a 32-byte line; MESH's channel A keeps the line; and every channel's 256-bit write register gone (a line write takes the buffer itself, steady while it waits; a word write a 32-bit register). Build 43 (seed 1): 35,551 ALMs (85 %) against build 42's 38,228 (91 %), Grand Central 4,671 against 6,368 (channels 1: 680 to 363, 2: 497 to 350, 3: 776 to 369, 8: 476 to 333, 9: 631 to the stub), slack -2.404 ns (build 42 seed 1: -3.296), TNS -462 ns (-1,462). Gates: lint with both flag settings, `run_scsi.py` (MESH, the floppy, the sound), the 300 M lockstep (identical, 1.57 cycles an instruction, the chime through channel 8), and on the board Speedometer as build 38 (Disk 1.571), a 400K floppy opened, Ethernet's DHCP and a ping from the PC. |
 | speed | Asked by the user, 2026-10-10 (the FPU's timing cuts, in the order of `RESUME_speed.md`), decided by the session on the shape: (1) the FPU's results that need no arithmetic (NaN operands, infinities, zeros, the invalid operations) are found in the cycle after the request, from the operand, control and FPSCR registers the unit already latched, while the first stage (S_MUL1, S_PREA, S_DIV0 or S_RSQ) has begun; a special result abandons that stage for S_DONE, so only an operation with such operands takes a cycle more (the FP golden programs 3.45 to 3.49 cycles an instruction, the 7300's 3.73 to 3.74: they are dense with them; ordinary code barely sees it); EX waits for `resp_valid` as before, so no hazard changes. (2) The operands' classes (`fp_cls_t`: sign, exponent zero, zero, denormal, infinity, NaN, signalling) come from the requester through ports beside the operands: the core finds them with `fp_classify` on each forwarding source, and for an lfs result still in its single format with `fp_classify_single` from the single's own fields, so lfs's conversion (the denormal's leading-zero count and shift, 4.5 ns) is no longer in front of the class. Reason: build 42's 400 worst paths were that one path (the conversion, the forwarding mux, the class tests and the special select, 16 ns); after (1) the worst was the same path by its other consumer (`fcmp`'s FPSCR[FEX] into `x_fpen` and `redir_pc`). Measured: -2.404 (build 43) to -2.074 (44) to -1.350 ns (45), the FPU gone from the 400 worst; the unit alone 3,374 to 3,294 ALMs, 72 to 75.5 MHz worst case. Not taken: `FPU_OPERAND_REG = 1` (a cycle on every FP operation) was not needed. Gates: lint, both vector files, `run_core.py`, the 300 M lockstep (identical), the board (the Speed table). |
+| sound | Reported by the user, 2026-10-10, by ear on build 47: the startup chime's tone is too low, and it crackles. Found by the session: the chime is not starved. The build 48 trace shows the ROM's last chime command (11,104 bytes) done 2.35 s after the control register was set, the ROM polling the channel in 60 ms bursts meanwhile; the machine bench's WAV (`run_machine.py --wav`, `syn\wavstat.py`) plays the same chime in 2.2 s with every frame delivered on its clock (no held frames beyond the 22,050 Hz doubling), full scale, both channels smooth, so the stream reaches the codec whole and on time. The ROM's command list (`FFE00000`-`FFE00090`: six OUTPUT_MOREs of 32,768 bytes and an OUTPUT_LAST of 11,104 from `FFE000A0`) is 51,928 stereo frames with rate code 2 written to the sound control register (`00020000`): 2.36 s at the 22,050 Hz our table gives code 2 (dingusppc's `screamer_freqs`, Linux's `awacs_freqs`), 1.18 s an octave higher at 44,100. Mac OS's sounds use code 0 (44,100) and were verified at speed (build 40), so only code 2's meaning on the 7300's Screamer was in question. Settled by the user's ear, 2026-10-10: build 49 (a scratch build with code 2 played at 44,100 Hz) chimes "mostly correct"; the codec's output was also captured digitally on the board (build 50, the sound trace: every frame the ROM's, none held, the frame clock measured at 44,247 a second against the PC's clock), so the data and the clock were never at fault, only the table. Decided: code 2 is 44,100 Hz (as code 0; Mac OS's Sound Manager mixes to 44,100 on these machines, so it never needs 22,050 from the chip, and build 40's half-speed sounds were code 2 read as 22,050); the rest of the table as before, unmeasured. The crackle: the user's MT32-pi had hung and its I2S stream was being mixed in (clicks on a 50 Hz grid in the recording); after a restart, with the Pi enabled again, the user hears the system sounds and the ROM's "100 % correct" on build 49 (2026-10-10). **Altair's startup sound** (open, not the core's): one second of buzz at the game's start, clean sounds after. Measured 2026-10-10 with the trace (build 53) and the sound trace (build 50): the Sound Manager's looping double buffer of 192 one-millisecond commands runs on time, its interrupts are taken within the millisecond, and the codec plays exactly what is in memory; the buzz segments are the Sound Manager's 8-bit expansion (a byte replicated into both bytes of both channels, as every Mac OS sound here) without the 0x80 sign flip, silence at 0x8080 and a full-scale jump at every midpoint crossing. The same from a RAM disk (the app copied there, no SCSI read during its start), so the disk path is out; the Quadra core shows the same glitch with another CPU and sound chip, so the CPU is out. It is the app's (or the Sound Manager's) conversion racing the playback at the game's start, lost on both cores; whether a real 7300 loses it is for the user's machine to tell. Parked: re-judge after the speed work. Also from this: the video timing now runs a fixed black 640 x 480 at 60 Hz while the Mac's timing is off (`MacPPC7300_swatch`'s fallback), so the framework has a picture from power-up as every other core gives it. |
+| speed | Asked by the user, 2026-10-10 (the cycles-per-instruction work, `RESUME_speed.md`): the account before any cut. Decided by the session: counters in the CPU (`DSPPC604_perf`, `PERF`), read on the board through the DDR3 trace (five records every 2^23 cycles) rather than a debug readout or the 604's performance-monitor SPRs (no program on the Mac could be asked to read them during Speedometer), and in the benches as a port; every cycle classed, so the classes sum to the cycles. Measured (builds 47 and 48, the Speed table and "Where the cycles go"): on the integer tests MEM's granted cycle is the largest wait (11-25 of 100 cycles), then load-use, redirects and the divider; the FPU tests wait on the FPU 18-27; the Color tests sit in uncached frame-buffer stores 48-72. The user's real 7300/120 measured the same day: 3.0-4.5x on the CPU and FPU tests, 2.2-2.5x on Color, of which the clock is 1.71x. The user's decision after build 48: the speed work stops here and the sound issues come first; the ranked cuts are recorded for its resumption (the first needs the user's go-ahead under rule 2). Not changed: no cut was built. |

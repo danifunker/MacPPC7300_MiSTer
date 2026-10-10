@@ -188,6 +188,7 @@ module MacPPC7300_machine
 	// the sound AWACS plays (signed, changing at its frame rate)
 	output logic [15:0]  snd_left,
 	output logic [15:0]  snd_right,
+	output logic         snd_frame,     // one clock a frame (the samples change the clock after)
 
 	// Grand Central's NVRAM written from outside, a byte a cycle, while
 	// the machine is held in reset
@@ -660,7 +661,7 @@ MacPPC7300_gc #(.SCSI_HZ(SCSI_HZ), .SOUND_IN_DMA(SOUND_IN_DMA)) gc (
 	.scsi_rst, .scsi_bsy, .scsi_sel, .scsi_atn, .scsi_ack, .scsi_req, .scsi_msg, .scsi_cd, .scsi_io, .scsi_db,
 	.dm_req(gdm_req), .dm_we(gdm_we), .dm_line(gdm_line), .dm_addr(gdm_addr), .dm_be(gdm_be),
 	.dm_wdata(gdm_wdata), .dm_ack(gdm_ack), .dm_rdata(gdm_rdata),
-	.snd_left, .snd_right,
+	.snd_left, .snd_right, .snd_frame,
 	.dac_cr, .dbl_buf_cr, .cursor_x, .cursor_clut, .clk_v, .clut_index, .clut_rgb,
 	.dfin, .dfin_ch, .dfin_type, .dfin_info, .itr_ev, .itr_st, .itr8_ev, .itr8_st,
 	.fd_m_t, .fd_m_ok, .fd_m_fmt, .fd_m_dc42, .fd_rq_t, .fd_rq_lba, .fd_dn_t, .fd_ra, .fd_q
