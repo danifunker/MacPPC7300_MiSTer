@@ -114,13 +114,19 @@ wire [31:0] m_le = {m_be[7:0], m_be[15:8], m_be[23:16], m_be[31:24]};
 wire [31:0] cw   = wdata | {8'h0, wdata[15:14], 22'h0};
 
 // ---- the frame clock ----------------------------------------------------------------------
+// Code 2 plays at 44,100 Hz, not the 22,050 of dingusppc's and Linux's
+// tables: the ROM's startup chime (code 2, 51,928 frames) is 1.2 s at the
+// right pitch on a real 7300 by the user's ear (2026-10-10, against the data
+// rendered at both rates), and Mac OS's Sound Manager mixes everything to
+// 44,100 on these machines, so code 0 and code 2 both being 44,100 is what
+// it expects (build 40's half-speed sounds were code 2 read as 22,050).
 logic [3:0] ftick;                        // snd_ticks into the frame
 logic [3:0] fdiv;
 always_comb begin
 	case (snd_ctrl[10:8])
 		3'd0:    fdiv = 4'd2;
 		3'd1:    fdiv = 4'd3;
-		3'd2:    fdiv = 4'd4;
+		3'd2:    fdiv = 4'd2;
 		3'd3:    fdiv = 4'd5;
 		3'd4:    fdiv = 4'd6;
 		3'd5:    fdiv = 4'd8;
