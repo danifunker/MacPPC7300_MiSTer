@@ -148,13 +148,14 @@ end
 
 // ---- Swatch -----------------------------------------------------------------------------------
 logic        s_ce, s_hs, s_vs, s_hb, s_vb, fetch;
+logic        s_fb;                                   // the fixed timing runs: a black picture
 logic [11:0] s_x;
 logic [10:0] s_y, fetch_y;
 
 MacPPC7300_swatch swatch (
 	.clk_v(clk), .timing_on, .sw_params(prm), .clk_div, .hs_pos(hsp), .vs_pos(vsp), .ce_dot,
 	.ce_pix(s_ce), .hs(s_hs), .vs(s_vs), .hblank(s_hb), .vblank(s_vb), .x(s_x), .y(s_y),
-	.fetch, .fetch_y, .vbl_start_tog, .vbl_end_tog
+	.fetch, .fetch_y, .vbl_start_tog, .vbl_end_tog, .fallback(s_fb)
 );
 
 // ---- the line fetch ----------------------------------------------------------------------------
@@ -375,7 +376,7 @@ always_comb begin
 	if (p3_cur[3])      p3_out = cclut[24 * p3_cur[2:0] +: 24];
 	else if (p3_cur[0]) p3_out = {p3_c[23] ? 8'h00 : 8'hFF, p3_c[15] ? 8'h00 : 8'hFF, p3_c[7] ? 8'h00 : 8'hFF};
 	else                p3_out = p3_c;
-	if (!p3_de) p3_out = 24'h0;
+	if (!p3_de || s_fb) p3_out = 24'h0;
 end
 
 always_ff @(posedge clk) begin

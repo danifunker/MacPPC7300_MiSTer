@@ -19,13 +19,14 @@ user hears the system sounds and the ROM's "100 % correct".
 
 1. **Build 52 on the board** (`Scratch\build1\MacPPC7300_b52.rbf`, from
    `Scratch\qbuild15`: -2.313 ns, 35,362 ALMs; release flags): the rate fix
-   plus the **fallback video** (uncommitted in `MacPPC7300_control.sv`'s
+   plus the **fallback video** (committed: `MacPPC7300_control.sv`'s
    Swatch and `MacPPC7300_video.sv`: a fixed black 640 x 480 at 60 Hz
    whenever the Mac's timing is off, so the framework has a picture from
-   power-up as every other core gives it; the bench's early frame capture
+   power-up as every other core gives it; the bench's early frame capture,
+   `run_machine.py --frame-at 1000000 --frame-out`, a 640 x 480 black frame,
    is its only proof so far). Check: the ROM's grey picture and Mac OS's
-   modes still come up, the chime, Mac OS 9.1, then commit the fallback and
-   record build 52 in the plan's Speed table and README's build table. The
+   modes still come up, the chime, Mac OS 9.1, then record build 52 in the
+   plan's Speed table and README's build table. The
    user asked (2026-10-10, 06:00) to stay off the MiSTer while the NeXT
    core is finished: ask before taking it.
 2. **Altair's startup sound** (the user's recording, `C:\temp\2026101006030083.mp4`
