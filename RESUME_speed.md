@@ -42,8 +42,8 @@ user hears the system sounds and the ROM's "100 % correct".
    clicks) did the RAM disk experiment. The board was left with build 52 in
    `_Unstable`, `os761mb.hda` (Altair; its RAM disk of 12 MB still set in the
    Memory control panel, the app copy on it) on slot 0, Mac OS shut down.
-3. A release of build 52 (`releases/`, its README, the Main it was tested
-   with): ask the user first.
+3. Build 52 is **the sixth release** (`releases/MacPPC7300_20261010.rbf`,
+   the Main c641b24f unchanged; the user's decision, 2026-10-10).
 
 The speed work resumes later from `docs/MacPPC7300_plan.md`, "Where the
 cycles go" (the account and the ranked cuts; the first needs the user's
@@ -59,7 +59,7 @@ Paste everything below the line into a new session started in `C:\Temp\mistercor
 
 ---
 
-I'm building a MiSTer FPGA core (DE10-Nano, Cyclone V) with my own PowerPC CPU, `DSPPC604` (`rtl/DSPPC604/`), inside a Power Macintosh 7300/7600 machine (`rtl/machine/`). It works: Mac OS 7.6.1 to 9.1 and Debian 7.11 boot on the board. The core is MacPPC7300; the fifth release is build 38 (`releases/MacPPC7300_20261009.rbf`, the Main c641b24f). The CPU runs at 70 MHz with a 128 KB L2 (OSD "L2 cache (on reset)", default on). I want it **faster, measured**, and I have found where the speed is:
+I'm building a MiSTer FPGA core (DE10-Nano, Cyclone V) with my own PowerPC CPU, `DSPPC604` (`rtl/DSPPC604/`), inside a Power Macintosh 7300/7600 machine (`rtl/machine/`). It works: Mac OS 7.6.1 to 9.1 and Debian 7.11 boot on the board. The core is MacPPC7300; the sixth release is build 52 (`releases/MacPPC7300_20261010.rbf`, the Main c641b24f). The CPU runs at 70 MHz with a 128 KB L2 (OSD "L2 cache (on reset)", default on). I want it **faster, measured**, and I have found where the speed is:
 
 **On a real 7600 with a 120 MHz 604 (40 MHz bus, 3x) this core is about a quarter as fast on Speedometer's CPU tests. The clock explains 0.58x; the rest, about 2.3x, is cycles per instruction** (the integer golden programs run at 1.85 cycles an instruction on this core; a 604 is four-issue, out of order, with single-cycle L1 hits and a 512-entry branch history table). That is the work item of this session:
 
@@ -93,7 +93,7 @@ I'm building a MiSTer FPGA core (DE10-Nano, Cyclone V) with my own PowerPC CPU, 
   FPU tests, the clock 1.71x of ours. A release build keeps `PERF = 0`.
   The whole run's capture: `Scratch\speedo_b48\` (`perf.csv`, the
   screenshots); the first 48 s of a capture are the previous run's ring.
-- **The sound session's bitstreams:** b49 (`Scratch\qbuild12`: code 2 at 44,100 by a scratch edit, the user's proof), b50 (`qbuild13`: TRACE and SND_TRACE), b51 (`qbuild14`: the fallback video with the old table, superseded), b52 (`qbuild15`: the rate fix and the fallback, release flags; to be proved on the board) in `Scratch\build1\`.
+- **The sound session's bitstreams:** b49 (`Scratch\qbuild12`: code 2 at 44,100 by a scratch edit, the user's proof), b50 (`qbuild13`: TRACE and SND_TRACE), b51 (`qbuild14`: the fallback video with the old table, superseded), b52 (`qbuild15`: the rate fix and the fallback, release flags; proved on the board, the sixth release), b53 (`qbuild16`: the same with `TRACE = 1`) in `Scratch\build1\`.
 - **The bitstreams:** b47 (`Scratch\qbuild10`), b48 (`qbuild11`) in
   `Scratch\build1\`; the board was left with build 46 in `_Unstable`,
   Debian on slot 0, the machine off.
