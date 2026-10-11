@@ -353,6 +353,7 @@ wire wr_sclash = wr_pend & (snoop_addr[IDXW+4:5] == wr_idx_q);
 wire word_hit = (state == S_LOOK) & k_word & hit & ~unc & (~r_we | ~r_wt) & ~r_snoop;
 wire can_take = ((state == S_IDLE) | word_hit) & ~snoop_req & ~inval_all & ~inval_pend;
 assign gnt = can_take & req;
+wire payload_take = (state == S_IDLE) | word_hit;
 assign slow = (state != S_IDLE) & (state != S_LOOK);
 
 always_comb begin
@@ -511,6 +512,19 @@ always_ff @(posedge clk) begin
 	end
 	if (inval_all) inval_pend <= 1'b1;
 
+	// The request's payload is taken in every cycle a request could be (the
+	// cache idle, or answering a word hit that leaves for S_IDLE or the next
+	// request): the late request, behind the MMU's translation, then enables
+	// only the state and the few control registers, not these 70-odd. In
+	// those cycles nothing still needs the old values.
+	if (payload_take) begin
+		r_wdata      <= wdata;
+		r_wdata_next <= wdata_next;
+		r_wide       <= wide;
+		r_ci         <= ci;
+		r_wt         <= wt;
+	end
+
 	case (state)
 	S_SWEEP: begin
 		sweep_idx <= sweep_idx + 1'd1;
@@ -540,11 +554,6 @@ always_ff @(posedge clk) begin
 			r_kind     <= kind;
 			r_addr     <= addr;
 			r_be       <= be;
-			r_wdata    <= wdata;
-			r_wdata_next <= wdata_next;
-			r_wide <= wide;
-			r_ci       <= ci;
-			r_wt       <= wt;
 			r_snoop    <= 1'b0;
 			r_snoop_we <= 1'b0;
 			r_after_wb <= 1'b0;
@@ -563,11 +572,6 @@ always_ff @(posedge clk) begin
 				r_kind     <= kind;
 				r_addr     <= addr;
 				r_be       <= be;
-				r_wdata    <= wdata;
-				r_wdata_next <= wdata_next;
-				r_wide <= wide;
-				r_ci       <= ci;
-				r_wt       <= wt;
 				r_after_wb <= 1'b0;
 			end
 		end
