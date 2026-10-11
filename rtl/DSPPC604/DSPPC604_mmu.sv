@@ -82,6 +82,13 @@ module DSPPC604_mmu
 	input  logic        d_we,
 	input  DSPPC604_pkg::ck_t d_kind,         // what the cache is asked; dcbz faults on a W or I page
 	input  logic [29:0] d_addr,               // word address
+	// d_addr's adder, when the memory unit passes this cycle's effective
+	// address straight through (d_sum_direct): its operands and carry-in,
+	// for the page compares below (sum-addressed: no 32-bit add in front)
+	input  logic [31:0] d_sum_a,
+	input  logic [31:0] d_sum_b,
+	input  logic        d_sum_ci,
+	input  logic        d_sum_direct,
 	input  logic [3:0]  d_be,
 	input  logic [31:0] d_wdata,
 	input  logic        d_wide,
@@ -269,10 +276,27 @@ logic [TLB_BITS-1:0] w_idx;
 tlbe_t             w_entry;
 
 wire [19:0]         d_page   = d_addr[29:10];
+
+// Whether the effective address's page equals k, without the 32-bit add:
+// a + b = k exactly when every bit's carry in (a ^ b ^ k) is the carry out
+// of the bit below as k says it ((a & b) | ((a | b) & ~k)), the lowest
+// page bit's carry being the low 12 bits' own (a 12-bit add).
+wire [12:0] d_sum_lo = {1'b0, d_sum_a[11:0]} + {1'b0, d_sum_b[11:0]} + {12'd0, d_sum_ci};
+function automatic logic d_sum_page_eq(input logic [19:0] k);
+	logic [19:0] x, c;
+	begin
+		x = d_sum_a[31:12] ^ d_sum_b[31:12] ^ k;
+		c = (d_sum_a[31:12] & d_sum_b[31:12]) | ((d_sum_a[31:12] | d_sum_b[31:12]) & ~k);
+		d_sum_page_eq = (x == {c[18:0], d_sum_lo[12]});
+	end
+endfunction
+function automatic logic d_page_is(input logic [19:0] k);
+	d_page_is = d_sum_direct ? d_sum_page_eq(k) : (d_page == k);
+endfunction
 // a segment register written since the read-ahead makes it stale too
 logic               i_stale, d_stale;
 wire                i_fresh  = (i_page_q == i_addr[31:12]) & ~i_stale & ~i_tlb_collision;
-wire                d_fresh  = (d_page_q == d_page) & ~d_stale & ~d_tlb_collision;
+wire                d_fresh  = d_page_is(d_page_q) & ~d_stale & ~d_tlb_collision;
 logic               d_rd;                          // read the DTLB for d_page now
 wire [TLB_BITS-1:0] i_idx    = i_addr[12 +: TLB_BITS];
 wire [TLB_BITS-1:0] d_idx    = d_page[TLB_BITS-1:0];
@@ -353,7 +377,7 @@ logic [1:0] d_cached_next;                 // round-robin replacement
 logic [DXL_N-1:0] d_cached_match;
 always_comb
 	for (int n = 0; n < DXL_N; n++)
-		d_cached_match[n] = d_cached_valid[n] & (d_cached_page[n] == d_page) &
+		d_cached_match[n] = d_cached_valid[n] & d_page_is(d_cached_page[n]) &
 		                    (d_cached_dr[n] == msr_dr) & (d_cached_pr[n] == msr_pr);
 wire d_cached_hit = |d_cached_match;
 xl_t d_hit_load, d_hit_store;
