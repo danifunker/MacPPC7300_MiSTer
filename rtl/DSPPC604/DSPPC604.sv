@@ -1802,6 +1802,7 @@ DSPPC604_mmu #(.TLB_BITS (TLB_BITS), .CANDIDATE_D_ADDR (1'b1)) mmu
 	.d_wdata_next (mu_wdata_next),
 	.d_ea        (mu_ea),
 	.d_cancel    (redir),
+	.d_xl_flush  (mem_fault | (ex_leave & (ex_exc | (ex_last & (is_rfi | is_mtmsr | is_xlate))))),
 	.d_gnt       (mu_gnt),
 	.d_rvalid    (mu_rvalid),
 	.d_rdata     (mu_bus_rdata),

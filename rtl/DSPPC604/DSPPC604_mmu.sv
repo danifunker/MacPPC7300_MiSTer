@@ -88,6 +88,7 @@ module DSPPC604_mmu
 	input  logic [31:0] d_wdata_next,
 	input  logic [31:0] d_ea,                 // the access's effective address, for DAR
 	input  logic        d_cancel,             // an ungranted EX request was flushed
+	input  logic        d_xl_flush,           // MSR, BAT, SDR1 or SR may have changed: drop the cached translations
 	output logic        d_gnt,
 	output logic        d_rvalid,
 	output logic [31:0] d_rdata,
@@ -340,13 +341,34 @@ wire [31:0] d_ea_w = {d_addr, 2'b00};
 wire d_line = (d_kind == CK_ZERO);
 
 xl_t ixl, dxl, d_lookup_load, d_lookup_store;
-xl_t d_cached_load, d_cached_store;
+// The last few pages' registered lookups, matched in parallel by page and
+// MSR[DR,PR]; a program's stack, globals and arrays each keep theirs.
+localparam int DXL_N = 4;
+xl_t d_cached_load [DXL_N], d_cached_store [DXL_N];
+logic [31:0] d_cached_sr_e [DXL_N];
+logic [DXL_N-1:0] d_cached_valid;
+logic [19:0] d_cached_page [DXL_N];
+logic [DXL_N-1:0] d_cached_dr, d_cached_pr;
+logic [1:0] d_cached_next;                 // round-robin replacement
+logic [DXL_N-1:0] d_cached_match;
+always_comb
+	for (int n = 0; n < DXL_N; n++)
+		d_cached_match[n] = d_cached_valid[n] & (d_cached_page[n] == d_page) &
+		                    (d_cached_dr[n] == msr_dr) & (d_cached_pr[n] == msr_pr);
+wire d_cached_hit = |d_cached_match;
+xl_t d_hit_load, d_hit_store;
 logic [31:0] d_cached_sr;
-logic d_cached_valid;
-logic [19:0] d_cached_page;
-logic d_cached_dr, d_cached_pr;
-wire d_cached_hit = d_cached_valid & (d_cached_page == d_page) &
-                    (d_cached_dr == msr_dr) & (d_cached_pr == msr_pr);
+always_comb begin
+	d_hit_load = '0;
+	d_hit_store = '0;
+	d_cached_sr = '0;
+	for (int n = 0; n < DXL_N; n++)
+		if (d_cached_match[n]) begin
+			d_hit_load = d_hit_load | d_cached_load[n];
+			d_hit_store = d_hit_store | d_cached_store[n];
+			d_cached_sr = d_cached_sr | d_cached_sr_e[n];
+		end
+end
 assign ixl = translate(msr_ir, 1'b1, 1'b0, 1'b0, msr_pr, i_addr, bat[7:0],  i_sr_q,
                        itlb_valid[i_idx], itlb_q);
 // Resolve a page from the registered read-ahead address. The fresh-page
@@ -359,7 +381,7 @@ assign d_lookup_store = translate(msr_dr, 1'b0, 1'b1, 1'b0, msr_pr,
                                  {d_page_q, 12'd0}, bat[15:8], d_sr_q,
                                  dtlb_valid[d_page_q[TLB_BITS-1:0]], dtlb_q);
 always_comb begin
-	dxl = d_cached_hit ? (d_we ? d_cached_store : d_cached_load) : '0;
+	dxl = d_we ? d_hit_store : d_hit_load;
 	// All addresses within a page have the same translation and protection.
 	dxl.pa[11:0] = d_ea_w[11:0];
 	// Protection precedes dcbz's W/I alignment exception, which precedes a
@@ -540,18 +562,22 @@ wire [31:0]  d_dar_now = (d_addr == d_ea[31:2]) ? d_ea : d_ea_w;
 // Register a page's lookup before it can grant a request. Repeated accesses
 // use the registered load/store outcomes without a BAT mux behind the EA
 // adder. A cold page waits here; the elastic memory unit holds its descriptor.
-// Redirects cover MSR, BAT and SDR1 changes; SR/TLB writes also invalidate it.
+// The CPU's translation-changing redirects (rfi, mtmsr, the BAT, SDR1 and SR
+// writes, isync, tlbie, exceptions) and SR/TLB writes invalidate them all; a
+// mispredicted branch keeps them.
 always_ff @(posedge clk) begin
 	if ((d_state == D_IDLE) & d_req & ~d_cached_hit & d_lookup_ready) begin
-		d_cached_page <= d_page_q;
-		d_cached_dr <= msr_dr;
-		d_cached_pr <= msr_pr;
-		d_cached_load <= d_lookup_load;
-		d_cached_store <= d_lookup_store;
-		d_cached_sr <= d_sr_q;
-		d_cached_valid <= 1'b1;
+		d_cached_page[d_cached_next] <= d_page_q;
+		d_cached_dr[d_cached_next] <= msr_dr;
+		d_cached_pr[d_cached_next] <= msr_pr;
+		d_cached_load[d_cached_next] <= d_lookup_load;
+		d_cached_store[d_cached_next] <= d_lookup_store;
+		d_cached_sr_e[d_cached_next] <= d_sr_q;
+		d_cached_valid[d_cached_next] <= 1'b1;
+		d_cached_next <= d_cached_next + 2'd1;
 	end
-	if (reset | d_cancel | sr_changed | tlbie | w_we) d_cached_valid <= 1'b0;
+	if (reset | d_xl_flush | sr_changed | tlbie | w_we) d_cached_valid <= '0;
+	if (reset) d_cached_next <= 2'd0;
 end
 
 // the data side's own bus request
