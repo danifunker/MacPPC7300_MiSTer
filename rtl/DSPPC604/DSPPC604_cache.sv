@@ -517,7 +517,12 @@ always_ff @(posedge clk) begin
 	// request): the late request, behind the MMU's translation, then enables
 	// only the state and the few control registers, not these 70-odd. In
 	// those cycles nothing still needs the old values.
+	// (r_addr's set index is read in a cycle only by the request then being
+	// answered, and the pending write's set match is taken at the edge
+	// leaving that cycle, so a payload taken at that edge disturbs neither.)
 	if (payload_take) begin
+		r_addr       <= (state == S_IDLE & snoop_req) ? {snoop_addr, 3'b000} : addr;
+		r_be         <= be;
 		r_wdata      <= wdata;
 		r_wdata_next <= wdata_next;
 		r_wide       <= wide;
@@ -552,8 +557,6 @@ always_ff @(posedge clk) begin
 			state      <= S_LOOK;
 			r_we       <= we;
 			r_kind     <= kind;
-			r_addr     <= addr;
-			r_be       <= be;
 			r_snoop    <= 1'b0;
 			r_snoop_we <= 1'b0;
 			r_after_wb <= 1'b0;
@@ -570,8 +573,6 @@ always_ff @(posedge clk) begin
 				// the next request, taken behind this word hit
 				r_we       <= we;
 				r_kind     <= kind;
-				r_addr     <= addr;
-				r_be       <= be;
 				r_after_wb <= 1'b0;
 			end
 		end

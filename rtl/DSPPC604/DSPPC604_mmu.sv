@@ -424,6 +424,13 @@ logic        w_need_r;
 logic        w_need_c;
 logic        w_tlbie_seen;   // a tlbie happened during the walk: do not load the entry
 
+// A walk's inputs, taken in every idle cycle (no enable behind the EA's
+// translation compare); D_WREQ starts the walk from them a cycle later, so
+// the walker's start and state no longer wait for that compare.
+logic [31:0] dw_ea;
+logic [23:0] dw_vsid;
+logic        dw_key, dw_store, dw_line;
+
 // requests from the two sides (declared here, decided below)
 logic w_req_d, w_req_i;
 logic d_outstanding;      // a data access is on the bus
@@ -454,15 +461,14 @@ always_ff @(posedge clk) begin
 	if (w_start_d | w_start_i) begin
 		w_state      <= W_RD0;
 		w_side_q     <= ~w_start_d;
-		w_ea         <= w_start_d ? d_ea_w : i_addr;
+		w_ea         <= w_start_d ? dw_ea : i_addr;
 		// Walk admission already requires a fresh lookup. Its segment payload
 		// is registered with that lookup, so the late I/D arbitration need not
 		// drive another 16-way segment-register mux before these registers.
-		w_vsid       <= w_start_d ? d_cached_sr[23:0] : i_sr_q[23:0];
-		w_key        <= w_start_d ? (msr_pr ? d_cached_sr[29] : d_cached_sr[30])
-		                          : (msr_pr ? i_sr_q[29] : i_sr_q[30]);
-		w_store      <= w_start_d & d_we;
-		w_line       <= w_start_d & d_line;
+		w_vsid       <= w_start_d ? dw_vsid : i_sr_q[23:0];
+		w_key        <= w_start_d ? dw_key : (msr_pr ? i_sr_q[29] : i_sr_q[30]);
+		w_store      <= w_start_d & dw_store;
+		w_line       <= w_start_d & dw_line;
 		w_cstore     <= 1'b0;
 		w_h          <= 1'b0;
 		w_i          <= 3'd0;
@@ -539,8 +545,9 @@ end
 // ============================================================================
 //  The data side
 // ============================================================================
-typedef enum logic [1:0] {
+typedef enum logic [2:0] {
 	D_IDLE,
+	D_WREQ,      // a walk wanted: started from the registers below, a cycle on
 	D_WALK,
 	D_RETRY,     // the entry was loaded: read it again
 	D_FAULT      // answer with the fault this cycle
@@ -593,8 +600,9 @@ always_comb begin
 			else if (~d_ready)              ;      // wait for the registered lookup
 			else if (dxl.ok)                d_gnt = dbus_gnt & ~w_bus;
 			else if (dxl.fault)             d_gnt = 1'b1;
-			else                            w_req_d = 1'b1;     // miss or cwalk
+			// else a miss or a changed-bit walk: D_WREQ, a cycle on
 		end
+		D_WREQ:                             w_req_d = 1'b1;
 		D_WALK: if (w_done & ~d_cancelled & d_req) begin
 			if (~w_found | w_pfault)        d_gnt = 1'b1;
 		end
@@ -612,11 +620,13 @@ always_ff @(posedge clk) begin
 				d_align_q <= dxl.align;
 				d_dar_q   <= d_dar_now;
 			end
-			else if (~dxl.ok & w_start_d) begin
-				d_state <= D_WALK;
-				d_cancelled <= 1'b0;
-			end
+			else if (~dxl.ok) d_state <= D_WREQ;
 		end
+		D_WREQ: if (w_start_d) begin
+			d_state <= D_WALK;
+			d_cancelled <= d_cancel;
+		end
+		else if (d_cancel) d_state <= D_IDLE;
 		D_WALK: if (w_done) begin
 			if (d_cancelled | d_cancel | ~d_req) d_state <= D_IDLE;
 			else if (~w_found) begin
@@ -637,6 +647,13 @@ always_ff @(posedge clk) begin
 		default: d_state <= D_IDLE;         // D_FAULT
 	endcase
 	if (d_cancel & (d_state == D_WALK)) d_cancelled <= 1'b1;
+	if (d_state == D_IDLE) begin
+		dw_ea    <= d_ea_w;
+		dw_vsid  <= d_cached_sr[23:0];
+		dw_key   <= msr_pr ? d_cached_sr[29] : d_cached_sr[30];
+		dw_store <= d_we;
+		dw_line  <= d_line;
+	end
 
 	if (d_outstanding & dbus_rvalid) d_outstanding <= 1'b0;
 	if (d_dreq & dbus_gnt) d_outstanding <= 1'b1;
