@@ -580,6 +580,11 @@ wire        add_fast = add_pin | (sr >= 8'd58);
 wire [4:0]  add_win  = add_pin ? r_next[161:157] : r_next[107:103];
 wire [7:0]  add_lz   = (add_pin ? 8'd0 : 8'd54) + (add_win[4] ? 8'd0 : add_win[3] ? 8'd1 :
                                                    add_win[2] ? 8'd2 : add_win[1] ? 8'd3 : 8'd4);
+// An effective addition's larger term has its top at 160 - sr (the addend)
+// or at 105 or 104 (the product); the sum's leading one is there or one
+// place above. The count for the place above, from registers alone:
+wire [7:0]  add_plz    = p_q[105] ? 8'd55 : 8'd56;
+wire [7:0]  add_lz_eff = (sr < add_plz) ? sr : add_plz;
 
 // ---- normalise -------------------------------------------------------------
 logic [7:0]  lz_cnt;
@@ -592,10 +597,14 @@ DSPPC604_lzc #(.WIDTH(162)) r_lzc
 	.count (lz_cnt)
 );
 
-wire [161:0] norm = r_q << lz_q;
+wire [161:0] norm_raw = r_q << lz_q;
+// An effective addition's count assumed a carry into the place above; one
+// more place when there was none (every other count is exact).
+wire         n_fix = ~norm_raw[161] & ~rzero_q;
+wire [161:0] norm  = n_fix ? {norm_raw[160:0], 1'b0} : norm_raw;
 
 // exponent of the leading one, and where rounding happens
-wire signed [13:0] top     = e_win + 14'sd161 - $signed({6'd0, lz_q});
+wire signed [13:0] top     = e_win + 14'sd161 - $signed({6'd0, lz_q}) - $signed({13'd0, n_fix});
 wire signed [13:0] emin    = sgl_q ? -14'sd126 : -14'sd1022;
 wire               tiny    = (top < emin);
 wire signed [13:0] under   = emin - top;                        // how far below
@@ -903,6 +912,14 @@ always_ff @(posedge clk) begin
 		r_sticky <= zst;
 		if (add_fast & (|add_win)) begin
 			lz_q    <= add_lz;
+			rzero_q <= 1'b0;
+			state   <= S_NORM;
+		end
+		else if (~eff_sub) begin
+			// an effective addition cannot cancel: the sum's leading one is
+			// at the larger term's top place or one above; count for the
+			// place above, and S_NORM shifts once more if that is zero
+			lz_q    <= add_lz_eff;
 			rzero_q <= 1'b0;
 			state   <= S_NORM;
 		end
