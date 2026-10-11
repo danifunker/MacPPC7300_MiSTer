@@ -46,18 +46,18 @@ What is left in the unit: fadd start -> ALGN -> ADD -> NORM -> ROUND;
 fmul start -> MUL1 -> MUL2 -> NORM -> ROUND; fmadd with ADD as well. The
 604 does 3 cycles, pipelined.
 
-On the board at 70 MHz (release-style build of 2ae6056, same image and
-settings as docs/speed_results_20261010.md), against speed-at's 9def284:
+On the board at 70 MHz (release-style builds, same image and settings as
+docs/speed_results_20261010.md):
 
-| | build 52 | speed-at 9def284 | fpu-pipe 2ae6056 |
-|---|---:|---:|---:|
-| CPU | 2.459 | 3.137 | 3.143 |
-| FPU KWhetstones/s | 17,064 | 21,274 | 24,222 |
-| Matrix Mult. (s) | .175 | .138 | .127 |
-| Fast Fourier (s) | .089 | .077 | .069 |
-| FPU average | 3.515 | 4.325 | **4.787** |
-| Mix KWhetstones/s | 15,666 | 19,526 | 21,626 |
-| Mix average | 8.384 | 10.607 | **11.322** |
+| | build 52 | speed-at 9def284 | fpu-pipe 2ae6056 | fpu-pipe 02ae566 |
+|---|---:|---:|---:|---:|
+| CPU | 2.459 | 3.137 | 3.143 | 3.140 |
+| FPU KWhetstones/s | 17,064 | 21,274 | 24,222 | 26,689 |
+| Matrix Mult. (s) | .175 | .138 | .127 | .125 |
+| Fast Fourier (s) | .089 | .077 | .069 | .067 |
+| FPU average | 3.515 | 4.325 | 4.787 | **5.033** |
+| Mix KWhetstones/s | 15,666 | 19,526 | 21,626 | 23,948 |
+| Mix average | 8.384 | 10.607 | 11.322 | **12.131** |
 
 ## Step 2, the overlap: what it takes
 
