@@ -116,3 +116,20 @@ Those cannot take the payload trick: closing 70 MHz needs the effective
 address registered before translation (a cycle on every load, or a
 carry-free sum-and-compare for the page match), or EX's other families
 (forwarding -> ALU -> CR0, branch -> pc_f) cut too.
+
+## Integer notes (same branch)
+
+- 89ab4ba, bcctr predicted to CTR when no CTR write is in flight: the ROM
+  boot's mispredictions -2.2 % (its worst sites are Open Firmware's Forth
+  NEXT, mtctr three instructions before bctr, still in flight). On the
+  board (55 MHz with the counters) Speedometer's misprediction rates are
+  unchanged in every phase (timed loops 30 % of branches, big-code phases
+  24-32 %), CPU 2.445 against 2.446: Mac OS's mispredicted branches are not
+  bcctrs with an early CTR. Kept (small, prediction only), worth nothing
+  measurable there.
+- The big-code phases wait 20-27 % of their cycles for instruction fetch
+  with L2 off (about 22 cycles a line fill at 55 MHz); the 32 KB I-cache
+  cut their line fills from about 45 to 25 per 1000 instructions. Next
+  candidates: next-line instruction prefetch, or the L2 (on by default;
+  the test settings keep it off).
+
