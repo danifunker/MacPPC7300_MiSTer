@@ -31,6 +31,19 @@ lockstep pass after each. The microbenchmark is
 What is left in the unit: start -> MUL1 -> MUL2 -> ADD -> NORM -> ROUND
 (answer). fmul skips ADD. The 604 does 3 cycles, pipelined.
 
+On the board at 70 MHz (release-style build of 2ae6056, same image and
+settings as docs/speed_results_20261010.md), against speed-at's 9def284:
+
+| | build 52 | speed-at 9def284 | fpu-pipe 2ae6056 |
+|---|---:|---:|---:|
+| CPU | 2.459 | 3.137 | 3.143 |
+| FPU KWhetstones/s | 17,064 | 21,274 | 24,222 |
+| Matrix Mult. (s) | .175 | .138 | .127 |
+| Fast Fourier (s) | .089 | .077 | .069 |
+| FPU average | 3.515 | 4.325 | **4.787** |
+| Mix KWhetstones/s | 15,666 | 19,526 | 21,626 |
+| Mix average | 8.384 | 10.607 | **11.322** |
+
 ## Step 2, the overlap: what it takes
 
 Today EX holds an FP instruction until the FPU answers, and commit is in
