@@ -1,10 +1,10 @@
 //============================================================================
 //
 //  DSPPC604 - PowerPC 604-class CPU core
-//  Integer divider: 32 / 32, signed or unsigned, two quotient bits per clock,
-//  the dividend's leading zero pairs skipped, and the quotient's leading
-//  zero digits that the divisor's size guarantees (3-19 clocks from start
-//  to done: about two per significant quotient bit pair, plus three)
+//  Integer divider: 32 / 32, signed or unsigned, four quotient bits per
+//  clock (two radix-4 steps in cascade), the dividend's leading zero pairs
+//  skipped, and the quotient's leading zero digits that the divisor's size
+//  guarantees (3-11 clocks from start to done)
 //
 //  The architecture leaves the quotient undefined for a zero divisor and for
 //  0x80000000 / -1. This divider returns what a real PowerPC 604 (PVR
@@ -90,6 +90,15 @@ wire [1:0]  digit  = ~diff3[34] ? 2'd3 : ~diff2[34] ? 2'd2 : ~diff1[34] ? 2'd1 :
 wire [31:0] rem_nx = ~diff3[34] ? diff3[31:0] : ~diff2[34] ? diff2[31:0] :
                      ~diff1[34] ? diff1[31:0] : rem_sh[31:0];
 
+// the next step behind it, in the same clock
+wire [33:0] rem_sh_b = {rem_nx, quo[29:28]};
+wire [34:0] diff1_b  = {1'b0, rem_sh_b} - {3'b000, dvs};
+wire [34:0] diff2_b  = {1'b0, rem_sh_b} - {2'b00, dvs, 1'b0};
+wire [34:0] diff3_b  = {1'b0, rem_sh_b} - {1'b0, dvs3};
+wire [1:0]  digit_b  = ~diff3_b[34] ? 2'd3 : ~diff2_b[34] ? 2'd2 : ~diff1_b[34] ? 2'd1 : 2'd0;
+wire [31:0] rem_nx_b = ~diff3_b[34] ? diff3_b[31:0] : ~diff2_b[34] ? diff2_b[31:0] :
+                       ~diff1_b[34] ? diff1_b[31:0] : rem_sh_b[31:0];
+
 always_ff @(posedge clk) begin
 	case (state)
 	S_IDLE: begin
@@ -122,10 +131,18 @@ always_ff @(posedge clk) begin
 	end
 
 	S_RUN: begin
-		rem   <= rem_nx;
-		quo   <= {quo[29:0], digit};
-		count <= count - 4'd1;
-		if (count == 4'd0) state <= S_FIX;
+		// two steps a clock; the last one alone when the count is odd
+		if (count == 4'd0) begin
+			rem   <= rem_nx;
+			quo   <= {quo[29:0], digit};
+			state <= S_FIX;
+		end
+		else begin
+			rem   <= rem_nx_b;
+			quo   <= {quo[27:0], digit, digit_b};
+			count <= count - 4'd2;
+			if (count == 4'd1) state <= S_FIX;
+		end
 	end
 
 	S_FIX: begin
