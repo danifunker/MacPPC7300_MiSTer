@@ -636,8 +636,9 @@ logic        rb_q;         // first dropped bit
 logic        sk_q;         // any later bit
 
 // ---- divide ----------------------------------------------------------------
-// Restoring, radix 4. The operands are normalised, so the first quotient bit
-// is 0 or 1; every cycle after that produces two more.
+// Restoring, radix 4, two steps a cycle in cascade. The operands are
+// normalised, so the first quotient bit is 0 or 1; every cycle after that
+// produces four more (28 steps for a double, 14 for a single: whole pairs).
 logic [52:0] d_rem;
 logic [54:0] d_three;      // 3 * divisor
 logic [56:0] d_quo;
@@ -658,7 +659,23 @@ always_comb begin
 	else                begin d_digit = 2'd0; d_next = d_r4[52:0]; end
 end
 
-wire [56:0] d_quo_next = {d_quo[54:0], d_digit};
+// the second step, behind the first in the same cycle
+wire [55:0] d_r4_b = {1'b0, d_next, 2'b00};
+wire [55:0] d_t1_b = d_r4_b - {3'd0, mz};
+wire [55:0] d_t2_b = d_r4_b - {2'd0, mz, 1'b0};
+wire [55:0] d_t3_b = d_r4_b - {1'b0, d_three};
+
+logic [1:0]  d_digit_b;
+logic [52:0] d_next_b;
+
+always_comb begin
+	if (~d_t3_b[55])      begin d_digit_b = 2'd3; d_next_b = d_t3_b[52:0]; end
+	else if (~d_t2_b[55]) begin d_digit_b = 2'd2; d_next_b = d_t2_b[52:0]; end
+	else if (~d_t1_b[55]) begin d_digit_b = 2'd1; d_next_b = d_t1_b[52:0]; end
+	else                  begin d_digit_b = 2'd0; d_next_b = d_r4_b[52:0]; end
+end
+
+wire [56:0] d_quo_next = {d_quo[52:0], d_digit, d_digit_b};
 
 // ---- reciprocal square root estimate ---------------------------------------
 // Seven fraction bits, by the low bit of the exponent and the top four
@@ -1027,12 +1044,12 @@ always_ff @(posedge clk) begin
 			d_quo <= 57'd0;
 		end
 		d_three <= {2'b00, mz} + {1'b0, mz, 1'b0};
-		d_cnt   <= sgl_q ? 5'd13 : 5'd27;
+		d_cnt   <= sgl_q ? 5'd6 : 5'd13;          // pairs of steps, less one
 		state   <= S_DIV;
 	end
 
 	S_DIV: begin
-		d_rem <= d_next;
+		d_rem <= d_next_b;
 		d_quo <= d_quo_next;
 		d_cnt <= d_cnt - 5'd1;
 		if (d_cnt == 5'd0) begin
@@ -1040,7 +1057,7 @@ always_ff @(posedge clk) begin
 			// normalised operands is in (1/2, 2), so it or the next is the top
 			r_q      <= sgl_q ? {d_quo_next[28:0], 133'd0} : {d_quo_next, 105'd0};
 			r_sign   <= s_p;
-			r_sticky <= (d_next != 53'd0);
+			r_sticky <= (d_next_b != 53'd0);
 			e_win    <= ex - ez - 14'sd161;
 			lz_q     <= {7'd0, ~(sgl_q ? d_quo_next[28] : d_quo_next[56])};
 			rzero_q  <= 1'b0;
