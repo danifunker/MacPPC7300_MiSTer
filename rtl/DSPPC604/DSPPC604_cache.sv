@@ -354,6 +354,7 @@ wire word_hit = (state == S_LOOK) & k_word & hit & ~unc & (~r_we | ~r_wt) & ~r_s
 wire can_take = ((state == S_IDLE) | word_hit) & ~snoop_req & ~inval_all & ~inval_pend;
 assign gnt = can_take & req;
 wire payload_take = (state == S_IDLE) | word_hit;
+wire payload_snoop = (state == S_IDLE) & snoop_req;   // a snoop's registers instead (it wins, when it goes)
 assign slow = (state != S_IDLE) & (state != S_LOOK);
 
 always_comb begin
@@ -521,7 +522,12 @@ always_ff @(posedge clk) begin
 	// answered, and the pending write's set match is taken at the edge
 	// leaving that cycle, so a payload taken at that edge disturbs neither.)
 	if (payload_take) begin
-		r_addr       <= (state == S_IDLE & snoop_req) ? {snoop_addr, 3'b000} : addr;
+		r_addr       <= payload_snoop ? {snoop_addr, 3'b000} : addr;
+		r_kind       <= payload_snoop ? CK_WORD : kind;
+		r_we         <= ~payload_snoop & we;
+		r_snoop      <= payload_snoop;
+		r_snoop_we   <= payload_snoop & snoop_we;
+		r_after_wb   <= 1'b0;
 		r_be         <= be;
 		r_wdata      <= wdata;
 		r_wdata_next <= wdata_next;
@@ -544,22 +550,11 @@ always_ff @(posedge clk) begin
 		end
 		else if (snoop_req) begin                  // (a clashing snoop waits, and so does the request: as gnt)
 			if (~wr_sclash) begin
-				state      <= S_SNOOP;
-				r_addr     <= {snoop_addr, 3'b000};
-				r_snoop    <= 1'b1;
-				r_snoop_we <= snoop_we;
-				r_kind     <= CK_WORD;
-				r_we       <= 1'b0;
-				r_after_wb <= 1'b0;
+				state      <= S_SNOOP;             // (its registers: the payload, above)
 			end
 		end
 		else if (req) begin                       // (as gnt)
 			state      <= S_LOOK;
-			r_we       <= we;
-			r_kind     <= kind;
-			r_snoop    <= 1'b0;
-			r_snoop_we <= 1'b0;
-			r_after_wb <= 1'b0;
 		end
 	end
 
@@ -571,9 +566,6 @@ always_ff @(posedge clk) begin
 			state <= (WRITABLE & r_we & r_wt) ? S_UNC : gnt ? S_LOOK : S_IDLE;
 			if (gnt) begin
 				// the next request, taken behind this word hit
-				r_we       <= we;
-				r_kind     <= kind;
-				r_after_wb <= 1'b0;
 			end
 		end
 		else if (k_word) begin
