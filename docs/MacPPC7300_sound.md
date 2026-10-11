@@ -64,15 +64,24 @@ to HDMI and the analog outputs at 48 kHz. Channel 9 (sound in) is a stub
    - *No video during the chime?* True (the Mac's video is off until the
      ROM's picture at 30 s) and worth fixing in its own right, but not the
      cause: all system sounds were low too, with the picture on.
-5. **The finding** (commit 816eb29, build 52, the sixth release): the
-   codec's **rate code 2 is 44,100 Hz on the 7300**, as code 0; dingusppc's
-   and Linux's tables give it 22,050. The ROM's chime and Mac OS's idle
-   setting use code 2; the Sound Manager mixes everything to 44,100 on
-   these machines, so it never needs 22,050 from the chip. The rest of the
-   table (codes 1, 3-7) is unmeasured. `run_scsi.py`'s byte-store rate test
-   uses code 4 now. The lockstep's wait for the chime halved (about 70 M
-   instructions; Mac OS before 100 M).
-6. **The fallback video** (commit deb6e92, build 52): Swatch runs a fixed
+5. **The wrong fix, and the right answer** (commit 816eb29, build 52,
+   released as the sixth build on 10-10, then withdrawn). On the ear test
+   of build 49 the table was changed to code 2 = 44,100 Hz. Hours later,
+   listening afresh to build 52, the user heard every sound **an octave
+   high**: the original table (code 2 = 22,050 Hz, as dingusppc and Linux)
+   had been right all along, as every measurement had said (the codec's
+   frames, its clock, the chime's 2.35 s, the recording's pitch, the user's
+   own first choice between the two renderings). What had made the sound
+   seem low and crackly was the hung MT32-pi's click train, a 50 Hz buzz
+   heard as a low tone; build 49 "sounded mostly correct" because the Pi
+   had just been restarted, and its octave went unnoticed. The lesson,
+   recorded in the memory too: never change a measured hardware behaviour
+   on an ear test made while another variable changed at the same time.
+   The table is restored (build 54, dated 2026-10-11, the sixth release
+   proper); the bench's byte-store rate test is back on code 2; the
+   lockstep's chime wait is back to about 150 M instructions. The rest of
+   the table (codes 1, 3-7) is still unmeasured on the real chip.
+6. **The fallback video** (commit deb6e92, builds 52 and 54): Swatch runs a fixed
    black 640 x 480 at 60 Hz whenever the Mac's timing is off, so the
    framework has a signal from power-up as every other core gives it;
    proven by a black screenshot after shutdown, where screenshots failed
