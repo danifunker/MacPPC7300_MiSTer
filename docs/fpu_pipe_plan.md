@@ -5,31 +5,46 @@ hazard changes in the FPU's path. On the board the FP tests run at about
 45 % of a real 604's work per clock (Matrix Mult., Fast Fourier), against
 63-75 % for the integer tests (`docs/speed_results_20261010.md`).
 
-## Step 1, done: latency inside the unit
+## Step 1, done: latency inside the unit (and the dividers)
 
 No handshake changed; the FPU still holds EX until it answers.
 
 | Dependent chain, cycles per operation (core bench) | before | now |
 |---|---:|---:|
-| fadd (growing sum) | 8 | 6 |
-| fadd, terms of similar size | 9 | 6 |
+| fadd / fsub | 8 | 5 |
+| fadd, terms of similar size; a - b, b larger | 9 | 5 |
+| near-equal subtraction (cancellation possible) | 9 | 6 |
 | fmul | 7 | 5 |
 | fmadd | 8 | 6 |
-| fdiv | 34 | 32 |
+| fdiv (double) | 34 | 18 |
 | lfd, lfd, fmadd on the sum (a loop) | 12 | 9 |
+| divw, worst case (a real 604: 20) | 20 | 12 |
+| divw, typical (1000000/1000, 123456789/98765) | 14-18 | 7 |
 
-- c688655: S_SHIFT only for integers and denormals (a normal result's
-  rounding point is fixed); the result answered from S_ROUND, a cycle
-  before S_DONE.
-- 39c8b4c: an effective addition skips S_LZC (no cancellation possible:
-  count for the place above the larger term, correct by one in S_NORM).
+- c688655: S_SHIFT only for integers and denormals; the result answered
+  from S_ROUND, a cycle before S_DONE. 9aa91ed corrects its claim that
+  nothing new reached the redirect: EX traps at the instruction that sets
+  FEX when MSR[FE0,FE1] allow it, so the early answer is used only while
+  traps are off (Mac OS's normal state), and FEX for the trap comes from
+  S_DONE's registers.
+- 39c8b4c, d3ae710: effective additions, and subtractions of terms two or
+  more places apart, skip S_LZC (count for the larger term's top, correct
+  by one place in S_NORM).
+- 76dab1c, 02ae566: fadd/fsub skip the multiplier (S_ALGN: distance and
+  aligned addend in one cycle, the sticky bit from the addend's trailing
+  zeros).
+- 0726953: the FPU divider takes two radix-4 steps a cycle.
+- 7fe2361, 171c278: the integer divider skips the quotient digits the
+  divisor's size makes zero, and takes two radix-4 steps a clock (the
+  board's Whetstone-like phase waited 31.6 % of its cycles on it).
 
-25,598 FP and 11,444 integer real-604 vectors, run_core and the 300M ROM
-lockstep pass after each. The microbenchmark is
-`fpbench.py` (scratch; the programs are straight `progs.py` code).
+Each passes the 25,598 FP and 11,444 integer real-604 vectors, run_core and
+the 300M ROM lockstep. The microbenchmarks are `fpbench.py` and
+`divbench.py` (scratch; plain `progs.py` programs).
 
-What is left in the unit: start -> MUL1 -> MUL2 -> ADD -> NORM -> ROUND
-(answer). fmul skips ADD. The 604 does 3 cycles, pipelined.
+What is left in the unit: fadd start -> ALGN -> ADD -> NORM -> ROUND;
+fmul start -> MUL1 -> MUL2 -> NORM -> ROUND; fmadd with ADD as well. The
+604 does 3 cycles, pipelined.
 
 On the board at 70 MHz (release-style build of 2ae6056, same image and
 settings as docs/speed_results_20261010.md), against speed-at's 9def284:
@@ -75,6 +90,17 @@ Ways to overlap, cheapest first:
 multiply also needs 2. Each is a hazard change with its own interlocks;
 each lands with the vectors, the FP random programs, run_core and the ROM
 lockstep, and a board run.
+
+### Whether it pays for Speedometer
+
+Speedometer's FP tests are 68k code; every FP operation is emulated
+(SANE): operands loaded, one FP operation, its result stored soon after.
+A store of a pending result waits either way, so overlap gains little
+there, while each operation's latency counts in full. The board's
+Whetstone-like phase also waits on the integer divider for a third of its
+cycles (SANE's extended arithmetic, most likely). Hence step 1 went to the
+latencies and the dividers first. Overlap stays the plan for native FP
+code (option 1 above), after measuring how much of it the board runs.
 
 ## Timing notes
 
