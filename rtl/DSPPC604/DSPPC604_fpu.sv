@@ -422,13 +422,14 @@ always_comb begin : special_results
 end
 
 // ---- state -----------------------------------------------------------------
-typedef enum logic [3:0] {
+typedef enum logic [4:0] {
 	S_IDLE,
 	S_OPND,     // OPERAND_REG: the operands are in their registers
 	S_PREA,     // normalise denormal operands, two cycles each
 	S_PREB,
 	S_PREC,
 	S_MUL1,     // partial products; alignment distance
+	S_ALGN,     // fadd, fsub: no product to form; alignment distance and aligned addend at once
 	S_MUL2,     // product; aligned addend
 	S_ADD,      // magnitude of product +/- addend
 	S_LZC,      // leading zeros counted: a sum that may have cancelled (the rest know theirs)
@@ -584,6 +585,7 @@ wire [7:0]  add_lz   = (add_pin ? 8'd0 : 8'd54) + (add_win[4] ? 8'd0 : add_win[3
 // or at 105 or 104 (the product); the sum's leading one is there or one
 // place above. The count for the place above, from registers alone:
 wire [7:0]  add_plz    = p_q[105] ? 8'd55 : 8'd56;
+wire [7:0]  algn_sr    = pin_z ? 8'd0 : (e_dist > 14'sd163) ? 8'd163 : e_dist[7:0];
 wire [7:0]  add_lz_eff = (sr < add_plz) ? sr : add_plz;
 // An effective subtraction of terms at least two places apart loses at most
 // one place: count for the larger term's top (S_NORM corrects the one).
@@ -900,6 +902,25 @@ always_ff @(posedge clk) begin
 		state <= S_MUL2;
 	end
 
+	S_ALGN: begin
+		// The product is a * 1.0 exactly: the operand at bits 104-52, as
+		// S_MUL2 would sum it. The distance and the aligned addend in one
+		// cycle (the exponents are registers here).
+		e_win <= pin_z ? (ez - 14'sd108) : e_prod;
+		sr    <= algn_sr;
+		p_q   <= {1'b0, mx, 52'd0};
+		{zal, zst} <= align_z(mz, algn_sr);
+		state <= S_ADD;
+		if (z_zero & ~p_zero) begin                  // no addend: the operand is the sum
+			r_q      <= {57'd0, mx, 52'd0};
+			r_sign   <= s_p;
+			r_sticky <= 1'b0;
+			lz_q     <= 8'd57;
+			rzero_q  <= 1'b0;
+			state    <= S_NORM;
+		end
+	end
+
 	S_MUL2: begin
 		p_q <= p_sum;
 		{zal, zst} <= align_z(mz, sr);
@@ -1100,6 +1121,7 @@ always_ff @(posedge clk) begin
 		if (need_pre)    state <= S_PREA;
 		else if (op_div) state <= S_DIV0;
 		else if (op_rsq) state <= S_RSQ;
+		else if ((ictl.op == FPU_ADD) | (ictl.op == FPU_SUB)) state <= S_ALGN;
 		else             state <= S_MUL1;
 	end
 
