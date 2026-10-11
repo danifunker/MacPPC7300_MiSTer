@@ -89,6 +89,7 @@ module DSPPC604
 	parameter int          DC_IDXW  = 7,              // data cache sets, likewise
 	parameter int          FPU_OPERAND_REG = 0,       // 1: the FPU takes its operands into a register first (a cycle each; on 2026-10-06 to 2026-10-09 for timing)
 	parameter int          PERF     = 1,              // 1: the performance counters (perf_cnt; 0 leaves them out)
+	parameter int          COMPLETION_QUEUE = 0,      // 1: simple ALU operations run ahead of a long one (0, since 2026-10-11, leaves the queue out: no gain once the dividers and FPU got faster, 1,100 ALMs, 5 % slower ROM boot)
 	parameter logic [31:0] PVR      = 32'h00040303    // processor version: 604 revision 3.3
 )
 (
@@ -875,7 +876,7 @@ wire completion_eligible = id_completion_simple & id_first & ~id_isi &
     (id_pred == id_pc + 32'd4);
 wire completion_wait = ex_valid & ~x_pre & ~ex_stall & ~ex_done &
     ((ex_dec.unit == UNIT_MUL) | (ex_dec.unit == UNIT_DIV) | (ex_dec.unit == UNIT_FPU));
-assign completion_push = id_valid & completion_eligible & completion_wait &
+assign completion_push = (COMPLETION_QUEUE != 0) & id_valid & completion_eligible & completion_wait &
     (completion_count < 4'd8) &
     ~completion_a[32] & ~completion_b[32] & ~mem_fault & ~reset;
 // completion_wait requires ~ex_done, so EX cannot redirect while pushing.

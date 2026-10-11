@@ -34,6 +34,9 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# whether the CPU is built with its completion queue (DSPPC604.sv's default)
+COMPLETION_QUEUE = int(re.search(r"parameter int\s+COMPLETION_QUEUE\s*=\s*(\d+)",
+    open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "rtl", "DSPPC604", "DSPPC604.sv")).read()).group(1))
 
 
 def run(cmd, **kw):
@@ -195,7 +198,7 @@ def main():
             if not cancels or int(cancels.group(1)) == 0:
                 failures += 1
                 print("    FAIL: no page-table walk cancellation exercised")
-        if gen[0] in ("irqoverlaptest", "fpexctest"):
+        if gen[0] in ("irqoverlaptest", "fpexctest") and COMPLETION_QUEUE:
             events = dict((k, int(v)) for k, v in re.findall(r"event\s+(\w+)\s+(\d+)", r.stdout))
             if not events.get("overlap_execute", 0):
                 failures += 1
@@ -227,8 +230,11 @@ def main():
 
     # Checked mixes exercise the completion FIFO's simultaneous append/pop,
     # wraparound and younger writes replacing a pending long-unit destination.
+    # (the queue is optional, DSPPC604's COMPLETION_QUEUE; without it the
+    # mixes still run in lockstep, and nothing is required to overlap)
     r = run([sys.executable, os.path.join(HERE, "perf.py"), "--tb", tb,
-             "--out", os.path.join(progs, "perf"), "--loops", "100", "--lockstep", "--require-overlap"])
+             "--out", os.path.join(progs, "perf"), "--loops", "100", "--lockstep"] +
+            (["--require-overlap"] if COMPLETION_QUEUE else []))
     report("checked execution-overlap mixes", r)
 
     # 6. the memory port across two clocks
