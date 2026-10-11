@@ -493,13 +493,13 @@ wire [BTB_SET_BITS-1:0] btb_seq_idx = btb_index(ex_pc4);
 wire [BTB_SET_BITS-1:0] btb_redir_idx = br_taken ? btb_tgt_idx : btb_seq_idx;
 wire [BTB_SET_BITS-1:0] btb_ridx = redir ? btb_redir_idx : btb_index(pc_ahead);
 wire btb_fresh = btb_read_valid & (btb_read_idx == btb_idx);
-assign btb_valid_q0 = btb_meta_q0.valid;
-assign btb_valid_q1 = btb_meta_q1.valid;
 wire [$bits(btb_meta_t)-1:0] btb_meta_bits0 = btb_forward0 ? btb_write_meta : btb_meta_ram0;
 wire [$bits(btb_meta_t)-1:0] btb_meta_bits1 = btb_forward1 ? btb_write_meta : btb_meta_ram1;
 btb_meta_t btb_meta_q0, btb_meta_q1;
 assign btb_meta_q0 = btb_meta_bits0;
 assign btb_meta_q1 = btb_meta_bits1;
+assign btb_valid_q0 = btb_meta_q0.valid;
+assign btb_valid_q1 = btb_meta_q1.valid;
 wire btb_hit0 = btb_fresh & btb_valid_q0 & (btb_meta_q0.tag == pc_f[31:BTB_SET_BITS+2]);
 wire btb_hit1 = btb_fresh & btb_valid_q1 & (btb_meta_q1.tag == pc_f[31:BTB_SET_BITS+2]);
 wire btb_hit = btb_hit0 | btb_hit1;
@@ -526,8 +526,8 @@ logic [BTB_SET_BITS-1:0] btb_widx;
 logic [1:0]          btb_wcnt;
 wire                 btb_wr_meta = btb_we | btb_clr;
 btb_meta_t           btb_new_meta;
-assign btb_new_meta = '{valid: btb_we, tag: ex_pc[31:BTB_SET_BITS+2], count: btb_wcnt,
-                        call: ex_dec.br_lk, ret: (ex_dec.br == BR_LR) & ~ex_dec.br_lk};
+assign btb_new_meta = {btb_we, ex_pc[31:BTB_SET_BITS+2], btb_wcnt,           // valid, tag, count,
+                       ex_dec.br_lk, (ex_dec.br == BR_LR) & ~ex_dec.br_lk};    // call, ret
 
 // Whether the row read at this edge is the row written: the candidates
 // compared in parallel, the late grant/redirect control only selects.
