@@ -1030,27 +1030,26 @@ int main(int argc, char** argv) {
 			(int)v.size(), ordered);
 		check(late, "slow memory: no frame came late (the test did not starve the FIFO)");
 
-		// the rate set by a byte store to the control register's second byte (code 4: 14,700 Hz;
-		// code 2 is 44,100 on the 7300's chip, as code 0)
-		access(0x14001, 1, true, 0x04);
-		check(access(0x14000, 4, false, 0) == 0x00040000, "control after a byte write: %08X, 00040000 expected",
+		// the rate set by a byte store to the control register's second byte (code 2: 22,050 Hz)
+		access(0x14001, 1, true, 0x02);
+		check(access(0x14000, 4, false, 0) == 0x00020000, "control after a byte write: %08X, 00020000 expected",
 			access(0x14000, 4, false, 0));
 		put_frames(0x63000, 8, 0x7000, 0x7100);
 		put_cmd(0x760, 0, 0x00, 32, 0x63000);
 		put_cmd(0x770, 7, 0x00, 0, 0);
 		d8w(3, 0x760); d8w(0, 0x80008000);
-		v = play(12 * 3 * FRAME_CLKS);
+		v = play(12 * 2 * FRAME_CLKS);
 		bool even = v.size() == 8;
 		for (size_t k = 1; k < v.size(); k++) {
 			uint64_t gap = v[k].at - v[k - 1].at;
-			even = even && v[k].l == (uint16_t)(0x7000 + k) && gap + 8 >= (uint64_t)(3 * FRAME_CLKS) &&
-			       gap <= (uint64_t)(3 * FRAME_CLKS) + 8;
+			even = even && v[k].l == (uint16_t)(0x7000 + k) && gap + 8 >= (uint64_t)(2 * FRAME_CLKS) &&
+			       gap <= (uint64_t)(2 * FRAME_CLKS) + 8;
 		}
-		check(even, "14,700 Hz set by a byte store: %d frames, not 3 x %d clocks apart", (int)v.size(), FRAME_CLKS);
+		check(even, "22,050 Hz set by a byte store: %d frames, not 2 x %d clocks apart", (int)v.size(), FRAME_CLKS);
 		access(0x14001, 1, true, 0x00);
 
-		// Mac OS's way (the board's trace): the ROM's word for the chime (code 2), then two
-		// read-modify-writes through little-endian accessors, the first setting code 0
+		// Mac OS's way (the board's trace): the ROM's word for the chime (22,050 Hz), then two
+		// read-modify-writes through little-endian accessors, the first setting 44,100 Hz
 		auto sw32 = [](uint32_t x) { return (x >> 24) | ((x >> 8) & 0xFF00) | ((x << 8) & 0xFF0000) | (x << 24); };
 		access(0x14000, 4, true, 0x00020000);
 		for (int k = 0; k < 2; k++) {
