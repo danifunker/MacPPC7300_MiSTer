@@ -587,6 +587,16 @@ wire [7:0]  add_lz   = (add_pin ? 8'd0 : 8'd54) + (add_win[4] ? 8'd0 : add_win[3
 // place above. The count for the place above, from registers alone:
 wire [7:0]  add_plz    = p_q[105] ? 8'd55 : 8'd56;
 wire [7:0]  algn_sr    = pin_z ? 8'd0 : (e_dist > 14'sd163) ? 8'd163 : e_dist[7:0];
+// S_ALGN's sticky bit without OR-ing through the shifter: the addend's bit i
+// sits at 108 + i and is shifted out when that is below the distance, so
+// some one is lost exactly when the distance exceeds 108 plus its trailing
+// zero count (from mz, a register, beside the distance).
+logic [52:0] mz_rev;
+always_comb for (int i = 0; i < 53; i++) mz_rev[i] = mz[52 - i];
+logic [5:0]  mz_tz;
+DSPPC604_lzc #(.WIDTH(53)) mz_tzc (.in(mz_rev), .count(mz_tz));
+wire        algn_st    = ({1'b0, algn_sr} > (9'd108 + {3'd0, mz_tz}));
+wire [160:0] algn_zal  = {mz, 108'd0} >> algn_sr;
 wire [7:0]  add_lz_eff = (sr < add_plz) ? sr : add_plz;
 // An effective subtraction of terms at least two places apart loses at most
 // one place: count for the larger term's top (S_NORM corrects the one).
@@ -927,7 +937,8 @@ always_ff @(posedge clk) begin
 		e_win <= pin_z ? (ez - 14'sd108) : e_prod;
 		sr    <= algn_sr;
 		p_q   <= {1'b0, mx, 52'd0};
-		{zal, zst} <= align_z(mz, algn_sr);
+		zal   <= algn_zal;
+		zst   <= algn_st;
 		state <= S_ADD;
 		if (z_zero & ~p_zero) begin                  // no addend: the operand is the sum
 			r_q      <= {57'd0, mx, 52'd0};
