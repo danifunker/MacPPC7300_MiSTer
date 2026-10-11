@@ -433,7 +433,7 @@ typedef enum logic [3:0] {
 	S_ADD,      // magnitude of product +/- addend
 	S_LZC,      // leading zeros counted: a sum that may have cancelled (the rest know theirs)
 	S_NORM,     // normalise; where to round
-	S_SHIFT,    // bring the rounding point to bit 0
+	S_SHIFT,    // bring the rounding point to bit 0 (integers and denormals; the rest round from S_NORM)
 	S_ROUND,    // round, range checks, pack
 	S_DIV0,     // divide set-up
 	S_DIV,      // two quotient bits per cycle
@@ -938,7 +938,13 @@ always_ff @(posedge clk) begin
 			l_q   <= sgl_q ? 7'd40 : 7'd11;
 			if (tiny) top_q <= top + (sgl_q ? 14'sd192 : 14'sd1536);
 		end
-		state <= S_SHIFT;
+		// The rounding point fixed (a normal result, or an enabled
+		// underflow's): what S_SHIFT would find is a fixed slice of norm,
+		// so round next. Integers and denormals take S_SHIFT.
+		k_q   <= sgl_q ? {40'd0, norm[161:138]} : {11'd0, norm[161:109]};
+		rb_q  <= sgl_q ? norm[137] : norm[108];
+		sk_q  <= r_sticky | (sgl_q ? (|norm[136:0]) : (|norm[107:0]));
+		state <= (int_q | (tiny & ~ue)) ? S_SHIFT : S_ROUND;
 	end
 
 	S_SHIFT: begin
@@ -949,13 +955,14 @@ always_ff @(posedge clk) begin
 	end
 
 	S_ROUND: begin
+		// answered from here (below); held in S_DONE if not taken
 		fin_result  <= rnd_result;
 		fin_set     <= rnd_set;
 		fin_fr      <= rnd_fr;
 		fin_fi      <= rnd_fi;
 		fin_fprf_we <= ~int_q;
 		fin_den     <= rnd_den;
-		state       <= S_DONE;
+		state       <= resp_ready ? S_IDLE : S_DONE;
 	end
 
 	S_DIV0: begin
@@ -1091,19 +1098,31 @@ assign req_ready = (state == S_IDLE);
 // ---- response --------------------------------------------------------------
 // An enabled invalid operation or zero divide leaves the target register and
 // the result class alone.
-wire done_vx       = |(fin_set & VX_ALL);
-wire done_suppress = (done_vx & fpscr_q[B_VE]) | (fin_set[B_ZX] & fpscr_q[B_ZE]);
-wire [31:0] done_fpscr = fpscr_update(fpscr_q, fin_set, 1'b1,
-                                      fin_fr & ~done_suppress, fin_fi & ~done_suppress,
-                                      fin_fprf_we & ~done_suppress, fprf_of(fin_result, fin_den));
+// The rounded result is answered in S_ROUND itself (a cycle sooner than
+// from S_DONE's registers); it goes only into the requester's registers
+// (the FPSCR, the CR, the next stage's result), and an enabled exception's
+// trap is taken from the FPSCR at the next instruction.
+wire        in_round   = (state == S_ROUND);
+wire [63:0] f_result   = in_round ? rnd_result : fin_result;
+wire [31:0] f_set      = in_round ? rnd_set : fin_set;
+wire        f_fr       = in_round ? rnd_fr : fin_fr;
+wire        f_fi       = in_round ? rnd_fi : fin_fi;
+wire        f_fprf_we  = in_round ? ~int_q : fin_fprf_we;
+wire        f_den      = in_round ? rnd_den : fin_den;
+wire        f_compare  = ~in_round & fin_compare;
+wire done_vx       = |(f_set & VX_ALL);
+wire done_suppress = (done_vx & fpscr_q[B_VE]) | (f_set[B_ZX] & fpscr_q[B_ZE]);
+wire [31:0] done_fpscr = fpscr_update(fpscr_q, f_set, 1'b1,
+                                      f_fr & ~done_suppress, f_fi & ~done_suppress,
+                                      f_fprf_we & ~done_suppress, fprf_of(f_result, f_den));
 
 always_comb begin
-	if (state == S_DONE) begin
+	if ((state == S_DONE) | in_round) begin
 		resp_valid = req_valid;
-		result     = fin_result;
-		result_we  = fin_compare | ~done_suppress;
-		fpscr_out  = fin_compare ? fin_cmp_fpscr : done_fpscr;
-		cr_out     = fin_compare ? fin_cmp_cr : done_fpscr[31:28];
+		result     = f_result;
+		result_we  = f_compare | ~done_suppress;
+		fpscr_out  = f_compare ? fin_cmp_fpscr : done_fpscr;
+		cr_out     = f_compare ? fin_cmp_cr : done_fpscr[31:28];
 	end
 	else begin
 		resp_valid = req_valid & go & op_simple & ~op_compare;
