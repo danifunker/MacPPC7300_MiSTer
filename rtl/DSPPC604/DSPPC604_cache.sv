@@ -46,7 +46,8 @@
 module DSPPC604_cache
 #(
 	parameter bit WRITABLE    = 1,
-	parameter bit LATE_ANSWER = 0            // rvalid and rdata from a register, a cycle later
+	parameter bit LATE_ANSWER = 0,           // rvalid and rdata from a register, a cycle later
+	parameter int IDXW        = 7            // set index bits: 7 is 128 sets (16 KB), 8 is 256 (32 KB, the 604e's)
 )
 (
 	input  logic        clk,
@@ -99,8 +100,8 @@ module DSPPC604_cache
 import DSPPC604_pkg::*;
 
 localparam int WAYS = 4;
-localparam int SETS = 128;
-localparam int TAGW = 20;                   // address bits 31-12
+localparam int SETS = 1 << IDXW;
+localparam int TAGW = 27 - IDXW;            // address bits 31 down to 5+IDXW
 
 typedef struct packed {
 	logic            valid;
@@ -118,11 +119,11 @@ tag_t         tag_ram_q [WAYS];
 logic [255:0] data_ram_q [WAYS];
 logic [2:0]   plru   [SETS];                // pseudo-LRU tree: [0] ways 01 vs 23, [1] 0 vs 1, [2] 2 vs 3
 
-logic [6:0]   rd_idx;                       // the set read at this edge
+logic [IDXW-1:0]   rd_idx;                       // the set read at this edge
 logic [WAYS-1:0] tag_we;
 logic [WAYS-1:0] data_we;
 logic [7:0]   data_wwe;                     // words of the line written (bit j: bits 32j+31 downward)
-logic [6:0]   wr_idx;
+logic [IDXW-1:0]   wr_idx;
 tag_t         tag_wd;
 logic [255:0] data_wd;
 
@@ -135,7 +136,7 @@ logic [255:0] data_wd;
 logic            wr_pend;
 logic [WAYS-1:0] l_tag_we, l_data_we, wr_tag_we, wr_data_we;
 logic [7:0]      l_wwe, wr_wwe;
-logic [6:0]      wr_idx_q;
+logic [IDXW-1:0]      wr_idx_q;
 tag_t            l_tag_wd, wr_tag_wd;
 logic [255:0]    l_data_wd, wr_data_wd;
 
@@ -149,7 +150,7 @@ end
 genvar gw;
 generate
 	for (gw = 0; gw < WAYS; gw++) begin : way
-		DSPPC604_cache_ram data
+		DSPPC604_cache_ram #(.IDXW (IDXW)) data
 		(
 			.clk   (clk),
 			.raddr (rd_idx),
@@ -191,10 +192,10 @@ logic        r_after_wb;     // the write-back is followed by a fill
 logic [255:0] wb_data;
 logic [TAGW-1:0] wb_tag;
 logic        inval_pend;
-logic [6:0]  sweep_idx;
+logic [IDXW-1:0]  sweep_idx;
 
-wire [6:0]       r_idx  = r_addr[11:5];
-wire [TAGW-1:0]  r_tag  = r_addr[31:12];
+wire [IDXW-1:0]  r_idx  = r_addr[IDXW+4:5];
+wire [TAGW-1:0]  r_tag  = r_addr[31:IDXW+5];
 wire [2:0]       r_word = r_addr[4:2];
 
 // RAM read-during-write values are deliberately unspecified. Register the
@@ -348,7 +349,7 @@ wire [7:0] st_wwe_next = 8'd1 << (3'd6 - r_word);
 
 // A cached word hit can admit the next request. Writes to the same set are
 // covered by forwarding; a write-through store still waits for memory.
-wire wr_sclash = wr_pend & (snoop_addr[11:5] == wr_idx_q);
+wire wr_sclash = wr_pend & (snoop_addr[IDXW+4:5] == wr_idx_q);
 wire word_hit = (state == S_LOOK) & k_word & hit & ~unc & (~r_we | ~r_wt) & ~r_snoop;
 wire can_take = ((state == S_IDLE) | word_hit) & ~snoop_req & ~inval_all & ~inval_pend;
 assign gnt = can_take & req;
@@ -368,8 +369,8 @@ always_comb begin
 	l_data_wd = {8{st_word}};
 	// Read the candidate set even if it is not granted. Only a granted
 	// request consumes that read; preserve a dirty victim before replacing it.
-	rd_idx    = (state == S_IDLE) ? (snoop_req ? snoop_addr[11:5] : addr[11:5]) :
-	            (state == S_LOOK) ? addr[11:5] : r_idx;
+	rd_idx    = (state == S_IDLE) ? (snoop_req ? snoop_addr[IDXW+4:5] : addr[IDXW+4:5]) :
+	            (state == S_LOOK) ? addr[IDXW+4:5] : r_idx;
 	ans_now    = 1'b0;
 	ans_data     = hit_word;
 	ans_wide = 1'b0;
@@ -512,14 +513,14 @@ always_ff @(posedge clk) begin
 
 	case (state)
 	S_SWEEP: begin
-		sweep_idx <= sweep_idx + 7'd1;
-		if (sweep_idx == 7'd127) state <= S_IDLE;
+		sweep_idx <= sweep_idx + 1'd1;
+		if (sweep_idx == IDXW'(SETS-1)) state <= S_IDLE;
 	end
 
 	S_IDLE: begin
 		if (inval_all | inval_pend) begin
 			state      <= S_SWEEP;
-			sweep_idx  <= 7'd0;
+			sweep_idx  <= '0;
 			inval_pend <= 1'b0;
 		end
 		else if (snoop_req) begin                  // (a clashing snoop waits, and so does the request: as gnt)
@@ -623,7 +624,7 @@ always_ff @(posedge clk) begin
 
 	if (reset) begin
 		state      <= S_SWEEP;
-		sweep_idx  <= 7'd0;
+		sweep_idx  <= '0;
 		inval_pend <= 1'b0;
 	end
 end

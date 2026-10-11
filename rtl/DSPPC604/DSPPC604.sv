@@ -83,8 +83,10 @@
 
 module DSPPC604
 #(
-	parameter int          BTB_BITS = 7,              // branch target buffer entries, as a power of two
+	parameter int          BTB_BITS = 9,              // branch target buffer entries, as a power of two (two ways)
 	parameter int          TLB_BITS = 6,              // entries in each TLB, as a power of two
+	parameter int          IC_IDXW  = 8,              // instruction cache sets, as a power of two: 8 is 32 KB (the 604e's), 7 is 16 KB (the 604's)
+	parameter int          DC_IDXW  = 7,              // data cache sets, likewise
 	parameter int          FPU_OPERAND_REG = 0,       // 1: the FPU takes its operands into a register first (a cycle each; on 2026-10-06 to 2026-10-09 for timing)
 	parameter int          PERF     = 1,              // 1: the performance counters (perf_cnt; 0 leaves them out)
 	parameter logic [31:0] PVR      = 32'h00040303    // processor version: 604 revision 3.3
@@ -433,9 +435,15 @@ localparam int BTB_SET_BITS = BTB_BITS - 1;
 localparam int BTB_SETS = 1 << BTB_SET_BITS;
 localparam int BTB_TAGW = 30 - BTB_SET_BITS;
 
-logic [BTB_SETS-1:0] btb_valid0, btb_valid1, btb_lru;
+// Validity is kept in the RAM row with the tag; after reset a sweep clears
+// every row (no predictions meanwhile). A prediction is only ever a hint:
+// EX checks every one.
+logic [BTB_SETS-1:0] btb_lru;
 logic btb_valid_q0, btb_valid_q1;
+logic btb_sweep;
+logic [BTB_SET_BITS-1:0] btb_sweep_idx;
 typedef struct packed {
+	logic valid;
 	logic [BTB_TAGW-1:0] tag;
 	logic [1:0] count;
 	logic call, ret;
@@ -485,6 +493,8 @@ wire [BTB_SET_BITS-1:0] btb_seq_idx = btb_index(ex_pc4);
 wire [BTB_SET_BITS-1:0] btb_redir_idx = br_taken ? btb_tgt_idx : btb_seq_idx;
 wire [BTB_SET_BITS-1:0] btb_ridx = redir ? btb_redir_idx : btb_index(pc_ahead);
 wire btb_fresh = btb_read_valid & (btb_read_idx == btb_idx);
+assign btb_valid_q0 = btb_meta_q0.valid;
+assign btb_valid_q1 = btb_meta_q1.valid;
 wire [$bits(btb_meta_t)-1:0] btb_meta_bits0 = btb_forward0 ? btb_write_meta : btb_meta_ram0;
 wire [$bits(btb_meta_t)-1:0] btb_meta_bits1 = btb_forward1 ? btb_write_meta : btb_meta_ram1;
 btb_meta_t btb_meta_q0, btb_meta_q1;
@@ -494,7 +504,7 @@ wire btb_hit0 = btb_fresh & btb_valid_q0 & (btb_meta_q0.tag == pc_f[31:BTB_SET_B
 wire btb_hit1 = btb_fresh & btb_valid_q1 & (btb_meta_q1.tag == pc_f[31:BTB_SET_BITS+2]);
 wire btb_hit = btb_hit0 | btb_hit1;
 wire btb_way = btb_hit0 ? 1'b0 : btb_hit1 ? 1'b1 :
-               ~btb_valid0[btb_idx] ? 1'b0 : ~btb_valid1[btb_idx] ? 1'b1 : btb_lru[btb_idx];
+               (btb_fresh & ~btb_valid_q0) ? 1'b0 : (btb_fresh & ~btb_valid_q1) ? 1'b1 : btb_lru[btb_idx];
 // The prediction uses the hitting way. Replacement chooses a way only on
 // a miss, so its valid/LRU lookup need not feed prediction's target mux.
 wire [1:0] btb_c = btb_hit0 ? btb_meta_q0.count : btb_meta_q1.count;
@@ -514,25 +524,18 @@ logic                btb_wtgt;     // ... including the target
 logic                btb_clr;
 logic [BTB_SET_BITS-1:0] btb_widx;
 logic [1:0]          btb_wcnt;
+wire                 btb_wr_meta = btb_we | btb_clr;
+btb_meta_t           btb_new_meta;
+assign btb_new_meta = '{valid: btb_we, tag: ex_pc[31:BTB_SET_BITS+2], count: btb_wcnt,
+                        call: ex_dec.br_lk, ret: (ex_dec.br == BR_LR) & ~ex_dec.br_lk};
 
-// Resolve both possible rows before the late grant/redirect control. Keep
-// these lookup nodes so synthesis does not move the row selection back
-// in front of the 64-entry validity mux.
+// Whether the row read at this edge is the row written: the candidates
+// compared in parallel, the late grant/redirect control only selects.
 wire [BTB_SET_BITS-1:0] btb_next_idx = btb_index(pred_pc);
-(* keep = "true" *) wire btb_valid_current0 = btb_valid0[btb_idx];
-(* keep = "true" *) wire btb_valid_current1 = btb_valid1[btb_idx];
-(* keep = "true" *) wire btb_valid_next0 = btb_valid0[btb_next_idx];
-(* keep = "true" *) wire btb_valid_next1 = btb_valid1[btb_next_idx];
 (* keep = "true" *) wire btb_write_current = (btb_widx == btb_idx);
 (* keep = "true" *) wire btb_write_next = (btb_widx == btb_next_idx);
-(* keep = "true" *) wire btb_valid_tgt0 = btb_valid0[btb_tgt_idx];
-(* keep = "true" *) wire btb_valid_tgt1 = btb_valid1[btb_tgt_idx];
-(* keep = "true" *) wire btb_valid_seq0 = btb_valid0[btb_seq_idx];
-(* keep = "true" *) wire btb_valid_seq1 = btb_valid1[btb_seq_idx];
 (* keep = "true" *) wire btb_write_tgt = (btb_widx == btb_tgt_idx);
 (* keep = "true" *) wire btb_write_seq = (btb_widx == btb_seq_idx);
-wire btb_valid_redir0 = br_taken ? btb_valid_tgt0 : btb_valid_seq0;
-wire btb_valid_redir1 = br_taken ? btb_valid_tgt1 : btb_valid_seq1;
 wire btb_write_read = redir ? (br_taken ? btb_write_tgt : btb_write_seq) :
                       fetch_go ? btb_write_next : btb_write_current;
 
@@ -545,44 +548,35 @@ always_ff @(posedge clk) begin
 	btb_target_ram0 <= btb_target0[btb_ridx];
 	btb_target_ram1 <= btb_target1[btb_ridx];
 	btb_read_idx <= btb_ridx;
-	btb_read_valid <= ~reset;
-	// Validity is sampled with the same RAM row; forward same-edge updates.
-	btb_valid_q0 <= (btb_clr & ~ex_way & btb_write_read) ? 1'b0 :
-	                (btb_we & ~ex_way & btb_write_read) ? 1'b1 :
-	                redir ? btb_valid_redir0 : fetch_go ? btb_valid_next0 : btb_valid_current0;
-	btb_valid_q1 <= (btb_clr & ex_way & btb_write_read) ? 1'b0 :
-	                (btb_we & ex_way & btb_write_read) ? 1'b1 :
-	                redir ? btb_valid_redir1 : fetch_go ? btb_valid_next1 : btb_valid_current1;
-	// Reuse the parallel current/predicted row comparison, as validity does.
-	// Selecting the row index before comparison puts late fetch control in
-	// front of the six-bit equality check and its forwarding registers.
-	btb_forward0 <= btb_we & ~ex_way & btb_write_read & ~reset;
-	btb_forward1 <= btb_we & ex_way & btb_write_read & ~reset;
+	btb_read_valid <= ~reset & ~btb_sweep;
+	// Reuse the parallel current/predicted row comparison. Selecting the
+	// row index before comparison puts late fetch control in front of the
+	// equality check and its forwarding registers. (A clear is a write of
+	// the row with validity off.)
+	btb_forward0 <= btb_wr_meta & ~ex_way & btb_write_read & ~reset;
+	btb_forward1 <= btb_wr_meta & ex_way & btb_write_read & ~reset;
 	btb_target_forward0 <= btb_we & btb_wtgt & ~ex_way & (btb_widx == btb_ridx) & ~reset;
 	btb_target_forward1 <= btb_we & btb_wtgt & ex_way & (btb_widx == btb_ridx) & ~reset;
-	btb_write_meta <= {ex_pc[31:BTB_SET_BITS+2], btb_wcnt, ex_dec.br_lk,
-	                  (ex_dec.br == BR_LR) & ~ex_dec.br_lk};
+	btb_write_meta <= btb_new_meta;
 	btb_write_target <= redir_pc[31:2];
-	if (btb_we & ~ex_way) begin
-		btb_valid0[btb_widx] <= 1'b1;
-		btb_meta0[btb_widx] <= {ex_pc[31:BTB_SET_BITS+2], btb_wcnt, ex_dec.br_lk,
-		                      (ex_dec.br == BR_LR) & ~ex_dec.br_lk};
-		if (btb_wtgt) btb_target0[btb_widx] <= redir_pc[31:2];
+	if (btb_sweep) begin
+		btb_meta0[btb_sweep_idx] <= '0;
+		btb_meta1[btb_sweep_idx] <= '0;
 	end
-	if (btb_we & ex_way) begin
-		btb_valid1[btb_widx] <= 1'b1;
-		btb_meta1[btb_widx] <= {ex_pc[31:BTB_SET_BITS+2], btb_wcnt, ex_dec.br_lk,
-		                      (ex_dec.br == BR_LR) & ~ex_dec.br_lk};
-		if (btb_wtgt) btb_target1[btb_widx] <= redir_pc[31:2];
+	else begin
+		if (btb_wr_meta & ~ex_way) btb_meta0[btb_widx] <= btb_new_meta;
+		if (btb_wr_meta & ex_way) btb_meta1[btb_widx] <= btb_new_meta;
 	end
-	if (btb_clr & ~ex_way) btb_valid0[btb_widx] <= 1'b0;
-	if (btb_clr & ex_way) btb_valid1[btb_widx] <= 1'b0;
+	if (btb_we & btb_wtgt & ~ex_way) btb_target0[btb_widx] <= redir_pc[31:2];
+	if (btb_we & btb_wtgt & ex_way) btb_target1[btb_widx] <= redir_pc[31:2];
 	if (btb_we) btb_lru[btb_widx] <= ~ex_way;
+	if (btb_sweep) begin
+		btb_sweep_idx <= btb_sweep_idx + 1'd1;
+		if (&btb_sweep_idx) btb_sweep <= 1'b0;
+	end
 	if (reset) begin
-		btb_valid0 <= '0;
-		btb_valid1 <= '0;
-		btb_valid_q0 <= 1'b0;
-		btb_valid_q1 <= 1'b0;
+		btb_sweep <= 1'b1;
+		btb_sweep_idx <= '0;
 		btb_lru <= '0;
 	end
 end
@@ -1880,7 +1874,7 @@ always_ff @(posedge clk) begin
 end
 assign dc_inv_ack = dc_inv_ack_q;
 
-DSPPC604_cache #(.WRITABLE (0)) icache
+DSPPC604_cache #(.WRITABLE (0), .IDXW (IC_IDXW)) icache
 (
 	.clk        (clk),
 	.reset      (reset),
@@ -1922,7 +1916,7 @@ DSPPC604_cache #(.WRITABLE (0)) icache
 	.mem_rdata  (mem_rdata)
 );
 
-DSPPC604_cache #(.WRITABLE (1), .LATE_ANSWER (0)) dcache
+DSPPC604_cache #(.WRITABLE (1), .LATE_ANSWER (0), .IDXW (DC_IDXW)) dcache
 (
 	.clk        (clk),
 	.reset      (reset),
