@@ -58,6 +58,7 @@ module DSPPC604_fpu
 	input  logic        clk,
 	input  logic        reset,
 	input  logic        flush,
+	input  logic        no_early,     // MSR[FE0] | MSR[FE1]: answer from S_DONE only (see the response)
 
 	input  logic        req_valid,
 	output logic        req_ready,
@@ -1030,7 +1031,7 @@ always_ff @(posedge clk) begin
 		fin_fi      <= rnd_fi;
 		fin_fprf_we <= ~int_q;
 		fin_den     <= rnd_den;
-		state       <= resp_ready ? S_IDLE : S_DONE;
+		state       <= (resp_ready & ~no_early) ? S_IDLE : S_DONE;
 	end
 
 	S_DIV0: begin
@@ -1168,10 +1169,12 @@ assign req_ready = (state == S_IDLE);
 // An enabled invalid operation or zero divide leaves the target register and
 // the result class alone.
 // The rounded result is answered in S_ROUND itself (a cycle sooner than
-// from S_DONE's registers); it goes only into the requester's registers
-// (the FPSCR, the CR, the next stage's result), and an enabled exception's
-// trap is taken from the FPSCR at the next instruction.
-wire        in_round   = (state == S_ROUND);
+// from S_DONE's registers) when FP exceptions cannot trap (no_early low);
+// it then goes only into the requester's registers (the FPSCR, the CR, the
+// next stage's result). With traps enabled the answer comes from S_DONE,
+// and fex, which the requester's trap decision uses, is taken from S_DONE's
+// registers alone (never from the rounding logic).
+wire        in_round   = (state == S_ROUND) & ~no_early;
 wire [63:0] f_result   = in_round ? rnd_result : fin_result;
 wire [31:0] f_set      = in_round ? rnd_set : fin_set;
 wire        f_fr       = in_round ? rnd_fr : fin_fr;
@@ -1179,6 +1182,11 @@ wire        f_fi       = in_round ? rnd_fi : fin_fi;
 wire        f_fprf_we  = in_round ? ~int_q : fin_fprf_we;
 wire        f_den      = in_round ? rnd_den : fin_den;
 wire        f_compare  = ~in_round & fin_compare;
+// S_DONE's FPSCR from its registers alone, for fex
+wire done_suppress_r = ((|(fin_set & VX_ALL)) & fpscr_q[B_VE]) | (fin_set[B_ZX] & fpscr_q[B_ZE]);
+wire [31:0] done_fpscr_r = fpscr_update(fpscr_q, fin_set, 1'b1,
+                                        fin_fr & ~done_suppress_r, fin_fi & ~done_suppress_r,
+                                        fin_fprf_we & ~done_suppress_r, fprf_of(fin_result, fin_den));
 wire done_vx       = |(f_set & VX_ALL);
 wire done_suppress = (done_vx & fpscr_q[B_VE]) | (f_set[B_ZX] & fpscr_q[B_ZE]);
 wire [31:0] done_fpscr = fpscr_update(fpscr_q, f_set, 1'b1,
@@ -1203,7 +1211,8 @@ always_comb begin
 		fpscr_out  = op_compare ? ifpscr : simple_fpscr;
 		cr_out     = op_compare ? ifpscr[31:28] : simple_cr;
 	end
-	fex = fpscr_out[30];
+	fex = (state == S_DONE) ? (fin_compare ? fin_cmp_fpscr[30] : done_fpscr_r[30]) :
+	      (state == S_ROUND) ? 1'b0 : fpscr_out[30];
 end
 
 endmodule

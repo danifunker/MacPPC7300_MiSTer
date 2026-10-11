@@ -1103,11 +1103,14 @@ logic        fpu_ready;
 logic        fpu_fex;
 /* verilator lint_on UNUSEDSIGNAL */
 
+wire fp_trap_on = msr[MSR_FE0] | msr[MSR_FE1];   // FP enabled exceptions trap
+
 DSPPC604_fpu #(.OPERAND_REG (FPU_OPERAND_REG)) fpu
 (
 	.clk        (clk),
 	.reset      (reset),
 	.flush      (ex_flush),
+	.no_early   (fp_trap_on),
 	.req_valid  (ex_valid & ~x_pre & ~ex_stall & is_fpu),
 	.req_ready  (fpu_ready),
 	.ctl        (ex_dec.fc),
@@ -1319,7 +1322,6 @@ end
 wire [3:0] sr_idx = ex_dec.rb_rd ? op_b[31:28] : ex_insn[19:16];
 
 // ---- exceptions -------------------------------------------------------------
-wire fp_trap_on = msr[MSR_FE0] | msr[MSR_FE1];
 
 // conditions that do not need the instruction to execute
 wire irq_ext  = ex_first & msr[MSR_EE] & ext_irq;
@@ -1395,7 +1397,9 @@ assign ex_abort = x_pre | x_sc | x_trap | x_align | x_ecx;   // the instruction 
 
 // an enabled floating-point exception this instruction raises itself: it
 // completes, then traps
-wire x_fpen   = ~ex_abort & ex_dec.fpscr_wr & fpscr_next[30] & fp_trap_on;
+// (an FP operation's FEX from the FPU's registered answer: with traps
+// enabled it answers from S_DONE, so the rounding is never in this path)
+wire x_fpen   = ~ex_abort & ex_dec.fpscr_wr & (is_fpu ? fpu_fex : fpscr_next[30]) & fp_trap_on;
 assign ex_exc = ex_abort | x_fpen;
 
 logic [31:0] exc_info;      // the cause bits of SRR1
