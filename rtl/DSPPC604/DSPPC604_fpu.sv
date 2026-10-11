@@ -585,6 +585,13 @@ wire [7:0]  add_lz   = (add_pin ? 8'd0 : 8'd54) + (add_win[4] ? 8'd0 : add_win[3
 // place above. The count for the place above, from registers alone:
 wire [7:0]  add_plz    = p_q[105] ? 8'd55 : 8'd56;
 wire [7:0]  add_lz_eff = (sr < add_plz) ? sr : add_plz;
+// An effective subtraction of terms at least two places apart loses at most
+// one place: count for the larger term's top (S_NORM corrects the one).
+// The addend's top 160 - sr is two above the product's when sr <= plz - 2;
+// the product's two above the addend's when sr >= plz + 2.
+wire        sub_z_big  = (sr <= add_plz - 8'd2);
+wire        sub_p_big  = (sr >= add_plz + 8'd2);
+wire [7:0]  sub_lz     = sub_z_big ? (sr + 8'd1) : (add_plz + 8'd1);
 
 // ---- normalise -------------------------------------------------------------
 logic [7:0]  lz_cnt;
@@ -598,8 +605,9 @@ DSPPC604_lzc #(.WIDTH(162)) r_lzc
 );
 
 wire [161:0] norm_raw = r_q << lz_q;
-// An effective addition's count assumed a carry into the place above; one
-// more place when there was none (every other count is exact).
+// An effective addition's count assumed a carry into the place above, an
+// effective subtraction's no lost place: one more place when the top is
+// zero (every other count is exact).
 wire         n_fix = ~norm_raw[161] & ~rzero_q;
 wire [161:0] norm  = n_fix ? {norm_raw[160:0], 1'b0} : norm_raw;
 
@@ -920,6 +928,11 @@ always_ff @(posedge clk) begin
 			// at the larger term's top place or one above; count for the
 			// place above, and S_NORM shifts once more if that is zero
 			lz_q    <= add_lz_eff;
+			rzero_q <= 1'b0;
+			state   <= S_NORM;
+		end
+		else if (sub_z_big | sub_p_big) begin
+			lz_q    <= sub_lz;
 			rzero_q <= 1'b0;
 			state   <= S_NORM;
 		end
