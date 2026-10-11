@@ -166,13 +166,6 @@ logic [31:0] cr;
 logic [31:0] xer;
 logic [31:0] lr;
 logic [31:0] ctr;
-logic [3:0]  ctr_pend;      // fetched instructions that write CTR, not yet committed (see btb_destination)
-// mtspr CTR, and bc / bclr with BO[2] clear (they decrement CTR)
-function automatic logic writes_ctr(input logic [31:0] w);
-	writes_ctr = ((w[31:26] == 6'd31) & (w[10:1] == 10'd467) & (w[20:16] == 5'd9) & (w[15:11] == 5'd0)) |
-	             ((w[31:26] == 6'd16) & ~w[23]) |
-	             ((w[31:26] == 6'd19) & (w[10:1] == 10'd16) & ~w[23]);
-endfunction
 logic [31:0] fpscr;
 
 // supervisor state
@@ -447,6 +440,8 @@ localparam int BTB_TAGW = 30 - BTB_SET_BITS;
 // every row (no predictions meanwhile). A prediction is only ever a hint:
 // EX checks every one.
 logic [BTB_SETS-1:0] btb_lru;
+logic btb_lru_we, btb_lru_way;
+logic [BTB_BITS-2:0] btb_lru_idx;
 logic btb_valid_q0, btb_valid_q1;
 logic btb_sweep;
 logic [BTB_SET_BITS-1:0] btb_sweep_idx;
@@ -455,7 +450,6 @@ typedef struct packed {
 	logic [BTB_TAGW-1:0] tag;
 	logic [1:0] count;
 	logic call, ret;
-	logic ctrb;                 // a bcctr: its target is CTR's value
 } btb_meta_t;
 (* ramstyle = "no_rw_check" *) btb_meta_t btb_meta0 [BTB_SETS], btb_meta1 [BTB_SETS];
 (* ramstyle = "no_rw_check" *) logic [29:0] btb_target0 [BTB_SETS], btb_target1 [BTB_SETS];
@@ -519,22 +513,12 @@ wire btb_way = btb_hit0 ? 1'b0 : btb_hit1 ? 1'b1 :
 wire [1:0] btb_c = btb_hit0 ? btb_meta_q0.count : btb_meta_q1.count;
 wire btb_is_call = btb_hit0 ? btb_meta_q0.call : btb_meta_q1.call;
 wire btb_is_return = btb_hit0 ? btb_meta_q0.ret : btb_meta_q1.ret;
-wire btb_is_ctr = btb_hit0 ? btb_meta_q0.ctrb : btb_meta_q1.ctrb;
 wire [29:0] btb_target_q0 = btb_target_forward0 ? btb_write_target : btb_target_ram0;
 wire [29:0] btb_target_q1 = btb_target_forward1 ? btb_write_target : btb_target_ram1;
 wire [29:0] btb_target = btb_hit0 ? btb_target_q0 : btb_target_q1;
 wire btb_taken = btb_hit & btb_c[1];
-// A bcctr goes where CTR points when no instruction that writes CTR is
-// between the architectural CTR and this fetch (ctr_pend: counted from the
-// fetched words to their commit; any redirect flushes them all). Apple's
-// 68k emulator loads CTR with the next opcode's handler early in each
-// handler and ends it with bctr, whose target the BTB's last one misses.
-// The word arriving in IF2 this cycle is not counted yet: a CTR write
-// right before the bcctr can still mispredict, as before. Every
-// prediction is checked in EX.
-wire [31:0] btb_destination = (btb_is_return & (ras_read_count != 4'd0)) ? ras_read_target :
-                              (btb_is_ctr & (ctr_pend == 4'd0)) ? {ctr[31:2], 2'b00} :
-                              {btb_target, 2'b00};
+wire [31:0] btb_destination = (btb_is_return & (ras_read_count != 4'd0)) ?
+                              ras_read_target : {btb_target, 2'b00};
 wire [31:0] pred_pc = btb_taken ? btb_destination : (pc_f + 32'd4);
 
 // written from EX (below)
@@ -546,8 +530,7 @@ logic [1:0]          btb_wcnt;
 wire                 btb_wr_meta = btb_we | btb_clr;
 btb_meta_t           btb_new_meta;
 assign btb_new_meta = {btb_we, ex_pc[31:BTB_SET_BITS+2], btb_wcnt,           // valid, tag, count,
-                       ex_dec.br_lk, (ex_dec.br == BR_LR) & ~ex_dec.br_lk,     // call, ret,
-                       ex_dec.br == BR_CTR};                                   // ctrb
+                       ex_dec.br_lk, (ex_dec.br == BR_LR) & ~ex_dec.br_lk};    // call, ret
 
 // Whether the row read at this edge is the row written: the candidates
 // compared in parallel, the late grant/redirect control only selects.
@@ -575,8 +558,8 @@ always_ff @(posedge clk) begin
 	// the row with validity off.)
 	btb_forward0 <= btb_wr_meta & ~ex_way & btb_write_read & ~reset;
 	btb_forward1 <= btb_wr_meta & ex_way & btb_write_read & ~reset;
-	btb_target_forward0 <= btb_we & btb_wtgt & ~ex_way & (btb_widx == btb_ridx) & ~reset;
-	btb_target_forward1 <= btb_we & btb_wtgt & ex_way & (btb_widx == btb_ridx) & ~reset;
+	btb_target_forward0 <= btb_we & btb_wtgt & ~ex_way & btb_write_read & ~reset;
+	btb_target_forward1 <= btb_we & btb_wtgt & ex_way & btb_write_read & ~reset;
 	btb_write_meta <= btb_new_meta;
 	btb_write_target <= redir_pc[31:2];
 	if (btb_sweep) begin
@@ -589,7 +572,12 @@ always_ff @(posedge clk) begin
 	end
 	if (btb_we & btb_wtgt & ~ex_way) btb_target0[btb_widx] <= redir_pc[31:2];
 	if (btb_we & btb_wtgt & ex_way) btb_target1[btb_widx] <= redir_pc[31:2];
-	if (btb_we) btb_lru[btb_widx] <= ~ex_way;
+	// replacement order a cycle late (a hint): the late commit decision
+	// enables only these three registers, not the LRU array's write
+	btb_lru_we  <= btb_we & ~reset;
+	btb_lru_idx <= btb_widx;
+	btb_lru_way <= ex_way;
+	if (btb_lru_we) btb_lru[btb_lru_idx] <= ~btb_lru_way;
 	if (btb_sweep) begin
 		btb_sweep_idx <= btb_sweep_idx + 1'd1;
 		if (&btb_sweep_idx) btb_sweep <= 1'b0;
@@ -1248,17 +1236,6 @@ assign redir_pc = mem_fault ? (vec_base | (mem_irq ? (ext_irq ? 32'h500 : 32'h90
                                                          (mu_falign ? 32'h600 : 32'h300))) :
                   ex_exc    ? (vec_base | {20'd0, exc_vector}) : next_pc;
 wire   ex_final = ex_leave & ~ex_exc & ex_last;
-
-// ctr_pend: a fetched word that writes CTR counts up when it enters the
-// fetch queue, down when its instruction commits; a redirect flushes every
-// counted one that has not committed (the redirecting one commits at it).
-wire ctr_pend_up   = fetch_response & ~if_fault & writes_ctr(if_rdata);
-wire ctr_pend_down = ex_final & writes_ctr(ex_insn);
-always_ff @(posedge clk) begin
-	if (reset | redir)                     ctr_pend <= 4'd0;
-	else if (ctr_pend_up & ~ctr_pend_down) ctr_pend <= ctr_pend + 4'd1;
-	else if (ctr_pend_down & ~ctr_pend_up) ctr_pend <= ctr_pend - 4'd1;
-end
 assign ras_push = ex_final & br_taken & ex_dec.br_lk;
 assign ras_pop = ex_final & br_taken & (ex_dec.br == BR_LR) & ~ex_dec.br_lk & (ras_ccount != 4'd0);
 assign redir    = mem_fault |
