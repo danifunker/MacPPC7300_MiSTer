@@ -614,12 +614,7 @@ end
 always_ff @(posedge clk) begin
 	case (d_state)
 		D_IDLE: if (d_req & d_ready) begin
-			if (dxl.fault) begin
-				d_state   <= D_FAULT;
-				d_info_q  <= dxl.info;
-				d_align_q <= dxl.align;
-				d_dar_q   <= d_dar_now;
-			end
+			if (dxl.fault) d_state <= D_FAULT;     // (its DSISR and DAR: below)
 			else if (~dxl.ok) d_state <= D_WREQ;
 		end
 		D_WREQ: if (w_start_d) begin
@@ -648,6 +643,11 @@ always_ff @(posedge clk) begin
 	endcase
 	if (d_cancel & (d_state == D_WALK)) d_cancelled <= 1'b1;
 	if (d_state == D_IDLE) begin
+		// A fault found here is answered from these in D_FAULT; they are
+		// read nowhere else, so they need no enable behind the compare.
+		d_info_q  <= dxl.info;
+		d_align_q <= dxl.align;
+		d_dar_q   <= d_dar_now;
 		dw_ea    <= d_ea_w;
 		dw_vsid  <= d_cached_sr[23:0];
 		dw_key   <= msr_pr ? d_cached_sr[29] : d_cached_sr[30];
