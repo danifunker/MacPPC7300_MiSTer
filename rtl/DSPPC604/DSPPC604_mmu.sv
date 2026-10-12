@@ -89,6 +89,7 @@ module DSPPC604_mmu
 	input  logic [31:0] d_sum_b,
 	input  logic        d_sum_ci,
 	input  logic        d_sum_direct,
+	input  logic [29:0] d_addr_held,          // d_addr when not d_sum_direct, from registers (no adder in front)
 	input  logic [3:0]  d_be,
 	input  logic [31:0] d_wdata,
 	input  logic        d_wide,
@@ -290,8 +291,10 @@ function automatic logic d_sum_page_eq(input logic [19:0] k);
 		d_sum_page_eq = (x == {c[18:0], d_sum_lo[12]});
 	end
 endfunction
+// (when not direct, the page comes from the requester's registers, so
+// that the adder is not in front of the compare on a path never used)
 function automatic logic d_page_is(input logic [19:0] k);
-	d_page_is = d_sum_direct ? d_sum_page_eq(k) : (d_page == k);
+	d_page_is = d_sum_direct ? d_sum_page_eq(k) : (d_addr_held[29:10] == k);
 endfunction
 // a segment register written since the read-ahead makes it stale too
 logic               i_stale, d_stale;
@@ -338,6 +341,8 @@ end
 always_ff @(posedge clk) begin
 	// The CPU presents a descriptor's first address before admission, so
 	// the bus page is its look-ahead page whenever that descriptor starts.
+	if (~reset & d_req & ~d_sum_direct & (d_addr != d_addr_held))
+		$fatal(1, "held data address differs from the bus address");
 	if (CANDIDATE_D_ADDR & ~reset & d_pre & d_req)
 		if (d_ea_next[31:12] != d_page)
 			$fatal(1, "candidate data page differs from accepted descriptor");

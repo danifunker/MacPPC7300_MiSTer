@@ -1817,6 +1817,7 @@ logic [31:0] mu_dsisr;
 logic [31:0] mu_dar;
 logic [31:0] mu_ea;
 logic        mu_direct;      // the memory unit passes EX's effective address straight through
+logic [29:0] mu_addr_held;   // ... and its address otherwise, from its registers
 
 DSPPC604_mem_unit mem_unit
 (
@@ -1843,6 +1844,7 @@ DSPPC604_mem_unit mem_unit
 	.dbus_addr   (mu_addr),
 	.dbus_ea     (mu_ea),
 	.dbus_direct (mu_direct),
+	.dbus_addr_held (mu_addr_held),
 	.dbus_be     (mu_be),
 	.dbus_wdata  (mu_wdata),
 	.dbus_wide   (mu_wide),
@@ -1910,6 +1912,7 @@ DSPPC604_mmu #(.TLB_BITS (TLB_BITS), .CANDIDATE_D_ADDR (1'b1)) mmu
 	.d_sum_b     (op_b),
 	.d_sum_ci    (1'b0),
 	.d_sum_direct (mu_direct),
+	.d_addr_held (mu_addr_held),
 	.d_be        (mu_be),
 	.d_wdata     (mu_wdata),
 	.d_wide      (mu_wide),

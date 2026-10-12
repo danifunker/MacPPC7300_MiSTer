@@ -61,6 +61,7 @@ module DSPPC604_mem_unit
 	output logic [29:0] dbus_addr,
 	output logic [31:0] dbus_ea,     // original byte address of this bus operation
 	output logic        dbus_direct, // dbus_addr is addr itself (this cycle's request, passed through)
+	output logic [29:0] dbus_addr_held, // dbus_addr when it is not: from the descriptor's registers only
 	output logic [3:0]  dbus_be,
 	output logic [31:0] dbus_wdata,
 	output logic        dbus_wide,
@@ -162,6 +163,7 @@ assign dbus_kind  = saved ? c.kind : kind;
 assign dbus_addr  = second ? c.next_word : saved ? c.addr[31:2] : addr[31:2];
 assign dbus_ea    = bus_ea;
 assign dbus_direct = ~second & ~saved;
+assign dbus_addr_held = second ? c.next_word : c.addr[31:2];
 assign dbus_be    = bus_touch ? 4'b0000 : second ? bewin[3:0] : bewin[7:4];
 assign dbus_wdata = second ? wwin[31:0] : wwin[63:32];
 // A wide request never crosses a cache line or a translation page. The
