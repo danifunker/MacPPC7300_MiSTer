@@ -1804,9 +1804,11 @@ DSPPC604_mmu #(.TLB_BITS (TLB_BITS), .CANDIDATE_D_ADDR (1'b1)) mmu
 	.d_we        (mu_we),
 	.d_kind      (mu_kind),
 	.d_addr      (mu_addr),
-	.d_sum_a     (ex_dec.ic.inv_a ? ~op_a : op_a),
+	// (a memory access's adder is always op_a + op_b: only compares, traps
+	// and subtractions invert A or take a carry in, and none accesses memory)
+	.d_sum_a     (op_a),
 	.d_sum_b     (op_b),
-	.d_sum_ci    ((ex_dec.ic.cin == CIN_ONE) | ((ex_dec.ic.cin == CIN_CA) & xer[29])),
+	.d_sum_ci    (1'b0),
 	.d_sum_direct (mu_direct),
 	.d_be        (mu_be),
 	.d_wdata     (mu_wdata),
