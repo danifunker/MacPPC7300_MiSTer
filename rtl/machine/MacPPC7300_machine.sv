@@ -818,8 +818,10 @@ always_ff @(posedge clk) begin
 		dev_sel_q <= {is_ctl, is_cha, is_ban, is_gc, is_hh, is_dbg, is_boot};
 	end
 	else if (dev_busy) dev_cnt <= dev_cnt + 4'd1;
-	// a word's answer is out the cycle after p_sel; a line's last word is in line_buf the cycle after that
-	dev_ack  <= (p_sel & ~c_line) | (pq_sel & c_line & pq_k == 3'd7);
+	// the answer is in line_buf the cycle after the devices' (a word's in
+	// line_buf[0]): the CPU takes it from a register, not through the
+	// devices' read mux
+	dev_ack  <= pq_sel & (~c_line | pq_k == 3'd7);
 	if (dev_ack) dev_busy <= 1'b0;
 	pq_sel   <= p_sel;
 	pq_k     <= p_k;
@@ -878,7 +880,7 @@ wire bt_ev = dev_ack & bt_pend;
 wire   itr_tr = itr_ev & tr_mesh;
 assign tr_ev  = sd_tr_ev | bt_ev | dfin | adb_tr_ev | itr_tr | itr8_ev;
 assign tr_rec = sd_tr_ev ? sd_tr_rec :
-                bt_ev    ? {128'd0, bt_we ? bt_wd : dev_rdata, bt_a, bt_us, 19'd0, bt_we, bt_be, 8'd4} :
+                bt_ev    ? {128'd0, bt_we ? bt_wd : line_buf[0], bt_a, bt_us, 19'd0, bt_we, bt_be, 8'd4} :
                 dfin     ? {64'd0, dfin_info, bt_us, 16'd0, 4'd0, dfin_ch,
                             (dfin_type == 2'd0) ? 8'd5 : (dfin_type == 2'd1) ? 8'd8 : 8'd9} :
                 itr_tr   ? {192'd0, bt_us, 16'd0, itr_st, 8'd10} :
@@ -890,6 +892,6 @@ assign c_rdata = v_ack    ? v_swl(v_rdata, v_swap) :
                  ~dev_ack ? m_rdata :
                  c_line   ? {line_buf[0], line_buf[1], line_buf[2], line_buf[3],
                              line_buf[4], line_buf[5], line_buf[6], line_buf[7]} :
-                            {224'h0, dev_rdata};
+                            {224'h0, line_buf[0]};
 
 endmodule
