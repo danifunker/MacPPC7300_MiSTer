@@ -2188,7 +2188,11 @@ always_ff @(posedge clk) begin
 end
 // An ACK still belongs to the saved owner after its request drops. Drain
 // that level before presenting another request, and deliver it only once.
-wire sel_i = (mem_busy | mem_ack) ? mem_owner_i : ~dm_req;
+// No request goes out while an acknowledge is up (it may be held), so the
+// owner selected then does not matter: the select is from registers, and
+// the machine's answer is not in front of the port's address and the
+// memory map behind it; only the request waits for it.
+wire sel_i = mem_busy ? mem_owner_i : ~dm_req;
 assign mem_req   = (mem_busy | ~mem_ack) & (sel_i ? im_req : dm_req);
 assign mem_we    = sel_i ? im_we    : dm_we;
 assign mem_line  = sel_i ? im_line  : dm_line;
