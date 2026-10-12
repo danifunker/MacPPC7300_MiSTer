@@ -738,6 +738,26 @@ wire id_strx = (id_insn[31:26] == 6'd31) & ((id_insn[10:1] == 10'd533) | (id_ins
 // reads the scratch register, which must not wait for the decoder either
 wire id_ldux_rb = (id_insn[31:26] == 6'd31) & ~id_insn[10] & ~id_insn[8] & (id_insn[6:1] == 6'b110111) &
                   (id_insn[25:21] == id_insn[15:11]);
+// the sequencer's kind of instruction, likewise from the opcode bits (the
+// decoder's seq field, which the sequencer checks it against in
+// simulation): its last operation, and so ID's handshake, need not wait
+// for the decoder
+function automatic seq_t seq_of(input logic [31:0] i);
+	seq_of = SEQ_NONE;
+	if (i[31:26] == 6'd31) begin
+		case (i[10:1])
+			10'd55, 10'd119, 10'd311, 10'd375, 10'd183, 10'd247, 10'd439,
+			10'd567, 10'd631, 10'd695, 10'd759: seq_of = SEQ_UPDATE;   // the indexed update forms
+			10'd150:          if (i[0]) seq_of = SEQ_STWCX;            // (without Rc: illegal)
+			10'd597, 10'd725: seq_of = SEQ_STRI;
+			10'd533, 10'd661: seq_of = SEQ_STRX;
+			default: ;
+		endcase
+	end
+	else if (i[31:26] == 6'd46 || i[31:26] == 6'd47) seq_of = SEQ_MULTI;
+	else if (i[31] & i[26] & (i[31:26] <= 6'd55) & (i[31:26] != 6'd47)) seq_of = SEQ_UPDATE;
+endfunction
+wire seq_t id_seqk = seq_of(id_insn);
 
 logic [5:0] seq_next_ra, seq_next_rc;
 DSPPC604_seq seq
@@ -747,6 +767,8 @@ DSPPC604_seq seq
 	.flush     (redir),
 	.valid     (id_valid),
 	.dec       (id_dec),
+	.seqk      (id_seqk),
+	.rs        (id_insn[25:21]),
 	.nb        (id_insn[15:11]),
 	.strx      (id_strx),
 	.ldux_rb   (id_ldux_rb),
