@@ -350,6 +350,7 @@ logic        mo_rd_wr;
 logic        mo_load;
 logic        mo_fp;
 logic        mo_fsgl;
+logic [31:0] mo_result;     // a store with update's rA (EA)
 logic [31:0] mo_t_cr, mo_t_xer, mo_t_lr, mo_t_ctr, mo_t_fpscr, mo_t_msr;
 
 // WB
@@ -895,6 +896,12 @@ wire id_strx = (id_insn[31:26] == 6'd31) & ((id_insn[10:1] == 10'd533) | (id_ins
 // reads the scratch register, which must not wait for the decoder either
 wire id_ldux_rb = (id_insn[31:26] == 6'd31) & ~id_insn[10] & ~id_insn[8] & (id_insn[6:1] == 6'b110111) &
                   (id_insn[25:21] == id_insn[15:11]);
+// the stores with update (stwu 37, stbu 39, sthu 45, stfsu 53, stfdu 55;
+// stwux 183, stbux 247, sthux 439, stfsux 695, stfdux 759): one operation
+wire id_upd_store = ((id_insn[31:26] == 6'd37) | (id_insn[31:26] == 6'd39) | (id_insn[31:26] == 6'd45) |
+                     (id_insn[31:26] == 6'd53) | (id_insn[31:26] == 6'd55)) |
+                    ((id_insn[31:26] == 6'd31) & ((id_insn[10:1] == 10'd183) | (id_insn[10:1] == 10'd247) |
+                     (id_insn[10:1] == 10'd439) | (id_insn[10:1] == 10'd695) | (id_insn[10:1] == 10'd759)));
 // the sequencer's kind of instruction, likewise from the opcode bits (the
 // decoder's seq field, which the sequencer checks it against in
 // simulation): its last operation, and so ID's handshake, need not wait
@@ -930,6 +937,7 @@ DSPPC604_seq seq
 	.nb        (id_insn[15:11]),
 	.strx      (id_strx),
 	.ldux_rb   (id_ldux_rb),
+	.upd_store (id_upd_store),
 	.xer_count (xer[6:0]),
 	.take      (id_take),
 	.uop       (id_uop),
@@ -1260,7 +1268,7 @@ assign fcls_c  = ffc_mem ? mem_cls : ffc_wb ? wb_cls : fp_classify(ex_fc);
 
 // an older load passed in MEM: its data is not there until it reaches WB
 // (unless the newer operation in MEM writes the same register)
-wire mo_ld = mo_valid & mo_load & mo_rd_wr;
+wire mo_ld = mo_valid & mo_rd_wr;   // a passed load's rD, or a store with update's rA: not forwarded
 wire mo_dep = mo_ld &
     ((ex_dec.ra_rd & (mo_rd == {1'b0, ex_dec.ra}) & ~fa_mem) |
      (ex_use_b     & (mo_rd == {1'b0, ex_dec.rb}) & ~fb_mem) |
@@ -2411,6 +2419,7 @@ always_ff @(posedge clk) begin
 		mo_fold_insn <= mem_fold_insn;
 		mo_rd <= mem_rd;
 		mo_rd_wr <= mem_rd_wr;
+		mo_result <= mem_result[31:0];
 		mo_load <= mem_load;
 		mo_fp <= mem_fp;
 		mo_fsgl <= mem_fsgl;
@@ -2498,7 +2507,8 @@ always_ff @(posedge clk) begin
 		wb_fold_insn <= mo_valid ? mo_fold_insn : mem_fold_insn;
 		wb_rd     <= mo_valid ? mo_rd : mem_rd;
 		wb_rd_wr  <= mo_valid ? mo_rd_wr : mem_rd_wr;
-		wb_result <= (mo_valid | mem_load) ? mu_rdata : mem_result;
+		wb_result <= (mo_valid ? mo_load : mem_load) ? mu_rdata :
+		             mo_valid ? {32'd0, mo_result} : mem_result;
 		wb_fsgl   <= mo_valid ? (mo_load & mo_fp & mo_fsgl) : (mem_load & mem_fp & mem_fsgl);
 		wb_t_cr   <= mo_valid ? mo_t_cr : mem_t_cr;
 		wb_t_xer  <= mo_valid ? mo_t_xer : mem_t_xer;
@@ -2545,7 +2555,7 @@ always_ff @(posedge clk) begin
 		if (fetch_push & (fetch_count == 3'd4) & ~fetch_pop) $fatal(1, "unreserved fetch response");
 		if (mu_resp & ~mo_valid & ~(mem_valid & mem_mem)) $fatal(1, "unowned memory response");
 		if (mem_take & mo_valid) $fatal(1, "MEM's older slot overwritten");
-		if (mo_valid & mo_rd_wr & ~mo_load) $fatal(1, "a passed access writes a register but is no load");
+		if (mo_valid & mo_rd_wr & ~mo_load & mo_rd[6]) $fatal(1, "a passed store writes an FP register");
 		if (mu_valid & ~mu_ready) $fatal(1, "memory access offered without a free descriptor");
 		if (completion_count > 4'd8) $fatal(1, "completion queue overflow");
 		if (completion_pop & ex_leave) $fatal(1, "two operations entered MEM");

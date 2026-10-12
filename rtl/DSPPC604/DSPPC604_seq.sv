@@ -6,7 +6,9 @@
 //  Expands the instructions that are several operations in one into simple
 //  operations, so that no later stage has to know about them:
 //
-//    update forms    the access, then rA <- rA + displacement or rB; an
+//    update forms    a store: one operation, which also writes rA <- EA
+//                    (a store writes no other register); a load: the
+//                    access, then rA <- rA + displacement or rB; an
 //                    indexed load whose rD is its rB (lwzux r4,r3,r4, a
 //                    valid form) cannot form the update from rB after the
 //                    load, so it goes scratch <- rA + rB, rD <- [scratch],
@@ -33,6 +35,7 @@ module DSPPC604_seq
 	input  logic [4:0]  nb,           // its NB field, for lswi and stswi
 	input  logic        strx,         // it is lswx or stswx, from the opcode bits directly
 	input  logic        ldux_rb,      // it is an indexed load with update whose rD is its rB, likewise
+	input  logic        upd_store,    // it is a store with update, likewise: one operation
 	input  logic [6:0]  xer_count,    // XER byte count, for lswx and stswx
 	input  logic        take,         // the operation shown is accepted this cycle
 
@@ -102,7 +105,12 @@ always_comb begin
 			end
 		end
 		else if (step == 6'd0) begin
-			last_d = 1'b0;
+			if (~is_load) begin
+				// a store: rA <- EA as its own result
+				uop.rd    = dec.ra;
+				uop.rd_wr = 1'b1;
+			end
+			else last_d = 1'b0;
 		end
 		else begin
 			// rA <- rA + B, with what the access left in place
@@ -187,7 +195,7 @@ end
 // the register fields, not for the decoder
 always_comb begin
 	case (seqk)
-	SEQ_UPDATE:          last = ldux_rb ? (step >= 6'd2) : (step != 6'd0);
+	SEQ_UPDATE:          last = ldux_rb ? (step >= 6'd2) : (upd_store | (step != 6'd0));
 	SEQ_STWCX:           last = (step != 6'd0);
 	SEQ_MULTI:           last = ((rs + step[4:0]) == 5'd31);
 	SEQ_STRI:            last = (left_b <= 8'd4);
