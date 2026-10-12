@@ -178,6 +178,8 @@ module MacPPC7300_system
 	output logic         trace_last,
 	output logic [31:0]  trace_pc,
 	output logic [31:0]  trace_insn,
+	output logic         trace_fold,
+	output logic [31:0]  trace_fold_insn,
 	output logic         trace_reg_we,
 	output logic [6:0]   trace_reg_idx,
 	output logic [63:0]  trace_reg_val,
@@ -222,7 +224,7 @@ DSPPC604 #(.PERF(PERF)) cpu (
 	.mem_req(c_req), .mem_we(c_we), .mem_line(c_line), .mem_addr(c_addr), .mem_be(c_be),
 	.mem_wdata(c_wdata), .mem_ack(c_ack), .mem_rdata(c_rdata),
 	.snoop_req, .snoop_we, .snoop_addr, .snoop_ack,
-	.trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_reg_we, .trace_reg_idx, .trace_reg_val,
+	.trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_fold, .trace_fold_insn, .trace_reg_we, .trace_reg_idx, .trace_reg_val,
 	.trace_cr, .trace_xer, .trace_lr, .trace_ctr, .trace_fpscr, .trace_msr,
 	.trace_dreq, .trace_dwe, .trace_dkind, .trace_daddr, .trace_dbe, .trace_dwdata,
 	.perf_cnt, .dbg_ev(cpu_dbg_ev), .dbg_rec(cpu_dbg_rec)

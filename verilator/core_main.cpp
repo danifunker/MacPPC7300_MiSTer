@@ -1545,7 +1545,11 @@ int main(int argc, char** argv) {
 				if (beats_n < 8) beats[beats_n++] = {idx, (uint64_t)dut->trace_reg_val};
 			}
 			if (dut->trace_last) {
-				uint32_t pc = dut->trace_pc, insn = dut->trace_insn;
+				// a folded unconditional b retires right after the instruction before it
+				for (int fk = 0; fk < (dut->trace_fold ? 2 : 1); fk++) {
+				uint32_t pc = fk ? (uint32_t)dut->trace_pc + 4 : (uint32_t)dut->trace_pc;
+				uint32_t insn = fk ? (uint32_t)dut->trace_fold_insn : (uint32_t)dut->trace_insn;
+				if (fk) beats_n = 0;
 				retired++;
 #ifdef MACPPC7300_MACHINE
 				last_retire_cycle = cycles;
@@ -1930,6 +1934,8 @@ int main(int argc, char** argv) {
 #endif
 				beats_n = 0;
 				if (pc == end_pc) done = true;
+				}
+				if (diverged) break;
 			}
 		}
 	}

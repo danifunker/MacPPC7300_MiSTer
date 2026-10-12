@@ -126,6 +126,8 @@ module DSPPC604
 	output logic        trace_last,      // completes an instruction
 	output logic [31:0] trace_pc,
 	output logic [31:0] trace_insn,
+	output logic        trace_fold,      // ... and an unconditional b at trace_pc + 4 retired with it (folded)
+	output logic [31:0] trace_fold_insn, // ... that b
 	output logic        trace_reg_we,
 	output logic [6:0]  trace_reg_idx,   // 0-31 GPR, 32 scratch, 64-95 FPR
 	output logic [63:0] trace_reg_val,
@@ -216,6 +218,7 @@ logic        if2_way;
 logic [1:0]  if2_cnt;       // ... with this taken/not-taken counter
 logic        if2_itt;       // ... marked as an indirect branch the ITT predicts
 logic [11:0] if2_itt_idx;   // the ITT row for this address and history
+logic        if2_fold;      // ... the BTB folded the b after this word
 
 // Three completed words plus one reserved response slot. Fetch admission
 // depends only on registered occupancy, never on ID/EX/MEM readiness.
@@ -225,6 +228,7 @@ typedef struct packed {
 	logic [1:0]  cnt;
 	logic        itt;
 	logic [11:0] itt_idx;
+	logic        fold;      // the fetch went past an unconditional b after this word (folded)
 } fetch_t;
 fetch_t fetch_queue [4];
 logic [1:0] fetch_head, fetch_tail;
@@ -255,6 +259,7 @@ logic        id_way;
 logic [1:0]  id_cnt;
 logic        id_itt;
 logic [11:0] id_itt_idx;
+logic        id_fold;
 logic        id_isi;
 logic [31:0] id_isi_info;
 
@@ -275,6 +280,7 @@ logic        ex_way;
 logic [1:0]  ex_cnt;
 logic        ex_itt;
 logic [11:0] ex_itt_idx;
+logic        ex_fold;
 logic [31:0] ex_a;
 logic [31:0] ex_b;
 logic [31:0] ex_c;
@@ -310,6 +316,8 @@ logic        mem_valid;
 logic [31:0] mem_pc;
 logic [31:0] mem_insn;
 logic        mem_last;
+logic        mem_fold;      // an unconditional b retires with it (folded): mem_fold_insn
+logic [31:0] mem_fold_insn;
 logic        mem_first;
 logic [6:0]  mem_rd;        // bit 6: a floating-point register
 logic        mem_rd_wr;
@@ -335,6 +343,8 @@ logic        mo_valid;
 logic [31:0] mo_pc;
 logic [31:0] mo_insn;
 logic        mo_last;
+logic        mo_fold;
+logic [31:0] mo_fold_insn;
 logic [6:0]  mo_rd;
 logic        mo_rd_wr;
 logic        mo_load;
@@ -347,6 +357,8 @@ logic        wb_valid;
 logic [31:0] wb_pc;
 logic [31:0] wb_insn;
 logic        wb_last;
+logic        wb_fold;
+logic [31:0] wb_fold_insn;
 logic [6:0]  wb_rd;
 logic        wb_rd_wr;
 logic [63:0] wb_result;
@@ -473,7 +485,7 @@ assign fetch_bypass = (fetch_count == 3'd0) & fetch_stage_ready & fetch_response
 assign fetch_deliver = (fetch_stage_count != 2'd0) & id_ready;
 assign fetch_word = fetch_stage[fetch_stage_head];
 assign fetch_source_word = (fetch_count != 3'd0) ? fetch_queue[fetch_head] :
-                    {if2_pc, if_rdata, if2_pred, if_srr1, if2_btb, if_fault, if2_way, if2_cnt, if2_itt, if2_itt_idx};
+                    {if2_pc, if_rdata, if2_pred, if_srr1, if2_btb, if_fault, if2_way, if2_cnt, if2_itt, if2_itt_idx, if2_fold};
 
 assign if_req  = ~reset & ~fetch_full;
 assign if_addr = pc_f;
@@ -501,6 +513,9 @@ typedef struct packed {
 	logic call, ret;
 	logic ctr;          // bcctr
 	logic itt;          // an indirect branch whose target the ITT predicts
+	logic fold;         // not a branch: a sequential instruction followed by an unconditional b (below)
+	logic fold_ir;      // ... learned with MSR[IR] so
+	logic [3:0] fold_ep;// ... in this fold epoch
 } btb_meta_t;
 (* ramstyle = "no_rw_check" *) btb_meta_t btb_meta0 [BTB_SETS], btb_meta1 [BTB_SETS];
 (* ramstyle = "no_rw_check" *) logic [29:0] btb_target0 [BTB_SETS], btb_target1 [BTB_SETS];
@@ -509,6 +524,28 @@ logic [29:0] btb_target_ram0, btb_target_ram1, btb_write_target;
 logic btb_forward0, btb_forward1, btb_target_forward0, btb_target_forward1;
 logic [BTB_SET_BITS-1:0] btb_read_idx;
 logic btb_read_valid;
+
+// ---- folding an unconditional b ------------------------------------------
+// When an unconditional b (no link, relative) commits right after the
+// instruction before it (one operation, no branch, nothing that refetches,
+// in the same page), the BTB learns that instruction's address as a taken
+// "branch" to the b's target, marked fold: the fetch then goes from it to
+// the target, the b is never fetched, issued or executed, and it retires
+// with that instruction (trace_fold). A folded b is not checked again, so
+// the entry is good only while the code is: PowerPC software must execute
+// icbi (and isync) before modified code is fetched, and translation
+// changes through mtsr, mtspr of a BAT, SDR1 or HID0, tlbie and isync;
+// each of those starts a new fold epoch, and an entry of another epoch or
+// MSR[IR] is no hit. At the epoch's wrap the whole BTB is swept.
+logic                fold_learn;        // this commit teaches a fold entry
+logic                fold_wrap;         // the epoch wraps: sweep the BTB
+logic [31:0]         fold_prev_pc;      // the last instruction committed, if it can fold the next
+logic                fold_prev_way;
+logic                fold_prev_ok;
+logic [3:0]          fold_epoch;
+function automatic logic fold_ok(input btb_meta_t m, input logic [3:0] ep, input logic ir);
+	fold_ok = ~m.fold | ((m.fold_ep == ep) & (m.fold_ir == ir));
+endfunction
 
 function automatic logic [BTB_SET_BITS-1:0] btb_index(input logic [31:0] address);
 	btb_index = address[BTB_SET_BITS+1:2] ^ address[2*BTB_SET_BITS+1:BTB_SET_BITS+2];
@@ -554,8 +591,10 @@ assign btb_meta_q0 = btb_meta_bits0;
 assign btb_meta_q1 = btb_meta_bits1;
 assign btb_valid_q0 = btb_meta_q0.valid;
 assign btb_valid_q1 = btb_meta_q1.valid;
-wire btb_hit0 = btb_fresh & btb_valid_q0 & (btb_meta_q0.tag == pc_f[31:BTB_SET_BITS+2]);
-wire btb_hit1 = btb_fresh & btb_valid_q1 & (btb_meta_q1.tag == pc_f[31:BTB_SET_BITS+2]);
+wire btb_hit0 = btb_fresh & btb_valid_q0 & (btb_meta_q0.tag == pc_f[31:BTB_SET_BITS+2]) &
+                fold_ok(btb_meta_q0, fold_epoch, msr[MSR_IR]);
+wire btb_hit1 = btb_fresh & btb_valid_q1 & (btb_meta_q1.tag == pc_f[31:BTB_SET_BITS+2]) &
+                fold_ok(btb_meta_q1, fold_epoch, msr[MSR_IR]);
 wire btb_hit = btb_hit0 | btb_hit1;
 wire btb_way = btb_hit0 ? 1'b0 : btb_hit1 ? 1'b1 :
                (btb_fresh & ~btb_valid_q0) ? 1'b0 : (btb_fresh & ~btb_valid_q1) ? 1'b1 : btb_lru[btb_idx];
@@ -570,6 +609,7 @@ wire [29:0] btb_target = btb_hit0 ? btb_target_q0 : btb_target_q1;
 wire btb_taken = btb_hit & btb_c[1];
 wire btb_is_ctr = btb_hit0 ? btb_meta_q0.ctr : btb_meta_q1.ctr;
 wire btb_itt = btb_hit0 ? btb_meta_q0.itt : btb_meta_q1.itt;
+wire btb_fold = btb_hit0 ? btb_meta_q0.fold : btb_meta_q1.fold;
 
 // ---- indirect target table -------------------------------------------------
 // The 68k emulator dispatches every opcode through bclr/bcctr to one of
@@ -611,11 +651,16 @@ logic [BTB_SET_BITS-1:0] btb_widx;
 logic [1:0]          btb_wcnt;
 wire                 btb_wr_meta = btb_we | btb_clr;
 btb_meta_t           btb_new_meta;
+logic                btb_wway;          // the way written
+logic [BTB_TAGW-1:0] btb_wtag;          // ... and its tag
+
 logic                btb_meta_itt;      // an indirect branch whose BTB or RAS target once missed
-assign btb_new_meta = {btb_we, ex_pc[31:BTB_SET_BITS+2], btb_wcnt,           // valid, tag, count,
-                       ex_dec.br_lk, (ex_dec.br == BR_LR) & ~ex_dec.br_lk,     // call, ret,
-                       ex_dec.br == BR_CTR,                                    // ctr,
-                       btb_meta_itt};                                          // itt (below)
+assign btb_new_meta = {btb_we, btb_wtag, btb_wcnt,                            // valid, tag, count,
+                       ~fold_learn & ex_dec.br_lk,                             // call,
+                       ~fold_learn & (ex_dec.br == BR_LR) & ~ex_dec.br_lk,     // ret,
+                       ~fold_learn & (ex_dec.br == BR_CTR),                    // ctr,
+                       ~fold_learn & btb_meta_itt,                             // itt (below),
+                       fold_learn, msr[MSR_IR], fold_epoch};                   // fold, its MSR[IR] and epoch
 
 // Whether the row read at this edge is the row written: the candidates
 // compared in parallel, the late grant/redirect control only selects.
@@ -641,10 +686,10 @@ always_ff @(posedge clk) begin
 	// row index before comparison puts late fetch control in front of the
 	// equality check and its forwarding registers. (A clear is a write of
 	// the row with validity off.)
-	btb_forward0 <= btb_wr_meta & ~ex_way & btb_write_read & ~reset;
-	btb_forward1 <= btb_wr_meta & ex_way & btb_write_read & ~reset;
-	btb_target_forward0 <= btb_we & btb_wtgt & ~ex_way & btb_write_read & ~reset;
-	btb_target_forward1 <= btb_we & btb_wtgt & ex_way & btb_write_read & ~reset;
+	btb_forward0 <= btb_wr_meta & ~btb_wway & btb_write_read & ~reset;
+	btb_forward1 <= btb_wr_meta & btb_wway & btb_write_read & ~reset;
+	btb_target_forward0 <= btb_we & btb_wtgt & ~btb_wway & btb_write_read & ~reset;
+	btb_target_forward1 <= btb_we & btb_wtgt & btb_wway & btb_write_read & ~reset;
 	btb_write_meta <= btb_new_meta;
 	btb_write_target <= redir_pc[31:2];
 	if (btb_sweep) begin
@@ -652,20 +697,24 @@ always_ff @(posedge clk) begin
 		btb_meta1[btb_sweep_idx] <= '0;
 	end
 	else begin
-		if (btb_wr_meta & ~ex_way) btb_meta0[btb_widx] <= btb_new_meta;
-		if (btb_wr_meta & ex_way) btb_meta1[btb_widx] <= btb_new_meta;
+		if (btb_wr_meta & ~btb_wway) btb_meta0[btb_widx] <= btb_new_meta;
+		if (btb_wr_meta & btb_wway) btb_meta1[btb_widx] <= btb_new_meta;
 	end
-	if (btb_we & btb_wtgt & ~ex_way) btb_target0[btb_widx] <= redir_pc[31:2];
-	if (btb_we & btb_wtgt & ex_way) btb_target1[btb_widx] <= redir_pc[31:2];
+	if (btb_we & btb_wtgt & ~btb_wway) btb_target0[btb_widx] <= redir_pc[31:2];
+	if (btb_we & btb_wtgt & btb_wway) btb_target1[btb_widx] <= redir_pc[31:2];
 	// replacement order a cycle late (a hint): the late commit decision
 	// enables only these three registers, not the LRU array's write
 	btb_lru_we  <= btb_we & ~reset;
 	btb_lru_idx <= btb_widx;
-	btb_lru_way <= ex_way;
+	btb_lru_way <= btb_wway;
 	if (btb_lru_we) btb_lru[btb_lru_idx] <= ~btb_lru_way;
 	if (btb_sweep) begin
 		btb_sweep_idx <= btb_sweep_idx + 1'd1;
 		if (&btb_sweep_idx) btb_sweep <= 1'b0;
+	end
+	if (fold_wrap) begin
+		btb_sweep <= 1'b1;
+		btb_sweep_idx <= '0;
 	end
 	if (reset) begin
 		btb_sweep <= 1'b1;
@@ -742,7 +791,7 @@ always_ff @(posedge clk) begin
 		default: ;
 	endcase
 	if (fetch_push) begin
-		fetch_queue[fetch_tail] <= {if2_pc, if_rdata, if2_pred, if_srr1, if2_btb, if_fault, if2_way, if2_cnt, if2_itt, if2_itt_idx};
+		fetch_queue[fetch_tail] <= {if2_pc, if_rdata, if2_pred, if_srr1, if2_btb, if_fault, if2_way, if2_cnt, if2_itt, if2_itt_idx, if2_fold};
 		fetch_tail <= fetch_tail + 2'd1;
 	end
 	if (fetch_pop) fetch_head <= fetch_head + 2'd1;
@@ -763,6 +812,7 @@ always_ff @(posedge clk) begin
 		if2_cnt   <= btb_c;
 		if2_itt   <= btb_hit & btb_itt;
 		if2_itt_idx <= itt_idx_f;
+		if2_fold  <= btb_hit & btb_fold;
 	end
 
 	// a fetch still waiting for its word is dropped when the word comes
@@ -1119,6 +1169,7 @@ always_ff @(posedge clk) begin
 		id_cnt      <= fetch_word.cnt;
 		id_itt      <= fetch_word.itt;
 		id_itt_idx  <= fetch_word.itt_idx;
+		id_fold     <= fetch_word.fold;
 		id_isi      <= fetch_word.isi;
 		id_isi_info <= fetch_word.info;
 	end
@@ -1439,20 +1490,35 @@ end
 // beside the branch decision, which then only selects; rfi redirects anyway)
 wire        tgt_miss  = (br_target != ex_pred);
 wire        seq_miss  = (ex_pc4 != ex_pred);
-wire        pc_miss   = br_taken ? tgt_miss : seq_miss;
+wire        pc_miss   = br_taken ? tgt_miss : (~ex_fold & seq_miss);
 assign redir    = mem_fault |
                   (ex_leave & (ex_exc | (ex_last & (is_rfi | is_mtmsr | is_xlate | pc_miss))));
 
 // Teach the branch target buffer: a taken branch is entered or strengthened,
 // one that was not taken is weakened, and an entry that fired for something
 // that is no branch at all is removed.
+// an unconditional b (opcode 18, relative, no link) committing right after
+// an instruction that can fold it
+wire ex_is_b = (ex_insn[31:26] == 6'd18) & (ex_insn[1:0] == 2'b00);
+assign fold_learn = ex_final & ~is_rfi & ex_is_b & fold_prev_ok & (fold_prev_pc + 32'd4 == ex_pc) &
+                    (ex_pc[11:2] != 10'd0);
 always_comb begin
 	btb_widx = btb_index(ex_pc);
+	btb_wway = ex_way;
+	btb_wtag = ex_pc[31:BTB_SET_BITS+2];
 	btb_we   = 1'b0;
 	btb_wtgt = 1'b0;
 	btb_clr  = 1'b0;
 	btb_wcnt = 2'd2;
-	if (ex_final & ~is_rfi) begin
+	if (fold_learn) begin
+		btb_widx = btb_index(fold_prev_pc);
+		btb_wway = fold_prev_way;
+		btb_wtag = fold_prev_pc[31:BTB_SET_BITS+2];
+		btb_we   = 1'b1;
+		btb_wtgt = 1'b1;
+		btb_wcnt = 2'd3;
+	end
+	else if (ex_final & ~is_rfi) begin
 		if (br_taken) begin
 			btb_we   = 1'b1;
 			btb_wtgt = 1'b1;
@@ -1462,10 +1528,25 @@ always_comb begin
 			btb_we   = 1'b1;
 			btb_wcnt = (ex_cnt == 2'd0) ? 2'd0 : (ex_cnt - 2'd1);
 		end
-		else if (ex_btb) begin
+		else if (ex_btb & ~ex_fold) begin
 			btb_clr  = 1'b1;
 		end
 	end
+end
+
+// what may fold the next instruction, and the epoch
+wire fold_epoch_step = ex_leave & ~ex_abort & ((ex_last & is_xlate) | (ex_dec.mem_rd & (ex_dec.cop == CK_ICBI)));
+assign fold_wrap = fold_epoch_step & (&fold_epoch);
+always_ff @(posedge clk) begin
+	if (ex_leave) begin
+		fold_prev_ok  <= ex_final & ex_first & (ex_dec.br == BR_NONE) & ~ex_fold &
+		                 ~(is_rfi | is_mtmsr | is_xlate | x_sc);
+		fold_prev_pc  <= ex_pc;
+		fold_prev_way <= ex_way;
+	end
+	if (fold_epoch_step) fold_epoch <= fold_epoch + 4'd1;
+	if (mem_fault | reset) fold_prev_ok <= 1'b0;
+	if (reset) fold_epoch <= 4'd0;
 end
 
 // ---- CR and SPR moves, and what EX commits ---------------------------------
@@ -1854,6 +1935,7 @@ always_ff @(posedge clk) begin
 		ex_cnt   <= id_cnt;
 		ex_itt   <= id_itt;
 		ex_itt_idx <= id_itt_idx;
+		ex_fold  <= id_fold;
 		ex_a     <= id_a;
 		ex_b     <= id_b;
 		ex_c     <= id_c;
@@ -2298,6 +2380,8 @@ always_ff @(posedge clk) begin
 		mo_pc <= mem_pc;
 		mo_insn <= mem_insn;
 		mo_last <= mem_last;
+		mo_fold <= mem_fold;
+		mo_fold_insn <= mem_fold_insn;
 		mo_rd <= mem_rd;
 		mo_rd_wr <= mem_rd_wr;
 		mo_load <= mem_load;
@@ -2317,6 +2401,7 @@ always_ff @(posedge clk) begin
 		mem_insn <= completion_queue[completion_head].insn;
 		mem_last <= 1'b1;
 		mem_first <= 1'b1;
+		mem_fold <= 1'b0;
 		mem_rd <= {1'b0, completion_queue[completion_head].rd};
 		mem_rd_wr <= 1'b1;
 		mem_result <= {32'd0, completion_queue[completion_head].value};
@@ -2338,6 +2423,9 @@ always_ff @(posedge clk) begin
 		mem_pc     <= ex_pc;
 		mem_insn   <= ex_insn;
 		mem_last   <= ex_last;
+		// (an instruction that refetches does so at the b, which then runs)
+		mem_fold   <= ex_fold & ex_last & ~(is_rfi | is_mtmsr | is_xlate);
+		mem_fold_insn <= 32'h48000000 | ((ex_pred - ex_pc4) & 32'h03FFFFFC);
 		mem_first  <= ex_first;
 		mem_rd     <= ex_rd;
 		mem_rd_wr  <= ex_rd_wr;
@@ -2379,6 +2467,8 @@ always_ff @(posedge clk) begin
 		wb_pc     <= mo_valid ? mo_pc : mem_pc;
 		wb_insn   <= mo_valid ? mo_insn : mem_insn;
 		wb_last   <= mo_valid ? mo_last : mem_last;
+		wb_fold   <= mo_valid ? mo_fold : mem_fold;
+		wb_fold_insn <= mo_valid ? mo_fold_insn : mem_fold_insn;
 		wb_rd     <= mo_valid ? mo_rd : mem_rd;
 		wb_rd_wr  <= mo_valid ? mo_rd_wr : mem_rd_wr;
 		wb_result <= (mo_valid | mem_load) ? mu_rdata : mem_result;
@@ -2396,6 +2486,8 @@ end
 
 assign trace_valid   = wb_valid;
 assign trace_last    = wb_last;
+assign trace_fold    = wb_last & wb_fold;
+assign trace_fold_insn = wb_fold_insn;
 assign trace_pc      = wb_pc;
 assign trace_insn    = wb_insn;
 assign trace_reg_we  = wb_rd_wr;
