@@ -111,16 +111,20 @@ typedef struct packed {
 } tag_t;
 
 // ---- the RAMs: one per way, so that a whole set is read at once -----------
-// (the data in DSPPC604_cache_ram, eight word RAMs, a write enable each;
-// word 0 of a line is the lowest address, bits 255-224)
+// (the tags; the data in two DSPPC604_cache_ram per way, the even and the
+// odd words, each giving the one word asked for: a read gives the word
+// addressed and the next, which a wide access wants, without picking them
+// out of the line; word 0 of a line is the lowest address, bits 255-224)
 (* ramstyle = "no_rw_check" *) tag_t tag_mem [WAYS][SETS];
 tag_t         tag_q  [WAYS];
-logic [255:0] data_q [WAYS];
 tag_t         tag_ram_q [WAYS];
-logic [255:0] data_ram_q [WAYS];
+logic [31:0]  even_q [WAYS], odd_q [WAYS];
 logic [2:0]   plru   [SETS];                // pseudo-LRU tree: [0] ways 01 vs 23, [1] 0 vs 1, [2] 2 vs 3
 
 logic [IDXW-1:0]   rd_idx;                       // the set read at this edge
+logic [2:0]   rd_word;                      // ... and the word (with the next: a wide access's)
+logic [1:0]   rd_even, rd_odd;              // the slots read in the even and odd RAMs
+wire  [2:0]   rd_word_next = rd_word + 3'd1;
 logic [WAYS-1:0] tag_we;
 logic [WAYS-1:0] data_we;
 logic [7:0]   data_wwe;                     // words of the line written (bit j: bits 32j+31 downward)
@@ -140,6 +144,7 @@ logic [7:0]      l_wwe, wr_wwe;
 logic [IDXW-1:0]      wr_idx_q;
 tag_t            l_tag_wd, wr_tag_wd;
 logic [255:0]    l_data_wd, wr_data_wd;
+logic            l_dzero, l_dwide;     // l_data_wd is zero (dcbz); ... has a wide store's second word
 
 always_ff @(posedge clk) begin
 	for (int w = 0; w < WAYS; w++) begin
@@ -148,17 +153,28 @@ always_ff @(posedge clk) begin
 	end
 end
 
+// data_wd's word 2s+1 (bits 32(6-2s) up) is the odd RAM's slot s, word 2s
+// (bits 32(7-2s) up) the even RAM's; data_wwe likewise
 genvar gw;
 generate
 	for (gw = 0; gw < WAYS; gw++) begin : way
-		DSPPC604_cache_ram #(.IDXW (IDXW)) data
+		DSPPC604_cache_ram #(.IDXW (IDXW)) even
 		(
 			.clk   (clk),
-			.raddr (rd_idx),
-			.q     (data_ram_q[gw]),
-			.we    ({8{data_we[gw]}} & data_wwe),
+			.raddr ({rd_idx, rd_even}),
+			.q     (even_q[gw]),
+			.we    ({4{data_we[gw]}} & {data_wwe[1], data_wwe[3], data_wwe[5], data_wwe[7]}),
 			.waddr (wr_idx),
-			.d     (data_wd)
+			.d     ({data_wd[63:32], data_wd[127:96], data_wd[191:160], data_wd[255:224]})
+		);
+		DSPPC604_cache_ram #(.IDXW (IDXW)) odd
+		(
+			.clk   (clk),
+			.raddr ({rd_idx, rd_odd}),
+			.q     (odd_q[gw]),
+			.we    ({4{data_we[gw]}} & {data_wwe[0], data_wwe[2], data_wwe[4], data_wwe[6]}),
+			.waddr (wr_idx),
+			.d     ({data_wd[31:0], data_wd[95:64], data_wd[159:128], data_wd[223:192]})
 		);
 	end
 endgenerate
@@ -174,7 +190,8 @@ typedef enum logic [3:0] {
 	S_RETRY,     // the line is in (or the victim gone): look again
 	S_ICBI,      // waiting for the other side
 	S_SNOOP,     // a snoop: the set is out
-	S_PWAIT      // the memory port is wanted while a posted write drains: look again after it
+	S_PWAIT,     // the memory port is wanted while a posted write drains: look again after it
+	S_WBREAD     // reading the line to write back, two words a cycle
 } state_t;
 
 state_t      state;
@@ -200,6 +217,7 @@ logic        r_snoop_we;
 logic [1:0]  r_way;          // the way chosen for a write-back or fill
 logic        r_after_wb;     // the write-back is followed by a fill
 logic [255:0] wb_data;
+logic [2:0]  wb_slot;        // S_WBREAD: the slot read at the end of this cycle (4: done)
 logic [TAGW-1:0] wb_tag;
 logic        inval_pend;
 logic [IDXW-1:0]  sweep_idx;
@@ -216,6 +234,9 @@ logic [WAYS-1:0] landed_tag_we;
 logic [7:0] landed_data_we [WAYS];
 tag_t landed_tag;
 logic [255:0] landed_data;
+// the colliding write's words that the read wants (the word read and the
+// next), picked out at the read's edge, when the word read is known
+logic [31:0] landed_word, landed_word_next;
 logic pending_set_match;
 always_ff @(posedge clk) begin
 	// The pending write is from r_idx at this edge; the response's data and
@@ -228,16 +249,14 @@ always_ff @(posedge clk) begin
 	end
 	landed_tag <= tag_wd;
 	landed_data <= data_wd;
+	landed_word <= data_wd[255 - 32*rd_word -: 32];
+	landed_word_next <= data_wd[255 - 32*rd_word_next -: 32];
 end
 wire forward_pending = wr_pend & pending_set_match;
 always_comb begin
-	for (int w = 0; w < WAYS; w++) begin
+	for (int w = 0; w < WAYS; w++)
 		tag_q[w] = (forward_pending & wr_tag_we[w]) ? wr_tag_wd :
 		           landed_tag_we[w] ? landed_tag : tag_ram_q[w];
-		for (int j = 0; j < 8; j++)
-			data_q[w][32*j +: 32] = (forward_pending & wr_data_we[w] & wr_wwe[j]) ? wr_data_wd[32*j +: 32] :
-			                          landed_data_we[w][j] ? landed_data[32*j +: 32] : data_ram_q[w][32*j +: 32];
-	end
 end
 
 // hit? One bit per way; the answer's way select takes these directly
@@ -324,19 +343,17 @@ logic [31:0] way_word_next [WAYS];
 wire [2:0] r_word_next = r_word + 3'd1;
 wire [2:0] word_bit = 3'd7 - r_word;
 wire [2:0] word_bit_next = 3'd7 - r_word_next;
-wire [31:0] pending_word = wr_data_wd[255 - 32*r_word -: 32];
-wire [31:0] pending_word_next = wr_data_wd[255 - 32*r_word_next -: 32];
-wire [31:0] landed_word = landed_data[255 - 32*r_word -: 32];
-wire [31:0] landed_word_next = landed_data[255 - 32*r_word_next -: 32];
+// the pending write's words that the read wants, picked out when that
+// write was registered (below)
+logic [31:0] pending_word, pending_word_next;
 always_comb
 	for (int w = 0; w < WAYS; w++) begin
-		// Select the raw word before forwarding. The late pending/collision
-		// decision then drives a word mux, rather than a full-line mux followed
-		// by the eight-word selector. Write-back still uses the complete line.
+		// The RAMs give the word and the next (even and odd, in either
+		// order); a pending or colliding write of either replaces it.
 		way_word[w] = (forward_pending & wr_data_we[w] & wr_wwe[word_bit]) ? pending_word :
-		              landed_data_we[w][word_bit] ? landed_word : data_ram_q[w][255 - 32*r_word -: 32];
+		              landed_data_we[w][word_bit] ? landed_word : (r_word[0] ? odd_q[w] : even_q[w]);
 		way_word_next[w] = (forward_pending & wr_data_we[w] & wr_wwe[word_bit_next]) ? pending_word_next :
-		                   landed_data_we[w][word_bit_next] ? landed_word_next : data_ram_q[w][255 - 32*r_word_next -: 32];
+		                   landed_data_we[w][word_bit_next] ? landed_word_next : (r_word[0] ? even_q[w] : odd_q[w]);
 	end
 logic [31:0] hit_word;
 logic [31:0] hit_word_next;
@@ -397,10 +414,19 @@ always_comb begin
 	l_wwe     = '1;
 	l_tag_wd  = {1'b1, 1'b0, r_tag};
 	l_data_wd = {8{st_word}};
+	l_dzero   = 1'b0;
+	l_dwide   = 1'b0;
 	// Read the candidate set even if it is not granted. Only a granted
 	// request consumes that read; preserve a dirty victim before replacing it.
 	rd_idx    = (state == S_IDLE) ? (snoop_req ? snoop_addr[IDXW+4:5] : addr[IDXW+4:5]) :
 	            (state == S_LOOK) ? addr[IDXW+4:5] : r_idx;
+	rd_word   = (state == S_IDLE) ? (snoop_req ? 3'd0 : addr[4:2]) :
+	            (state == S_LOOK) ? addr[4:2] : r_word;
+	// the word and the next: word k is the odd RAM's slot k/2 if k is odd,
+	// else the even RAM's; the next one is the other RAM's, slot (k+1)/2 in
+	// the even one (a wide access never starts at word 7)
+	rd_even   = (state == S_WBREAD) ? wb_slot[1:0] : 2'((rd_word + 3'd1) >> 1);
+	rd_odd    = (state == S_WBREAD) ? wb_slot[1:0] : rd_word[2:1];
 	ans_now    = 1'b0;
 	ans_data     = hit_word;
 	ans_wide = 1'b0;
@@ -433,6 +459,7 @@ always_comb begin
 				l_wwe = st_wwe;
 				if (wide_hit) begin
 					l_wwe = st_wwe | st_wwe_next;
+					l_dwide = 1'b1;
 					for (int j = 0; j < 8; j++)
 						if (j[2:0] == (3'd6 - r_word)) l_data_wd[32*j +: 32] = r_wdata_next;
 				end
@@ -447,6 +474,7 @@ always_comb begin
 			else begin
 				l_data_we[wsel] = 1'b1;
 				l_data_wd = '0;
+				l_dzero = 1'b1;
 				l_tag_we[wsel] = 1'b1;
 				l_tag_wd = {1'b1, 1'b1, r_tag};
 				ans_now = 1'b1;
@@ -541,13 +569,43 @@ always_ff @(posedge clk) begin
 	wr_idx_q   <= r_idx;
 	wr_tag_wd  <= l_tag_wd;
 	wr_data_wd <= l_data_wd;
+	// the words of it that the read made at this edge wants (l_data_wd is
+	// the stored word in every position, but a wide store's second word in
+	// the next, or all zero), so that a forwarded word is not picked out of
+	// the line in the answer's cycle
+	pending_word      <= l_dzero ? 32'd0 : (l_dwide & (rd_word == r_word + 3'd1)) ? r_wdata_next : st_word;
+	pending_word_next <= l_dzero ? 32'd0 : (l_dwide & (rd_word == r_word)) ? r_wdata_next : st_word;
 end
 
+/* synthesis translate_off */
 always_ff @(posedge clk) begin
-	if ((state == S_LOOK) | (state == S_SNOOP)) begin
-		wb_data <= data_q[wsel];
-		wb_tag <= tag_q[wsel].tag;
+	if (~reset & (state == S_LOOK))
+		for (int w = 0; w < WAYS; w++) begin
+			if (forward_pending & wr_data_we[w] & wr_wwe[word_bit] &
+			    (pending_word != wr_data_wd[255 - 32*r_word -: 32]))
+				$fatal(1, "forwarded pending word differs");
+			if (forward_pending & wr_data_we[w] & wr_wwe[word_bit_next] & r_wide &
+			    (pending_word_next != wr_data_wd[255 - 32*r_word_next -: 32]))
+				$fatal(1, "forwarded pending next word differs");
+			if (landed_data_we[w][word_bit] & (landed_word != landed_data[255 - 32*r_word -: 32]))
+				$fatal(1, "forwarded colliding word differs");
+		end
+end
+/* synthesis translate_on */
+
+always_ff @(posedge clk) begin
+	if ((state == S_LOOK) | (state == S_SNOOP)) wb_tag <= tag_q[wsel].tag;
+	// the line to write back: slot s of both RAMs is read at the end of
+	// the cycle with wb_slot s, and taken in the next
+	if (state == S_WBREAD) begin
+		wb_slot <= wb_slot + 3'd1;
+		for (int k = 0; k < 4; k++)
+			if (wb_slot == 3'(k + 1)) begin
+				wb_data[255 - 64*k -: 32] <= even_q[r_way];
+				wb_data[223 - 64*k -: 32] <= odd_q[r_way];
+			end
 	end
+	else wb_slot <= 3'd0;
 	if (inval_all) inval_pend <= 1'b1;
 
 	// The request's payload is taken in every cycle a request could be (the
@@ -612,12 +670,12 @@ always_ff @(posedge clk) begin
 		else if (k_word) begin
 			r_way      <= victim;
 			r_after_wb <= 1'b1;
-			state      <= victim_dirty ? S_WB : S_FILL;
+			state      <= victim_dirty ? S_WBREAD : S_FILL;
 		end
 		else if (k_zero) begin
 			if (~hit & victim_dirty) begin
 				r_way <= victim;
-				state <= S_WB;
+				state <= S_WBREAD;
 			end
 			else begin
 				plru[r_idx] <= touch(tree, wsel);
@@ -626,7 +684,7 @@ always_ff @(posedge clk) begin
 		end
 		else if ((k_flush | k_store) & hit & tag_q[hit_sel].dirty) begin
 			r_way <= hit_sel;
-			state <= S_WB;
+			state <= S_WBREAD;
 		end
 		else if (k_icbi) state <= S_ICBI;
 		else state <= S_IDLE;
@@ -634,6 +692,7 @@ always_ff @(posedge clk) begin
 
 	S_UNC: if (mem_ack) state <= S_IDLE;
 	S_PWAIT: if (~post_v) state <= S_LOOK;
+	S_WBREAD: if (wb_slot == 3'd4) state <= S_WB;
 
 	S_WB: if (mem_ack) begin
 		if (r_after_wb)  state <= S_FILL;
@@ -653,7 +712,7 @@ always_ff @(posedge clk) begin
 	S_SNOOP: begin
 		if (enable & hit & tag_q[hit_sel].dirty) begin
 			r_way <= hit_sel;
-			state <= S_WB;
+			state <= S_WBREAD;
 		end
 		else state <= S_IDLE;
 	end
