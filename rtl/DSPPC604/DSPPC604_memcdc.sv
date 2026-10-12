@@ -63,12 +63,19 @@ always_ff @(posedge clk_a) begin
 	a_ack <= 1'b0;
 	// (not in the cycle an answer goes out: the request still up then is
 	// the one just answered)
-	if (~a_busy & a_req & ~a_ack) begin
+	// The request is taken in every cycle nothing is in flight, so that its
+	// 290-odd registers are enabled by a_busy alone, not by the request
+	// (which comes through the memory map and the L2); the memory's side
+	// reads them only once the toggle has crossed, and they stand still
+	// from the edge that sends it until the answer.
+	if (~a_busy) begin
 		q_we    <= a_we;
 		q_line  <= a_line;
 		q_addr  <= a_addr;
 		q_be    <= a_be;
 		q_wdata <= a_wdata;
+	end
+	if (~a_busy & a_req & ~a_ack) begin
 		a_tog   <= ~a_tog;
 		a_busy  <= 1'b1;
 	end
