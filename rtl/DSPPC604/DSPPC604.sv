@@ -83,6 +83,7 @@
 
 module DSPPC604
 #(
+	parameter int          ITT_BITS = 11,             // indirect target table entries, as a power of two (0: none)
 	parameter int          BTB_BITS = 10,             // branch target buffer entries, as a power of two (two ways): 1024 since 2026-10-12 (ROM boot -2.1 % cycles)
 	parameter int          TLB_BITS = 6,              // entries in each TLB, as a power of two
 	parameter int          IC_IDXW  = 8,              // instruction cache sets, as a power of two: 8 is 32 KB (the 604e's), 7 is 16 KB (the 604's)
@@ -213,6 +214,8 @@ logic [31:0] if2_pred;      // where the fetch went next
 logic        if2_btb;       // the branch target buffer knew this address
 logic        if2_way;
 logic [1:0]  if2_cnt;       // ... with this taken/not-taken counter
+logic        if2_itt;       // ... marked as an indirect branch the ITT predicts
+logic [10:0] if2_itt_idx;   // the ITT row for this address and history
 
 // Three completed words plus one reserved response slot. Fetch admission
 // depends only on registered occupancy, never on ID/EX/MEM readiness.
@@ -220,6 +223,8 @@ typedef struct packed {
 	logic [31:0] pc, insn, pred, info;
 	logic        btb, isi, way;
 	logic [1:0]  cnt;
+	logic        itt;
+	logic [10:0] itt_idx;
 } fetch_t;
 fetch_t fetch_queue [4];
 logic [1:0] fetch_head, fetch_tail;
@@ -248,6 +253,8 @@ logic [31:0] id_cr_select;
 logic        id_btb;
 logic        id_way;
 logic [1:0]  id_cnt;
+logic        id_itt;
+logic [10:0] id_itt_idx;
 logic        id_isi;
 logic [31:0] id_isi_info;
 
@@ -266,6 +273,8 @@ logic        ex_btb;
 logic [31:0] ex_cr_select;
 logic        ex_way;
 logic [1:0]  ex_cnt;
+logic        ex_itt;
+logic [10:0] ex_itt_idx;
 logic [31:0] ex_a;
 logic [31:0] ex_b;
 logic [31:0] ex_c;
@@ -464,7 +473,7 @@ assign fetch_bypass = (fetch_count == 3'd0) & fetch_stage_ready & fetch_response
 assign fetch_deliver = (fetch_stage_count != 2'd0) & id_ready;
 assign fetch_word = fetch_stage[fetch_stage_head];
 assign fetch_source_word = (fetch_count != 3'd0) ? fetch_queue[fetch_head] :
-                    {if2_pc, if_rdata, if2_pred, if_srr1, if2_btb, if_fault, if2_way, if2_cnt};
+                    {if2_pc, if_rdata, if2_pred, if_srr1, if2_btb, if_fault, if2_way, if2_cnt, if2_itt, if2_itt_idx};
 
 assign if_req  = ~reset & ~fetch_full;
 assign if_addr = pc_f;
@@ -490,6 +499,8 @@ typedef struct packed {
 	logic [BTB_TAGW-1:0] tag;
 	logic [1:0] count;
 	logic call, ret;
+	logic ctr;          // bcctr
+	logic itt;          // an indirect branch whose target the ITT predicts
 } btb_meta_t;
 (* ramstyle = "no_rw_check" *) btb_meta_t btb_meta0 [BTB_SETS], btb_meta1 [BTB_SETS];
 (* ramstyle = "no_rw_check" *) logic [29:0] btb_target0 [BTB_SETS], btb_target1 [BTB_SETS];
@@ -557,7 +568,38 @@ wire [29:0] btb_target_q0 = btb_target_forward0 ? btb_write_target : btb_target_
 wire [29:0] btb_target_q1 = btb_target_forward1 ? btb_write_target : btb_target_ram1;
 wire [29:0] btb_target = btb_hit0 ? btb_target_q0 : btb_target_q1;
 wire btb_taken = btb_hit & btb_c[1];
-wire [31:0] btb_destination = (btb_is_return & (ras_read_count != 4'd0)) ?
+wire btb_is_ctr = btb_hit0 ? btb_meta_q0.ctr : btb_meta_q1.ctr;
+wire btb_itt = btb_hit0 ? btb_meta_q0.itt : btb_meta_q1.itt;
+
+// ---- indirect target table -------------------------------------------------
+// The 68k emulator dispatches every opcode through bclr/bcctr to one of
+// hundreds of handlers, whose address it moves to LR or CTR only two
+// instructions earlier: the BTB's one target and the return stack miss most
+// of them. A table indexed by the branch's address and a folded history of
+// the last indirect targets (the emulated program's opcode sequence repeats
+// in its loops) predicts most. It is read a cycle ahead as the BTB is; the
+// history is updated with each predicted indirect target at fetch and
+// restored from the committed one on a redirect. Branches marked itt in the
+// BTB (their BTB or return-stack target once missed) use it when its row's
+// tag matches; a hint only, EX checks every target.
+localparam int ITT_N = (ITT_BITS != 0) ? (1 << ITT_BITS) : 2;
+function automatic logic [10:0] itt_fold(input logic [10:0] h, input logic [31:0] t);
+	itt_fold = (ITT_BITS != 0) ? (({h[8:0], 2'b00} ^ t[12:2]) & 11'((ITT_N - 1))) : 11'd0;
+endfunction
+(* ramstyle = "no_rw_check" *) logic [7:0]  itt_tag_mem [ITT_N];
+(* ramstyle = "no_rw_check" *) logic [29:0] itt_tgt_mem [ITT_N];
+logic [10:0] itt_spec_h, itt_com_h;   // the history: as fetched, as committed
+logic [7:0]  itt_tag_q;
+logic [29:0] itt_tgt_q;
+logic [10:0] itt_read_idx;
+logic        itt_read_valid;
+wire [10:0] itt_idx_f = (pc_f[12:2] ^ itt_spec_h) & 11'((ITT_N - 1));     // this fetch's row
+logic [10:0] itt_ridx;                                                     // the next one's, read now (below)
+wire itt_use = (ITT_BITS != 0) & btb_itt & itt_read_valid & (itt_read_idx == itt_idx_f) &
+               (itt_tag_q == pc_f[20:13]);
+
+wire [31:0] btb_destination = itt_use ? {itt_tgt_q, 2'b00} :
+                              (btb_is_return & ~btb_itt & (ras_read_count != 4'd0)) ?
                               ras_read_target : {btb_target, 2'b00};
 wire [31:0] pred_pc = btb_taken ? btb_destination : (pc_f + 32'd4);
 
@@ -569,8 +611,11 @@ logic [BTB_SET_BITS-1:0] btb_widx;
 logic [1:0]          btb_wcnt;
 wire                 btb_wr_meta = btb_we | btb_clr;
 btb_meta_t           btb_new_meta;
+logic                btb_meta_itt;      // an indirect branch whose BTB or RAS target once missed
 assign btb_new_meta = {btb_we, ex_pc[31:BTB_SET_BITS+2], btb_wcnt,           // valid, tag, count,
-                       ex_dec.br_lk, (ex_dec.br == BR_LR) & ~ex_dec.br_lk};    // call, ret
+                       ex_dec.br_lk, (ex_dec.br == BR_LR) & ~ex_dec.br_lk,     // call, ret,
+                       ex_dec.br == BR_CTR,                                    // ctr,
+                       btb_meta_itt};                                          // itt (below)
 
 // Whether the row read at this edge is the row written: the candidates
 // compared in parallel, the late grant/redirect control only selects.
@@ -662,7 +707,7 @@ always_ff @(posedge clk) begin
 			ras_sptr <= ras_read_ptr + 3'd1;
 			if (ras_read_count != 4'd8) ras_scount <= ras_read_count + 4'd1;
 		end
-		else if (btb_is_return & (ras_read_count != 4'd0)) begin
+		else if (btb_is_return & ~btb_itt & (ras_read_count != 4'd0)) begin
 			ras_sptr <= ras_read_ptr - 3'd1;
 			ras_scount <= ras_read_count - 4'd1;
 		end
@@ -683,6 +728,7 @@ end
 // there, which keeps branch resolution away from the TLB's address)
 wire [31:0] pc_next = reset ? reset_pc : redir ? redir_pc : fetch_go ? pred_pc : pc_f;
 wire [31:0] pc_ahead = fetch_go ? pred_pc : pc_f;
+assign itt_ridx = (pc_ahead[12:2] ^ itt_spec_h) & 11'((ITT_N - 1));
 
 always_ff @(posedge clk) begin
 	if (fetch_stage_push) begin
@@ -696,7 +742,7 @@ always_ff @(posedge clk) begin
 		default: ;
 	endcase
 	if (fetch_push) begin
-		fetch_queue[fetch_tail] <= {if2_pc, if_rdata, if2_pred, if_srr1, if2_btb, if_fault, if2_way, if2_cnt};
+		fetch_queue[fetch_tail] <= {if2_pc, if_rdata, if2_pred, if_srr1, if2_btb, if_fault, if2_way, if2_cnt, if2_itt, if2_itt_idx};
 		fetch_tail <= fetch_tail + 2'd1;
 	end
 	if (fetch_pop) fetch_head <= fetch_head + 2'd1;
@@ -715,6 +761,8 @@ always_ff @(posedge clk) begin
 		if2_btb   <= btb_hit;
 		if2_way   <= btb_way;
 		if2_cnt   <= btb_c;
+		if2_itt   <= btb_hit & btb_itt;
+		if2_itt_idx <= itt_idx_f;
 	end
 
 	// a fetch still waiting for its word is dropped when the word comes
@@ -1069,6 +1117,8 @@ always_ff @(posedge clk) begin
 		id_btb      <= fetch_word.btb;
 		id_way      <= fetch_word.way;
 		id_cnt      <= fetch_word.cnt;
+		id_itt      <= fetch_word.itt;
+		id_itt_idx  <= fetch_word.itt_idx;
 		id_isi      <= fetch_word.isi;
 		id_isi_info <= fetch_word.info;
 	end
@@ -1361,7 +1411,30 @@ assign redir_pc = mem_fault ? (vec_base | (mem_irq ? (irq_in ? 32'h500 : 32'h900
                   ex_exc    ? (vec_base | {20'd0, exc_vector}) : next_pc;
 wire   ex_final = ex_leave & ~ex_exc & ex_last;
 assign ras_push = ex_final & br_taken & ex_dec.br_lk;
-assign ras_pop = ex_final & br_taken & (ex_dec.br == BR_LR) & ~ex_dec.br_lk & (ras_ccount != 4'd0);
+assign ras_pop = ex_final & br_taken & (ex_dec.br == BR_LR) & ~ex_dec.br_lk & ~ex_itt & (ras_ccount != 4'd0);
+// an indirect branch (bclr without link, bcctr) committing taken: into the
+// committed history and the ITT
+wire   ex_ind  = ((ex_dec.br == BR_LR) & ~ex_dec.br_lk) | (ex_dec.br == BR_CTR);
+wire   ex_ind_commit = ex_final & ~is_rfi & br_taken & ex_ind;
+assign btb_meta_itt = (ITT_BITS != 0) & ex_ind & (ex_itt | pc_miss);
+wire [10:0] itt_com_h_next = ex_ind_commit ? itt_fold(itt_com_h, next_pc) : itt_com_h;
+always_ff @(posedge clk) begin
+	itt_tag_q <= itt_tag_mem[itt_ridx];
+	itt_tgt_q <= itt_tgt_mem[itt_ridx];
+	itt_read_idx <= itt_ridx;
+	itt_read_valid <= ~reset;
+	if (ex_ind_commit) begin
+		itt_tag_mem[ex_itt_idx] <= ex_pc[20:13];
+		itt_tgt_mem[ex_itt_idx] <= next_pc[31:2];
+	end
+	itt_com_h <= itt_com_h_next;
+	if (redir) itt_spec_h <= itt_com_h_next;
+	else if (fetch_go & btb_taken & (btb_is_return | btb_is_ctr)) itt_spec_h <= itt_fold(itt_spec_h, pred_pc);
+	if (reset) begin
+		itt_com_h <= 11'd0;
+		itt_spec_h <= 11'd0;
+	end
+end
 // (the fetch went elsewhere: both candidates compared with the prediction
 // beside the branch decision, which then only selects; rfi redirects anyway)
 wire        tgt_miss  = (br_target != ex_pred);
@@ -1779,6 +1852,8 @@ always_ff @(posedge clk) begin
 		ex_cr_select <= id_cr_select;
 		ex_way   <= id_way;
 		ex_cnt   <= id_cnt;
+		ex_itt   <= id_itt;
+		ex_itt_idx <= id_itt_idx;
 		ex_a     <= id_a;
 		ex_b     <= id_b;
 		ex_c     <= id_c;
