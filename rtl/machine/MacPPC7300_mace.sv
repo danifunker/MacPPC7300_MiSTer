@@ -128,7 +128,12 @@ logic [10:0] lb_len;
 logic [11:0] f_us;                     // microseconds left on the wire
 logic [63:0] t_word;                   // the frame's word being gathered
 logic        tx_seen;
-wire         swrst = sel & we & (rn == 5'd11) & wdata[0];
+// BIUCC's software reset, a clock after the write: the write's data comes
+// through the device bus and Grand Central's decode, and the reset clears
+// some 120 registers (the transmitter's word among them), which was a path
+// the clock could not take
+logic        swrst;
+always_ff @(posedge clk) swrst <= sel & we & (rn == 5'd11) & wdata[0] & ~reset;
 // the frame's time on the wire: 16 us, and 13/16 us a byte (0.8, near enough)
 wire  [11:0] len_a = f_len - {2'b00, f_len[11:2]};
 wire  [11:0] len_b = len_a + {4'h0, f_len[11:4]};
