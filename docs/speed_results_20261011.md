@@ -32,6 +32,9 @@ On the board, 70 MHz with L2 on, which had hung four times out of four:
 | Floating Point | hang | **98** (about 73 s) |
 | Graphics | hang (the user's run) | **100** (about 20 min) |
 
+And at 60 MHz with L2 on (HEAD ca741e4, which also hung before): Floating
+Point **83**, in about 55 s.
+
 ## Speedometer 4.02: L2 on vs off, 60 MHz (timing-closed build, 41f4965)
 
 | | L2 off | L2 on |
@@ -51,6 +54,17 @@ L2 is worth 1-5 %; the clock and the CPU's work per clock matter more.
 | Benchmark Mix | 10.607 | 12.131 | 12.120 |
 | FPU average | 4.325 | 5.033 | 5.044 |
 | Color average | 1.446 | — | **1.535** (8-bit 6.616 s, 16-bit 9.249 s) |
+
+## Speedometer 4.02 at 60 MHz, L2 off: HEAD (ca741e4) against 41f4965
+
+| | 41f4965 | ca741e4 |
+|---|---:|---:|
+| CPU | 2.680 | 2.679 |
+| Benchmark Mix | 10.525 | 10.535 |
+| FPU average | 4.321 | 4.326 |
+| Color average | 1.274 | **1.366** (+7 %) |
+| Eight bit (s) | 7.994 | 7.478 |
+| Sixteen bit (s) | 11.105 | 10.329 |
 
 ## Changes
 
@@ -81,6 +95,7 @@ All pass the FP and integer vectors, run_core and the 300M ROM lockstep
 | 2c1bea4+a0da146, seed 1 | 60 | -0.247 | 9 paths: device read mux (cut in 632f644), mem_valid -> MMU |
 | same | 65 | -2.11 | |
 | same, release-style | 70 | -2.74 | |
+| ca741e4, retiming on, seed 1 | 60 | -0.223 | 8 paths, all the D-cache hit -> MEM-stage family below |
 
 The family that now sets the clock is a D-cache hit deciding, in the same
 cycle, whether the pipeline advances: tag RAM -> hit -> the answer ->
