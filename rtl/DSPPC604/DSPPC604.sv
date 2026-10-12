@@ -1215,7 +1215,14 @@ wire fp_trap_on = msr[MSR_FE0] | msr[MSR_FE1];   // FP enabled exceptions trap
 // OS's normal state) they take one cycle, as before.
 logic fsys_held, fsys_fex_q;
 wire  fsys_chk = ex_valid & ex_dec.fpscr_wr & ~is_fpu & fp_trap_on;
-assign ex_stall = ex_stall_ops | (fsys_chk & ~fsys_held);
+// tw and twi, and a string instruction's first operation, likewise take a
+// second cycle: their exception (the trap's compare; the string's crossing,
+// from the adder's high bits) is then decided from a register, so that
+// neither the compare nor the whole add is in front of ex_abort, which
+// every commit, the redirect and the fetch wait for
+logic slow_held, trap_hit_q, x_align_s_q;
+wire  slow_chk = ex_valid & (ex_dec.trap | (ex_dec.str_bytes != 7'd0));
+assign ex_stall = ex_stall_ops | (fsys_chk & ~fsys_held) | (slow_chk & ~slow_held);
 
 DSPPC604_fpu #(.OPERAND_REG (FPU_OPERAND_REG)) fpu
 (
@@ -1471,7 +1478,7 @@ wire        trap_hit = (ex_dec.bo[4] & int_lts) | (ex_dec.bo[3] & ~int_lts & ~in
                        (ex_dec.bo[2] & int_eq) |
                        (ex_dec.bo[1] & int_ltu) | (ex_dec.bo[0] & ~int_ltu & ~int_eq);
 wire x_sc     = is_sys & (ex_dec.sys == SYS_SC);
-wire x_trap   = is_int & ex_dec.trap & trap_hit;
+wire x_trap   = is_int & ex_dec.trap & trap_hit_q;
 // the effective address: the adder's sum on its own (every memory access is
 // an add), ahead of the result mux the rotator feeds too; for dcbz, the line
 wire        ex_zero = (ex_dec.cop == CK_ZERO);
@@ -1516,8 +1523,9 @@ wire [6:0]  str_last  = ex_dec.str_bytes - 7'd1;
 wire        str_4k    = fa_mem ? str_cross(mem_result[11:0], ex_b[11:0], str_last) :
                         fa_wb  ? str_cross(wb_result[11:0],  ex_b[11:0], str_last) :
                                  str_cross(ex_a[11:0],       ex_b[11:0], str_last);
-wire        x_align_s = (ex_dec.str_bytes != 7'd0) & str_4k &
-                        ((int_sum[1:0] != 2'b00) | (&int_sum[27:12]));
+wire        x_align_s_now = (ex_dec.str_bytes != 7'd0) & str_4k &
+                            ((int_sum[1:0] != 2'b00) | (&int_sum[27:12]));
+wire        x_align_s = (ex_dec.str_bytes != 7'd0) & x_align_s_q;
 wire x_align  = x_align_w | x_align_s | x_align_z;
 // eciwx and ecowx: a DSI, this machine having no external control facility
 wire x_ecx    = ex_dec.mem_ext;
@@ -1741,6 +1749,10 @@ always_ff @(posedge clk) begin
 	fsys_fex_q <= fpscr_next[30];
 	if (ex_leave | id_to_ex | reset) fsys_held <= 1'b0;
 	else if (fsys_chk & ~ex_stall_ops) fsys_held <= 1'b1;
+	trap_hit_q  <= trap_hit;
+	x_align_s_q <= x_align_s_now;
+	if (ex_leave | id_to_ex | reset) slow_held <= 1'b0;
+	else if (slow_chk & ~ex_stall_ops) slow_held <= 1'b1;
 end
 
 always_ff @(posedge clk) begin
