@@ -74,6 +74,7 @@ module DSPPC604_cache
 	output logic        rvalid_wide,
 	output logic [31:0] rdata_next,
 	output logic        slow,                // busy beyond a lookup: a miss, a write-back, a snoop, a sweep
+	output logic        posted,              // a posted write has not reached memory yet (sync waits)
 
 	// icbi passed on (data cache only; the other side acknowledges)
 	output logic        inv_req,
@@ -172,10 +173,19 @@ typedef enum logic [3:0] {
 	S_FILL,      // reading the line
 	S_RETRY,     // the line is in (or the victim gone): look again
 	S_ICBI,      // waiting for the other side
-	S_SNOOP      // a snoop: the set is out
+	S_SNOOP,     // a snoop: the set is out
+	S_PWAIT      // the memory port is wanted while a posted write drains: look again after it
 } state_t;
 
 state_t      state;
+// A cache-inhibited word store (device registers, the frame buffer) is
+// answered at once and written from here while the cache goes on; whatever
+// next wants the memory port (a miss, a write-back, an uncached access, a
+// snoop) waits until it is out, so the order on the port is kept.
+logic        post_v;
+logic [31:2] post_addr;
+logic [3:0]  post_be;
+logic [31:0] post_data;
 logic        r_we;
 ck_t         r_kind;
 logic [31:2] r_addr;
@@ -357,6 +367,24 @@ wire payload_take = (state == S_IDLE) | word_hit;
 wire payload_snoop = (state == S_IDLE) & snoop_req;   // a snoop's registers instead (it wins, when it goes)
 assign slow = (state != S_IDLE) & (state != S_LOOK);
 
+// the posted write: taken by a word store that memory must get (cache-
+// inhibited, write-through, the cache off) found in S_LOOK while the buffer
+// is free (a write-through hit updates its line as well); driven on the
+// memory port whenever the cache itself is not using it (never at once:
+// below); S_LOOK goes to S_PWAIT instead of any state that uses the port
+// while it is full. A wide write-through hit is not posted: its answer
+// covers one word, the memory unit sends the second. (Never in a cycle
+// that takes the next request:
+// word_hit leaves these out.)
+wire post_take = WRITABLE & (state == S_LOOK) & k_word & r_we & ~post_v & (unc | (enable & hit & r_wt & ~wide_hit));
+wire post_drv  = post_v & (state != S_UNC) & (state != S_WB) & (state != S_FILL);
+wire look_port = (state == S_LOOK) & ~post_take &
+                 (unc ? 1'b1 :
+                  enable & (k_word ? (hit ? (WRITABLE & r_we & r_wt) : 1'b1) :
+                            k_zero ? (~hit & victim_dirty) :
+                            ((k_flush | k_store) & hit & tag_q[hit_sel].dirty)));
+assign posted = post_v;
+
 always_comb begin
 	tag_we    = '0;
 	data_we   = '0;
@@ -395,7 +423,7 @@ always_comb begin
 	end
 
 	S_LOOK: begin
-		if (unc) ;                                       // -> S_UNC
+		if (unc) ans_now = post_take;                    // -> S_UNC, or posted (answered now)
 		else if (~enable) ans_now = 1'b1;                 // a cache instruction with the cache off
 		else if (k_word & hit) begin
 			ans_now = 1'b1;
@@ -410,7 +438,7 @@ always_comb begin
 				end
 				l_tag_we[hit_sel] = ~r_wt;               // dirty, unless memory gets it too
 				l_tag_wd = {1'b1, 1'b1, r_tag};
-				if (r_wt) ans_now = 1'b0;                 // -> S_UNC
+				if (r_wt) ans_now = post_take;            // posted, else -> S_UNC
 			end
 		end
 		else if (k_word) ;                               // a miss -> S_WB or S_FILL
@@ -486,6 +514,15 @@ always_comb begin
 	default: ;
 	endcase
 
+	if (post_drv) begin                                  // the posted write, when the port is free
+		mem_req   = 1'b1;
+		mem_we    = 1'b1;
+		mem_line  = 1'b0;
+		mem_addr  = post_addr;
+		mem_be    = post_be;
+		mem_wdata = {224'd0, post_data};
+	end
+
 	if (wr_pend) begin                                   // the write decided in the last cycle
 		tag_we   = wr_tag_we;
 		data_we  = wr_data_we;
@@ -549,7 +586,7 @@ always_ff @(posedge clk) begin
 			inval_pend <= 1'b0;
 		end
 		else if (snoop_req) begin                  // (a clashing snoop waits, and so does the request: as gnt)
-			if (~wr_sclash) begin
+			if (~wr_sclash & ~post_v) begin       // (and after a posted write is out)
 				state      <= S_SNOOP;             // (its registers: the payload, above)
 			end
 		end
@@ -559,7 +596,11 @@ always_ff @(posedge clk) begin
 	end
 
 	S_LOOK: begin
-		if (unc) state <= S_UNC;
+		if (post_take) begin
+			if (~unc) plru[r_idx] <= touch(tree, hit_sel);
+			state <= S_IDLE;
+		end
+		else if (unc) state <= S_UNC;
 		else if (~enable) state <= S_IDLE;
 		else if (k_word & hit) begin
 			plru[r_idx] <= touch(tree, hit_sel);
@@ -592,6 +633,7 @@ always_ff @(posedge clk) begin
 	end
 
 	S_UNC: if (mem_ack) state <= S_IDLE;
+	S_PWAIT: if (~post_v) state <= S_LOOK;
 
 	S_WB: if (mem_ack) begin
 		if (r_after_wb)  state <= S_FILL;
@@ -619,10 +661,23 @@ always_ff @(posedge clk) begin
 	default: state <= S_IDLE;
 	endcase
 
+	// a lookup that wants the memory port while a posted write is out
+	// waits for it, then looks again
+	if (look_port & post_v) state <= S_PWAIT;
+
+	if (post_take) begin
+		post_v    <= 1'b1;
+		post_addr <= r_addr;
+		post_be   <= r_be;
+		post_data <= r_wdata;
+	end
+	if (post_drv & mem_ack) post_v <= 1'b0;
+
 	if (reset) begin
 		state      <= S_SWEEP;
 		sweep_idx  <= '0;
 		inval_pend <= 1'b0;
+		post_v     <= 1'b0;
 	end
 end
 

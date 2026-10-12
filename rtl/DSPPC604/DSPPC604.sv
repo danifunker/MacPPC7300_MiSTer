@@ -414,6 +414,7 @@ logic         dc_inv_req, dc_inv_ack;      // icbi, from the data cache to the i
 logic         dc_inv_ack_q;
 logic [31:5]  dc_inv_addr;
 logic         dc_slow;                     // the data cache is busy beyond a lookup
+logic         dc_posted;                   // ... or has a posted write not yet in memory
 logic         ic_snoop_ack, dc_snoop_ack;
 logic         ic_inval, dc_inval;          // HID0[ICFI], [DCFI]
 
@@ -1058,7 +1059,10 @@ wire completion_dependency =
     ((ex_dec.ra_rd & (|completion_match(ex_dec.ra, 1'b1))) |
      (ex_use_b & (|completion_match(ex_dec.rb, 1'b1))) |
      (ex_dec.rc_rd & (|completion_match(ex_dec.rc, 1'b1))));
-assign ex_stall = completion_dependency | (mem_load & (fa_mem | fb_mem | fc_mem | ffa_mem | ffb_mem | ffc_mem));
+// sync waits until a posted store (one memory must get) is in memory
+wire ex_sync = (ex_insn[31:26] == 6'd31) & (ex_insn[10:1] == 10'd598);
+wire ex_stall_ops = completion_dependency | (mem_load & (fa_mem | fb_mem | fc_mem | ffa_mem | ffb_mem | ffc_mem)) |
+                    (ex_sync & dc_posted);
 
 // ---- integer unit ----------------------------------------------------------
 wire is_int = (ex_dec.unit == UNIT_ALU) | (ex_dec.unit == UNIT_MUL) | (ex_dec.unit == UNIT_DIV);
@@ -1116,6 +1120,14 @@ logic        fpu_fex;
 /* verilator lint_on UNUSEDSIGNAL */
 
 wire fp_trap_on = msr[MSR_FE0] | msr[MSR_FE1];   // FP enabled exceptions trap
+
+// mtfsf, mtfsfi, mtfsb0/1 and mcrfs with FP traps on: a second cycle in
+// EX, their FEX for the trap from a register (the operand's forwarding
+// and the FPSCR arithmetic off the redirect's path). With traps off (Mac
+// OS's normal state) they take one cycle, as before.
+logic fsys_held, fsys_fex_q;
+wire  fsys_chk = ex_valid & ex_dec.fpscr_wr & ~is_fpu & fp_trap_on;
+assign ex_stall = ex_stall_ops | (fsys_chk & ~fsys_held);
 
 DSPPC604_fpu #(.OPERAND_REG (FPU_OPERAND_REG)) fpu
 (
@@ -1411,7 +1423,7 @@ assign ex_abort = x_pre | x_sc | x_trap | x_align | x_ecx;   // the instruction 
 // completes, then traps
 // (an FP operation's FEX from the FPU's registered answer: with traps
 // enabled it answers from S_DONE, so the rounding is never in this path)
-wire x_fpen   = ~ex_abort & ex_dec.fpscr_wr & (is_fpu ? fpu_fex : fpscr_next[30]) & fp_trap_on;
+wire x_fpen   = ~ex_abort & ex_dec.fpscr_wr & (is_fpu ? fpu_fex : fsys_fex_q) & fp_trap_on;
 assign ex_exc = ex_abort | x_fpen;
 
 logic [31:0] exc_info;      // the cause bits of SRR1
@@ -1576,6 +1588,12 @@ wire [63:0] ex_wdata  = ~ex_dec.mem_fp   ? {32'd0, op_c} :
 wire sys_reg_write = is_sys & ((ex_dec.sys == SYS_MTSR) | (ex_dec.sys == SYS_MTSPR));
 wire sys_write_commit = ex_valid & sys_reg_write & ~ex_stall & mem_capacity &
                         ex_order_ready & ~mem_fault & ~ex_abort;
+
+always_ff @(posedge clk) begin
+	fsys_fex_q <= fpscr_next[30];
+	if (ex_leave | id_to_ex | reset) fsys_held <= 1'b0;
+	else if (fsys_chk & ~ex_stall_ops) fsys_held <= 1'b1;
+end
 
 always_ff @(posedge clk) begin
 	if (ex_leave) ex_valid <= 1'b0;
@@ -1922,6 +1940,7 @@ DSPPC604_cache #(.WRITABLE (0), .IDXW (IC_IDXW)) icache
 	.rvalid_wide (),
 	.rdata_next (),
 	.slow       (),
+	.posted     (),
 	.inv_req    (),
 	.inv_addr   (),
 	/* verilator lint_on PINCONNECTEMPTY */
@@ -1963,6 +1982,7 @@ DSPPC604_cache #(.WRITABLE (1), .LATE_ANSWER (0), .IDXW (DC_IDXW)) dcache
 	.rvalid_wide (db_rwide),
 	.rdata_next (db_rdata_next),
 	.slow       (dc_slow),
+	.posted     (dc_posted),
 	.inv_req    (dc_inv_req),
 	.inv_addr   (dc_inv_addr),
 	.inv_ack    (dc_inv_ack),
