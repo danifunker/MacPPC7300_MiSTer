@@ -396,6 +396,10 @@ wire mem_room_pass = ~mo_valid & mem_valid & mem_mem & mu_final & ~mem_resv_set 
 wire mem_room = mem_room_free | (mem_room_pass & ex_pass_ok);
 wire ex_regular_done = ~ex_stall & (is_int ? int_resp : is_fpu ? fpu_resp : 1'b1);
 wire ex_ready  = ~ex_valid | (ex_regular_done & mem_room & ex_order_ready);
+// EX's payload goes into MEM's newer slot (decided before the abort and
+// fault checks; mem_valid follows those), or a queued completion does
+wire mem_payload_take = ex_valid & ex_regular_done & mem_room & ex_order_ready;
+wire mem_take = mem_payload_take | completion_pop;
 
 // ---- the buses as the pipeline sees them: through the MMU -------------------
 logic        if_req;
@@ -1070,24 +1074,43 @@ end
 // ---- operands, forwarded from MEM and WB ------------------------------------
 wire ex_use_b = ex_dec.rb_rd & ~ex_dec.b_imm;
 
-wire fa_mem = mem_valid & mem_rd_wr & ex_dec.ra_rd & (mem_rd == {1'b0, ex_dec.ra});
-wire fb_mem = mem_valid & mem_rd_wr & ex_use_b     & (mem_rd == {1'b0, ex_dec.rb});
-wire fc_mem = mem_valid & mem_rd_wr & ex_dec.rc_rd & (mem_rd == {1'b0, ex_dec.rc});
-wire fa_wb  = wb_valid  & wb_rd_wr  & ex_dec.ra_rd & (wb_rd == {1'b0, ex_dec.ra});
-wire fb_wb  = wb_valid  & wb_rd_wr  & ex_use_b     & (wb_rd == {1'b0, ex_dec.rb});
-wire fc_wb  = wb_valid  & wb_rd_wr  & ex_dec.rc_rd & (wb_rd == {1'b0, ex_dec.rc});
+// Which operand comes from MEM's newer slot or from WB is decided a cycle
+// ahead, from what those will hold (fwd_*, below), so that the operand
+// multiplexers are driven by registers and not by register-number compares
+// (they were in front of the adder, the cache's address and the MMU's
+// compare). Checked in simulation against the compares (*_c).
+logic fq_a_mem, fq_b_mem, fq_c_mem, fq_fa_mem, fq_fb_mem, fq_fc_mem;
+logic fq_a_wb, fq_b_wb, fq_c_wb, fq_fa_wb, fq_fb_wb, fq_fc_wb;
+wire fa_mem = fq_a_mem;
+wire fb_mem = fq_b_mem;
+wire fc_mem = fq_c_mem;
+wire fa_wb  = fq_a_wb;
+wire fb_wb  = fq_b_wb;
+wire fc_wb  = fq_c_wb;
+wire fa_mem_c = mem_valid & mem_rd_wr & ex_dec.ra_rd & (mem_rd == {1'b0, ex_dec.ra});
+wire fb_mem_c = mem_valid & mem_rd_wr & ex_use_b     & (mem_rd == {1'b0, ex_dec.rb});
+wire fc_mem_c = mem_valid & mem_rd_wr & ex_dec.rc_rd & (mem_rd == {1'b0, ex_dec.rc});
+wire fa_wb_c  = wb_valid  & wb_rd_wr  & ex_dec.ra_rd & (wb_rd == {1'b0, ex_dec.ra});
+wire fb_wb_c  = wb_valid  & wb_rd_wr  & ex_use_b     & (wb_rd == {1'b0, ex_dec.rb});
+wire fc_wb_c  = wb_valid  & wb_rd_wr  & ex_dec.rc_rd & (wb_rd == {1'b0, ex_dec.rc});
 
 wire [31:0] op_a = fa_mem ? mem_result[31:0] : fa_wb ? wb_result[31:0] : ex_a;
 wire [31:0] op_b = fb_mem ? mem_result[31:0] : fb_wb ? wb_result[31:0] : ex_b;
 wire [31:0] op_c = fc_mem ? mem_result[31:0] : fc_wb ? wb_result[31:0] : ex_c;
 
 // the same for the floating-point operands
-wire ffa_mem = mem_valid & mem_rd_wr & ex_dec.fra_rd & (mem_rd == {2'b10, ex_dec.fra});
-wire ffb_mem = mem_valid & mem_rd_wr & ex_dec.frb_rd & (mem_rd == {2'b10, ex_dec.frb});
-wire ffc_mem = mem_valid & mem_rd_wr & ex_dec.frc_rd & (mem_rd == {2'b10, ex_dec.frc});
-wire ffa_wb  = wb_valid  & wb_rd_wr  & ex_dec.fra_rd & (wb_rd == {2'b10, ex_dec.fra});
-wire ffb_wb  = wb_valid  & wb_rd_wr  & ex_dec.frb_rd & (wb_rd == {2'b10, ex_dec.frb});
-wire ffc_wb  = wb_valid  & wb_rd_wr  & ex_dec.frc_rd & (wb_rd == {2'b10, ex_dec.frc});
+wire ffa_mem = fq_fa_mem;
+wire ffb_mem = fq_fb_mem;
+wire ffc_mem = fq_fc_mem;
+wire ffa_wb  = fq_fa_wb;
+wire ffb_wb  = fq_fb_wb;
+wire ffc_wb  = fq_fc_wb;
+wire ffa_mem_c = mem_valid & mem_rd_wr & ex_dec.fra_rd & (mem_rd == {2'b10, ex_dec.fra});
+wire ffb_mem_c = mem_valid & mem_rd_wr & ex_dec.frb_rd & (mem_rd == {2'b10, ex_dec.frb});
+wire ffc_mem_c = mem_valid & mem_rd_wr & ex_dec.frc_rd & (mem_rd == {2'b10, ex_dec.frc});
+wire ffa_wb_c  = wb_valid  & wb_rd_wr  & ex_dec.fra_rd & (wb_rd == {2'b10, ex_dec.fra});
+wire ffb_wb_c  = wb_valid  & wb_rd_wr  & ex_dec.frb_rd & (wb_rd == {2'b10, ex_dec.frb});
+wire ffc_wb_c  = wb_valid  & wb_rd_wr  & ex_dec.frc_rd & (wb_rd == {2'b10, ex_dec.frc});
 
 wire [63:0] fop_a = ffa_mem ? mem_result : ffa_wb ? wb_value : ex_fa;
 wire [63:0] fop_b = ffb_mem ? mem_result : ffb_wb ? wb_value : ex_fb;
@@ -1640,6 +1663,48 @@ wire [63:0] ex_result = is_fpu ? fpu_result :
 wire [6:0]  ex_rd     = ex_dec.frd_wr ? {2'b10, ex_dec.frd} : {1'b0, ex_dec.rd};
 wire        ex_rd_wr  = ex_dec.rd_wr | (ex_dec.frd_wr & (~is_fpu | fpu_result_we));
 
+// ---- the forwarding selects for the next cycle -----------------------------
+// What MEM's newer slot and WB will hold: an operation taken into MEM now
+// (EX's, or a queued completion's), else the newer slot unless it leaves;
+// WB gets the oldest MEM operation if it leaves. The operation in EX next
+// cycle is ID's if it moves, else EX's own. (When neither, EX is empty or
+// cancelled and the selects are unused.)
+wire       fwd_take_v  = (ex_leave & ~ex_abort) | completion_pop;
+wire [6:0] fwd_take_rd = completion_pop ? {1'b0, completion_queue[completion_head].rd} : ex_rd;
+wire       fwd_take_wr = completion_pop | ex_rd_wr;
+wire       fwd_mem_v   = mem_take ? (fwd_take_v & fwd_take_wr) : (mem_valid & mem_rd_wr & ~(mem_leave & ~mo_valid));
+wire [6:0] fwd_mem_rd  = mem_take ? fwd_take_rd : mem_rd;
+wire       fwd_wb_v    = mem_leave & ~mem_fault & (mo_valid ? mo_rd_wr : mem_rd_wr);
+wire [6:0] fwd_wb_rd   = mo_valid ? mo_rd : mem_rd;
+dec_t fwd_dec;
+assign fwd_dec = id_to_ex ? id_uop : ex_dec;
+wire fwd_use_b = fwd_dec.rb_rd & ~fwd_dec.b_imm;
+always_ff @(posedge clk) begin
+	fq_a_mem  <= fwd_mem_v & fwd_dec.ra_rd  & (fwd_mem_rd == {1'b0, fwd_dec.ra});
+	fq_b_mem  <= fwd_mem_v & fwd_use_b      & (fwd_mem_rd == {1'b0, fwd_dec.rb});
+	fq_c_mem  <= fwd_mem_v & fwd_dec.rc_rd  & (fwd_mem_rd == {1'b0, fwd_dec.rc});
+	fq_fa_mem <= fwd_mem_v & fwd_dec.fra_rd & (fwd_mem_rd == {2'b10, fwd_dec.fra});
+	fq_fb_mem <= fwd_mem_v & fwd_dec.frb_rd & (fwd_mem_rd == {2'b10, fwd_dec.frb});
+	fq_fc_mem <= fwd_mem_v & fwd_dec.frc_rd & (fwd_mem_rd == {2'b10, fwd_dec.frc});
+	fq_a_wb   <= fwd_wb_v  & fwd_dec.ra_rd  & (fwd_wb_rd == {1'b0, fwd_dec.ra});
+	fq_b_wb   <= fwd_wb_v  & fwd_use_b      & (fwd_wb_rd == {1'b0, fwd_dec.rb});
+	fq_c_wb   <= fwd_wb_v  & fwd_dec.rc_rd  & (fwd_wb_rd == {1'b0, fwd_dec.rc});
+	fq_fa_wb  <= fwd_wb_v  & fwd_dec.fra_rd & (fwd_wb_rd == {2'b10, fwd_dec.fra});
+	fq_fb_wb  <= fwd_wb_v  & fwd_dec.frb_rd & (fwd_wb_rd == {2'b10, fwd_dec.frb});
+	fq_fc_wb  <= fwd_wb_v  & fwd_dec.frc_rd & (fwd_wb_rd == {2'b10, fwd_dec.frc});
+end
+
+/* synthesis translate_off */
+always_ff @(posedge clk) begin
+	if (~reset & ex_valid)
+		if ({fq_a_mem, fq_b_mem, fq_c_mem, fq_fa_mem, fq_fb_mem, fq_fc_mem,
+		     fq_a_wb, fq_b_wb, fq_c_wb, fq_fa_wb, fq_fb_wb, fq_fc_wb} !=
+		    {fa_mem_c, fb_mem_c, fc_mem_c, ffa_mem_c, ffb_mem_c, ffc_mem_c,
+		     fa_wb_c, fb_wb_c, fc_wb_c, ffa_wb_c, ffb_wb_c, ffc_wb_c})
+			$fatal(1, "registered forwarding select differs from the compare");
+end
+/* synthesis translate_on */
+
 // A forwarded LFS still carries its original single in WB. STFS can use that
 // word directly: converting to double and back preserves every single bit.
 // Keep the conversion input free of that WB path so synthesis can remove the
@@ -2110,12 +2175,10 @@ assign dm_ack    = mem_ack & mem_busy & ~mem_owner_i;
 // older MEM operation retains its payload; queued completions have priority
 // through ex_order_ready. This separates the wide capture enables from the
 // late commit/descriptor controls without adding a pipeline cycle.
-wire mem_payload_take = ex_valid & ex_regular_done & mem_room & ex_order_ready;
-// Each take moves the newer slot to the older; it stays valid there if it
-// is an access that has not answered (the take had room: the older slot
-// was empty). Room and the take are registered decisions; only the two
-// valid bits wait for the answer.
-wire mem_take = mem_payload_take | completion_pop;
+// Each take (mem_take, above) moves the newer slot to the older; it stays
+// valid there if it is an access that has not answered (the take had room:
+// the older slot was empty). Room and the take are registered decisions;
+// only the two valid bits wait for the answer.
 always_ff @(posedge clk) begin
 	if (mem_leave) begin
 		if (mo_valid) mo_valid <= 1'b0;
