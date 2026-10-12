@@ -56,3 +56,30 @@ Both overclocks boot Mac OS and finish every test; 90 MHz showed no
 "clock not set" alert this time (it did with the build of 2026-10-11).
 Real 7300 reference (realspeedometer.png): CPU 7.800, Mix 28.058, FPU 14.329,
 Color 3.135.
+
+### 100 MHz (build 3e124ef: + I/D port select, BTB 1024)
+
+Slow 100C: 70 MHz -2.22, 90 -5.15, 100 -6.38 ns. On the board at 100 MHz
+(L2 off) Mac OS boots and Speedometer finishes every test (the 2026-10-11
+build gave a black screen at 100):
+
+| | 100 MHz |
+|---|---:|
+| CPU | 4.533 |
+| Benchmark Mix | 16.606 |
+| KWhetstones (mix) | 31,945 |
+| Dhrystones | 93,084 |
+| FPU average | 7.097 |
+| Color average | 1.875 |
+
+### MacBench 4 (6100/60 = 100), L2 on
+
+| | 70 MHz (2026-10-11) | 90 MHz (9b65cef) | real 7300 |
+|---|---:|---:|---:|
+| Processor | | 148 | 271 |
+| Floating Point | 98 | 126 | 214 |
+| Graphics | 100 | 126 (about 16 min, completes) | 221 |
+| Disk | | | 365 |
+| CD-ROM | | | 693 |
+
+At 90 MHz the core scores 55-59 % of the real 7300 (macbenchresults copy.png).
