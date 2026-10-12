@@ -170,8 +170,14 @@ assign dbus_be    = bus_touch ? 4'b0000 : second ? bewin[3:0] : bewin[7:4];
 assign dbus_wdata = (state == S_RSP1) ? wwin[31:0] : wwin[63:32];
 // A wide request never crosses a cache line or a translation page. The
 // cache declines it for uncached accesses; those retain the word fallback.
-assign dbus_wide = ~second & bus_nbytes[3] & ~bus_touch &
-                   (bus_ea[1:0] == 2'd0) & (bus_ea[4:2] != 3'd7);
+// An aligned double asks for two words; so does a load whose bytes cross
+// into the next word (the cache's read gives the word and the next anyway),
+// so that it takes one access, not two. (A store crossing a word still
+// writes each word with its own byte enables.)
+wire [2:0] bus_last = {1'b0, bus_ea[1:0]} + bus_n - 3'd1;
+wire       bus_we   = saved ? c.we : we;
+assign dbus_wide = ~second & ~bus_touch & (bus_ea[4:2] != 3'd7) &
+                   (bus_nbytes[3] ? (bus_ea[1:0] == 2'd0) : (~bus_we & bus_last[2]));
 assign dbus_wdata_next = wwin[31:0];
 
 // ---- load: bytes to register value ------------------------------------------
