@@ -374,6 +374,11 @@ logic [11:0] exc_vector;
 logic [31:0] fpscr_next;
 logic        mem_fault;     // MEM exception: DSI, or interrupt before the first grant
 logic        mem_dsi, mem_irq;
+// the external interrupt, a clock after the machine raises it: its source
+// (Grand Central's events and masks) is then not in front of EX's
+// exception decision and so of the units' starts
+logic        irq_in;
+always_ff @(posedge clk) irq_in <= ext_irq & ~reset;
 
 wire id_ready  = ~id_valid | id_leave;
 // Admission uses descriptor capacity, independently of late abort/fault
@@ -443,6 +448,7 @@ logic         dc_inv_ack_q;
 logic [31:5]  dc_inv_addr;
 logic         dc_slow;                     // the data cache is busy beyond a lookup
 logic         dc_posted;                   // ... or has a posted write not yet in memory
+logic         dc_wide_sure;                // the access it is answering is wide and will be answered wide
 logic         ic_snoop_ack, dc_snoop_ack;
 logic         ic_inval, dc_inval;          // HID0[ICFI], [DCFI]
 
@@ -1342,14 +1348,19 @@ assign ex_pass_ok = ~is_sys | (ex_dec.br != BR_NONE) | (ex_dec.sys == SYS_MFSPR)
                     (ex_dec.sys == SYS_MFMSR) | (ex_dec.sys == SYS_MFSR) | (ex_dec.sys == SYS_STWCX_CR);
 wire [31:0] next_pc   = is_rfi ? {srr0[31:2], 2'b00} : br_taken ? br_target : ex_pc4;
 wire [31:0] vec_base  = {{12{msr[MSR_IP]}}, 8'h00, 12'h000};
-assign redir_pc = mem_fault ? (vec_base | (mem_irq ? (ext_irq ? 32'h500 : 32'h900) :
+assign redir_pc = mem_fault ? (vec_base | (mem_irq ? (irq_in ? 32'h500 : 32'h900) :
                                                          (mu_falign ? 32'h600 : 32'h300))) :
                   ex_exc    ? (vec_base | {20'd0, exc_vector}) : next_pc;
 wire   ex_final = ex_leave & ~ex_exc & ex_last;
 assign ras_push = ex_final & br_taken & ex_dec.br_lk;
 assign ras_pop = ex_final & br_taken & (ex_dec.br == BR_LR) & ~ex_dec.br_lk & (ras_ccount != 4'd0);
+// (the fetch went elsewhere: both candidates compared with the prediction
+// beside the branch decision, which then only selects; rfi redirects anyway)
+wire        tgt_miss  = (br_target != ex_pred);
+wire        seq_miss  = (ex_pc4 != ex_pred);
+wire        pc_miss   = br_taken ? tgt_miss : seq_miss;
 assign redir    = mem_fault |
-                  (ex_leave & (ex_exc | (ex_last & (is_rfi | is_mtmsr | is_xlate | (next_pc != ex_pred)))));
+                  (ex_leave & (ex_exc | (ex_last & (is_rfi | is_mtmsr | is_xlate | pc_miss))));
 
 // Teach the branch target buffer: a taken branch is entered or strengthened,
 // one that was not taken is weakened, and an entry that fired for something
@@ -1442,8 +1453,8 @@ wire [3:0] sr_idx = ex_dec.rb_rd ? op_b[31:28] : ex_insn[19:16];
 // ---- exceptions -------------------------------------------------------------
 
 // conditions that do not need the instruction to execute
-wire irq_ext  = ex_first & msr[MSR_EE] & ext_irq;
-wire irq_dec  = ex_first & msr[MSR_EE] & dec_pending & ~ext_irq;
+wire irq_ext  = ex_first & msr[MSR_EE] & irq_in;
+wire irq_dec  = ex_first & msr[MSR_EE] & dec_pending & ~irq_in;
 wire x_isi    = ex_isi;
 wire fpe_pend = ex_first & fpscr[30] & fp_trap_on;      // FEX was already set when traps were enabled
 // an SPR the 604 does not have is an illegal instruction in either mode
@@ -1851,7 +1862,7 @@ always_ff @(posedge clk) begin
 			dar   <= mu_dar;
 			dsisr <= mu_falign ? align_info(mem_insn) : mu_dsisr;
 		end
-		if (mem_irq & ~ext_irq) dec_pending <= 1'b0;
+		if (mem_irq & ~irq_in) dec_pending <= 1'b0;
 	end
 
 	if (reset) begin
@@ -1915,7 +1926,7 @@ DSPPC604_mem_unit mem_unit
 	.dbus_wide   (mu_wide),
 	.dbus_wdata_next (mu_wdata_next),
 	.dbus_gnt    (mu_gnt),
-	.dbus_sure   (db_wide & ~db_ci & hid0[14] & ~hid0[12] & ~(db_we & db_wt)),   // HID0[DCE], [DLOCK]
+	.dbus_sure   (dc_wide_sure),
 	.dbus_rvalid (mu_rvalid),
 	.dbus_fault  (mu_bfault),
 	.dbus_rdata  (mu_bus_rdata),
@@ -1932,7 +1943,7 @@ assign mu_accept = mu_valid & mu_ready;
 // newer's (the only one) at its answer, or now if it is no access. An
 // access in the older slot has had its last grant: it is not interrupted
 // and cannot fault.
-assign mem_irq = ~mo_valid & mem_valid & mem_first & mu_pending & msr[MSR_EE] & (ext_irq | dec_pending);
+assign mem_irq = ~mo_valid & mem_valid & mem_first & mu_pending & msr[MSR_EE] & (irq_in | dec_pending);
 assign mem_leave = mo_valid ? mu_resp : mem_valid & (~mem_mem | mu_resp | mem_irq);
 assign mem_dsi = ~mo_valid & mem_valid & mu_resp & mu_fault;
 assign mem_fault = mem_dsi | mem_irq;
@@ -2085,6 +2096,7 @@ DSPPC604_cache #(.WRITABLE (0), .IDXW (IC_IDXW)) icache
 	/* verilator lint_off PINCONNECTEMPTY */
 	.rvalid_wide (),
 	.rdata_next (),
+	.wide_sure  (),
 	.slow       (),
 	.posted     (),
 	.inv_req    (),
@@ -2127,6 +2139,7 @@ DSPPC604_cache #(.WRITABLE (1), .LATE_ANSWER (0), .IDXW (DC_IDXW)) dcache
 	.rdata      (db_rdata),
 	.rvalid_wide (db_rwide),
 	.rdata_next (db_rdata_next),
+	.wide_sure  (dc_wide_sure),
 	.slow       (dc_slow),
 	.posted     (dc_posted),
 	.inv_req    (dc_inv_req),

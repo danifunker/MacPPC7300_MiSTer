@@ -73,6 +73,7 @@ module DSPPC604_cache
 	output logic [31:0] rdata,
 	output logic        rvalid_wide,
 	output logic [31:0] rdata_next,
+	output logic        wide_sure,           // the request in hand (S_LOOK on) is wide and will be answered wide
 	output logic        slow,                // busy beyond a lookup: a miss, a write-back, a snoop, a sweep
 	output logic        posted,              // a posted write has not reached memory yet (sync waits)
 
@@ -191,7 +192,8 @@ typedef enum logic [3:0] {
 	S_ICBI,      // waiting for the other side
 	S_SNOOP,     // a snoop: the set is out
 	S_PWAIT,     // the memory port is wanted while a posted write drains: look again after it
-	S_WBREAD     // reading the line to write back, two words a cycle
+	S_WBREAD,    // reading the line to write back, two words a cycle
+	S_UANS       // answering an uncached word from a register (its data came from the memory port)
 } state_t;
 
 state_t      state;
@@ -217,6 +219,7 @@ logic        r_snoop_we;
 logic [1:0]  r_way;          // the way chosen for a write-back or fill
 logic        r_after_wb;     // the write-back is followed by a fill
 logic [255:0] wb_data;
+logic [31:0] unc_data;       // an uncached word read, answered from here in S_UANS
 logic [2:0]  wb_slot;        // S_WBREAD: the slot read at the end of this cycle (4: done)
 logic [TAGW-1:0] wb_tag;
 logic        inval_pend;
@@ -372,15 +375,21 @@ always_comb for (int j = 0; j < 4; j++) st_mask[8*j +: 8] = {8{r_be[j]}};
 wire [31:0] st_word = (hit_word & ~st_mask) | (r_wdata & st_mask);
 wire [7:0]  st_wwe  = 8'd1 << (3'd7 - r_word);
 wire wide_hit = r_wide & (r_word != 3'd7);
+// A wide word request (no snoop) is answered wide when it is cached: not
+// cache-inhibited, the cache on and not locked, and not a write-through
+// store (which memory takes a word at a time). A miss is filled and looked
+// at again, then answered wide. From the request's registers only.
+assign wide_sure = WRITABLE & k_word & wide_hit & ~r_ci & enable & ~lock & ~(r_we & r_wt) & ~r_snoop;
 wire [7:0] st_wwe_next = 8'd1 << (3'd6 - r_word);
 
 // A cached word hit can admit the next request. Writes to the same set are
 // covered by forwarding; a write-through store still waits for memory.
 wire wr_sclash = wr_pend & (snoop_addr[IDXW+4:5] == wr_idx_q);
 wire word_hit = (state == S_LOOK) & k_word & hit & ~unc & (~r_we | ~r_wt) & ~r_snoop;
-wire can_take = ((state == S_IDLE) | word_hit) & ~snoop_req & ~inval_all & ~inval_pend;
+// (an uncached word's answer from its register takes the next request too)
+wire can_take = ((state == S_IDLE) | word_hit | (state == S_UANS)) & ~snoop_req & ~inval_all & ~inval_pend;
 assign gnt = can_take & req;
-wire payload_take = (state == S_IDLE) | word_hit;
+wire payload_take = (state == S_IDLE) | word_hit | ((state == S_UANS) & ~snoop_req);
 wire payload_snoop = (state == S_IDLE) & snoop_req;   // a snoop's registers instead (it wins, when it goes)
 assign slow = (state != S_IDLE) & (state != S_LOOK);
 
@@ -419,9 +428,9 @@ always_comb begin
 	// Read the candidate set even if it is not granted. Only a granted
 	// request consumes that read; preserve a dirty victim before replacing it.
 	rd_idx    = (state == S_IDLE) ? (snoop_req ? snoop_addr[IDXW+4:5] : addr[IDXW+4:5]) :
-	            (state == S_LOOK) ? addr[IDXW+4:5] : r_idx;
+	            ((state == S_LOOK) | (state == S_UANS)) ? addr[IDXW+4:5] : r_idx;
 	rd_word   = (state == S_IDLE) ? (snoop_req ? 3'd0 : addr[4:2]) :
-	            (state == S_LOOK) ? addr[4:2] : r_word;
+	            ((state == S_LOOK) | (state == S_UANS)) ? addr[4:2] : r_word;
 	// the word and the next: word k is the odd RAM's slot k/2 if k is odd,
 	// else the even RAM's; the next one is the other RAM's, slot (k+1)/2 in
 	// the even one (a wide access never starts at word 7)
@@ -495,10 +504,14 @@ always_comb begin
 		mem_we    = r_we;
 		mem_line  = 1'b0;
 		mem_wdata = {224'd0, r_wdata};
-		if (mem_ack) begin
-			ans_now = 1'b1;
-			ans_data  = mem_rdata[31:0];
-		end
+		// (answered next cycle, from unc_data: the memory port's data comes
+		// across the clock crossing and the machine's map, which is not to be
+		// in front of the load's bytes and WB)
+	end
+
+	S_UANS: begin
+		ans_now  = 1'b1;
+		ans_data = unc_data;
 	end
 
 	S_WB: if (WRITABLE) begin                        // (never entered by a read-only cache)
@@ -690,7 +703,11 @@ always_ff @(posedge clk) begin
 		else state <= S_IDLE;
 	end
 
-	S_UNC: if (mem_ack) state <= S_IDLE;
+	S_UNC: if (mem_ack) begin
+		unc_data <= mem_rdata[31:0];
+		state    <= S_UANS;
+	end
+	S_UANS: state <= gnt ? S_LOOK : S_IDLE;
 	S_PWAIT: if (~post_v) state <= S_LOOK;
 	S_WBREAD: if (wb_slot == 3'd4) state <= S_WB;
 

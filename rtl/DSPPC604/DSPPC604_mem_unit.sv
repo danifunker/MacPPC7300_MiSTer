@@ -67,7 +67,7 @@ module DSPPC604_mem_unit
 	output logic        dbus_wide,
 	output logic [31:0] dbus_wdata_next,
 	input  logic        dbus_gnt,
-	input  logic        dbus_sure,   // with dbus_gnt: a wide request the cache will answer wide
+	input  logic        dbus_sure,   // while answering (S_RSP0): the access is wide and the cache will answer it wide
 	input  logic        dbus_rvalid,
 	input  logic        dbus_fault,
 	input  logic [31:0] dbus_rdata,
@@ -108,7 +108,6 @@ typedef struct packed {
 // cp, qv and the state do.
 (* ramstyle = "logic" *) desc_t desc [2];
 logic        cp, qv;
-logic        sure_q;     // the access under way was granted wide and will be answered wide
 desc_t       c;
 assign c = desc[cp];
 
@@ -156,7 +155,7 @@ wire [7:0]  bewin = bus_nbytes[3] ? 8'hFF : (ones >> bus_ea[1:0]);
 // the accepted operation waits in MEM with its saved descriptor.
 assign req_ready  = ~qv;
 assign pending_ungranted = (state == S_HOLD0);
-assign final_q    = ((state == S_RSP0) & (~two_words | sure_q)) | (state == S_RSP1);
+assign final_q    = ((state == S_RSP0) & (~two_words | dbus_sure)) | (state == S_RSP1);
 assign dbus_req   = ~reset & ((req_valid & first_slot) | (state == S_HOLD0) | (state == S_REQ1));
 assign dbus_we    = saved ? c.we : we;
 assign dbus_kind  = saved ? c.kind : kind;
@@ -245,7 +244,6 @@ always_ff @(posedge clk) begin
 		desc[wi].ljust       <= ljust;
 		desc[wi].wdata       <= wdata;
 	end
-	if (dbus_req & dbus_gnt & ~second) sure_q <= dbus_sure;
 	if (dbus_rvalid & (state == S_RSP0)) word0_q <= dbus_rdata;
 
 	case (state)
@@ -280,7 +278,7 @@ end
 /* synthesis translate_off */
 always_ff @(posedge clk) begin
 	if (~reset) begin
-		if ((state == S_RSP0) & sure_q & two_words & dbus_rvalid & ~dbus_rwide & ~dbus_fault)
+		if ((state == S_RSP0) & dbus_sure & two_words & dbus_rvalid & ~dbus_rwide & ~dbus_fault)
 			$fatal(1, "a wide access said to be answered wide was not");
 		if (req_valid & qv) $fatal(1, "a third memory access was offered");
 	end
