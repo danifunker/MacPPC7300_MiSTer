@@ -757,7 +757,8 @@ function automatic seq_t seq_of(input logic [31:0] i);
 	else if (i[31:26] == 6'd46 || i[31:26] == 6'd47) seq_of = SEQ_MULTI;
 	else if (i[31] & i[26] & (i[31:26] <= 6'd55) & (i[31:26] != 6'd47)) seq_of = SEQ_UPDATE;
 endfunction
-wire seq_t id_seqk = seq_of(id_insn);
+seq_t id_seqk;
+assign id_seqk = seq_of(id_insn);
 
 logic [5:0] seq_next_ra, seq_next_rc;
 DSPPC604_seq seq
