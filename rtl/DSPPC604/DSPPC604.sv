@@ -316,6 +316,21 @@ logic        mem_fp;
 logic        mem_fsgl;
 logic [63:0] mem_sdata;     // the value a store writes
 logic [31:0] mem_t_cr, mem_t_xer, mem_t_lr, mem_t_ctr, mem_t_fpscr, mem_t_msr;
+logic        mem_resv_set;  // the access in MEM is lwarx's
+logic        mem_resv_clr;  // ... stwcx.'s, and was made
+// MEM's older slot: an access still to be answered, which a later
+// instruction has passed (it can no longer fault: the memory unit's
+// final_q). The newer one stays in mem_*, so forwarding reads one place.
+logic        mo_valid;
+logic [31:0] mo_pc;
+logic [31:0] mo_insn;
+logic        mo_last;
+logic [6:0]  mo_rd;
+logic        mo_rd_wr;
+logic        mo_load;
+logic        mo_fp;
+logic        mo_fsgl;
+logic [31:0] mo_t_cr, mo_t_xer, mo_t_lr, mo_t_ctr, mo_t_fpscr, mo_t_msr;
 
 // WB
 logic        wb_valid;
@@ -345,7 +360,8 @@ logic        id_leave;      // ... and it was the instruction's last
 logic        ex_leave;
 logic        mem_leave;
 logic        mu_accept;
-logic        mu_valid, mu_ready, mu_pending;
+logic        mu_valid, mu_ready, mu_pending, mu_final;
+logic        ex_pass_ok;    // EX's instruction may complete ahead of an older access's answer
 logic        ex_mem_access;
 logic        ex_stall;
 logic        ex_done;
@@ -367,11 +383,19 @@ wire id_ready  = ~id_valid | id_leave;
 // An interrupt cancels both stages; it need not create speculative capacity
 // for the younger ID operation. Use ordinary completion and MEM response
 // capacity here, leaving interrupt/exception entry on the commit controls.
-wire mem_capacity = ~mem_valid | ~(mem_load | mem_store) | mu_resp;
+//
+// Room in MEM comes from registers only, never from this cycle's cache
+// answer: MEM is empty, or holds an operation that leaves now (not an
+// access), or holds an access that has had its last grant (it cannot
+// fault or be interrupted any more), which the next instruction then
+// passes into MEM's second slot. lwarx and stwcx. are not passed, nor is
+// anything passed by a system instruction other than the plain ones.
+wire mem_mem = mem_load | mem_store;
+wire mem_room_free = ~mo_valid & (~mem_valid | ~mem_mem);
+wire mem_room_pass = ~mo_valid & mem_valid & mem_mem & mu_final & ~mem_resv_set & ~mem_resv_clr;
+wire mem_room = mem_room_free | (mem_room_pass & ex_pass_ok);
 wire ex_regular_done = ~ex_stall & (is_int ? int_resp : is_fpu ? fpu_resp : 1'b1);
-wire ex_ready  = ~ex_valid | (ex_regular_done & mem_capacity & ex_order_ready &
-                             (~ex_mem_access | mu_ready));
-wire mem_ready = ~mem_valid | mem_leave;
+wire ex_ready  = ~ex_valid | (ex_regular_done & mem_room & ex_order_ready);
 
 // ---- the buses as the pipeline sees them: through the MMU -------------------
 logic        if_req;
@@ -867,6 +891,8 @@ function automatic logic [32:0] completion_read(input logic [5:0] idx, input log
 	logic [31:0] queued_value;
 	begin
 		value = {1'b0, rf_value};
+		if (mo_valid & mo_rd_wr & (mo_rd == {1'b0, idx}))
+			value = {1'b1, rf_value};
 		if (mem_valid & mem_rd_wr & (mem_rd == {1'b0, idx}))
 			value = {mem_load, mem_result[31:0]};
 		writer_mask = completion_match(idx, 1'b1);
@@ -911,7 +937,7 @@ DSPPC604_alu completion_alu
 );
 assign completion_pop = (completion_older_count != 4'd0) &
                         ~(completion_exec_valid & (completion_exec_slot == completion_head)) &
-                        mem_ready & ~mem_fault & ~reset;
+                        (mem_room_free | mem_room_pass) & ~mem_fault & ~reset;
 always_ff @(posedge clk) begin
 	completion_exec_valid <= completion_push;
 	if (completion_exec_valid)
@@ -1077,6 +1103,16 @@ assign fcls_a  = ffa_mem ? mem_cls : ffa_wb ? wb_cls : fp_classify(ex_fa);
 assign fcls_b  = ffb_mem ? mem_cls : ffb_wb ? wb_cls : fp_classify(ex_fb);
 assign fcls_c  = ffc_mem ? mem_cls : ffc_wb ? wb_cls : fp_classify(ex_fc);
 
+// an older load passed in MEM: its data is not there until it reaches WB
+// (unless the newer operation in MEM writes the same register)
+wire mo_ld = mo_valid & mo_load & mo_rd_wr;
+wire mo_dep = mo_ld &
+    ((ex_dec.ra_rd & (mo_rd == {1'b0, ex_dec.ra}) & ~fa_mem) |
+     (ex_use_b     & (mo_rd == {1'b0, ex_dec.rb}) & ~fb_mem) |
+     (ex_dec.rc_rd & (mo_rd == {1'b0, ex_dec.rc}) & ~fc_mem) |
+     (ex_dec.fra_rd & (mo_rd == {2'b10, ex_dec.fra}) & ~ffa_mem) |
+     (ex_dec.frb_rd & (mo_rd == {2'b10, ex_dec.frb}) & ~ffb_mem) |
+     (ex_dec.frc_rd & (mo_rd == {2'b10, ex_dec.frc}) & ~ffc_mem));
 // a load's data is not there until it reaches WB
 wire completion_dependency =
     ((ex_dec.ra_rd & (|completion_match(ex_dec.ra, 1'b1))) |
@@ -1084,7 +1120,7 @@ wire completion_dependency =
      (ex_dec.rc_rd & (|completion_match(ex_dec.rc, 1'b1))));
 // sync waits until a posted store (one memory must get) is in memory
 wire ex_sync = (ex_insn[31:26] == 6'd31) & (ex_insn[10:1] == 10'd598);
-wire ex_stall_ops = completion_dependency | (mem_load & (fa_mem | fb_mem | fc_mem | ffa_mem | ffb_mem | ffc_mem)) |
+wire ex_stall_ops = completion_dependency | mo_dep | (mem_load & (fa_mem | fb_mem | fc_mem | ffa_mem | ffb_mem | ffc_mem)) |
                     (ex_sync & dc_posted);
 
 // ---- integer unit ----------------------------------------------------------
@@ -1118,7 +1154,7 @@ DSPPC604_int_unit int_unit
 	.ca_in      (xer[29]),
 	.so_in      (xer[31]),
 	.resp_valid (int_resp),
-	.resp_ready (mem_ready & ex_order_ready),
+	.resp_ready (mem_room & ex_order_ready),
 	.result     (int_result),
 	.sum        (int_sum),
 	.ca_out     (int_ca),
@@ -1169,7 +1205,7 @@ DSPPC604_fpu #(.OPERAND_REG (FPU_OPERAND_REG)) fpu
 	.cls_c      (fcls_c),
 	.fpscr_in   (fpscr),
 	.resp_valid (fpu_resp),
-	.resp_ready (mem_ready & ex_order_ready),
+	.resp_ready (mem_room & ex_order_ready),
 	.result     (fpu_result),
 	.result_we  (fpu_result_we),
 	.fpscr_out  (fpu_fpscr),
@@ -1234,8 +1270,7 @@ assign ex_done = x_pre | (~ex_stall & (is_int ? int_resp : is_fpu ? fpu_resp : 1
 // These outer guards already qualify mu_valid. For a non-aborted memory
 // operation, mu_ready is therefore sufficient here; using mu_accept repeats
 // the same completion/backpressure guards in the EX-leave timing cone.
-assign ex_leave = ex_valid & ex_done & mem_ready & ex_order_ready & ~mem_fault &
-                  (ex_abort | ~ex_mem_access | mu_ready);
+assign ex_leave = ex_valid & ex_done & mem_room & ex_order_ready & ~mem_fault;
 
 // ---- branch ----------------------------------------------------------------
 wire        is_br    = (ex_dec.br != BR_NONE);
@@ -1269,6 +1304,19 @@ wire        is_mtspr  = is_sys & (ex_dec.sys == SYS_MTSPR);
 wire        is_tlbie  = is_sys & (ex_dec.sys == SYS_TLBIE);
 wire        is_xlate  = is_tlbie | (is_sys & ((ex_dec.sys == SYS_MTSR) | (ex_dec.sys == SYS_ISYNC))) |
                         (is_mtspr & ((ex_dec.spr == 10'd25) | (ex_dec.spr[9:4] == 6'b100001) | (ex_dec.spr == 10'd1008)));
+// the system instructions that may pass an older access: branches, and
+// those that only move CR, XER, the FPSCR, an SPR without side effects or a
+// register (not MSR, translation, the caches' controls, sc, or sync and
+// the like)
+wire ex_spr_plain = (ex_dec.spr == 10'd1) | (ex_dec.spr == 10'd8) | (ex_dec.spr == 10'd9) |    // XER LR CTR
+                    (ex_dec.spr == 10'd22) | (ex_dec.spr == 10'd26) | (ex_dec.spr == 10'd27) | // DEC SRR0 SRR1
+                    (ex_dec.spr[9:2] == 8'b01000100);                                          // SPRG0-3
+assign ex_pass_ok = ~is_sys | (ex_dec.br != BR_NONE) | (ex_dec.sys == SYS_MFSPR) |
+                    (is_mtspr & ex_spr_plain) | (ex_dec.sys == SYS_CRLOG) | (ex_dec.sys == SYS_MCRF) |
+                    (ex_dec.sys == SYS_MFCR) | (ex_dec.sys == SYS_MTCRF) | (ex_dec.sys == SYS_MCRXR) |
+                    (ex_dec.sys == SYS_MFFS) | (ex_dec.sys == SYS_MTFSF) | (ex_dec.sys == SYS_MTFSFI) |
+                    (ex_dec.sys == SYS_MTFSB0) | (ex_dec.sys == SYS_MTFSB1) | (ex_dec.sys == SYS_MCRFS) |
+                    (ex_dec.sys == SYS_MFMSR) | (ex_dec.sys == SYS_MFSR) | (ex_dec.sys == SYS_STWCX_CR);
 wire [31:0] next_pc   = is_rfi ? {srr0[31:2], 2'b00} : br_taken ? br_target : ex_pc4;
 wire [31:0] vec_base  = {{12{msr[MSR_IP]}}, 8'h00, 12'h000};
 assign redir_pc = mem_fault ? (vec_base | (mem_irq ? (ext_irq ? 32'h500 : 32'h900) :
@@ -1497,12 +1545,13 @@ wire [31:0] msr_exc = (msr & 32'h00011040) | {31'd0, msr[16]};
 // lwarx completing in MEM at the same time counts.
 logic resv_valid;
 logic stwcx_ok;        // the last stwcx. found the reservation and stored
-logic mem_resv_set;    // the access in MEM is lwarx's
-logic mem_resv_clr;    // ... stwcx.'s, and was made
 
-wire  mem_done_ok = mem_leave & ~mem_fault;
+// (the older slot is never lwarx's or stwcx.'s: they are not passed)
+wire  mem_done_ok = mem_leave & ~mem_fault & ~mo_valid;
 wire  resv_next   = (resv_valid | (mem_done_ok & mem_resv_set)) & ~(mem_done_ok & mem_resv_clr);
-wire  stwcx_store = (ex_dec.resv == RESV_STORE) & resv_next;
+// stwcx. leaves EX only when MEM holds no lwarx or stwcx. (mem_room), so
+// the registered reservation is the one it sees
+wire  stwcx_store = (ex_dec.resv == RESV_STORE) & resv_valid;
 assign ex_mem_access = ex_dec.mem_rd | (ex_dec.mem_wr & ((ex_dec.resv != RESV_STORE) | stwcx_store));
 
 logic [31:0] cr_next;
@@ -1609,7 +1658,7 @@ wire [63:0] ex_wdata  = ~ex_dec.mem_fp   ? {32'd0, op_c} :
 // writes use ordinary capacity directly, then precise abort/fault/order
 // guards, instead of the generic EX-leave mux feeding wide register banks.
 wire sys_reg_write = is_sys & ((ex_dec.sys == SYS_MTSR) | (ex_dec.sys == SYS_MTSPR));
-wire sys_write_commit = ex_valid & sys_reg_write & ~ex_stall & mem_capacity &
+wire sys_write_commit = ex_valid & sys_reg_write & ~ex_stall & mem_room &
                         ex_order_ready & ~mem_fault & ~ex_abort;
 
 always_ff @(posedge clk) begin
@@ -1776,6 +1825,7 @@ DSPPC604_mem_unit mem_unit
 	.req_valid   (mu_valid),
 	.req_ready   (mu_ready),
 	.pending_ungranted (mu_pending),
+	.final_q     (mu_final),
 	.we          (ex_dec.mem_wr),
 	.kind        (ex_dec.cop),
 	.addr        (ex_ea),
@@ -1798,6 +1848,7 @@ DSPPC604_mem_unit mem_unit
 	.dbus_wide   (mu_wide),
 	.dbus_wdata_next (mu_wdata_next),
 	.dbus_gnt    (mu_gnt),
+	.dbus_sure   (db_wide & ~db_ci & hid0[14] & ~hid0[12] & ~(db_we & db_wt)),   // HID0[DCE], [DLOCK]
 	.dbus_rvalid (mu_rvalid),
 	.dbus_fault  (mu_bfault),
 	.dbus_rdata  (mu_bus_rdata),
@@ -1805,14 +1856,18 @@ DSPPC604_mem_unit mem_unit
 	.dbus_rdata_next (mu_rdata_next)
 );
 
-assign mu_valid = ex_valid & ex_done & mem_ready & ex_order_ready & ~mem_fault & ~ex_abort & ex_mem_access;
+assign mu_valid = ex_valid & ex_done & mem_room & ex_order_ready & ~mem_fault & ~ex_abort & ex_mem_access;
 assign mu_accept = mu_valid & mu_ready;
 // Before its first grant, a saved descriptor has no memory side effect.
 // Preserve the old interrupt boundary while decoupling EX admission from
 // translation/cache readiness. Later micro-ops finish before an interrupt.
-assign mem_irq = mem_valid & mem_first & mu_pending & msr[MSR_EE] & (ext_irq | dec_pending);
-assign mem_leave = mem_valid & (~(mem_load | mem_store) | mu_resp | mem_irq);
-assign mem_dsi = mem_valid & mu_resp & mu_fault;
+// MEM's oldest operation leaves: the older slot's at its answer; the
+// newer's (the only one) at its answer, or now if it is no access. An
+// access in the older slot has had its last grant: it is not interrupted
+// and cannot fault.
+assign mem_irq = ~mo_valid & mem_valid & mem_first & mu_pending & msr[MSR_EE] & (ext_irq | dec_pending);
+assign mem_leave = mo_valid ? mu_resp : mem_valid & (~mem_mem | mu_resp | mem_irq);
+assign mem_dsi = ~mo_valid & mem_valid & mu_resp & mu_fault;
 assign mem_fault = mem_dsi | mem_irq;
 
 DSPPC604_mmu #(.TLB_BITS (TLB_BITS), .CANDIDATE_D_ADDR (1'b1)) mmu
@@ -2052,9 +2107,35 @@ assign dm_ack    = mem_ack & mem_busy & ~mem_owner_i;
 // older MEM operation retains its payload; queued completions have priority
 // through ex_order_ready. This separates the wide capture enables from the
 // late commit/descriptor controls without adding a pipeline cycle.
-wire mem_payload_take = ex_valid & ex_regular_done & mem_capacity & ex_order_ready;
+wire mem_payload_take = ex_valid & ex_regular_done & mem_room & ex_order_ready;
+// Each take moves the newer slot to the older; it stays valid there if it
+// is an access that has not answered (the take had room: the older slot
+// was empty). Room and the take are registered decisions; only the two
+// valid bits wait for the answer.
+wire mem_take = mem_payload_take | completion_pop;
 always_ff @(posedge clk) begin
-	if (mem_leave) mem_valid <= 1'b0;
+	if (mem_leave) begin
+		if (mo_valid) mo_valid <= 1'b0;
+		else mem_valid <= 1'b0;
+	end
+	if (mem_take) begin
+		mo_valid <= mem_valid & ~mem_leave;
+		mem_valid <= 1'b0;
+		mo_pc <= mem_pc;
+		mo_insn <= mem_insn;
+		mo_last <= mem_last;
+		mo_rd <= mem_rd;
+		mo_rd_wr <= mem_rd_wr;
+		mo_load <= mem_load;
+		mo_fp <= mem_fp;
+		mo_fsgl <= mem_fsgl;
+		mo_t_cr <= mem_t_cr;
+		mo_t_xer <= mem_t_xer;
+		mo_t_lr <= mem_t_lr;
+		mo_t_ctr <= mem_t_ctr;
+		mo_t_fpscr <= mem_t_fpscr;
+		mo_t_msr <= mem_t_msr;
+	end
 	if (ex_leave & ~ex_abort) mem_valid <= 1'b1;
 	if (completion_pop) begin
 		mem_valid <= 1'b1;
@@ -2108,7 +2189,10 @@ always_ff @(posedge clk) begin
 		mem_t_msr   <= x_fpen ? msr_exc : msr_next;
 	end
 
-	if (reset) mem_valid <= 1'b0;
+	if (reset) begin
+		mem_valid <= 1'b0;
+		mo_valid <= 1'b0;
+	end
 end
 
 // ============================================================================
@@ -2117,19 +2201,20 @@ end
 always_ff @(posedge clk) begin
 	wb_valid <= mem_leave & ~mem_fault;
 	if (mem_leave) begin
-		wb_pc     <= mem_pc;
-		wb_insn   <= mem_insn;
-		wb_last   <= mem_last;
-		wb_rd     <= mem_rd;
-		wb_rd_wr  <= mem_rd_wr;
-		wb_result <= mem_load ? mu_rdata : mem_result;
-		wb_fsgl   <= mem_load & mem_fp & mem_fsgl;
-		wb_t_cr   <= mem_t_cr;
-		wb_t_xer  <= mem_t_xer;
-		wb_t_lr   <= mem_t_lr;
-		wb_t_ctr  <= mem_t_ctr;
-		wb_t_fpscr <= mem_t_fpscr;
-		wb_t_msr   <= mem_t_msr;
+		// the oldest: the older slot if it holds one (always an access)
+		wb_pc     <= mo_valid ? mo_pc : mem_pc;
+		wb_insn   <= mo_valid ? mo_insn : mem_insn;
+		wb_last   <= mo_valid ? mo_last : mem_last;
+		wb_rd     <= mo_valid ? mo_rd : mem_rd;
+		wb_rd_wr  <= mo_valid ? mo_rd_wr : mem_rd_wr;
+		wb_result <= (mo_valid | mem_load) ? mu_rdata : mem_result;
+		wb_fsgl   <= mo_valid ? (mo_load & mo_fp & mo_fsgl) : (mem_load & mem_fp & mem_fsgl);
+		wb_t_cr   <= mo_valid ? mo_t_cr : mem_t_cr;
+		wb_t_xer  <= mo_valid ? mo_t_xer : mem_t_xer;
+		wb_t_lr   <= mo_valid ? mo_t_lr : mem_t_lr;
+		wb_t_ctr  <= mo_valid ? mo_t_ctr : mem_t_ctr;
+		wb_t_fpscr <= mo_valid ? mo_t_fpscr : mem_t_fpscr;
+		wb_t_msr   <= mo_valid ? mo_t_msr : mem_t_msr;
 	end
 
 	if (reset) wb_valid <= 1'b0;
@@ -2163,11 +2248,12 @@ always_ff @(posedge clk) begin
 		if (fetch_go & if2_valid & ~if_rvalid) $fatal(1, "fetch response overtaken");
 		if (fetch_count > 3'd4) $fatal(1, "fetch queue overflow");
 		if (fetch_push & (fetch_count == 3'd4) & ~fetch_pop) $fatal(1, "unreserved fetch response");
-		if (mu_resp & ~(mem_valid & (mem_load | mem_store))) $fatal(1, "unowned memory response");
+		if (mu_resp & ~mo_valid & ~(mem_valid & mem_mem)) $fatal(1, "unowned memory response");
+		if (mem_take & mo_valid) $fatal(1, "MEM's older slot overwritten");
+		if (mo_valid & mo_rd_wr & ~mo_load) $fatal(1, "a passed access writes a register but is no load");
+		if (mu_valid & ~mu_ready) $fatal(1, "memory access offered without a free descriptor");
 		if (completion_count > 4'd8) $fatal(1, "completion queue overflow");
 		if (completion_pop & ex_leave) $fatal(1, "two operations entered MEM");
-		if (mem_payload_take & mem_valid & ~mem_leave)
-			$fatal(1, "EX payload overwrote an unfinished MEM operation");
 		if (mem_payload_take & completion_pop)
 			$fatal(1, "EX payload overwrote a queued completion");
 		if (ex_leave & ~ex_abort & ~mem_payload_take)
@@ -2192,7 +2278,7 @@ wire [19:0] perf_events /* verilator public_flat_rd */ = {
     fetch_go, dm_req & ~dm_ack, im_req & ~im_ack,
     ex_final & is_br & (next_pc != ex_pred),
     ex_ready & ~id_valid,
-    ex_valid & ex_done & (~mem_ready | (ex_mem_access & ~mu_accept & ~ex_abort)),
+    ex_valid & ex_done & ~mem_room,
     ex_valid & ~ex_stall & is_fpu & ~fpu_resp,
     ex_valid & ~ex_stall & is_int & ~int_resp,
     (mem_valid & (mem_load | mem_store) & ~mu_resp) | (ex_valid & ex_mem_access & ~ex_abort & ~mu_accept),
@@ -2222,9 +2308,9 @@ always_ff @(posedge clk) begin
 end
 
 wire pf_stalled = ex_valid & ~ex_leave;
-wire pf_s_mem   = pf_stalled & ~mem_ready & ~dc_slow;
-wire pf_s_lduse = pf_stalled & mem_ready & ex_stall;
-wire pf_s_unit  = pf_stalled & mem_ready & ~ex_stall & ~x_pre;
+wire pf_s_mem   = pf_stalled & ~mem_room & ~dc_slow;
+wire pf_s_lduse = pf_stalled & mem_room & ex_stall;
+wire pf_s_unit  = pf_stalled & mem_room & ~ex_stall & ~x_pre;
 wire pf_s_mdf   = pf_s_unit & ((ex_dec.unit == UNIT_MUL) | (ex_dec.unit == UNIT_DIV) | is_fpu);
 wire pf_empty   = ~ex_valid;
 wire pf_idhold  = id_valid & ~id_take;
@@ -2238,12 +2324,12 @@ assign pf_ev[2]  = wb_valid & wb_last;                              // instructi
 assign pf_ev[3]  = pf_s_mem & mu_req & mu_gnt;                      // EX waits for MEM: the access granted, answered next cycle
 assign pf_ev[4]  = pf_s_mem & mu_req & ~mu_gnt;                     // ... the cache not granting
 assign pf_ev[5]  = pf_s_mem & ~mu_req;                              // ... the memory unit between two accesses
-assign pf_ev[6]  = pf_stalled & ~mem_ready & dc_slow;               // ... the data cache busy: a miss, a write-back, a snoop
+assign pf_ev[6]  = pf_stalled & ~mem_room & dc_slow;               // ... the data cache busy: a miss, a write-back, a snoop
 assign pf_ev[7]  = pf_s_lduse;                                      // a load's data not there yet
 assign pf_ev[8]  = pf_s_unit & (ex_dec.unit == UNIT_MUL);           // the multiplier
 assign pf_ev[9]  = pf_s_unit & (ex_dec.unit == UNIT_DIV);           // the divider
 assign pf_ev[10] = pf_s_unit & is_fpu;                              // the FPU
-assign pf_ev[11] = pf_stalled & mem_ready & ~ex_stall & ~pf_s_mdf;  // anything else
+assign pf_ev[11] = pf_stalled & mem_room & ~ex_stall & ~pf_s_mdf;  // anything else
 assign pf_ev[12] = pf_empty & (pf_shadow != 2'd0);                  // EX empty after a redirect
 assign pf_ev[13] = pf_empty & (pf_shadow == 2'd0) & ~pf_idhold;     // EX empty, the fetch late
 assign pf_ev[14] = pf_empty & (pf_shadow == 2'd0) &  pf_idhold;     // EX empty, ID waiting
