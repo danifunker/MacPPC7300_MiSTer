@@ -233,29 +233,47 @@ wire [2:0]       r_word = r_addr[4:2];
 // colliding write's enables and value at the read edge, then replace every
 // affected word/tag. A queued write is newer and takes priority; this also
 // permits back-to-back byte stores to merge against the latest whole word.
-logic [WAYS-1:0] landed_tag_we;
-logic [7:0] landed_data_we [WAYS];
+logic [WAYS-1:0] landed_tag_we, landed_tag_wq;
+logic [7:0] landed_data_we [WAYS], landed_data_wq [WAYS];
+logic [IDXW-1:0] landed_idx;                  // the set written at the read's edge
 tag_t landed_tag;
 logic [255:0] landed_data;
 // the colliding write's words that the read wants (the word read and the
 // next), picked out at the read's edge, when the word read is known
 logic [31:0] landed_word, landed_word_next;
-logic pending_set_match;
+// The set compares are made in the answer's cycle, from registers: the
+// set then read is r_idx (the request's payload is taken at the edge that
+// reads it; checked below), so the incoming address, behind EX's adder and
+// the MMU, is not in front of a compare at the read's edge.
 always_ff @(posedge clk) begin
-	// The pending write is from r_idx at this edge; the response's data and
-	// tags are from rd_idx at this same edge. Register that set comparison
-	// beside the RAM read instead of putting it in front of load forwarding.
-	pending_set_match <= (rd_idx == r_idx);
+	landed_idx <= wr_idx;
 	for (int w = 0; w < WAYS; w++) begin
-		landed_tag_we[w] <= tag_we[w] & (wr_idx == rd_idx) & ~reset;
-		landed_data_we[w] <= {8{data_we[w] & (wr_idx == rd_idx) & ~reset}} & data_wwe;
+		landed_tag_wq[w] <= tag_we[w] & ~reset;
+		landed_data_wq[w] <= {8{data_we[w] & ~reset}} & data_wwe;
 	end
 	landed_tag <= tag_wd;
 	landed_data <= data_wd;
 	landed_word <= data_wd[255 - 32*rd_word -: 32];
 	landed_word_next <= data_wd[255 - 32*rd_word_next -: 32];
 end
+wire landed_set = (landed_idx == r_idx);
+always_comb
+	for (int w = 0; w < WAYS; w++) begin
+		landed_tag_we[w] = landed_tag_wq[w] & landed_set;
+		landed_data_we[w] = landed_data_wq[w] & {8{landed_set}};
+	end
+// the pending write (registered from r_idx at the last edge, as wr_idx_q)
+// is to the set the answer was read from
+wire pending_set_match = (wr_idx_q == r_idx);
 wire forward_pending = wr_pend & pending_set_match;
+/* synthesis translate_off */
+logic [IDXW-1:0] rd_idx_q;
+always_ff @(posedge clk) begin
+	rd_idx_q <= rd_idx;
+	if (~reset & ((state == S_LOOK) | (state == S_SNOOP)) & (rd_idx_q != r_idx))
+		$fatal(1, "the set answered is not the set read");
+end
+/* synthesis translate_on */
 always_comb begin
 	for (int w = 0; w < WAYS; w++)
 		tag_q[w] = (forward_pending & wr_tag_we[w]) ? wr_tag_wd :

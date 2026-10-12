@@ -632,12 +632,22 @@ wire [161:0] norm_raw = r_q << lz_q;
 wire         n_fix = ~norm_raw[161] & ~rzero_q;
 wire [161:0] norm  = n_fix ? {norm_raw[160:0], 1'b0} : norm_raw;
 
-// exponent of the leading one, and where rounding happens
-wire signed [13:0] top     = e_win + 14'sd161 - $signed({6'd0, lz_q}) - $signed({13'd0, n_fix});
+// exponent of the leading one, and where rounding happens: made for
+// both n_fix values beside the shifter, n_fix (the shifted top bit) then
+// only selecting, so that no adder or compare follows the shift
 wire signed [13:0] emin    = sgl_q ? -14'sd126 : -14'sd1022;
-wire               tiny    = (top < emin);
-wire signed [13:0] under   = emin - top;                        // how far below
-wire signed [13:0] int_pos = 14'sd63 - top;
+wire signed [13:0] top0    = e_win + 14'sd161 - $signed({6'd0, lz_q});
+wire signed [13:0] top1    = top0 - 14'sd1;
+wire               tiny0   = (top0 < emin);
+wire               tiny1   = (top1 < emin);
+wire signed [13:0] under0  = emin - top0;
+wire signed [13:0] under1  = under0 + 14'sd1;
+wire signed [13:0] ipos0   = 14'sd63 - top0;
+wire signed [13:0] ipos1   = ipos0 + 14'sd1;
+wire signed [13:0] top     = n_fix ? top1 : top0;
+wire               tiny    = n_fix ? tiny1 : tiny0;
+wire signed [13:0] under   = n_fix ? under1 : under0;           // how far below
+wire signed [13:0] int_pos = n_fix ? ipos1 : ipos0;
 
 logic [63:0]        w_q;       // normalised, leading one at bit 63
 logic               w_sticky;
