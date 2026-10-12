@@ -214,6 +214,8 @@ wire          cpu_reset = reset | cuda_reset;
 
 assign cpu_in_reset = cpu_reset;
 
+logic         cpu_dbg_ev;
+logic [223:0] cpu_dbg_rec;
 DSPPC604 #(.PERF(PERF)) cpu (
 	.clk, .reset(cpu_reset), .reset_pc,
 	.ext_irq, .tb_tick,
@@ -223,7 +225,7 @@ DSPPC604 #(.PERF(PERF)) cpu (
 	.trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_reg_we, .trace_reg_idx, .trace_reg_val,
 	.trace_cr, .trace_xer, .trace_lr, .trace_ctr, .trace_fpscr, .trace_msr,
 	.trace_dreq, .trace_dwe, .trace_dkind, .trace_daddr, .trace_dbe, .trace_dwdata,
-	.perf_cnt
+	.perf_cnt, .dbg_ev(cpu_dbg_ev), .dbg_rec(cpu_dbg_rec)
 );
 
 // the VRAM's path and the video registers, between the machine and the picture side
@@ -374,8 +376,22 @@ always_ff @(posedge clk) begin
 		sn_cnt <= 24'd0;
 	end
 end
-wire         tr_ev  = scsi_tr_ev | pf_ev | sn_ev;
-wire [255:0] tr_rec = scsi_tr_ev ? scsi_tr_rec : pf_ev ? pf_rec : sn_rec;
+// kind 14 (PERF): the CPU's sample every 65536 cycles (syn/cpusample.py):
+// bytes 4-7 the cycle count, then EX's address, the last exception's
+// address, its vector, MSR, eight exception counts by vector, EX's
+// instruction; it waits behind the records above
+logic         cs_ev = 1'b0;
+logic [255:0] cs_rec;
+always_ff @(posedge clk) begin
+	if (cs_ev & ~scsi_tr_ev & ~pf_ev & ~sn_ev) cs_ev <= 1'b0;
+	if (PERF != 0 && TRACE != 0 && cpu_dbg_ev) begin
+		cs_ev  <= 1'b1;
+		cs_rec <= {cpu_dbg_rec[223:32], perf_cnt[0], 24'd0, 8'd14};
+	end
+	if (reset) cs_ev <= 1'b0;
+end
+wire         tr_ev  = scsi_tr_ev | pf_ev | sn_ev | cs_ev;
+wire [255:0] tr_rec = scsi_tr_ev ? scsi_tr_rec : pf_ev ? pf_rec : sn_ev ? sn_rec : cs_rec;
 
 generate
 if (TRACE != 0) begin : g_trace

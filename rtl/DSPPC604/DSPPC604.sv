@@ -144,7 +144,11 @@ module DSPPC604
 	output logic [31:0] trace_dwdata,
 
 	// the performance counters (PERF): the cycle accounting at the end
-	output logic [27:0][31:0] perf_cnt
+	output logic [27:0][31:0] perf_cnt,
+	// a sample every 65536 cycles (PERF): EX's address and instruction, the
+	// exceptions taken since by vector, the last one's vector and address
+	output logic        dbg_ev,
+	output logic [223:0] dbg_rec
 );
 
 import DSPPC604_pkg::*;
@@ -2214,12 +2218,48 @@ assign pf_ev[25] = im_req & im_ack;                                 // the instr
 assign pf_ev[26] = if2_valid & ~if_rvalid;                           // cycles a fetch waits beyond a hit
 assign pf_ev[27] = if_req & ~if_gnt;                                // cycles the instruction cache does not grant a fetch
 
+// exceptions as they are taken: their vector and the address saved
+wire        dbg_exc  = (ex_leave & ex_exc) | mem_fault;
+wire [11:0] dbg_vec  = redir_pc[11:0];
+wire [31:0] dbg_srr0 = mem_fault ? mem_pc : (x_sc ? ex_pc4 : ex_pc);
+
 generate
 if (PERF != 0) begin : g_perf
 	DSPPC604_perf #(.N (28)) perf (.clk, .reset, .ev (pf_ev), .cnt (perf_cnt));
+	logic [15:0] dbg_t;
+	logic [7:0]  dbg_n [8];        // 300 DSI, 500 external, 600 alignment, 700 program, 800 FP unavailable, 900 decrementer, C00 sc, other
+	logic [11:0] dbg_last_vec;
+	logic [31:0] dbg_last_pc;
+	logic [2:0]  dbg_cls;
+	always_comb
+		case (dbg_vec[11:8])
+			4'h3: dbg_cls = 3'd0;  4'h5: dbg_cls = 3'd1;  4'h6: dbg_cls = 3'd2;  4'h7: dbg_cls = 3'd3;
+			4'h8: dbg_cls = 3'd4;  4'h9: dbg_cls = 3'd5;  4'hC: dbg_cls = 3'd6;  default: dbg_cls = 3'd7;
+		endcase
+	always_ff @(posedge clk) begin
+		dbg_t  <= dbg_t + 16'd1;
+		dbg_ev <= 1'b0;
+		if (dbg_t == 16'hFFFF) begin
+			dbg_ev  <= 1'b1;
+			dbg_rec <= {ex_insn, dbg_n[7], dbg_n[6], dbg_n[5], dbg_n[4], dbg_n[3], dbg_n[2], dbg_n[1], dbg_n[0],
+			            msr[15:0], 4'd0, dbg_last_vec, dbg_last_pc, ex_pc, 32'd0};
+			for (int i = 0; i < 8; i++) dbg_n[i] <= 8'd0;
+		end
+		if (dbg_exc) begin
+			if (dbg_n[dbg_cls] != 8'hFF) dbg_n[dbg_cls] <= dbg_n[dbg_cls] + 8'd1;
+			dbg_last_vec <= dbg_vec;
+			dbg_last_pc  <= dbg_srr0;
+		end
+		if (reset) begin
+			dbg_t <= 16'd0;
+			for (int i = 0; i < 8; i++) dbg_n[i] <= 8'd0;
+		end
+	end
 end
 else begin : g_no_perf
 	assign perf_cnt = '0;
+	assign dbg_ev   = 1'b0;
+	assign dbg_rec  = '0;
 end
 endgenerate
 
