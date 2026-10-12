@@ -193,8 +193,11 @@ logic        f_bank;
 logic [7:0]  f_burst;                  // the burst asked for
 logic [7:0]  f_due;                    // its words still to come
 logic        f_issue;
+logic        f_last;                   // the last DDR3 access was a scan-out burst
 wire         f_word = (ds == D_FWAIT) && ddr_dout_ready;
-wire  [7:0]  f_next = (f_left > 12'd128) ? 8'd128 : 8'(f_left);
+// bursts of 32 words: a CPU access waits for one of them at most (the
+// line buffers hold a whole line ahead, so the scan-out has time to spare)
+wire  [7:0]  f_next = (f_left > 12'd32) ? 8'd32 : 8'(f_left);
 
 always_ff @(posedge clk) begin
 	f_calc <= 1'b0;
@@ -232,7 +235,9 @@ always_ff @(posedge clk) begin
 	if (f_word && f_put == 12'd1 &&  f_bank) cur1[127:64] <= ddr_dout;
 end
 
-// ---- DDR3: the scan-out first, then the CPU ---------------------------------------------------------
+// ---- DDR3: the scan-out and the CPU in turn ---------------------------------------------------------
+// After a scan-out burst a waiting CPU access goes first; after a CPU
+// access the scan-out does, so neither can starve the other.
 logic [2:0]  c_beat;                   // CPU beats done
 logic [63:0] c_got0, c_got1, c_got2, c_got3;
 wire  [2:0]  c_n = c_line ? 3'd4 : 3'd1;
@@ -260,7 +265,8 @@ always_ff @(posedge clk) begin
 		D_IDLE: begin
 			ddr_rd <= 1'b0;
 			ddr_we <= 1'b0;
-			if (f_pend && !f_issue && !f_calc) begin
+			if (f_pend && !f_issue && !f_calc && !(c_req && !c_ack && f_last)) begin
+				f_last       <= 1'b1;
 				f_burst      <= f_next;
 				ddr_addr     <= DDR_BASE + {10'd0, f_addr[21:3]};
 				ddr_burstcnt <= f_next;
@@ -268,6 +274,7 @@ always_ff @(posedge clk) begin
 				ds           <= D_FREAD;
 			end
 			else if (c_req && !c_ack) begin
+				f_last       <= 1'b0;
 				// a line from its first word: the CPU's cache asks for a line
 				// with the address of the word it wants (bits 4-2 not 0)
 				ddr_addr     <= DDR_BASE + {10'd0, c_addr[21:5], c_line ? 2'b00 : c_addr[4:3]};
@@ -329,6 +336,7 @@ always_ff @(posedge clk) begin
 		ds     <= D_IDLE;
 		ddr_rd <= 1'b0;
 		ddr_we <= 1'b0;
+		f_last <= 1'b0;
 	end
 end
 
