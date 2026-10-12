@@ -83,7 +83,7 @@
 
 module DSPPC604
 #(
-	parameter int          BTB_BITS = 9,              // branch target buffer entries, as a power of two (two ways)
+	parameter int          BTB_BITS = 10,             // branch target buffer entries, as a power of two (two ways): 1024 since 2026-10-12 (ROM boot -2.1 % cycles)
 	parameter int          TLB_BITS = 6,              // entries in each TLB, as a power of two
 	parameter int          IC_IDXW  = 8,              // instruction cache sets, as a power of two: 8 is 32 KB (the 604e's), 7 is 16 KB (the 604's)
 	parameter int          DC_IDXW  = 7,              // data cache sets, likewise
