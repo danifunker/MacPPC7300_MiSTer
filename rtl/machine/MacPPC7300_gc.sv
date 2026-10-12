@@ -574,6 +574,7 @@ logic [7:0]  t1ll, t1lh, t2ll;
 logic [15:0] t1, t2;                 // the counters
 logic [17:0] t1_left, t2_left;       // VIA clocks until the flag
 logic        t1_run, t2_run;
+logic        t1_reload;              // free-running T1: the latch goes in at the next clock
 logic [4:0]  sr_cnt;                 // CB1 edges until the flag (MAME's m_shift_counter)
 logic        cb1_q;                  // CB1 as last seen
 logic        cb2_q;                  // what the VIA drives on CB2
@@ -739,16 +740,25 @@ end
 
 // ---- writes, and the reads that change something --------------------------------------
 always_ff @(posedge clk) begin
-	// the VIA's timers count all the time
+	// the VIA's timers count all the time. As a 6522's, a timer loaded with
+	// N sets its flag in the clock its counter goes from 0 to FFFF (N + 1
+	// clocks on); a free-running T1 takes the latch in the clock after, so
+	// its period is N + 2. (dingusppc's flag comes two clocks later, when the
+	// counter already reads FFFE: Microseconds, which reads T2 and then its
+	// flag, would miss the wrap.)
 	if (via_tick) begin
 		t1 <= t1 - 16'd1;
 		t2 <= t2 - 16'd1;
-		if (t1_run) begin
+		t1_reload <= 1'b0;
+		if (t1_reload) begin
+			t1 <= {t1lh, t1ll};
+			t1_left <= 18'({t1lh, t1ll}) + 18'd1;
+		end
+		else if (t1_run) begin
 			if (t1_left == 18'd1) begin
 				via_ifr[6] <= 1'b1;                            // T1
-				t1 <= {t1lh, t1ll};
-				t1_left <= 18'({t1lh, t1ll}) + 18'd3;
-				t1_run <= via_acr[6];                          // free-running, or once
+				t1_run    <= via_acr[6];                       // free-running, or once
+				t1_reload <= via_acr[6];
 			end
 			else t1_left <= t1_left - 18'd1;
 		end
@@ -825,8 +835,9 @@ always_ff @(posedge clk) begin
 					4'd5: if (we) begin
 						t1lh <= wb;
 						t1 <= {wb, t1ll};
-						t1_left <= 18'({wb, t1ll}) + 18'd3;
+						t1_left <= 18'({wb, t1ll}) + 18'd1;
 						t1_run <= 1'b1;
+						t1_reload <= 1'b0;
 						via_ifr[6] <= 1'b0;
 					end
 					4'd6:        if (we) t1ll <= wb;
@@ -834,7 +845,7 @@ always_ff @(posedge clk) begin
 					4'd8:        if (we) t2ll <= wb; else via_ifr[5] <= 1'b0;
 					4'd9: if (we) begin
 						t2 <= {wb, t2ll};
-						t2_left <= 18'({wb, t2ll}) + 18'd3;
+						t2_left <= 18'({wb, t2ll}) + 18'd1;
 						t2_run <= 1'b1;
 						via_ifr[5] <= 1'b0;
 					end
@@ -891,6 +902,7 @@ always_ff @(posedge clk) begin
 		t2_left     <= 18'h0;
 		t1_run      <= 1'b0;
 		t2_run      <= 1'b0;
+		t1_reload   <= 1'b0;
 		nv_hi       <= 16'h0;
 		nv_rd_q     <= 1'b0;
 		rad_rd_q    <= 1'b0;
