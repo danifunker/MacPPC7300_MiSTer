@@ -134,8 +134,9 @@ module DSPPC604
 	output logic [31:0] trace_ctr,
 	output logic [31:0] trace_fpscr,
 	output logic [31:0] trace_msr,
-	// ... and every data access as it reaches the data cache, so that the
-	// test bench can see stores the cache absorbs
+	// ... and every data access as the data cache takes it, so that the
+	// test bench can see stores the cache absorbs (in the cycle after the
+	// grant, with a store's data, which the cache reads then)
 	output logic        trace_dreq,
 	output logic        trace_dwe,
 	output logic [2:0]  trace_dkind,
@@ -1731,12 +1732,14 @@ end
 // has priority; unavailable MEM loads already hold EX until their WB result.
 wire [63:0] store_fp_double = ffb_mem ? mem_result :
                              (ffb_wb & ~wb_fsgl) ? wb_result : ex_fb;
-wire [31:0] store_fp_single = (ffb_wb & wb_fsgl & ~ffb_mem) ? wb_result[31:0] :
-                             fp_double_to_single(store_fp_double);
+// stfs of a single lfs loaded (still in WB as it was in memory) stores
+// it as it is; any other stfs's double is converted by the memory unit
+wire        store_raw_sgl = ffb_wb & wb_fsgl & ~ffb_mem;
+wire        ex_wconv  = ex_dec.mem_fp & ex_dec.mem_fsgl & ~store_raw_sgl;
 
 // Doubleword stores retain the full converted forwarding value.
 wire [63:0] ex_wdata  = ~ex_dec.mem_fp   ? {32'd0, op_c} :
-                        ex_dec.mem_fsgl  ? {32'd0, store_fp_single} : fop_b;
+                        ex_dec.mem_fsgl  ? (store_raw_sgl ? {32'd0, wb_result[31:0]} : store_fp_double) : fop_b;
 
 // MTSR/MTSPR have no memory descriptor or long-unit response. Their
 // writes use ordinary capacity directly, then precise abort/fault/order
@@ -1923,6 +1926,7 @@ DSPPC604_mem_unit mem_unit
 	.brev        (ex_dec.mem_brev),
 	.ljust       (ex_dec.mem_ljust),
 	.wdata       (ex_wdata),
+	.conv        (ex_wconv),
 	.resp_valid  (mu_resp),
 	.resp_fault  (mu_fault),
 	.rdata       (mu_rdata),
@@ -2324,11 +2328,13 @@ assign trace_lr      = wb_t_lr;
 assign trace_ctr     = wb_t_ctr;
 assign trace_fpscr   = wb_t_fpscr;
 assign trace_msr     = wb_t_msr;
-assign trace_dreq    = db_req & db_gnt;
-assign trace_dwe     = db_we;
-assign trace_dkind   = db_kind;
-assign trace_daddr   = db_addr;
-assign trace_dbe     = db_be;
+always_ff @(posedge clk) begin
+	trace_dreq  <= db_req & db_gnt & ~reset;
+	trace_dwe   <= db_we;
+	trace_dkind <= db_kind;
+	trace_daddr <= db_addr;
+	trace_dbe   <= db_be;
+end
 assign trace_dwdata  = db_wdata;
 
 // Simulation-only observation: no counters or extra ports in the FPGA.

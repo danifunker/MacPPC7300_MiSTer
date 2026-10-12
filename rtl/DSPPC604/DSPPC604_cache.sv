@@ -9,7 +9,9 @@
 //  pseudo-LRU tree per set, an invalid way first.
 //
 //  Request port: the requester presents a physical address and holds req
-//  until gnt, which comes in any cycle the cache is idle, or is answering a
+//  until gnt (a store's data, wdata and wdata_next, is presented in the
+//  cycle after the grant instead, and held while the request is looked at:
+//  the cache reads it in S_LOOK), which comes in any cycle the cache is idle, or is answering a
 //  read hit (so that fetches flow one per cycle). The set is read at that
 //  edge, the tags are compared in the next cycle, and a hit is answered
 //  then: rvalid one cycle after the grant, the timing of the simplest bus.
@@ -210,7 +212,6 @@ ck_t         r_kind;
 logic [31:2] r_addr;
 logic [3:0]  r_be;
 logic [31:0] r_wdata;
-logic [31:0] r_wdata_next;
 logic        r_wide;
 logic        r_ci;
 logic        r_wt;
@@ -390,7 +391,7 @@ end
 // the store's bytes merged into that word, which is then written whole
 logic [31:0] st_mask;
 always_comb for (int j = 0; j < 4; j++) st_mask[8*j +: 8] = {8{r_be[j]}};
-wire [31:0] st_word = (hit_word & ~st_mask) | (r_wdata & st_mask);
+wire [31:0] st_word = (hit_word & ~st_mask) | (wdata & st_mask);
 wire [7:0]  st_wwe  = 8'd1 << (3'd7 - r_word);
 wire wide_hit = r_wide & (r_word != 3'd7);
 // A wide word request (no snoop) is answered wide when it is cached: not
@@ -488,7 +489,7 @@ always_comb begin
 					l_wwe = st_wwe | st_wwe_next;
 					l_dwide = 1'b1;
 					for (int j = 0; j < 8; j++)
-						if (j[2:0] == (3'd6 - r_word)) l_data_wd[32*j +: 32] = r_wdata_next;
+						if (j[2:0] == (3'd6 - r_word)) l_data_wd[32*j +: 32] = wdata_next;
 				end
 				l_tag_we[hit_sel] = ~r_wt;               // dirty, unless memory gets it too
 				l_tag_wd = {1'b1, 1'b1, r_tag};
@@ -604,8 +605,8 @@ always_ff @(posedge clk) begin
 	// the stored word in every position, but a wide store's second word in
 	// the next, or all zero), so that a forwarded word is not picked out of
 	// the line in the answer's cycle
-	pending_word      <= l_dzero ? 32'd0 : (l_dwide & (rd_word == r_word + 3'd1)) ? r_wdata_next : st_word;
-	pending_word_next <= l_dzero ? 32'd0 : (l_dwide & (rd_word == r_word)) ? r_wdata_next : st_word;
+	pending_word      <= l_dzero ? 32'd0 : (l_dwide & (rd_word == r_word + 3'd1)) ? wdata_next : st_word;
+	pending_word_next <= l_dzero ? 32'd0 : (l_dwide & (rd_word == r_word)) ? wdata_next : st_word;
 end
 
 /* synthesis translate_off */
@@ -638,6 +639,8 @@ always_ff @(posedge clk) begin
 	end
 	else wb_slot <= 3'd0;
 	if (inval_all) inval_pend <= 1'b1;
+	// the store's data, for S_UNC: it is presented in the lookup's cycle
+	if (state == S_LOOK) r_wdata <= wdata;
 
 	// The request's payload is taken in every cycle a request could be (the
 	// cache idle, or answering a word hit that leaves for S_IDLE or the next
@@ -655,8 +658,6 @@ always_ff @(posedge clk) begin
 		r_snoop_we   <= payload_snoop & snoop_we;
 		r_after_wb   <= 1'b0;
 		r_be         <= be;
-		r_wdata      <= wdata;
-		r_wdata_next <= wdata_next;
 		r_wide       <= wide;
 		r_ci         <= ci;
 		r_wt         <= wt;
@@ -763,7 +764,7 @@ always_ff @(posedge clk) begin
 		post_v    <= 1'b1;
 		post_addr <= r_addr;
 		post_be   <= r_be;
-		post_data <= r_wdata;
+		post_data <= wdata;
 	end
 	if (post_drv & mem_ack) post_v <= 1'b0;
 

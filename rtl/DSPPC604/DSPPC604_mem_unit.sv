@@ -47,6 +47,7 @@ module DSPPC604_mem_unit
 	input  logic        brev,        // byte-reversed
 	input  logic        ljust,       // string: bytes at the top of the register
 	input  logic [63:0] wdata,       // value to store (low word unless 8 bytes)
+	input  logic        conv,        // ... a double to store as a single (stfs)
 	output logic        req_ready,
 	output logic        pending_ungranted, // accepted descriptor with no bus side effect
 	output logic        final_q,           // the access under way has had its last grant
@@ -63,7 +64,7 @@ module DSPPC604_mem_unit
 	output logic        dbus_direct, // dbus_addr is addr itself (this cycle's request, passed through)
 	output logic [29:0] dbus_addr_held, // dbus_addr when it is not: from the descriptor's registers only
 	output logic [3:0]  dbus_be,
-	output logic [31:0] dbus_wdata,
+	output logic [31:0] dbus_wdata,  // in the answer's cycle, from the descriptor (the cache reads it then)
 	output logic        dbus_wide,
 	output logic [31:0] dbus_wdata_next,
 	input  logic        dbus_gnt,
@@ -99,6 +100,7 @@ typedef struct packed {
 	logic [7:0]  sign_select;
 	logic [3:0]  load_sext;
 	logic [63:0] wdata;
+	logic        conv;
 } desc_t;
 
 // Two descriptors used in turn: cp names the one under way (or the next
@@ -127,26 +129,27 @@ wire first_slot = ~qv & ((state == S_REQ0) | ((state == S_RSP0) & resp_valid));
 wire [31:0] bus_ea = saved ? c.addr : addr;
 wire [3:0] bus_nbytes = saved ? c.nbytes : nbytes;
 wire [2:0] bus_n = bus_nbytes[2:0];
-wire [63:0] bus_wdata = saved ? c.wdata : wdata;
-wire [31:0] w = bus_wdata[31:0];
-wire bus_brev = saved ? c.brev : brev;
-wire bus_ljust = saved ? c.ljust : ljust;
 wire bus_touch = ((saved ? c.kind : kind) != CK_WORD);
 
 // ---- store: register value to bytes, first byte in bits 31:24 --------------
+// From the descriptor under way, for the cache's lookup cycle (S_RSP0 for
+// the first word, S_RSP1 for the second): the store's data is not in front
+// of the request (the cache takes it a cycle after the grant), and stfs's
+// conversion is made here rather than in EX.
+wire [31:0] w = c.conv ? fp_double_to_single(c.wdata) : c.wdata[31:0];
 logic [31:0] sbytes;
 
 always_comb begin
-	if (bus_brev)       sbytes = (bus_n == 3'd4) ? {w[7:0], w[15:8], w[23:16], w[31:24]}
-	                                         : {w[7:0], w[15:8], 16'd0};
-	else if (bus_ljust) sbytes = w;
-	else if (bus_n == 3'd1) sbytes = {w[7:0], 24'd0};
-	else if (bus_n == 3'd2) sbytes = {w[15:0], 16'd0};
-	else                sbytes = w;
+	if (c.brev)       sbytes = (n == 3'd4) ? {w[7:0], w[15:8], w[23:16], w[31:24]}
+	                                       : {w[7:0], w[15:8], 16'd0};
+	else if (c.ljust) sbytes = w;
+	else if (n == 3'd1) sbytes = {w[7:0], 24'd0};
+	else if (n == 3'd2) sbytes = {w[15:0], 16'd0};
+	else              sbytes = w;
 end
 
 // the bytes placed in a two-word window
-wire [63:0] wwin  = bus_nbytes[3] ? bus_wdata : ({sbytes, 32'd0} >> {bus_ea[1:0], 3'b000});
+wire [63:0] wwin  = dword ? c.wdata : ({sbytes, 32'd0} >> {offset, 3'b000});
 wire [7:0]  ones  = ~(8'hFF >> bus_n);
 wire [7:0]  bewin = bus_nbytes[3] ? 8'hFF : (ones >> bus_ea[1:0]);
 
@@ -164,7 +167,7 @@ assign dbus_ea    = bus_ea;
 assign dbus_direct = ~second & ~saved;
 assign dbus_addr_held = second ? c.next_word : c.addr[31:2];
 assign dbus_be    = bus_touch ? 4'b0000 : second ? bewin[3:0] : bewin[7:4];
-assign dbus_wdata = second ? wwin[31:0] : wwin[63:32];
+assign dbus_wdata = (state == S_RSP1) ? wwin[31:0] : wwin[63:32];
 // A wide request never crosses a cache line or a translation page. The
 // cache declines it for uncached accesses; those retain the word fallback.
 assign dbus_wide = ~second & bus_nbytes[3] & ~bus_touch &
@@ -243,6 +246,7 @@ always_ff @(posedge clk) begin
 		desc[wi].brev        <= brev;
 		desc[wi].ljust       <= ljust;
 		desc[wi].wdata       <= wdata;
+		desc[wi].conv        <= conv;
 	end
 	if (dbus_rvalid & (state == S_RSP0)) word0_q <= dbus_rdata;
 
