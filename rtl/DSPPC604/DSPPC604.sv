@@ -583,9 +583,17 @@ wire [BTB_SET_BITS-1:0] btb_tgt_idx = btb_index(br_target);
 wire [BTB_SET_BITS-1:0] btb_seq_idx = btb_index(ex_pc4);
 wire [BTB_SET_BITS-1:0] btb_redir_idx = br_taken ? btb_tgt_idx : btb_seq_idx;
 wire [BTB_SET_BITS-1:0] btb_ridx = redir ? btb_redir_idx : btb_index(pc_ahead);
-wire btb_fresh = btb_read_valid & (btb_read_idx == btb_idx);
-wire [$bits(btb_meta_t)-1:0] btb_meta_bits0 = btb_forward0 ? btb_write_meta : btb_meta_ram0;
-wire [$bits(btb_meta_t)-1:0] btb_meta_bits1 = btb_forward1 ? btb_write_meta : btb_meta_ram1;
+// The rows are read ahead for the predicted next address without waiting
+// for the fetch's grant; when the fetch then waited (pred_hold), the rows of
+// the address still being fetched come from these registers instead.
+logic pred_hold;
+btb_meta_t btb_meta_hold0, btb_meta_hold1;
+logic [29:0] btb_target_hold0, btb_target_hold1;
+logic [BTB_SET_BITS-1:0] btb_hold_idx;
+wire [BTB_SET_BITS-1:0] btb_eff_idx = pred_hold ? btb_hold_idx : btb_read_idx;
+wire btb_fresh = btb_read_valid & (btb_eff_idx == btb_idx);
+wire [$bits(btb_meta_t)-1:0] btb_meta_bits0 = pred_hold ? btb_meta_hold0 : btb_forward0 ? btb_write_meta : btb_meta_ram0;
+wire [$bits(btb_meta_t)-1:0] btb_meta_bits1 = pred_hold ? btb_meta_hold1 : btb_forward1 ? btb_write_meta : btb_meta_ram1;
 btb_meta_t btb_meta_q0, btb_meta_q1;
 assign btb_meta_q0 = btb_meta_bits0;
 assign btb_meta_q1 = btb_meta_bits1;
@@ -603,8 +611,8 @@ wire btb_way = btb_hit0 ? 1'b0 : btb_hit1 ? 1'b1 :
 wire [1:0] btb_c = btb_hit0 ? btb_meta_q0.count : btb_meta_q1.count;
 wire btb_is_call = btb_hit0 ? btb_meta_q0.call : btb_meta_q1.call;
 wire btb_is_return = btb_hit0 ? btb_meta_q0.ret : btb_meta_q1.ret;
-wire [29:0] btb_target_q0 = btb_target_forward0 ? btb_write_target : btb_target_ram0;
-wire [29:0] btb_target_q1 = btb_target_forward1 ? btb_write_target : btb_target_ram1;
+wire [29:0] btb_target_q0 = pred_hold ? btb_target_hold0 : btb_target_forward0 ? btb_write_target : btb_target_ram0;
+wire [29:0] btb_target_q1 = pred_hold ? btb_target_hold1 : btb_target_forward1 ? btb_write_target : btb_target_ram1;
 wire [29:0] btb_target = btb_hit0 ? btb_target_q0 : btb_target_q1;
 wire btb_taken = btb_hit & btb_c[1];
 wire btb_is_ctr = btb_hit0 ? btb_meta_q0.ctr : btb_meta_q1.ctr;
@@ -629,9 +637,15 @@ endfunction
 (* ramstyle = "no_rw_check" *) logic [7:0]  itt_tag_mem [ITT_N];
 (* ramstyle = "no_rw_check" *) logic [29:0] itt_tgt_mem [ITT_N];
 logic [11:0] itt_spec_h, itt_com_h;   // the history: as fetched, as committed
-logic [7:0]  itt_tag_q;
-logic [29:0] itt_tgt_q;
-logic [11:0] itt_read_idx;
+logic [7:0]  itt_tag_ram;
+logic [29:0] itt_tgt_ram;
+logic [11:0] itt_ram_idx;
+logic [7:0]  itt_tag_hold;
+logic [29:0] itt_tgt_hold;
+logic [11:0] itt_hold_idx;
+wire  [7:0]  itt_tag_q    = pred_hold ? itt_tag_hold : itt_tag_ram;
+wire  [29:0] itt_tgt_q    = pred_hold ? itt_tgt_hold : itt_tgt_ram;
+wire  [11:0] itt_read_idx = pred_hold ? itt_hold_idx : itt_ram_idx;
 logic        itt_read_valid;
 wire [11:0] itt_idx_f = (pc_f[13:2] ^ itt_spec_h) & 12'((ITT_N - 1));     // this fetch's row
 logic [11:0] itt_ridx;                                                     // the next one's, read now (below)
@@ -670,7 +684,7 @@ wire [BTB_SET_BITS-1:0] btb_next_idx = btb_index(pred_pc);
 (* keep = "true" *) wire btb_write_tgt = (btb_widx == btb_tgt_idx);
 (* keep = "true" *) wire btb_write_seq = (btb_widx == btb_seq_idx);
 wire btb_write_read = redir ? (br_taken ? btb_write_tgt : btb_write_seq) :
-                      fetch_go ? btb_write_next : btb_write_current;
+                      ahead_go ? btb_write_next : btb_write_current;
 
 always_ff @(posedge clk) begin
 	// Read the predicted next set alongside the next fetch address, or the
@@ -681,6 +695,11 @@ always_ff @(posedge clk) begin
 	btb_target_ram0 <= btb_target0[btb_ridx];
 	btb_target_ram1 <= btb_target1[btb_ridx];
 	btb_read_idx <= btb_ridx;
+	btb_meta_hold0 <= btb_meta_q0;
+	btb_meta_hold1 <= btb_meta_q1;
+	btb_target_hold0 <= btb_target_q0;
+	btb_target_hold1 <= btb_target_q1;
+	btb_hold_idx <= btb_eff_idx;
 	btb_read_valid <= ~reset & ~btb_sweep;
 	// Reuse the parallel current/predicted row comparison. Selecting the
 	// row index before comparison puts late fetch control in front of the
@@ -776,7 +795,12 @@ end
 // ahead with the predicted one (a redirect into another page costs a cycle
 // there, which keeps branch resolution away from the TLB's address)
 wire [31:0] pc_next = reset ? reset_pc : redir ? redir_pc : fetch_go ? pred_pc : pc_f;
-wire [31:0] pc_ahead = fetch_go ? pred_pc : pc_f;
+// The BTB and ITT read ahead for the predicted next address whenever the
+// fetch asks, not waiting for its grant (behind the MMU's translation of
+// pc_f); a fetch that then waits keeps its rows in registers (pred_hold).
+wire ahead_go = if_req;
+always_ff @(posedge clk) pred_hold <= ahead_go & ~fetch_go & ~redir & ~reset;
+wire [31:0] pc_ahead = ahead_go ? pred_pc : pc_f;
 assign itt_ridx = (pc_ahead[13:2] ^ itt_spec_h) & 12'((ITT_N - 1));
 
 always_ff @(posedge clk) begin
@@ -1470,9 +1494,12 @@ wire   ex_ind_commit = ex_final & ~is_rfi & br_taken & ex_ind;
 assign btb_meta_itt = (ITT_BITS != 0) & ex_ind & (ex_itt | pc_miss);
 wire [11:0] itt_com_h_next = ex_ind_commit ? itt_fold(itt_com_h, next_pc) : itt_com_h;
 always_ff @(posedge clk) begin
-	itt_tag_q <= itt_tag_mem[itt_ridx[ITT_BITS-1:0]];
-	itt_tgt_q <= itt_tgt_mem[itt_ridx[ITT_BITS-1:0]];
-	itt_read_idx <= itt_ridx;
+	itt_tag_ram <= itt_tag_mem[itt_ridx[ITT_BITS-1:0]];
+	itt_tgt_ram <= itt_tgt_mem[itt_ridx[ITT_BITS-1:0]];
+	itt_ram_idx <= itt_ridx;
+	itt_tag_hold <= itt_tag_q;
+	itt_tgt_hold <= itt_tgt_q;
+	itt_hold_idx <= itt_read_idx;
 	itt_read_valid <= ~reset;
 	if (ex_ind_commit) begin
 		itt_tag_mem[ex_itt_idx[ITT_BITS-1:0]] <= ex_pc[ITT_BITS+2 +: 8];
