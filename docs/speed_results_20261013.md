@@ -1,7 +1,34 @@
 # Why 110 MHz black-screens, and the clock sweep tool (2026-10-13, branch `addr-stage`)
 
 Branch `addr-stage` (from `fpu-pipe` ef00783) holds the day's timing cuts,
-the diagnosis of the 110 MHz black screen, and a run-time CPU clock.
+the diagnosis of the 110 MHz black screen, and a run-time CPU clock. It is
+kept as a record; it is not the way forward.
+
+## Verdict: do not pursue 110 MHz with this pipeline
+
+- 100 MHz is at the cliff of this design on this FPGA: two fits of the same
+  design a tenth of a nanosecond apart differ on whether it boots at 100,
+  and every 110 MHz fit sits in a band 1–2 ns below what works, with about
+  a thousand paths within a nanosecond of the worst. There is no single
+  path to cut; the timing cuts of the branch moved families around inside
+  the band without moving its edge.
+- The one hang we could name (the next request granted behind a hit) was
+  the first symptom only. Removed, 109 MHz corrupts loads and stores
+  instead, and the un-pipelined mode fails at 100.
+- What 110 would need is a deeper pipeline — a two-cycle cache answer and
+  a real address stage — at about 8–10 % of cycles, so 110 MHz would gain
+  nothing and only 120 MHz and beyond would pay, needing the same band to
+  move by yet another nanosecond. The branch's own address-from-registers
+  change (+1.4 % cycles) and per-way load shaping (+1,300 ALMs) are costs
+  without that return at 100 MHz.
+- The clock crossing, the memory clock and the SDRAM are not involved: the
+  memory is already fast relative to the CPU, and the crossing is safe at
+  any ratio.
+
+What remains worth keeping: the diagnosis method (the trace's CPU samples
+show where a build dies), the run-time CPU clock (a build tried at every
+clock from the OSD), and the cuts that cost nothing per clock, which give
+margin at 100 MHz on `fpu-pipe`.
 
 ## The diagnosis
 
