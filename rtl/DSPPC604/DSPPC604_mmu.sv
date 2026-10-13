@@ -298,7 +298,12 @@ function automatic logic d_page_is(input logic [19:0] k);
 endfunction
 // a segment register written since the read-ahead makes it stale too
 logic               i_stale, d_stale;
-wire                i_fresh  = (i_page_q == i_addr[31:12]) & ~i_stale & ~i_tlb_collision;
+// (the I-side's segment register is read a cycle after its page, from
+// the registered page, so the prediction is not in front of its 16:1
+// choice; a fetch into another segment waits a cycle for it)
+logic [3:0]         i_sr_seg;
+wire                i_fresh  = (i_page_q == i_addr[31:12]) & (i_sr_seg == i_page_q[19:16]) &
+                               ~i_stale & ~i_tlb_collision;
 wire                d_fresh  = d_page_is(d_page_q) & ~d_stale & ~d_tlb_collision;
 logic               d_rd;                          // read the DTLB for d_page now
 wire [TLB_BITS-1:0] d_idx    = d_page[TLB_BITS-1:0];
@@ -314,7 +319,8 @@ logic [31:0]        i_sr_q, d_sr_q;
 always_ff @(posedge clk) begin
 	itlb_q   <= itlb_mem[i_rpage[TLB_BITS-1:0]];
 	i_page_q <= i_rpage;
-	i_sr_q   <= sr[i_rpage[19:16]];
+	i_sr_q   <= sr[i_page_q[19:16]];
+	i_sr_seg <= i_page_q[19:16];
 	i_tlb_collision <= w_we & w_side & (w_idx == i_rpage[TLB_BITS-1:0]);
 	if (d_read) begin
 		dtlb_q   <= dtlb_mem[d_rpage[TLB_BITS-1:0]];
