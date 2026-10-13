@@ -419,7 +419,10 @@ function automatic logic [63:0] fp_single_to_double_nd(input logic [31:0] w);
 	fp_single_to_double_nd = {w[31], w[30], {3{x}}, w[29:0], 29'd0};
 endfunction
 wire [63:0] wb_fwd   = wb_fsgl ? fp_single_to_double_nd(wb_result[31:0]) : wb_result;
-wire        wb_fden  = wb_fsgl & (wb_result[30:23] == 8'd0) & (wb_result[22:0] != 23'd0);
+// (any single with a zero exponent: a denormal, or a zero, which the
+// placement gets right but which costs only this cycle; the exponent alone
+// keeps the fraction's compare out of ex_stall)
+wire        wb_fden  = wb_fsgl & (wb_result[30:23] == 8'd0);
 
 // ---- stage handshakes ------------------------------------------------------
 logic        redir;         // EX redirects the fetch at the end of this cycle
@@ -1159,21 +1162,42 @@ wire [31:0] gpr_rd_sa = gpr2_collision[3] ? gpr2_collision_value : gpr_collision
                         gpr_lvt_q[3] ? gpr2_ram_sa : gpr_ram_sa;
 wire [31:0] gpr_rd_sc = gpr2_collision[4] ? gpr2_collision_value : gpr_collision[4] ? gpr_collision_value :
                         gpr_lvt_q[4] ? gpr2_ram_sc : gpr_ram_sc;
-wire [31:0] id_reg_a = (mem_upd_fwd & (mem_upd_ra == id_uop.ra)) ? mem_result[31:0] :
-    (mo_valid & mo_upd & (mo_upd_ra == id_uop.ra)) ? mo_result :
-    (gpr_write2 & (wb_upd_ra == id_uop.ra)) ? wb_upd_val :
-    (gpr_write & (wb_rd[5:0] == id_uop.ra)) ? wb_result[31:0] :
+// The bypass compares use the register numbers the reads used, registered
+// (the fetched word's, or the sequencer's next), not ID's decode of id_insn
+// (checked against it below).
+logic [5:0] id_ra_q, id_rb_q, id_rc_q;
+always_ff @(posedge clk) begin
+	if (fetch_deliver) begin
+		id_ra_q <= fetch_dec.ra;
+		id_rb_q <= fetch_dec.rb;
+		id_rc_q <= fetch_dec.rc;
+	end
+	else if (gpr_seq_take) begin
+		id_ra_q <= seq_next_ra;
+		id_rc_q <= seq_next_rc;
+	end
+end
+/* synthesis translate_off */
+always_ff @(posedge clk)
+	if (~reset & id_valid & ((id_uop.ra_rd & (id_ra_q != id_uop.ra)) | (id_uop.rb_rd & ~id_uop.b_imm & (id_rb_q != id_uop.rb)) |
+	                         (id_uop.rc_rd & (id_rc_q != id_uop.rc))))
+		$fatal(1, "ID's registered register numbers differ from its decode");
+/* synthesis translate_on */
+wire [31:0] id_reg_a = (mem_upd_fwd & (mem_upd_ra == id_ra_q)) ? mem_result[31:0] :
+    (mo_valid & mo_upd & (mo_upd_ra == id_ra_q)) ? mo_result :
+    (gpr_write2 & (wb_upd_ra == id_ra_q)) ? wb_upd_val :
+    (gpr_write & (wb_rd[5:0] == id_ra_q)) ? wb_result[31:0] :
     gpr_held_ac ? gpr_held_a_value :
     gpr_from_sequence ? gpr_rd_sa : gpr_rd_fa;
-wire [31:0] id_reg_b = (mem_upd_fwd & (mem_upd_ra == id_uop.rb)) ? mem_result[31:0] :
-    (mo_valid & mo_upd & (mo_upd_ra == id_uop.rb)) ? mo_result :
-    (gpr_write2 & (wb_upd_ra == id_uop.rb)) ? wb_upd_val :
-    (gpr_write & (wb_rd[5:0] == id_uop.rb)) ? wb_result[31:0] :
+wire [31:0] id_reg_b = (mem_upd_fwd & (mem_upd_ra == id_rb_q)) ? mem_result[31:0] :
+    (mo_valid & mo_upd & (mo_upd_ra == id_rb_q)) ? mo_result :
+    (gpr_write2 & (wb_upd_ra == id_rb_q)) ? wb_upd_val :
+    (gpr_write & (wb_rd[5:0] == id_rb_q)) ? wb_result[31:0] :
     gpr_held_b ? gpr_held_b_value : gpr_rd_fb;
-wire [31:0] id_reg_c = (mem_upd_fwd & (mem_upd_ra == id_uop.rc)) ? mem_result[31:0] :
-    (mo_valid & mo_upd & (mo_upd_ra == id_uop.rc)) ? mo_result :
-    (gpr_write2 & (wb_upd_ra == id_uop.rc)) ? wb_upd_val :
-    (gpr_write & (wb_rd[5:0] == id_uop.rc)) ? wb_result[31:0] :
+wire [31:0] id_reg_c = (mem_upd_fwd & (mem_upd_ra == id_rc_q)) ? mem_result[31:0] :
+    (mo_valid & mo_upd & (mo_upd_ra == id_rc_q)) ? mo_result :
+    (gpr_write2 & (wb_upd_ra == id_rc_q)) ? wb_upd_val :
+    (gpr_write & (wb_rd[5:0] == id_rc_q)) ? wb_result[31:0] :
     gpr_held_ac ? gpr_held_c_value :
     gpr_from_sequence ? gpr_rd_sc : gpr_rd_fc;
 always_ff @(posedge clk) begin
