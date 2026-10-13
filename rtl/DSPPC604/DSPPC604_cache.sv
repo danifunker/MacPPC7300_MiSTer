@@ -242,10 +242,12 @@ logic [255:0] landed_data;
 // the colliding write's words that the read wants (the word read and the
 // next), picked out at the read's edge, when the word read is known
 logic [31:0] landed_word, landed_word_next;
-// The set compares are made in the answer's cycle, from registers: the
-// set then read is r_idx (the request's payload is taken at the edge that
-// reads it; checked below), so the incoming address, behind EX's adder and
-// the MMU, is not in front of a compare at the read's edge.
+// The set compares are made at the read's edge and registered: the set
+// read is then r_idx in the answer's cycle (checked below). Only the
+// address's untranslated set bits, from EX's adder, are in front of them;
+// in the answer's cycle they were in front of the word choice and the load
+// data (2026-10-12: the worst family at 100 MHz). Checked against the
+// compares in the cycles that use them.
 always_ff @(posedge clk) begin
 	landed_idx <= wr_idx;
 	for (int w = 0; w < WAYS; w++) begin
@@ -257,7 +259,14 @@ always_ff @(posedge clk) begin
 	landed_word <= data_wd[255 - 32*rd_word -: 32];
 	landed_word_next <= data_wd[255 - 32*rd_word_next -: 32];
 end
-wire landed_set = (landed_idx == r_idx);
+logic landed_set;
+always_ff @(posedge clk) landed_set <= (rd_idx == wr_idx);
+/* synthesis translate_off */
+always_ff @(posedge clk)
+	if (~reset & ((state == S_LOOK) | (state == S_SNOOP)) & (|landed_tag_wq | (|landed_data_wq[0]) | (|landed_data_wq[1]) |
+	    (|landed_data_wq[2]) | (|landed_data_wq[3])) & (landed_set != (landed_idx == r_idx)))
+		$fatal(1, "the colliding write's set match differs");
+/* synthesis translate_on */
 always_comb
 	for (int w = 0; w < WAYS; w++) begin
 		landed_tag_we[w] = landed_tag_wq[w] & landed_set;
@@ -265,8 +274,17 @@ always_comb
 	end
 // the pending write (registered from r_idx at the last edge, as wr_idx_q)
 // is to the set the answer was read from
-wire pending_set_match = (wr_idx_q == r_idx);
+// (compared a cycle ahead: the set read now, which the answer's cycle then
+// has in r_idx, against the set the write registered now goes to, r_idx;
+// checked below against the compare in the cycles that use it)
+logic pending_set_match;
+always_ff @(posedge clk) pending_set_match <= (rd_idx == r_idx);
 wire forward_pending = wr_pend & pending_set_match;
+/* synthesis translate_off */
+always_ff @(posedge clk)
+	if (~reset & wr_pend & ((state == S_LOOK) | (state == S_SNOOP)) & (pending_set_match != (wr_idx_q == r_idx)))
+		$fatal(1, "the pending write's set match differs");
+/* synthesis translate_on */
 /* synthesis translate_off */
 logic [IDXW-1:0] rd_idx_q;
 always_ff @(posedge clk) begin
