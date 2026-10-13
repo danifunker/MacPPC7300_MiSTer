@@ -20,6 +20,7 @@
 module MacPPC7300_system
 #(
 	parameter int unsigned CPU_HZ   = 65_000_000,
+	parameter int unsigned MEM_HZ   = 100_000_000,  // clk_b: the video's scan-out
 	parameter int unsigned TB_HZ    = 12_500_000,
 	parameter int unsigned SDRAM_MB = 128,
 	parameter int unsigned L2_KB    = 128,          // the L2 cache (MacPPC7300_l2)
@@ -424,7 +425,7 @@ MacPPC7300_enet enet (
 	.rx_done(net_rx_done), .link(net_link), .mac(net_mac), .mac_ok(net_mac_ok)
 );
 
-MacPPC7300_video video (
+MacPPC7300_video #(.CLKV_HZ(MEM_HZ)) video (
 	.clk(clk_b), .reset(reset_b),
 	.c_req(vb_req), .c_we(vb_we), .c_line(vb_line), .c_addr(vb_addr[21:2]), .c_be(vb_be), .c_wdata(vb_wdata),
 	.c_ack(vb_ack), .c_rdata(vb_rdata),

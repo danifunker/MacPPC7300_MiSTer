@@ -7,10 +7,11 @@
 // MacPPC7300: edited by hand from the template's one-output PLL to three outputs,
 // keeping the instance names (pll|pll_inst|altera_pll_i) that sys_top.sdc's
 // clock groups match: 0 video (20 MHz, the template's), 1 the CPU (CPU_FREQ),
-// 2 memory (100 MHz).
+// 2 memory (MEM_FREQ, 100 MHz unless the memory runs at the CPU's clock).
 `timescale 1 ps / 1 ps
 module pll #(
-		parameter CPU_FREQ = "65.000000 MHz"
+		parameter CPU_FREQ = "65.000000 MHz",
+		parameter MEM_FREQ = "100.000000 MHz"
 	) (
 		input  wire  refclk,   //  refclk.clk
 		input  wire  rst,      //   reset.reset
@@ -20,7 +21,7 @@ module pll #(
 		output wire  locked    //  locked.export
 	);
 
-	pll_0002 #(.CPU_FREQ(CPU_FREQ)) pll_inst (
+	pll_0002 #(.CPU_FREQ(CPU_FREQ), .MEM_FREQ(MEM_FREQ)) pll_inst (
 		.refclk   (refclk),   //  refclk.clk
 		.rst      (rst),      //   reset.reset
 		.outclk_0 (outclk_0), // outclk0.clk

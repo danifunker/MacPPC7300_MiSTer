@@ -56,6 +56,10 @@ module emu
 );
 
 localparam int CPU_MHZ = 70;            // 60 and 65 also work with the PLL (VCO 1200, 1300 MHz); 70 since 2026-10-09
+localparam int MEM_MHZ = 100;           // the memory clock: 100, or the CPU's own (105: one VCO for both)
+// the PLL's settings for those, as strings (kept in step with the numbers by hand)
+localparam CPU_FREQ = "70.000000 MHz";
+localparam MEM_FREQ = "100.000000 MHz";
 localparam int TRACE = 0;               // 1: the DDR3 trace (syn\mister.py trace), for debugging builds
 localparam int SOUND_IN_DMA = 0;        // 1: DMA channel 9 (sound in, which records silence) a real channel
 localparam int PERF = 0;                // 1: the CPU's performance counters, into the trace (syn\perf.py; needs TRACE)
@@ -160,7 +164,7 @@ localparam [31:0] BUILD = {8'h20, BD[43:40], BD[35:32], BD[27:24], BD[19:16], BD
 ///////////////////////   CLOCKS   ///////////////////////////////
 
 wire clk_vid, clk_cpu, clk_mem, pll_locked;
-pll #(.CPU_FREQ(CPU_MHZ == 60 ? "60.000000 MHz" : CPU_MHZ == 70 ? "70.000000 MHz" : "65.000000 MHz")) pll
+pll #(.CPU_FREQ(CPU_FREQ), .MEM_FREQ(MEM_FREQ)) pll
 (
 	.refclk(CLK_50M),
 	.rst(0),
@@ -273,11 +277,11 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(VDNUM), .BLKSZ(2)) hps_io
 // 0 until the HPS has sent them
 wire [32:0] timestamp;
 reg  [31:0] mac_secs_m = 0;
-reg  [26:0] sec_div = 0;                    // clk_mem's 100 MHz
+reg  [26:0] sec_div = 0;                    // clk_mem's MEM_MHZ
 reg         ts_tog = 0;
 always @(posedge clk_mem) begin
-	sec_div <= (sec_div == 27'd99_999_999) ? 27'd0 : sec_div + 27'd1;
-	if (sec_div == 27'd99_999_999 && mac_secs_m != 32'd0) mac_secs_m <= mac_secs_m + 32'd1;
+	sec_div <= (sec_div == 27'(MEM_MHZ * 1000000 - 1)) ? 27'd0 : sec_div + 27'd1;
+	if (sec_div == 27'(MEM_MHZ * 1000000 - 1) && mac_secs_m != 32'd0) mac_secs_m <= mac_secs_m + 32'd1;
 	ts_tog <= timestamp[32];
 	if (ts_tog != timestamp[32] && timestamp[31:0] != 32'd0) begin
 		mac_secs_m <= timestamp[31:0] + 32'd2082844800;
@@ -378,7 +382,7 @@ assign ioctl_wait = sd_up_busy | nv_busy | nv_dl_pend;
 // the NVRAM image on block slot 2 (milestone P)
 reg         nv_dirty_t = 0;           // toggled in the CPU's clock at each CPU write to the NVRAM
 wire        nvs_hold;
-MacPPC7300_nvsave #(.CLK_HZ(100_000_000)) nvsave (
+MacPPC7300_nvsave #(.CLK_HZ(MEM_MHZ * 1000000)) nvsave (
 	.clk(clk_mem), .reset(~pll_locked),
 	.img_mounted(img_mounted[2]), .img_size, .img_readonly,
 	.sd_lba(nvs_lba), .sd_rd(nvs_rd), .sd_wr(nvs_wr), .sd_ack(sd_ack[2]),
@@ -601,7 +605,7 @@ wire   [7:0] mac_r, mac_g, mac_b;
 
 assign DDRAM_CLK = clk_mem;
 
-MacPPC7300_system #(.CPU_HZ(CPU_MHZ * 1000000), .TB_HZ(12500000), .SDRAM_MB(128),
+MacPPC7300_system #(.CPU_HZ(CPU_MHZ * 1000000), .MEM_HZ(MEM_MHZ * 1000000), .TB_HZ(12500000), .SDRAM_MB(128),
                     .TRACE(TRACE), .SOUND_IN_DMA(SOUND_IN_DMA), .PERF(PERF), .SND_TRACE(SND_TRACE)) system
 (
 	.clk(clk_cpu),
@@ -646,7 +650,7 @@ wire [15:0] sd_dq_out;
 wire        sd_dq_oe;
 assign SDRAM_DQ = sd_dq_oe ? sd_dq_out : 16'hZZZZ;
 
-MacPPC7300_sdram #(.CLK_MHZ(100)) sdram
+MacPPC7300_sdram #(.CLK_MHZ(MEM_MHZ)) sdram
 (
 	.clk(clk_mem),
 	.init(sdram_init),

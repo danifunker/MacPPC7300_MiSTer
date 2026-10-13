@@ -3,7 +3,8 @@
 // give 1200 and 1400 MHz.
 `timescale 1ns/10ps
 module  pll_0002 #(
-	parameter CPU_FREQ = "65.000000 MHz"
+	parameter CPU_FREQ = "65.000000 MHz",
+	parameter MEM_FREQ = "100.000000 MHz"
 ) (
 
 	// interface 'refclk'
@@ -32,7 +33,7 @@ module  pll_0002 #(
 		.output_clock_frequency1(CPU_FREQ),
 		.phase_shift1("0 ps"),
 		.duty_cycle1(50),
-		.output_clock_frequency2("100.000000 MHz"),
+		.output_clock_frequency2(MEM_FREQ),
 		.phase_shift2("0 ps"),
 		.duty_cycle2(50),
 		.output_clock_frequency3("0 MHz"),
