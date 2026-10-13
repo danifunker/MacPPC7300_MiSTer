@@ -419,10 +419,15 @@ function automatic logic [63:0] fp_single_to_double_nd(input logic [31:0] w);
 	fp_single_to_double_nd = {w[31], w[30], {3{x}}, w[29:0], 29'd0};
 endfunction
 wire [63:0] wb_fwd   = wb_fsgl ? fp_single_to_double_nd(wb_result[31:0]) : wb_result;
-// (any single with a zero exponent: a denormal, or a zero, which the
-// placement gets right but which costs only this cycle; the exponent alone
-// keeps the fraction's compare out of ex_stall)
-wire        wb_fden  = wb_fsgl & (wb_result[30:23] == 8'd0);
+// (the loaded word's test, from the memory unit beside its byte placement,
+// registered with it: not a compare of wb_result in front of ex_stall)
+logic       wb_fden_q;
+wire        wb_fden  = wb_fden_q;
+/* synthesis translate_off */
+always_ff @(posedge clk)
+	if (~reset & wb_valid & (wb_fden_q != (wb_fsgl & (wb_result[30:23] == 8'd0) & (wb_result[22:0] != 23'd0))))
+		$fatal(1, "the registered denormal single flag differs");
+/* synthesis translate_on */
 
 // ---- stage handshakes ------------------------------------------------------
 logic        redir;         // EX redirects the fetch at the end of this cycle
@@ -2425,6 +2430,7 @@ logic        mu_resp;
 logic        mu_fault;
 logic        mu_falign;     // ... and it is an alignment exception, not a DSI
 logic [63:0] mu_rdata;
+logic        mu_rden;
 logic [31:0] mu_dsisr;
 logic [31:0] mu_dar;
 logic [31:0] mu_ea;
@@ -2451,6 +2457,7 @@ DSPPC604_mem_unit mem_unit
 	.resp_valid  (mu_resp),
 	.resp_fault  (mu_fault),
 	.rdata       (mu_rdata),
+	.rden        (mu_rden),
 	.dbus_req    (mu_req),
 	.dbus_we     (mu_we),
 	.dbus_kind   (mu_kind),
@@ -2847,6 +2854,7 @@ always_ff @(posedge clk) begin
 		wb_result <= (mo_valid ? mo_load : mem_load) ? mu_rdata :
 		             mo_valid ? {32'd0, mo_result} : mem_result;
 		wb_fsgl   <= mo_valid ? (mo_load & mo_fp & mo_fsgl) : (mem_load & mem_fp & mem_fsgl);
+		wb_fden_q <= (mo_valid ? (mo_load & mo_fp & mo_fsgl) : (mem_load & mem_fp & mem_fsgl)) & mu_rden;
 		wb_t_cr   <= mo_valid ? mo_t_cr : mem_t_cr;
 		wb_t_xer  <= mo_valid ? mo_t_xer : mem_t_xer;
 		wb_t_lr   <= mo_valid ? mo_t_lr : mem_t_lr;

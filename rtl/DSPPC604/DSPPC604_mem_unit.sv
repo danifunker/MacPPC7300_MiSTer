@@ -55,6 +55,7 @@ module DSPPC604_mem_unit
 	output logic        resp_valid,
 	output logic        resp_fault,
 	output logic [63:0] rdata,       // value loaded (low word unless 8 bytes)
+	output logic        rden,        // ... a word that is a denormal single (lfs: an aligned word, the cache's as it is)
 
 	output logic        dbus_req,
 	output logic        dbus_we,
@@ -88,7 +89,6 @@ typedef enum logic [2:0] {
 
 state_t      state;
 logic [31:0] word0_q;
-logic [31:0] conv_q;        // the descriptor under way's stfs data, converted (a cycle after it is current)
 
 // a descriptor, with the load's byte placement decoded when it is accepted
 typedef struct packed {
@@ -102,6 +102,7 @@ typedef struct packed {
 	logic [3:0]  load_sext;
 	logic [63:0] wdata;
 	logic        conv;
+	logic [31:0] wconv;     // stfs: the double, converted as the descriptor is written
 } desc_t;
 
 // Two descriptors used in turn: cp names the one under way (or the next
@@ -141,15 +142,14 @@ wire bus_touch = ((saved ? c.kind : kind) != CK_WORD);
 // the first word, S_RSP1 for the second): the store's data is not in front
 // of the request (the cache takes it a cycle after the grant), and stfs's
 // conversion is made here rather than in EX.
-// stfs's double is converted into conv_q from the descriptor, so the
-// conversion is not in the cache's lookup cycle; such a store waits a
-// cycle in S_HOLD0 for it (no bypass to the bus when it is accepted)
+// stfs's double is converted as the descriptor is written (wconv), so the
+// conversion is not in the cache's lookup cycle and the store does not wait
 // Each descriptor's window is shaped from its own fields; cp only selects
 // the result (it is not in front of the shifts).
-function automatic logic [63:0] store_window(input desc_t d, input logic [31:0] cq);
+function automatic logic [63:0] store_window(input desc_t d);
 	logic [31:0] w, sb;
 	logic [2:0]  k;
-	w = d.conv ? cq : d.wdata[31:0];
+	w = d.conv ? d.wconv : d.wdata[31:0];
 	k = d.nbytes[2:0];
 	if (d.brev)         sb = (k == 3'd4) ? {w[7:0], w[15:8], w[23:16], w[31:24]}
 	                                     : {w[7:0], w[15:8], 16'd0};
@@ -161,8 +161,8 @@ function automatic logic [63:0] store_window(input desc_t d, input logic [31:0] 
 endfunction
 
 // the bytes placed in a two-word window
-wire [63:0] wwin0 = store_window(desc[0], conv_q);
-wire [63:0] wwin1 = store_window(desc[1], conv_q);
+wire [63:0] wwin0 = store_window(desc[0]);
+wire [63:0] wwin1 = store_window(desc[1]);
 wire [63:0] wwin  = cp ? wwin1 : wwin0;
 wire [7:0]  ones  = ~(8'hFF >> bus_n);
 wire [7:0]  bewin = bus_nbytes[3] ? 8'hFF : (ones >> bus_ea[1:0]);
@@ -173,7 +173,7 @@ wire [7:0]  bewin = bus_nbytes[3] ? 8'hFF : (ones >> bus_ea[1:0]);
 assign req_ready  = ~qv;
 assign pending_ungranted = (state == S_HOLD0);
 assign final_q    = ((state == S_RSP0) & (~two_words | dbus_sure)) | (state == S_RSP1);
-assign dbus_req   = ~reset & ((req_valid & first_slot & ~conv) | (state == S_HOLD0) | (state == S_REQ1));
+assign dbus_req   = ~reset & ((req_valid & first_slot) | (state == S_HOLD0) | (state == S_REQ1));
 assign dbus_we    = saved ? c.we : we;
 assign dbus_kind  = saved ? c.kind : kind;
 assign dbus_addr  = second ? c.next_word : saved ? c.addr[31:2] : addr[31:2];
@@ -243,6 +243,7 @@ always_comb begin
 end
 
 assign rdata      = dword ? rwin : {32'd0, lword};
+assign rden       = (dbus_rdata[30:23] == 8'd0) & (dbus_rdata[22:0] != 23'd0);
 assign resp_fault = dbus_rvalid & dbus_fault;
 assign resp_valid = dbus_rvalid & (dbus_fault | ((state == S_RSP0) & (~two_words | dbus_rwide)) | (state == S_RSP1));
 
@@ -267,9 +268,9 @@ always_ff @(posedge clk) begin
 		desc[wi].ljust       <= ljust;
 		desc[wi].wdata       <= wdata;
 		desc[wi].conv        <= conv;
+		desc[wi].wconv       <= fp_double_to_single(wdata);
 	end
 	if (dbus_rvalid & (state == S_RSP0)) word0_q <= dbus_rdata;
-	conv_q <= fp_double_to_single(c.wdata);
 
 	case (state)
 		S_REQ0: if (accept) state <= dbus_gnt ? S_RSP0 : S_HOLD0;
