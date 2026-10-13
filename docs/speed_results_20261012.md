@@ -178,3 +178,48 @@ by several percent between runs.)
 The bench's snoop storm left a snoop in flight into the end-of-run
 write-back, whose first line was then never written back (random seed
 730, failing back to master); fixed in the bench, the cache was right.
+
+## 2026-10-13: conditional branch folding, 110 MHz, and stability at 100 MHz
+
+**Conditional folding (230b70d).** A bc (relative), bclr or bcctr with no
+link that does not count CTR, right after an instruction that can carry
+it (one integer, FP or plain load/store operation, in the same page, not
+writing the CR field the branch tests), is learned in the BTB at that
+instruction's address with the branch's BO/BI/BH. The fetch goes from the
+instruction to the branch's predicted target or to pc + 8; EX evaluates
+the branch beside the instruction and it retires with it. Boot 331.00M ->
+317.25M cycles (-4.2 %; mostly the 68k emulator's dispatch bclr).
+bdnz-type branches and compare-then-branch pairs were measured at under
+0.5 % of boot cycles together and left alone. The random programs never
+folded anything (their mtsr and icbi start a new fold epoch every few
+hundred instructions), so run_core now also runs them four times without
+those (`progs.py random ... repeat=4 steady`).
+
+**110 MHz.** Black screen on the board (the PLL is right: VCO 1100 MHz,
+/10 for the CPU, /11 for memory). With memory at 100 MHz from the same
+PLL nothing between 100 and about 107 MHz is possible, so 100 MHz is the
+top clock for this design on this board.
+
+**Stability at 100 MHz.** The first folding build at 100 MHz (69f922a,
+-6.43 ns) crashed twice on the board (Finder error 10 at shutdown; an
+address error at startup) while 0c5af13 (-6.25 ns) ran clean twice and
+the same build at 90 MHz ran clean. The worst path was the new
+denormal-single stall in front of ex_stall; it now comes from a flag
+registered with WB's result (b012469). The same commit removes a cycle
+that stfs had waited since 34ed2a0 (Speedometer's single-precision
+MatMult and FFT had lost 9-15 % per clock).
+
+Board, b012469 at 100 MHz (slow 100C -6.61 ns), L2 off, two runs, both
+complete and shut down cleanly:
+
+| | 0c5af13, 100 MHz | b012469, 100 MHz |
+|---|---:|---:|
+| CPU (the emulated 68k) | 5.396 / 5.406 | 5.392 / 5.387 |
+| Benchmark Mix | 16.662 / 16.743 | 16.976 / 16.911 |
+| Dhrystones | 5.402 / 5.398 | 5.663 / 5.668 |
+| FPU average | 6.552 / 6.648 | 6.946 / 6.996 |
+| Fast Fourier | 5.501 / 5.503 | 6.017 / 6.016 |
+| Color average | 1.884 / 1.884 | 1.918 / 1.916 |
+
+Against this morning's starting point (9b65cef at 90 MHz): CPU 4.069 ->
+5.39 (+32 %), Mix 15.29 -> 16.94, FPU 6.41 -> 6.97, Color 1.80 -> 1.92.
