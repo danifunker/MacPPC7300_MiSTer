@@ -38,6 +38,7 @@ module DSPPC604_mem_unit
 	input  logic        clk,
 	input  logic        reset,
 
+	input  logic        pipe,        // offer the next access in the current's answer cycle (quasi-static)
 	input  logic        req_valid,
 	input  logic        we,
 	input  DSPPC604_pkg::ck_t kind,
@@ -138,7 +139,7 @@ wire       two_words = cp ? two_words1 : two_words0;
 // A two-word fallback returns to S_REQ0 before accepting the next access.
 wire second = (state == S_REQ1) | (state == S_RSP1);
 wire saved = second | (state == S_HOLD0);
-wire first_slot = ~qv & ((state == S_REQ0) | ((state == S_RSP0) & resp_valid));
+wire first_slot = ~qv & ((state == S_REQ0) | ((state == S_RSP0) & resp_valid & pipe));
 wire [31:0] bus_ea = saved ? c.addr : addr;
 wire [3:0] bus_nbytes = saved ? c.nbytes : nbytes;
 wire [2:0] bus_n = bus_nbytes[2:0];

@@ -40,6 +40,7 @@ module MacPPC7300_system
 	input  logic [31:0]  cpu_hz,          // the CPU's clock rate, for the time bases (quasi-static, taken under reset)
 	input  logic         boot_memtest,    // the memory test in place of the ROM
 	input  logic         l2_on,           // the L2 cache in the memory path (quasi-static, taken under reset)
+	input  logic         dc_pipe,         // the data cache's next request behind a hit (quasi-static, taken under reset)
 
 	// memory, in the memory's clock, by SDRAM offset
 	input  logic         clk_b,
@@ -224,7 +225,7 @@ assign cpu_in_reset = cpu_reset;
 logic         cpu_dbg_ev;
 logic [223:0] cpu_dbg_rec;
 DSPPC604 #(.PERF(PERF)) cpu (
-	.clk, .reset(cpu_reset), .reset_pc,
+	.clk, .reset(cpu_reset), .reset_pc, .dc_pipe,
 	.ext_irq, .tb_tick,
 	.mem_req(c_req), .mem_we(c_we), .mem_line(c_line), .mem_addr(c_addr), .mem_be(c_be),
 	.mem_wdata(c_wdata), .mem_ack(c_ack), .mem_rdata(c_rdata),

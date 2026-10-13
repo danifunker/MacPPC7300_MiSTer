@@ -112,6 +112,7 @@ struct Options {
 	uint64_t trace_from = 0, trace_count = 0;
 	uint64_t stuck = 1ull << 24;   // cycles without a retirement that count as stuck
 	bool l2 = true;                // the L2 cache in the memory path (--no-l2 turns it off)
+	bool dc_pipe = true;           // the data cache's next request behind a hit (--no-dc-pipe turns it off)
 	bool memtest = false;          // boot the memory test in place of the ROM
 	uint32_t memtest_passes = 1;   // ... and stop when it has completed this many
 	int64_t mem_fault = -1;        // SDRAM offset whose reads come back with bit 0 flipped
@@ -666,6 +667,7 @@ int main(int argc, char** argv) {
 		else if (a == "--rom") opt.rom = next();
 		else if (a == "--ram") opt.ram_mb = (unsigned)std::atoi(next().c_str());
 		else if (a == "--no-l2") opt.l2 = false;
+		else if (a == "--no-dc-pipe") opt.dc_pipe = false;
 		else if (a == "--cpu-mhz") opt.cpu_mhz = std::atof(next().c_str());
 		else if (a == "--mem-mhz") opt.mem_mhz = std::atof(next().c_str());
 		else if (a == "--max-instr") opt.max_instr = std::strtoull(next().c_str(), nullptr, 0);
@@ -961,6 +963,7 @@ int main(int argc, char** argv) {
 		dut->ram_mb = opt.ram_mb;
 		dut->boot_memtest = opt.memtest;
 		dut->l2_on = opt.l2;
+		dut->dc_pipe = opt.dc_pipe;
 		dut->cpu_hz = 65000000;          // MacPPC7300_system's CPU_HZ
 		dut->reset_pc = reset_pc;
 		dut->modem_rxd = term.txd;
@@ -1484,6 +1487,7 @@ int main(int argc, char** argv) {
 	};
 
 	dut->reset_pc = reset_pc;
+	dut->dc_pipe = opt.dc_pipe;
 	dut->reset = 1;
 	tick(); tick();
 	dut->reset = 0;

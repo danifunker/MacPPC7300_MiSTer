@@ -57,6 +57,7 @@ module DSPPC604_cache
 
 	input  logic        enable,              // HID0[ICE] or [DCE]
 	input  logic        lock,                // HID0[ILOCK] or [DLOCK]
+	input  logic        pipe,                // take the next request in a hit's answer cycle (quasi-static)
 	input  logic        inval_all,           // one cycle (remembered while busy)
 
 	// request port
@@ -446,9 +447,13 @@ wire [7:0] st_wwe_next = 8'd1 << (3'd6 - r_word);
 wire wr_sclash = wr_pend & (snoop_addr[IDXW+4:5] == wr_idx_q);
 wire word_hit = (state == S_LOOK) & k_word & hit & ~unc & (~r_we | ~r_wt) & ~r_snoop;
 // (an uncached word's answer from its register takes the next request too)
-wire can_take = ((state == S_IDLE) | word_hit | (state == S_UANS)) & ~snoop_req & ~inval_all & ~inval_pend;
+// (pipe = 0 keeps the hit out of the grant: a hit's answer cycle takes no
+// request, so the grant and the payload's enables come from registers only;
+// 2026-10-13, the first thing to fail at 110 MHz was this grant decided
+// unevenly, from the late hit, by the cache, the memory unit and the MMU)
+wire can_take = ((state == S_IDLE) | (word_hit & pipe) | (state == S_UANS)) & ~snoop_req & ~inval_all & ~inval_pend;
 assign gnt = can_take & req;
-wire payload_take = (state == S_IDLE) | word_hit | ((state == S_UANS) & ~snoop_req);
+wire payload_take = (state == S_IDLE) | (word_hit & pipe) | ((state == S_UANS) & ~snoop_req);
 wire payload_snoop = (state == S_IDLE) & snoop_req;   // a snoop's registers instead (it wins, when it goes)
 assign slow = (state != S_IDLE) & (state != S_LOOK);
 

@@ -98,6 +98,7 @@ module DSPPC604
 	input  logic        reset,
 	input  logic [31:0] reset_pc,
 
+	input  logic        dc_pipe,         // the data cache takes a request behind a hit and the memory unit offers one (quasi-static)
 	input  logic        ext_irq,         // external interrupt request, level
 	input  logic        tb_tick,         // one clock: advance the time base and decrementer
 
@@ -2514,6 +2515,7 @@ DSPPC604_mem_unit mem_unit
 (
 	.clk         (clk),
 	.reset       (reset | mem_irq),
+	.pipe        (dc_pipe),
 	.req_valid   (mu_valid),
 	.req_ready   (mu_ready),
 	.pending_ungranted (mu_pending),
@@ -2704,6 +2706,7 @@ DSPPC604_cache #(.WRITABLE (0), .IDXW (IC_IDXW)) icache
 	.reset      (reset),
 	.enable     (hid0_ice),
 	.lock       (hid0_ilock),
+	.pipe       (1'b1),
 	.inval_all  (ic_inval),
 	.req        (ib_req),
 	.we         (1'b0),
@@ -2752,6 +2755,7 @@ DSPPC604_cache #(.WRITABLE (1), .LATE_ANSWER (0), .IDXW (DC_IDXW)) dcache
 	.reset      (reset),
 	.enable     (hid0_dce),
 	.lock       (hid0_dlock),
+	.pipe       (dc_pipe),
 	.inval_all  (dc_inval),
 	.req        (db_req),
 	.we         (db_we),

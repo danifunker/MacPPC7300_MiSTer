@@ -121,6 +121,7 @@ localparam CONF_STR = {
 	"O[4],L2 cache (on reset),On,Off;",
 	"O[16:15],Monitor (on reset),16-inch 832x624,13-inch 640x480,12-inch 512x384;",
 	"O[33:31],CPU clock (on reset),100 MHz,109 MHz,120 MHz,133 MHz,92 MHz,86 MHz,80 MHz,75 MHz;",
+	"O[34],D-cache pipelining (on reset),On,Off;",
 	"-;",
 	"O[13:11],ADB controller (on reset),None,Gravis MouseStick II,Gravis Firebird,Gravis GamePad,SideWinder 3D Pro;",
 	"O[14],Stick moves pointer,No,Yes;",
@@ -484,6 +485,7 @@ reg  [2:0]  joy_mode = 0;
 reg         net_on = 0;
 reg         tr_mesh_m = 0;                  // the trace also takes MESH (status[29]: no menu entry)
 reg         l2_on_m = 1;
+reg         dc_pipe_m = 1;
 always @(posedge clk_mem) if (cpu_reset_m) begin
 	ram_mb    <= ram_opt;
 	cpu_hz_m  <= cpu_hz_of(clk_cur);
@@ -492,6 +494,7 @@ always @(posedge clk_mem) if (cpu_reset_m) begin
 	net_on    <= status[19:17] != 3'd0;     // the Main's mac_eth.cpp takes the interface from it too
 	tr_mesh_m <= status[29];
 	l2_on_m   <= ~status[4];
+	dc_pipe_m <= ~status[34];
 end
 wire [51:0] joy = {status[14], joy_mode, joystick_r_analog_0, joystick_l_analog_0, joystick_0[15:0]};
 
@@ -503,6 +506,7 @@ reg [1:0] boot_memtest_c;
 reg [8:0] mon_c [2];
 reg [1:0] tr_mesh_c;
 reg [1:0] l2_on_c = 2'b11;
+reg [1:0] dc_pipe_c = 2'b11;
 always @(posedge clk_cpu) begin
 	cpu_reset_s    <= {cpu_reset_s[1:0], cpu_reset_m};
 	ram_mb_c[0]    <= ram_mb;
@@ -514,6 +518,7 @@ always @(posedge clk_cpu) begin
 	mon_c[1]       <= mon_c[0];
 	tr_mesh_c      <= {tr_mesh_c[0], tr_mesh_m};
 	l2_on_c        <= {l2_on_c[0], l2_on_m};
+	dc_pipe_c      <= {dc_pipe_c[0], dc_pipe_m};
 end
 wire cpu_reset = cpu_reset_s[2];
 
@@ -683,6 +688,7 @@ MacPPC7300_system #(.CPU_HZ(CPU_MHZ * 1000000), .MEM_HZ(MEM_MHZ * 1000000), .L2_
 	.cpu_hz(cpu_hz_c[1]),
 	.boot_memtest(boot_memtest_c[1]),
 	.l2_on(l2_on_c[1]),
+	.dc_pipe(dc_pipe_c[1]),
 
 	.clk_b(clk_mem),
 	.reset_b(cpu_reset_m),
