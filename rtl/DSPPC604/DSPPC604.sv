@@ -1992,36 +1992,41 @@ wire        ex_rd_wr  = ex_dec.rd_wr | (ex_dec.frd_wr & (~is_fpu | fpu_result_we
 // WB gets the oldest MEM operation if it leaves. The operation in EX next
 // cycle is ID's if it moves, else EX's own. (When neither, EX is empty or
 // cancelled and the selects are unused.)
-wire       fwd_take_v  = (ex_leave & ~ex_abort) | completion_pop;
-wire [6:0] fwd_take_rd = completion_pop ? {1'b0, completion_queue[completion_head].rd} : ex_rd;
-wire       fwd_take_wr = completion_pop | ex_rd_wr;
-wire       fwd_mem_v   = mem_take ? (fwd_take_v & fwd_take_wr) : (mem_valid & mem_rd_wr & ~(mem_leave & ~mo_valid));
-wire [6:0] fwd_mem_rd  = mem_take ? fwd_take_rd : mem_rd;
 wire       fwd_wb_v    = mem_leave & ~mem_fault & (mo_valid ? mo_rd_wr : mem_rd_wr);
-// MEM's load with update next cycle: EX's, taken now, or MEM's own unless it leaves
-wire       fwd_upd_v   = mem_take ? (ex_leave & ~ex_abort & ex_dec.upd) : (mem_valid & mem_upd & ~(mem_leave & ~mo_valid));
-wire [5:0] fwd_upd_ra  = mem_take ? ex_dec.ra : mem_upd_ra;
 wire [6:0] fwd_wb_rd   = mo_valid ? mo_rd : mem_rd;
-dec_t fwd_dec;
-assign fwd_dec = id_to_ex ? id_uop : ex_dec;
-wire fwd_use_b = fwd_dec.rb_rd & ~fwd_dec.b_imm;
-always_ff @(posedge clk) begin
-	fq_a_mem  <= fwd_mem_v & fwd_dec.ra_rd  & (fwd_mem_rd == {1'b0, fwd_dec.ra});
-	fq_b_mem  <= fwd_mem_v & fwd_use_b      & (fwd_mem_rd == {1'b0, fwd_dec.rb});
-	fq_c_mem  <= fwd_mem_v & fwd_dec.rc_rd  & (fwd_mem_rd == {1'b0, fwd_dec.rc});
-	fq_fa_mem <= fwd_mem_v & fwd_dec.fra_rd & (fwd_mem_rd == {2'b10, fwd_dec.fra});
-	fq_fb_mem <= fwd_mem_v & fwd_dec.frb_rd & (fwd_mem_rd == {2'b10, fwd_dec.frb});
-	fq_fc_mem <= fwd_mem_v & fwd_dec.frc_rd & (fwd_mem_rd == {2'b10, fwd_dec.frc});
-	fq_a_upd  <= fwd_upd_v & fwd_dec.ra_rd  & (fwd_upd_ra == fwd_dec.ra);
-	fq_b_upd  <= fwd_upd_v & fwd_use_b      & (fwd_upd_ra == fwd_dec.rb);
-	fq_c_upd  <= fwd_upd_v & fwd_dec.rc_rd  & (fwd_upd_ra == fwd_dec.rc);
-	fq_a_wb   <= fwd_wb_v  & fwd_dec.ra_rd  & (fwd_wb_rd == {1'b0, fwd_dec.ra});
-	fq_b_wb   <= fwd_wb_v  & fwd_use_b      & (fwd_wb_rd == {1'b0, fwd_dec.rb});
-	fq_c_wb   <= fwd_wb_v  & fwd_dec.rc_rd  & (fwd_wb_rd == {1'b0, fwd_dec.rc});
-	fq_fa_wb  <= fwd_wb_v  & fwd_dec.fra_rd & (fwd_wb_rd == {2'b10, fwd_dec.fra});
-	fq_fb_wb  <= fwd_wb_v  & fwd_dec.frb_rd & (fwd_wb_rd == {2'b10, fwd_dec.frb});
-	fq_fc_wb  <= fwd_wb_v  & fwd_dec.frc_rd & (fwd_wb_rd == {2'b10, fwd_dec.frc});
-end
+// Every candidate is compared from registers, for both operations EX can
+// hold next (ID's and its own); the late signals (EX leaving, MEM taking,
+// ID moving) only choose among the results.
+function automatic logic [5:0] rd_match(input dec_t d, input logic [6:0] r);
+	rd_match = {d.ra_rd  & (r == {1'b0, d.ra}),
+	            d.rb_rd  & ~d.b_imm & (r == {1'b0, d.rb}),
+	            d.rc_rd  & (r == {1'b0, d.rc}),
+	            d.fra_rd & (r == {2'b10, d.fra}),
+	            d.frb_rd & (r == {2'b10, d.frb}),
+	            d.frc_rd & (r == {2'b10, d.frc})};
+endfunction
+function automatic logic [2:0] ra_match(input dec_t d, input logic [5:0] r);
+	ra_match = {d.ra_rd & (r == d.ra), d.rb_rd & ~d.b_imm & (r == d.rb), d.rc_rd & (r == d.rc)};
+endfunction
+wire       fwd_ex_ok   = ex_leave & ~ex_abort;
+wire       fwd_mem_own = mem_valid & ~(mem_leave & ~mo_valid);
+function automatic logic [14:0] fwd_sel(input dec_t d);
+	logic [5:0] m_take, m_mem, m_wb;
+	logic [2:0] u;
+	m_take = completion_pop ? rd_match(d, {1'b0, completion_queue[completion_head].rd}) :
+	         (fwd_ex_ok & ex_rd_wr) ? rd_match(d, ex_rd) : 6'd0;
+	m_mem  = mem_take ? m_take : (fwd_mem_own & mem_rd_wr) ? rd_match(d, mem_rd) : 6'd0;
+	m_wb   = fwd_wb_v ? rd_match(d, fwd_wb_rd) : 6'd0;
+	u      = mem_take ? ((fwd_ex_ok & ex_dec.upd) ? ra_match(d, ex_dec.ra) : 3'd0) :
+	         (fwd_mem_own & mem_upd) ? ra_match(d, mem_upd_ra) : 3'd0;
+	fwd_sel = {m_mem, m_wb, u};
+endfunction
+wire [14:0] fwd_sel_id = fwd_sel(id_uop);
+wire [14:0] fwd_sel_ex = fwd_sel(ex_dec);
+always_ff @(posedge clk)
+	{fq_a_mem, fq_b_mem, fq_c_mem, fq_fa_mem, fq_fb_mem, fq_fc_mem,
+	 fq_a_wb, fq_b_wb, fq_c_wb, fq_fa_wb, fq_fb_wb, fq_fc_wb,
+	 fq_a_upd, fq_b_upd, fq_c_upd} <= id_to_ex ? fwd_sel_id : fwd_sel_ex;
 
 /* synthesis translate_off */
 always_ff @(posedge clk) begin
