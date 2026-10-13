@@ -48,6 +48,7 @@ module DSPPC604_mem_unit
 	input  logic        ljust,       // string: bytes at the top of the register
 	input  logic [63:0] wdata,       // value to store (low word unless 8 bytes)
 	input  logic        conv,        // ... a double to store as a single (stfs)
+	input  logic [31:0] wconv,       // ... that single (converted by the caller)
 	output logic        req_ready,
 	output logic        pending_ungranted, // accepted descriptor with no bus side effect
 	output logic        final_q,           // the access under way has had its last grant
@@ -142,7 +143,8 @@ wire bus_touch = ((saved ? c.kind : kind) != CK_WORD);
 // the first word, S_RSP1 for the second): the store's data is not in front
 // of the request (the cache takes it a cycle after the grant), and stfs's
 // conversion is made here rather than in EX.
-// stfs's double is converted as the descriptor is written (wconv), so the
+// stfs's double is converted in EX, from each forwarding source before the
+// choice among them, and written with the descriptor (wconv), so the
 // conversion is not in the cache's lookup cycle and the store does not wait
 // Each descriptor's window is shaped from its own fields; cp only selects
 // the result (it is not in front of the shifts).
@@ -268,7 +270,7 @@ always_ff @(posedge clk) begin
 		desc[wi].ljust       <= ljust;
 		desc[wi].wdata       <= wdata;
 		desc[wi].conv        <= conv;
-		desc[wi].wconv       <= fp_double_to_single(wdata);
+		desc[wi].wconv       <= wconv;
 	end
 	if (dbus_rvalid & (state == S_RSP0)) word0_q <= dbus_rdata;
 
