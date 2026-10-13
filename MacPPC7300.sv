@@ -60,6 +60,7 @@ localparam int MEM_MHZ = 100;           // the memory clock: 100, or the CPU's o
 // the PLL's settings for those, as strings (kept in step with the numbers by hand)
 localparam CPU_FREQ = "70.000000 MHz";
 localparam MEM_FREQ = "100.000000 MHz";
+localparam int L2_KB = 128;             // 0: no L2 cache (its OSD option then does nothing; saves about 800 ALMs)
 localparam int TRACE = 0;               // 1: the DDR3 trace (syn\mister.py trace), for debugging builds
 localparam int SOUND_IN_DMA = 0;        // 1: DMA channel 9 (sound in, which records silence) a real channel
 localparam int PERF = 0;                // 1: the CPU's performance counters, into the trace (syn\perf.py; needs TRACE)
@@ -605,7 +606,7 @@ wire   [7:0] mac_r, mac_g, mac_b;
 
 assign DDRAM_CLK = clk_mem;
 
-MacPPC7300_system #(.CPU_HZ(CPU_MHZ * 1000000), .MEM_HZ(MEM_MHZ * 1000000), .TB_HZ(12500000), .SDRAM_MB(128),
+MacPPC7300_system #(.CPU_HZ(CPU_MHZ * 1000000), .MEM_HZ(MEM_MHZ * 1000000), .L2_KB(L2_KB), .TB_HZ(12500000), .SDRAM_MB(128),
                     .TRACE(TRACE), .SOUND_IN_DMA(SOUND_IN_DMA), .PERF(PERF), .SND_TRACE(SND_TRACE)) system
 (
 	.clk(clk_cpu),
