@@ -1524,9 +1524,23 @@ wire completion_dependency =
      (ex_dec.rc_rd & (|completion_match(ex_dec.rc, 1'b1))));
 // sync waits until a posted store (one memory must get) is in memory
 wire ex_sync = (ex_insn[31:26] == 6'd31) & (ex_insn[10:1] == 10'd598);
-wire ex_stall_ops = completion_dependency | mo_dep | (mem_load & (fa_ld | fb_ld | fc_ld | ffa_mem | ffb_mem | ffc_mem)) |
+// A memory access's address is added from EX's operand registers alone
+// (ex_a, ex_b; below), not from the forwarding multiplexers, which were in
+// front of the adder, the MMU's page compare and the grant: the slowest
+// family at 110 MHz. An access whose rA or rB is forwarded waits a cycle
+// while the registers take the forwarded values (they take them in every
+// cycle EX holds), then goes (ea_ok_q: the values taken were complete).
+// From registered selects. 2026-10-13: about 1.5% of the ROM boot's cycles.
+wire ex_memop  = ex_dec.mem_rd | ex_dec.mem_wr;
+logic ea_ok_q;
+wire ex_addr_wait = ex_memop & ~ea_ok_q &
+                    ((ex_dec.ra_rd & (fa_mem | fa_wb)) | (ex_use_b & (fb_mem | fb_wb)));
+wire ex_stall_ops_base = completion_dependency | mo_dep | (mem_load & (fa_ld | fb_ld | fc_ld | ffa_mem | ffb_mem | ffc_mem)) |
                     (ex_sync & dc_posted) |
                     (wb_fden & ((ffa_wb & ~ffa_mem) | (ffb_wb & ~ffb_mem) | (ffc_wb & ~ffc_mem)));
+wire ex_stall_ops = ex_stall_ops_base | ex_addr_wait;
+// (EX held with its operands complete: ex_a and ex_b take them at this edge)
+always_ff @(posedge clk) ea_ok_q <= ex_valid & ~ex_leave & ~ex_stall_ops_base & ~reset;
 
 // ---- integer unit ----------------------------------------------------------
 wire is_int = (ex_dec.unit == UNIT_ALU) | (ex_dec.unit == UNIT_MUL) | (ex_dec.unit == UNIT_DIV);
@@ -2006,12 +2020,17 @@ wire x_trap   = is_int & ex_dec.trap & trap_hit_q;
 // the effective address: the adder's sum on its own (every memory access is
 // an add), ahead of the result mux the rotator feeds too; for dcbz, the line
 wire        ex_zero = (ex_dec.cop == CK_ZERO);
-wire [31:0] ex_ea   = ex_zero ? {int_sum[31:5], 5'b00000} : int_sum;
+wire [31:0] ea_sum  = ex_a + ex_b;           // (a memory access's operands: from registers, above)
+wire [31:0] ex_ea   = ex_zero ? {ea_sum[31:5], 5'b00000} : ea_sum;
+/* synthesis translate_off */
+always_ff @(posedge clk)
+	if (~reset & mu_accept & (ea_sum != int_sum)) $fatal(1, "the address from registers differs from the adder's");
+/* synthesis translate_on */
 
 // the 604 does not perform these accesses unless they are word-aligned
 wire x_align_w = (ex_dec.mem_rd | ex_dec.mem_wr) &
                  ((ex_dec.seq == SEQ_MULTI) | ex_dec.mem_fp | (ex_dec.resv != RESV_NONE)) &
-                 (int_sum[1:0] != 2'b00);
+                 (ea_sum[1:0] != 2'b00);
 // ... and dcbz takes an alignment exception while the data cache is
 // disabled or locked (HID0[DCE], HID0[DLOCK]); the same for a write-through
 // or cache-inhibited page is decided in MEM, where the page is known
@@ -2351,12 +2370,12 @@ always_ff @(posedge clk) begin
 	end
 	else if (ex_valid & ~ex_leave) begin
 		// held here: keep what WB forwards, it is gone next cycle
-		if (fa_wb & ~fa_mem) ex_a <= wb_result[31:0];
-		if (fb_wb & ~fb_mem) ex_b <= wb_result[31:0];
+		// (and what MEM forwards: a memory access takes its address from
+		// these; a load's data not yet there is taken again later)
+		if (fa_mem | fa_wb) ex_a <= op_a;
+		if (fb_mem | fb_wb) ex_b <= op_b;
 		if (fc_wb & ~fc_mem) ex_c <= wb_result[31:0];
-		if (fq_a_upd & ~fq_a_mem) ex_a <= mem_result[31:0];   // a load with update's rA, before WB
-		if (fq_b_upd & ~fq_b_mem) ex_b <= mem_result[31:0];
-		if (fq_c_upd & ~fq_c_mem) ex_c <= mem_result[31:0];
+		if (fq_c_upd & ~fq_c_mem) ex_c <= mem_result[31:0];   // a load with update's rA, before WB
 		if (ffa_wb & ~ffa_mem) ex_fa <= wb_value;
 		if (ffb_wb & ~ffb_mem) ex_fb <= wb_value;
 		if (ffc_wb & ~ffc_mem) ex_fc <= wb_value;
@@ -2580,8 +2599,8 @@ DSPPC604_mmu #(.TLB_BITS (TLB_BITS), .CANDIDATE_D_ADDR (1'b1)) mmu
 	.d_addr      (mu_addr),
 	// (a memory access's adder is always op_a + op_b: only compares, traps
 	// and subtractions invert A or take a carry in, and none accesses memory)
-	.d_sum_a     (op_a),
-	.d_sum_b     (op_b),
+	.d_sum_a     (ex_a),
+	.d_sum_b     (ex_b),
 	.d_sum_ci    (1'b0),
 	.d_sum_direct (mu_direct),
 	.d_addr_held (mu_addr_held),
