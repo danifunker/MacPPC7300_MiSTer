@@ -443,6 +443,10 @@ logic [31:2]  l_addr;
 logic [3:0]   l_be;
 logic [255:0] l_wdata, l_rdata;
 
+// (L2_KB = 0 builds none: the port goes straight to the crossing, as the
+// cache switched off would pass it, and the OSD's L2 option does nothing)
+generate
+if (L2_KB != 0) begin : g_l2
 MacPPC7300_l2 #(.L2_KB(L2_KB)) l2 (
 	.clk, .reset, .on(l2_on),
 	.a_req(m_req), .a_we(m_we), .a_line(m_line), .a_addr(m_addr), .a_be(m_be), .a_wdata(m_wdata),
@@ -450,6 +454,12 @@ MacPPC7300_l2 #(.L2_KB(L2_KB)) l2 (
 	.b_req(l_req), .b_we(l_we), .b_line(l_line), .b_addr(l_addr), .b_be(l_be), .b_wdata(l_wdata),
 	.b_ack(l_ack), .b_rdata(l_rdata)
 );
+end
+else begin : g_no_l2
+assign {l_req, l_we, l_line, l_addr, l_be, l_wdata} = {m_req, m_we, m_line, m_addr, m_be, m_wdata};
+assign {m_ack, m_rdata} = {l_ack, l_rdata};
+end
+endgenerate
 
 DSPPC604_memcdc cdc (
 	.clk_a(clk), .reset_a(reset),
