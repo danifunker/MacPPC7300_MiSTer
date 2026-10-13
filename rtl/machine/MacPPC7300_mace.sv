@@ -134,8 +134,20 @@ logic        tx_seen;
 // through the device bus and Grand Central's decode, and the reset clears
 // some 120 registers (the transmitter's word among them), which was a path
 // the clock could not take
+// (register writes land a clock after the access, from these: the write's
+// data comes through the device bus and Grand Central's byte lanes; reads,
+// and the reads that clear, are not delayed, and nothing reads a register
+// in the clock after writing it)
+logic        w_v;
+logic [4:0]  w_rn;
+logic [7:0]  w_d;
+always_ff @(posedge clk) begin
+	w_v  <= sel & we & ~reset;
+	w_rn <= rn;
+	w_d  <= wdata;
+end
 logic        swrst;
-always_ff @(posedge clk) swrst <= sel & we & (rn == 5'd11) & wdata[0] & ~reset;
+always_ff @(posedge clk) swrst <= w_v & (w_rn == 5'd11) & w_d[0] & ~reset;
 // the frame's time on the wire: 16 us, and 13/16 us a byte (0.8, near enough)
 wire  [11:0] len_a = f_len - {2'b00, f_len[11:2]};
 wire  [11:0] len_b = len_a + {4'h0, f_len[11:4]};
@@ -329,36 +341,36 @@ always_ff @(posedge clk) begin
 	if (sel & ~we & (rn == 5'd3)) xmt_fs <= 8'h00;
 	if (sel & ~we & (rn == 5'd24)) mpc <= 8'h00;
 
-	if (sel & we) begin
-		case (rn)
-			5'd2:  xmt_fc   <= wdata;
-			5'd5:  rcv_fc   <= wdata;
-			5'd9:  int_mask <= wdata;
-			5'd11: biu_cc   <= wdata & 8'hFE;
-			5'd12: fifo_cc  <= wdata;
-			5'd13: mac_cc   <= wdata;
-			5'd14: pls_cc   <= wdata;
-			5'd15: phy_cc   <= wdata & 8'h7F;
+	if (w_v) begin
+		case (w_rn)
+			5'd2:  xmt_fc   <= w_d;
+			5'd5:  rcv_fc   <= w_d;
+			5'd9:  int_mask <= w_d;
+			5'd11: biu_cc   <= w_d & 8'hFE;
+			5'd12: fifo_cc  <= w_d;
+			5'd13: mac_cc   <= w_d;
+			5'd14: pls_cc   <= w_d;
+			5'd15: phy_cc   <= w_d & 8'h7F;
 			5'd18: begin
 				// LOGADDR wins over PHYADDR; either sets the pointer to 0
-				iac  <= {1'b0, wdata[6:3], (wdata[2] & ~wdata[1]), wdata[1:0]};
-				if (wdata[2] | wdata[1]) aptr <= 3'd0;
-				if (wdata[1]) ladr_any <= 1'b0;
+				iac  <= {1'b0, w_d[6:3], (w_d[2] & ~w_d[1]), w_d[1:0]};
+				if (w_d[2] | w_d[1]) aptr <= 3'd0;
+				if (w_d[1]) ladr_any <= 1'b0;
 			end
 			5'd20: if (iac[1]) begin
-				if (wdata != 8'h00) ladr_any <= 1'b1;
+				if (w_d != 8'h00) ladr_any <= 1'b1;
 				aptr <= aptr + 3'd1;
 				if (aptr == 3'd7) iac[1] <= 1'b0;
 			end
 			5'd21: if (iac[2]) begin
-				padr[aptr] <= wdata;
+				padr[aptr] <= w_d;
 				if (aptr == 3'd5) begin
 					aptr    <= 3'd0;
 					iac[2]  <= 1'b0;
 				end
 				else aptr <= aptr + 3'd1;
 			end
-			5'd29: utr      <= wdata;
+			5'd29: utr      <= w_d;
 			default: ;
 		endcase
 	end
