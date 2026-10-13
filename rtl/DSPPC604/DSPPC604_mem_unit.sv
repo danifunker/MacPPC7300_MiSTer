@@ -257,8 +257,12 @@ wire wi = (state == S_REQ0) ? cp : ~cp;
 // the access under way answers for the last time
 wire finish = resp_valid;
 
+// The free descriptor (wi, while none waits) takes what is offered in
+// every cycle, accepted or not: nothing reads it until it is accepted, and
+// the acceptance (behind EX's stall decision) then enables only the state,
+// not these hundred-odd registers (2026-10-13, at 105 MHz).
 always_ff @(posedge clk) begin
-	if (accept) begin
+	if (~qv) begin
 		desc[wi].we          <= we;
 		desc[wi].kind        <= kind;
 		desc[wi].addr        <= addr;
