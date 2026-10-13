@@ -104,6 +104,7 @@ typedef struct packed {
 	logic [63:0] wdata;
 	logic        conv;
 	logic [31:0] wconv;     // stfs: the double, converted as the descriptor is written
+	logic        tw;        // two words (two_words_of), made as it is written
 } desc_t;
 
 // Two descriptors used in turn: cp names the one under way (or the next
@@ -123,8 +124,8 @@ function automatic logic two_words_of(input desc_t d);
 	l = {1'b0, d.addr[1:0]} + d.nbytes[2:0] - 3'd1;
 	two_words_of = (d.kind == CK_WORD) & (d.nbytes[3] | l[2]);
 endfunction
-wire       two_words0 = two_words_of(desc[0]);
-wire       two_words1 = two_words_of(desc[1]);
+wire       two_words0 = desc[0].tw;
+wire       two_words1 = desc[1].tw;
 wire       two_words = cp ? two_words1 : two_words0;
 
 // Present the candidate first word throughout its response phase, so the
@@ -271,6 +272,7 @@ always_ff @(posedge clk) begin
 		desc[wi].wdata       <= wdata;
 		desc[wi].conv        <= conv;
 		desc[wi].wconv       <= wconv;
+		desc[wi].tw          <= (kind == CK_WORD) & (nbytes[3] | 3'({1'b0, addr[1:0]} + nbytes[2:0] - 3'd1) >= 3'd4);
 	end
 	if (dbus_rvalid & (state == S_RSP0)) word0_q <= dbus_rdata;
 
@@ -309,6 +311,8 @@ always_ff @(posedge clk) begin
 		if ((state == S_RSP0) & dbus_sure & two_words & dbus_rvalid & ~dbus_rwide & ~dbus_fault)
 			$fatal(1, "a wide access said to be answered wide was not");
 		if (req_valid & qv) $fatal(1, "a third memory access was offered");
+		if ((state != S_REQ0) & (c.tw != two_words_of(c)))   // (one under way: written)
+			$fatal(1, "a descriptor's two-word flag differs");
 	end
 end
 /* synthesis translate_on */
