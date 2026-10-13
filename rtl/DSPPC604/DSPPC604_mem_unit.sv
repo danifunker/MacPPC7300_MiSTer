@@ -115,11 +115,15 @@ desc_t       c;
 assign c = desc[cp];
 
 wire       dword     = c.nbytes[3];
-wire [2:0] n         = c.nbytes[2:0];
-wire [1:0] offset    = c.addr[1:0];
-wire       touch     = (c.kind != CK_WORD);
-wire [2:0] last      = {1'b0, offset} + n - 3'd1;
-wire       two_words = ~touch & (dword | last[2]);
+// (each descriptor's, cp only selecting: it is in front of MEM's room)
+function automatic logic two_words_of(input desc_t d);
+	logic [2:0] l;
+	l = {1'b0, d.addr[1:0]} + d.nbytes[2:0] - 3'd1;
+	two_words_of = (d.kind == CK_WORD) & (d.nbytes[3] | l[2]);
+endfunction
+wire       two_words0 = two_words_of(desc[0]);
+wire       two_words1 = two_words_of(desc[1]);
+wire       two_words = cp ? two_words1 : two_words0;
 
 // Present the candidate first word throughout its response phase, so the
 // returning cache hit never selects an address before MMU translation.

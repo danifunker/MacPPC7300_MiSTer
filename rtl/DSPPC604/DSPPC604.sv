@@ -1589,15 +1589,22 @@ wire        is_xlate  = is_tlbie | (is_sys & ((ex_dec.sys == SYS_MTSR) | (ex_dec
 // those that only move CR, XER, the FPSCR, an SPR without side effects or a
 // register (not MSR, translation, the caches' controls, sc, or sync and
 // the like)
-wire ex_spr_plain = (ex_dec.spr == 10'd1) | (ex_dec.spr == 10'd8) | (ex_dec.spr == 10'd9) |    // XER LR CTR
-                    (ex_dec.spr == 10'd22) | (ex_dec.spr == 10'd26) | (ex_dec.spr == 10'd27) | // DEC SRR0 SRR1
-                    (ex_dec.spr[9:2] == 8'b01000100);                                          // SPRG0-3
-assign ex_pass_ok = ~is_sys | (ex_dec.br != BR_NONE) | (ex_dec.sys == SYS_MFSPR) |
-                    (is_mtspr & ex_spr_plain) | (ex_dec.sys == SYS_CRLOG) | (ex_dec.sys == SYS_MCRF) |
-                    (ex_dec.sys == SYS_MFCR) | (ex_dec.sys == SYS_MTCRF) | (ex_dec.sys == SYS_MCRXR) |
-                    (ex_dec.sys == SYS_MFFS) | (ex_dec.sys == SYS_MTFSF) | (ex_dec.sys == SYS_MTFSFI) |
-                    (ex_dec.sys == SYS_MTFSB0) | (ex_dec.sys == SYS_MTFSB1) | (ex_dec.sys == SYS_MCRFS) |
-                    (ex_dec.sys == SYS_MFMSR) | (ex_dec.sys == SYS_MFSR) | (ex_dec.sys == SYS_STWCX_CR);
+// (decided from ID's operation and registered with it)
+function automatic logic pass_ok_of(input dec_t d);
+	logic sys, spr_plain;
+	sys = ~((d.unit == UNIT_ALU) | (d.unit == UNIT_MUL) | (d.unit == UNIT_DIV) | (d.unit == UNIT_FPU));
+	spr_plain = (d.spr == 10'd1) | (d.spr == 10'd8) | (d.spr == 10'd9) |    // XER LR CTR
+	            (d.spr == 10'd22) | (d.spr == 10'd26) | (d.spr == 10'd27) | // DEC SRR0 SRR1
+	            (d.spr[9:2] == 8'b01000100);                                // SPRG0-3
+	pass_ok_of = ~sys | (d.br != BR_NONE) | (d.sys == SYS_MFSPR) |
+	             ((d.sys == SYS_MTSPR) & spr_plain) | (d.sys == SYS_CRLOG) | (d.sys == SYS_MCRF) |
+	             (d.sys == SYS_MFCR) | (d.sys == SYS_MTCRF) | (d.sys == SYS_MCRXR) |
+	             (d.sys == SYS_MFFS) | (d.sys == SYS_MTFSF) | (d.sys == SYS_MTFSFI) |
+	             (d.sys == SYS_MTFSB0) | (d.sys == SYS_MTFSB1) | (d.sys == SYS_MCRFS) |
+	             (d.sys == SYS_MFMSR) | (d.sys == SYS_MFSR) | (d.sys == SYS_STWCX_CR);
+endfunction
+logic ex_pass_ok_q;
+assign ex_pass_ok = ex_pass_ok_q;
 wire [31:0] next_pc   = is_rfi ? {srr0[31:2], 2'b00} : br_taken ? br_target : ex_pc4;
 wire [31:0] vec_base  = {{12{msr[MSR_IP]}}, 8'h00, 12'h000};
 assign redir_pc = mem_fault ? (vec_base | (mem_irq ? (irq_in ? 32'h500 : 32'h900) :
@@ -2080,6 +2087,7 @@ always_ff @(posedge clk) begin
 		ex_pc    <= id_pc;
 		ex_insn  <= id_insn;
 		ex_dec   <= id_uop;
+		ex_pass_ok_q <= pass_ok_of(id_uop);
 		ex_ill   <= ~id_dec.valid;
 		ex_isi   <= id_isi;
 		ex_isi_info <= id_isi_info;

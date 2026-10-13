@@ -301,7 +301,6 @@ logic               i_stale, d_stale;
 wire                i_fresh  = (i_page_q == i_addr[31:12]) & ~i_stale & ~i_tlb_collision;
 wire                d_fresh  = d_page_is(d_page_q) & ~d_stale & ~d_tlb_collision;
 logic               d_rd;                          // read the DTLB for d_page now
-wire [TLB_BITS-1:0] i_idx    = i_addr[12 +: TLB_BITS];
 wire [TLB_BITS-1:0] d_idx    = d_page[TLB_BITS-1:0];
 
 // the reads: ahead for what comes next, or again for the request in hand;
@@ -398,8 +397,12 @@ always_comb begin
 			d_cached_sr = d_cached_sr | d_cached_sr_e[n];
 		end
 end
-assign ixl = translate(msr_ir, 1'b1, 1'b0, 1'b0, msr_pr, i_addr, bat[7:0],  i_sr_q,
-                       itlb_valid[i_idx], itlb_q);
+// The fetch's page from the registered read-ahead page: ixl is used only
+// when it is fresh (i_ready), so the fetch address's multiplexers are not
+// in front of the BAT compares; with translation off the address is used
+// as it is.
+assign ixl = translate(msr_ir, 1'b1, 1'b0, 1'b0, msr_pr, {i_page_q, 12'd0}, bat[7:0], i_sr_q,
+                       itlb_valid[i_page_q[TLB_BITS-1:0]], itlb_q);
 // Resolve a page from the registered read-ahead address. The fresh-page
 // check qualifies installation, so neither the EA adder nor forwarding
 // feeds the BAT permission/physical-page datapath in this cycle.
@@ -787,7 +790,7 @@ always_ff @(posedge clk) begin
 end
 
 assign ibus_req  = (i_state == I_IDLE) & i_req & i_ready & ixl.ok;
-assign ibus_addr = {ixl.pa[31:12], i_addr[11:0]};
+assign ibus_addr = msr_ir ? {ixl.pa[31:12], i_addr[11:0]} : i_addr;
 assign ibus_ci   = ixl.wimg[2];
 assign i_rvalid  = ibus_rvalid | (i_state == I_FAULT);
 assign i_rdata   = ibus_rdata;
