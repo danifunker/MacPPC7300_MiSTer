@@ -646,7 +646,11 @@ wire [BTB_SET_BITS-1:0] btb_idx = btb_index(pc_f);
 wire [BTB_SET_BITS-1:0] btb_tgt_idx = btb_index(br_target);
 wire [BTB_SET_BITS-1:0] btb_seq_idx = btb_index(ex_seq);
 wire [BTB_SET_BITS-1:0] btb_redir_idx = br_taken ? btb_tgt_idx : btb_seq_idx;
-wire [BTB_SET_BITS-1:0] btb_ridx = redir ? btb_redir_idx : btb_index(pc_ahead);
+// (the next fetch's row from each source's own index, the prediction then
+// choosing among the indices rather than among the addresses: the BTB's
+// and ITT's read-ahead from the RAMs' compares is the fetch's loop)
+logic [BTB_SET_BITS-1:0] btb_ahead_idx, btb_pred_idx;
+wire [BTB_SET_BITS-1:0] btb_ridx = redir ? btb_redir_idx : btb_ahead_idx;
 // The rows are read ahead for the predicted next address without waiting
 // for the fetch's grant; when the fetch then waited (pred_hold), the rows of
 // the address still being fetched come from these registers instead.
@@ -768,7 +772,7 @@ assign btb_new_meta = {btb_we, btb_wtag, btb_wcnt,                            //
 
 // Whether the row read at this edge is the row written: the candidates
 // compared in parallel, the late grant/redirect control only selects.
-wire [BTB_SET_BITS-1:0] btb_next_idx = btb_index(pred_pc);
+wire [BTB_SET_BITS-1:0] btb_next_idx = btb_pred_idx;
 (* keep = "true" *) wire btb_write_current = (btb_widx == btb_idx);
 (* keep = "true" *) wire btb_write_next = (btb_widx == btb_next_idx);
 (* keep = "true" *) wire btb_write_tgt = (btb_widx == btb_tgt_idx);
@@ -890,7 +894,23 @@ wire [31:0] pc_next = reset ? reset_pc : redir ? redir_pc : fetch_go ? pred_pc :
 wire ahead_go = if_req;
 always_ff @(posedge clk) pred_hold <= ahead_go & ~fetch_go & ~redir & ~reset;
 wire [31:0] pc_ahead = ahead_go ? pred_pc : pc_f;
-assign itt_ridx = (pc_ahead[13:2] ^ itt_spec_h) & 12'((ITT_N - 1));
+wire [31:0] pc_f4 = pc_f + 32'd4;
+wire [31:0] pc_f8 = pc_f + 32'd8;
+wire        pred_ras = btb_is_return & ~btb_itt & (ras_read_count != 4'd0);
+wire [BTB_SET_BITS-1:0] btb_dest_idx = itt_use ? btb_index({itt_tgt_q, 2'b00}) :
+                                       pred_ras ? btb_index(ras_read_target) :
+                                       btb_hit0 ? btb_index({btb_target_q0, 2'b00}) : btb_index({btb_target_q1, 2'b00});
+assign btb_pred_idx = btb_taken ? btb_dest_idx : btb_hit_cf ? btb_index(pc_f8) : btb_index(pc_f4);
+assign btb_ahead_idx = ahead_go ? btb_pred_idx : btb_idx;
+wire [11:0] itt_dest_a = itt_use ? itt_tgt_q[11:0] : pred_ras ? ras_read_target[13:2] :
+                         btb_hit0 ? btb_target_q0[11:0] : btb_target_q1[11:0];
+wire [11:0] itt_pred_a = btb_taken ? itt_dest_a : btb_hit_cf ? pc_f8[13:2] : pc_f4[13:2];
+assign itt_ridx = ((ahead_go ? itt_pred_a : pc_f[13:2]) ^ itt_spec_h) & 12'((ITT_N - 1));
+/* synthesis translate_off */
+always_ff @(posedge clk)
+	if (~reset & ((btb_ahead_idx != btb_index(pc_ahead)) | (itt_ridx != ((pc_ahead[13:2] ^ itt_spec_h) & 12'((ITT_N - 1))))))
+		$fatal(1, "the read-ahead index differs from the predicted address's");
+/* synthesis translate_on */
 
 always_ff @(posedge clk) begin
 	if (fetch_stage_push) begin
