@@ -140,20 +140,26 @@ wire bus_touch = ((saved ? c.kind : kind) != CK_WORD);
 // stfs's double is converted into conv_q from the descriptor, so the
 // conversion is not in the cache's lookup cycle; such a store waits a
 // cycle in S_HOLD0 for it (no bypass to the bus when it is accepted)
-wire [31:0] w = c.conv ? conv_q : c.wdata[31:0];
-logic [31:0] sbytes;
-
-always_comb begin
-	if (c.brev)       sbytes = (n == 3'd4) ? {w[7:0], w[15:8], w[23:16], w[31:24]}
-	                                       : {w[7:0], w[15:8], 16'd0};
-	else if (c.ljust) sbytes = w;
-	else if (n == 3'd1) sbytes = {w[7:0], 24'd0};
-	else if (n == 3'd2) sbytes = {w[15:0], 16'd0};
-	else              sbytes = w;
-end
+// Each descriptor's window is shaped from its own fields; cp only selects
+// the result (it is not in front of the shifts).
+function automatic logic [63:0] store_window(input desc_t d, input logic [31:0] cq);
+	logic [31:0] w, sb;
+	logic [2:0]  k;
+	w = d.conv ? cq : d.wdata[31:0];
+	k = d.nbytes[2:0];
+	if (d.brev)         sb = (k == 3'd4) ? {w[7:0], w[15:8], w[23:16], w[31:24]}
+	                                     : {w[7:0], w[15:8], 16'd0};
+	else if (d.ljust)   sb = w;
+	else if (k == 3'd1) sb = {w[7:0], 24'd0};
+	else if (k == 3'd2) sb = {w[15:0], 16'd0};
+	else                sb = w;
+	store_window = d.nbytes[3] ? d.wdata : ({sb, 32'd0} >> {d.addr[1:0], 3'b000});
+endfunction
 
 // the bytes placed in a two-word window
-wire [63:0] wwin  = dword ? c.wdata : ({sbytes, 32'd0} >> {offset, 3'b000});
+wire [63:0] wwin0 = store_window(desc[0], conv_q);
+wire [63:0] wwin1 = store_window(desc[1], conv_q);
+wire [63:0] wwin  = cp ? wwin1 : wwin0;
 wire [7:0]  ones  = ~(8'hFF >> bus_n);
 wire [7:0]  bewin = bus_nbytes[3] ? 8'hFF : (ones >> bus_ea[1:0]);
 
