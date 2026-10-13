@@ -539,8 +539,8 @@ typedef struct packed {
 (* ramstyle = "no_rw_check" *) btb_meta_t btb_meta0 [BTB_SETS], btb_meta1 [BTB_SETS];
 (* ramstyle = "no_rw_check" *) logic [29:0] btb_target0 [BTB_SETS], btb_target1 [BTB_SETS];
 btb_meta_t btb_meta_ram0, btb_meta_ram1, btb_write_meta;
-logic [29:0] btb_target_ram0, btb_target_ram1, btb_write_target;
-logic btb_forward0, btb_forward1, btb_target_forward0, btb_target_forward1;
+logic [29:0] btb_target_ram0, btb_target_ram1;
+logic btb_forward0, btb_forward1;
 logic [BTB_SET_BITS-1:0] btb_read_idx;
 logic btb_read_valid;
 
@@ -628,12 +628,13 @@ function automatic logic btb_hit_of(input btb_meta_t m, input logic [BTB_TAGW-1:
 endfunction
 wire btb_fresh_rd = btb_read_valid & (btb_read_idx == btb_idx);
 logic btb_hit0_q, btb_hit1_q;
+// A row written as it was read is not forwarded: it does not hit (its
+// prediction waits for the next read; boot +0.07% cycles), so the next
+// fetch's target is not a three-way choice.
 wire btb_hit0 = pred_hold ? (btb_hit0_q & fold_ok(btb_meta_hold0, fold_epoch, msr[MSR_IR])) :
-                btb_fresh_rd & (btb_forward0 ? btb_hit_of(btb_write_meta, pc_f[31:BTB_SET_BITS+2], fold_epoch, msr[MSR_IR]) :
-                                               btb_hit_of(btb_meta_ram0, pc_f[31:BTB_SET_BITS+2], fold_epoch, msr[MSR_IR]));
+                btb_fresh_rd & ~btb_forward0 & btb_hit_of(btb_meta_ram0, pc_f[31:BTB_SET_BITS+2], fold_epoch, msr[MSR_IR]);
 wire btb_hit1 = pred_hold ? (btb_hit1_q & fold_ok(btb_meta_hold1, fold_epoch, msr[MSR_IR])) :
-                btb_fresh_rd & (btb_forward1 ? btb_hit_of(btb_write_meta, pc_f[31:BTB_SET_BITS+2], fold_epoch, msr[MSR_IR]) :
-                                               btb_hit_of(btb_meta_ram1, pc_f[31:BTB_SET_BITS+2], fold_epoch, msr[MSR_IR]));
+                btb_fresh_rd & ~btb_forward1 & btb_hit_of(btb_meta_ram1, pc_f[31:BTB_SET_BITS+2], fold_epoch, msr[MSR_IR]);
 wire btb_hit = btb_hit0 | btb_hit1;
 wire btb_way = btb_hit0 ? 1'b0 : btb_hit1 ? 1'b1 :
                (btb_fresh & ~btb_valid_q0) ? 1'b0 : (btb_fresh & ~btb_valid_q1) ? 1'b1 : btb_lru[btb_idx];
@@ -642,8 +643,8 @@ wire btb_way = btb_hit0 ? 1'b0 : btb_hit1 ? 1'b1 :
 wire [1:0] btb_c = btb_hit0 ? btb_meta_q0.count : btb_meta_q1.count;
 wire btb_is_call = btb_hit0 ? btb_meta_q0.call : btb_meta_q1.call;
 wire btb_is_return = btb_hit0 ? btb_meta_q0.ret : btb_meta_q1.ret;
-wire [29:0] btb_target_q0 = pred_hold ? btb_target_hold0 : btb_target_forward0 ? btb_write_target : btb_target_ram0;
-wire [29:0] btb_target_q1 = pred_hold ? btb_target_hold1 : btb_target_forward1 ? btb_write_target : btb_target_ram1;
+wire [29:0] btb_target_q0 = pred_hold ? btb_target_hold0 : btb_target_ram0;
+wire [29:0] btb_target_q1 = pred_hold ? btb_target_hold1 : btb_target_ram1;
 wire [29:0] btb_target = btb_hit0 ? btb_target_q0 : btb_target_q1;
 wire btb_taken = btb_hit & btb_c[1];
 wire btb_is_ctr = btb_hit0 ? btb_meta_q0.ctr : btb_meta_q1.ctr;
@@ -744,10 +745,7 @@ always_ff @(posedge clk) begin
 	// the row with validity off.)
 	btb_forward0 <= btb_wr_meta & ~btb_wway & btb_write_read & ~reset;
 	btb_forward1 <= btb_wr_meta & btb_wway & btb_write_read & ~reset;
-	btb_target_forward0 <= btb_we & btb_wtgt & ~btb_wway & btb_write_read & ~reset;
-	btb_target_forward1 <= btb_we & btb_wtgt & btb_wway & btb_write_read & ~reset;
 	btb_write_meta <= btb_new_meta;
-	btb_write_target <= redir_pc[31:2];
 	if (btb_sweep) begin
 		btb_meta0[btb_sweep_idx] <= '0;
 		btb_meta1[btb_sweep_idx] <= '0;
@@ -1771,7 +1769,10 @@ always_comb begin
 end
 
 // segment register number: in the instruction, or the top of operand B
-logic [3:0] srin_idx_q;           // rB's segment number, a cycle later (srin takes two)
+logic [3:0] srin_idx_q;
+logic       sr_wq_v;              // an mtsr's write, a cycle after its commit
+logic [3:0] sr_wq_idx;
+logic [31:0] sr_wq_data;           // rB's segment number, a cycle later (srin takes two)
 wire [3:0] sr_idx = ex_dec.rb_rd ? srin_idx_q : ex_insn[19:16];
 
 // ---- exceptions -------------------------------------------------------------
@@ -1783,7 +1784,28 @@ wire x_isi    = ex_isi;
 wire fpe_pend = ex_first & fpscr[30] & fp_trap_on;      // FEX was already set when traps were enabled
 // an SPR the 604 does not have is an illegal instruction in either mode
 // (measured; the manual's "privileged in user mode" is not what the chip does)
-wire x_spr    = is_sys & ((ex_dec.sys == SYS_MFSPR) | (ex_dec.sys == SYS_MTSPR)) & ~spr_known;
+// (decided from ID's operation and registered with it: the SPR number's
+// compares are not in front of ex_leave)
+function automatic logic x_spr_of(input dec_t d);
+	logic known;
+	case (d.spr)
+		10'd1, 10'd8, 10'd9, 10'd18, 10'd19, 10'd22, 10'd25, 10'd26, 10'd27,
+		10'd272, 10'd273, 10'd274, 10'd275, 10'd282, 10'd284, 10'd285, 10'd287,
+		10'd952, 10'd953, 10'd954, 10'd955, 10'd959, 10'd1008, 10'd1010, 10'd1013, 10'd1023:
+		          known = 1'b1;
+		10'd268, 10'd269: known = (d.sys == SYS_MFSPR);
+		default:  known = (d.spr[9:4] == 6'b100001);                 // BATs, 528-543
+	endcase
+	x_spr_of = ~((d.unit == UNIT_ALU) | (d.unit == UNIT_MUL) | (d.unit == UNIT_DIV) | (d.unit == UNIT_FPU)) &
+	           ((d.sys == SYS_MFSPR) | (d.sys == SYS_MTSPR)) & ~known;
+endfunction
+logic ex_x_spr_q;
+wire x_spr    = ex_x_spr_q;
+/* synthesis translate_off */
+always_ff @(posedge clk)
+	if (~reset & ex_valid & (ex_x_spr_q != (is_sys & ((ex_dec.sys == SYS_MFSPR) | (ex_dec.sys == SYS_MTSPR)) & ~spr_known)))
+		$fatal(1, "registered illegal-SPR decision differs");
+/* synthesis translate_on */
 wire x_priv   = ex_dec.priv & msr[MSR_PR] & ~x_spr;
 wire x_ill    = ex_ill | x_spr;
 wire x_fpu    = ex_dec.fp_use & ~msr[MSR_FP];
@@ -2095,6 +2117,7 @@ always_ff @(posedge clk) begin
 		ex_insn  <= id_insn;
 		ex_dec   <= id_uop;
 		ex_pass_ok_q <= pass_ok_of(id_uop);
+		ex_x_spr_q   <= x_spr_of(id_uop);
 		ex_ill   <= ~id_dec.valid;
 		ex_isi   <= id_isi;
 		ex_isi_info <= id_isi_info;
@@ -2153,8 +2176,16 @@ always_ff @(posedge clk) begin
 
 	end
 
+	// mtsr's write lands a cycle after its commit, from registers (the
+	// commit, behind EX's add and exception checks, only enables them); it
+	// refetches, so nothing newer is in EX to read it meanwhile, and the
+	// MMU's read-ahead is stale from the commit until after the write
+	sr_wq_v <= sys_write_commit & (ex_dec.sys == SYS_MTSR) & ~reset;
+	sr_wq_idx <= sr_idx;
+	sr_wq_data <= op_a;
+	if (sr_wq_v) sr[sr_wq_idx] <= sr_wq_data;
+
 	if (sys_write_commit) begin
-		if (ex_dec.sys == SYS_MTSR) sr[sr_idx] <= op_a;
 
 		// the bits each register keeps are the measured ones (7300 run, two
 		// patterns written to and read back from every supervisor register)
@@ -2308,7 +2339,7 @@ DSPPC604_mmu #(.TLB_BITS (TLB_BITS), .CANDIDATE_D_ADDR (1'b1)) mmu
 	.msr_pr      (msr[MSR_PR]),
 	.bat         (bat),
 	.sr          (sr),
-	.sr_changed  (ex_leave & ~ex_abort & is_sys & (ex_dec.sys == SYS_MTSR)),
+	.sr_changed  ((ex_leave & ~ex_abort & is_sys & (ex_dec.sys == SYS_MTSR)) | sr_wq_v),
 	.sdr1        (sdr1),
 	.tlbie       (ex_leave & ~ex_abort & is_tlbie),
 	.tlbie_ea    (op_b),

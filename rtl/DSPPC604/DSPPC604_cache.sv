@@ -367,7 +367,15 @@ wire [2:0] word_bit = 3'd7 - r_word;
 wire [2:0] word_bit_next = 3'd7 - r_word_next;
 // the pending write's words that the read wants, picked out when that
 // write was registered (below)
-logic [31:0] pending_word, pending_word_next;
+// (the stored word and a wide store's second registered as they are, and
+// which of them the read wants chosen in the answer's cycle from the two
+// word numbers, both registers then: the next access's address is not in
+// front of them)
+logic [31:0] pending_st, pending_wn;
+logic        pending_dwide;
+logic [2:0]  pending_wword;              // the pending write's first word
+wire [31:0] pending_word      = (pending_dwide & (r_word == pending_wword + 3'd1)) ? pending_wn : pending_st;
+wire [31:0] pending_word_next = (pending_dwide & (r_word == pending_wword)) ? pending_wn : pending_st;
 always_comb
 	for (int w = 0; w < WAYS; w++) begin
 		// The RAMs give the word and the next (even and odd, in either
@@ -605,8 +613,10 @@ always_ff @(posedge clk) begin
 	// the stored word in every position, but a wide store's second word in
 	// the next, or all zero), so that a forwarded word is not picked out of
 	// the line in the answer's cycle
-	pending_word      <= l_dzero ? 32'd0 : (l_dwide & (rd_word == r_word + 3'd1)) ? wdata_next : st_word;
-	pending_word_next <= l_dzero ? 32'd0 : (l_dwide & (rd_word == r_word)) ? wdata_next : st_word;
+	pending_st    <= l_dzero ? 32'd0 : st_word;
+	pending_wn    <= wdata_next;
+	pending_dwide <= l_dwide & ~l_dzero;
+	pending_wword <= r_word;
 end
 
 /* synthesis translate_off */
