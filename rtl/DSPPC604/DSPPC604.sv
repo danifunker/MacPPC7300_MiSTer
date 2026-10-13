@@ -1466,7 +1466,12 @@ wire  fsys_chk = ex_valid & ex_dec.fpscr_wr & ~is_fpu & fp_trap_on;
 // neither the compare nor the whole add is in front of ex_abort, which
 // every commit, the redirect and the fetch wait for
 logic slow_held, trap_hit_q, x_align_s_q;
-wire  slow_chk = ex_valid & (ex_dec.trap | (ex_dec.str_bytes != 7'd0));
+// (mfsrin and mtsrin too: their segment register's number, from rB, is
+// then a register, not the forwarded operand in front of the result)
+wire  srin     = ex_dec.rb_rd & (ex_dec.unit != UNIT_ALU) & (ex_dec.unit != UNIT_MUL) &
+                 (ex_dec.unit != UNIT_DIV) & (ex_dec.unit != UNIT_FPU) &
+                 ((ex_dec.sys == SYS_MFSR) | (ex_dec.sys == SYS_MTSR));
+wire  slow_chk = ex_valid & (ex_dec.trap | (ex_dec.str_bytes != 7'd0) | srin);
 assign ex_stall = ex_stall_ops | (fsys_chk & ~fsys_held) | (slow_chk & ~slow_held);
 
 DSPPC604_fpu #(.OPERAND_REG (FPU_OPERAND_REG)) fpu
@@ -1766,7 +1771,8 @@ always_comb begin
 end
 
 // segment register number: in the instruction, or the top of operand B
-wire [3:0] sr_idx = ex_dec.rb_rd ? op_b[31:28] : ex_insn[19:16];
+logic [3:0] srin_idx_q;           // rB's segment number, a cycle later (srin takes two)
+wire [3:0] sr_idx = ex_dec.rb_rd ? srin_idx_q : ex_insn[19:16];
 
 // ---- exceptions -------------------------------------------------------------
 
@@ -2074,6 +2080,7 @@ always_ff @(posedge clk) begin
 	if (ex_leave | id_to_ex | reset) fsys_held <= 1'b0;
 	else if (fsys_chk & ~ex_stall_ops) fsys_held <= 1'b1;
 	trap_hit_q  <= trap_hit;
+	srin_idx_q  <= op_b[31:28];
 	x_align_s_q <= x_align_s_now;
 	if (ex_leave | id_to_ex | reset) slow_held <= 1'b0;
 	else if (slow_chk & ~ex_stall_ops) slow_held <= 1'b1;
