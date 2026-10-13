@@ -1544,6 +1544,11 @@ int main(int argc, char** argv) {
 				else if (idx >= 64) fpr[idx - 64] = dut->trace_reg_val;
 				if (beats_n < 8) beats[beats_n++] = {idx, (uint64_t)dut->trace_reg_val};
 			}
+			if (dut->trace_reg2_we) {                   // a load with update's rA, in the same retirement
+				unsigned idx = dut->trace_reg2_idx;
+				if (idx < 32) gpr[idx] = (uint32_t)dut->trace_reg2_val;
+				if (beats_n < 8) beats[beats_n++] = {idx, (uint64_t)dut->trace_reg2_val};
+			}
 			if (dut->trace_last) {
 				// a folded unconditional b retires right after the instruction before it
 				for (int fk = 0; fk < (dut->trace_fold ? 2 : 1); fk++) {

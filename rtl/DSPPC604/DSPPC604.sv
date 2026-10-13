@@ -126,6 +126,9 @@ module DSPPC604
 	output logic        trace_last,      // completes an instruction
 	output logic [31:0] trace_pc,
 	output logic [31:0] trace_insn,
+	output logic        trace_reg2_we,   // ... and a second register (a load with update's rA)
+	output logic [5:0]  trace_reg2_idx,
+	output logic [31:0] trace_reg2_val,
 	output logic        trace_fold,      // ... and an unconditional b at trace_pc + 4 retired with it (folded)
 	output logic [31:0] trace_fold_insn, // ... that b
 	output logic        trace_reg_we,
@@ -167,6 +170,14 @@ localparam logic [31:0] XER_MASK = 32'hE000FF7F;   // SO OV CA, bits 16-23, byte
 (* ramstyle = "M10K, no_rw_check" *) logic [31:0] gpr_fetch_c [33];
 (* ramstyle = "M10K, no_rw_check" *) logic [31:0] gpr_sequence_a [33];
 (* ramstyle = "M10K, no_rw_check" *) logic [31:0] gpr_sequence_c [33];
+// written by the second port (a load with update's rA); gpr_lvt says which
+// bank holds each register's latest value
+(* ramstyle = "M10K, no_rw_check" *) logic [31:0] gpr2_fetch_a [33];
+(* ramstyle = "M10K, no_rw_check" *) logic [31:0] gpr2_fetch_b [33];
+(* ramstyle = "M10K, no_rw_check" *) logic [31:0] gpr2_fetch_c [33];
+(* ramstyle = "M10K, no_rw_check" *) logic [31:0] gpr2_sequence_a [33];
+(* ramstyle = "M10K, no_rw_check" *) logic [31:0] gpr2_sequence_c [33];
+logic [32:0] gpr_lvt;
 (* ramstyle = "M10K, no_rw_check" *) logic [63:0] fpr_a [32];
 (* ramstyle = "M10K, no_rw_check" *) logic [63:0] fpr_b [32];
 (* ramstyle = "M10K, no_rw_check" *) logic [63:0] fpr_c [32];
@@ -317,6 +328,8 @@ logic [31:0] mem_pc;
 logic [31:0] mem_insn;
 logic        mem_last;
 logic        mem_fold;      // an unconditional b retires with it (folded): mem_fold_insn
+logic        mem_upd;       // a load with update: rA (mem_upd_ra) <- mem_result as well
+logic [5:0]  mem_upd_ra;
 logic [31:0] mem_fold_insn;
 logic        mem_first;
 logic [6:0]  mem_rd;        // bit 6: a floating-point register
@@ -350,7 +363,9 @@ logic        mo_rd_wr;
 logic        mo_load;
 logic        mo_fp;
 logic        mo_fsgl;
-logic [31:0] mo_result;     // a store with update's rA (EA)
+logic [31:0] mo_result;     // a store with update's rA (EA), a load with update's EA
+logic        mo_upd;        // a load with update: rA (mo_upd_ra) <- mo_result too
+logic [5:0]  mo_upd_ra;
 logic [31:0] mo_t_cr, mo_t_xer, mo_t_lr, mo_t_ctr, mo_t_fpscr, mo_t_msr;
 
 // WB
@@ -359,6 +374,9 @@ logic [31:0] wb_pc;
 logic [31:0] wb_insn;
 logic        wb_last;
 logic        wb_fold;
+logic        wb_upd;
+logic [5:0]  wb_upd_ra;
+logic [31:0] wb_upd_val;
 logic [31:0] wb_fold_insn;
 logic [6:0]  wb_rd;
 logic        wb_rd_wr;
@@ -898,6 +916,18 @@ wire id_ldux_rb = (id_insn[31:26] == 6'd31) & ~id_insn[10] & ~id_insn[8] & (id_i
                   (id_insn[25:21] == id_insn[15:11]);
 // the stores with update (stwu 37, stbu 39, sthu 45, stfsu 53, stfdu 55;
 // stwux 183, stbux 247, sthux 439, stfsux 695, stfdux 759): one operation
+// the loads with update (lwzu 33, lbzu 35, lhzu 41, lhau 43, lfsu 49,
+// lfdu 51; lwzux 55, lbzux 119, lhzux 311, lhaux 375, lfsux 567, lfdux 631)
+// in one operation: rA not 0 and (integer ones) not rD, and not the rD = rB
+// form, which keeps its three
+wire id_ld_upd_fp  = (id_insn[31:26] == 6'd49) | (id_insn[31:26] == 6'd51) |
+                     ((id_insn[31:26] == 6'd31) & ((id_insn[10:1] == 10'd567) | (id_insn[10:1] == 10'd631)));
+wire id_ld_upd_int = (id_insn[31:26] == 6'd33) | (id_insn[31:26] == 6'd35) | (id_insn[31:26] == 6'd41) |
+                     (id_insn[31:26] == 6'd43) |
+                     ((id_insn[31:26] == 6'd31) & ((id_insn[10:1] == 10'd55) | (id_insn[10:1] == 10'd119) |
+                      (id_insn[10:1] == 10'd311) | (id_insn[10:1] == 10'd375)));
+wire id_upd_load = (id_insn[20:16] != 5'd0) & ~id_ldux_rb &
+                   (id_ld_upd_fp | (id_ld_upd_int & (id_insn[20:16] != id_insn[25:21])));
 wire id_upd_store = ((id_insn[31:26] == 6'd37) | (id_insn[31:26] == 6'd39) | (id_insn[31:26] == 6'd45) |
                      (id_insn[31:26] == 6'd53) | (id_insn[31:26] == 6'd55)) |
                     ((id_insn[31:26] == 6'd31) & ((id_insn[10:1] == 10'd183) | (id_insn[10:1] == 10'd247) |
@@ -938,6 +968,7 @@ DSPPC604_seq seq
 	.strx      (id_strx),
 	.ldux_rb   (id_ldux_rb),
 	.upd_store (id_upd_store),
+	.upd_load  (id_upd_load),
 	.xer_count (xer[6:0]),
 	.take      (id_take),
 	.uop       (id_uop),
@@ -962,6 +993,13 @@ assign id_leave = (id_to_ex & (id_last | ~id_dec.valid)) | completion_push;
 // stalled operand retains its sample and any subsequent WB write. RB does
 // not change across a sequenced instruction, so it needs only a fetch copy.
 wire gpr_write = wb_valid & wb_rd_wr & ~wb_rd[6];
+wire gpr_write2 = wb_valid & wb_upd;                       // a load with update's rA, at the same edge as rD
+// MEM's load with update: its rA (mem_result) for ID, which reads before
+// it is written (EX takes it from MEM's result as any forwarding)
+wire mem_upd_fwd = mem_valid & mem_upd;
+logic [31:0] gpr2_ram_fa, gpr2_ram_fb, gpr2_ram_fc, gpr2_ram_sa, gpr2_ram_sc;
+logic [4:0] gpr_lvt_q, gpr2_collision;
+logic [31:0] gpr2_collision_value;
 wire gpr_seq_take = id_take & ~id_last;
 logic [31:0] gpr_ram_fa, gpr_ram_fb, gpr_ram_fc, gpr_ram_sa, gpr_ram_sc;
 logic [4:0] gpr_collision;
@@ -974,6 +1012,29 @@ always_ff @(posedge clk) begin
 	gpr_ram_fc <= gpr_fetch_c[fetch_dec.rc];
 	gpr_ram_sa <= gpr_sequence_a[seq_next_ra];
 	gpr_ram_sc <= gpr_sequence_c[seq_next_rc];
+	gpr2_ram_fa <= gpr2_fetch_a[fetch_dec.ra];
+	gpr2_ram_fb <= gpr2_fetch_b[fetch_dec.rb];
+	gpr2_ram_fc <= gpr2_fetch_c[fetch_dec.rc];
+	gpr2_ram_sa <= gpr2_sequence_a[seq_next_ra];
+	gpr2_ram_sc <= gpr2_sequence_c[seq_next_rc];
+	gpr_lvt_q <= {gpr_lvt[seq_next_rc], gpr_lvt[seq_next_ra], gpr_lvt[fetch_dec.rc], gpr_lvt[fetch_dec.rb],
+	              gpr_lvt[fetch_dec.ra]};
+	if (gpr_write2) begin
+		gpr2_fetch_a[wb_upd_ra] <= wb_upd_val;
+		gpr2_fetch_b[wb_upd_ra] <= wb_upd_val;
+		gpr2_fetch_c[wb_upd_ra] <= wb_upd_val;
+		gpr2_sequence_a[wb_upd_ra] <= wb_upd_val;
+		gpr2_sequence_c[wb_upd_ra] <= wb_upd_val;
+	end
+	if (gpr_write) gpr_lvt[wb_rd[5:0]] <= 1'b0;
+	if (gpr_write2) gpr_lvt[wb_upd_ra] <= 1'b1;
+	if (reset) gpr_lvt <= '0;
+	gpr2_collision[0] <= gpr_write2 & (wb_upd_ra == fetch_dec.ra);
+	gpr2_collision[1] <= gpr_write2 & (wb_upd_ra == fetch_dec.rb);
+	gpr2_collision[2] <= gpr_write2 & (wb_upd_ra == fetch_dec.rc);
+	gpr2_collision[3] <= gpr_write2 & (wb_upd_ra == seq_next_ra);
+	gpr2_collision[4] <= gpr_write2 & (wb_upd_ra == seq_next_rc);
+	gpr2_collision_value <= wb_upd_val;
 	if (gpr_write) begin
 		gpr_fetch_a[wb_rd[5:0]] <= wb_result[31:0];
 		gpr_fetch_b[wb_rd[5:0]] <= wb_result[31:0];
@@ -988,17 +1049,36 @@ always_ff @(posedge clk) begin
 	gpr_collision[4] <= gpr_write & (wb_rd[5:0] == seq_next_rc);
 	gpr_collision_value <= wb_result[31:0];
 end
-wire [31:0] id_reg_a = (gpr_write & (wb_rd[5:0] == id_uop.ra)) ? wb_result[31:0] :
+// newest first: MEM's load with update, WB's two writes, then the held
+// value or the RAM read (a write at the read's edge, then the bank the
+// table names)
+wire [31:0] gpr_rd_fa = gpr2_collision[0] ? gpr2_collision_value : gpr_collision[0] ? gpr_collision_value :
+                        gpr_lvt_q[0] ? gpr2_ram_fa : gpr_ram_fa;
+wire [31:0] gpr_rd_fb = gpr2_collision[1] ? gpr2_collision_value : gpr_collision[1] ? gpr_collision_value :
+                        gpr_lvt_q[1] ? gpr2_ram_fb : gpr_ram_fb;
+wire [31:0] gpr_rd_fc = gpr2_collision[2] ? gpr2_collision_value : gpr_collision[2] ? gpr_collision_value :
+                        gpr_lvt_q[2] ? gpr2_ram_fc : gpr_ram_fc;
+wire [31:0] gpr_rd_sa = gpr2_collision[3] ? gpr2_collision_value : gpr_collision[3] ? gpr_collision_value :
+                        gpr_lvt_q[3] ? gpr2_ram_sa : gpr_ram_sa;
+wire [31:0] gpr_rd_sc = gpr2_collision[4] ? gpr2_collision_value : gpr_collision[4] ? gpr_collision_value :
+                        gpr_lvt_q[4] ? gpr2_ram_sc : gpr_ram_sc;
+wire [31:0] id_reg_a = (mem_upd_fwd & (mem_upd_ra == id_uop.ra)) ? mem_result[31:0] :
+    (mo_valid & mo_upd & (mo_upd_ra == id_uop.ra)) ? mo_result :
+    (gpr_write2 & (wb_upd_ra == id_uop.ra)) ? wb_upd_val :
+    (gpr_write & (wb_rd[5:0] == id_uop.ra)) ? wb_result[31:0] :
     gpr_held_ac ? gpr_held_a_value :
-    gpr_from_sequence ? (gpr_collision[3] ? gpr_collision_value : gpr_ram_sa) :
-                        (gpr_collision[0] ? gpr_collision_value : gpr_ram_fa);
-wire [31:0] id_reg_b = (gpr_write & (wb_rd[5:0] == id_uop.rb)) ? wb_result[31:0] :
-    gpr_held_b ? gpr_held_b_value :
-    gpr_collision[1] ? gpr_collision_value : gpr_ram_fb;
-wire [31:0] id_reg_c = (gpr_write & (wb_rd[5:0] == id_uop.rc)) ? wb_result[31:0] :
+    gpr_from_sequence ? gpr_rd_sa : gpr_rd_fa;
+wire [31:0] id_reg_b = (mem_upd_fwd & (mem_upd_ra == id_uop.rb)) ? mem_result[31:0] :
+    (mo_valid & mo_upd & (mo_upd_ra == id_uop.rb)) ? mo_result :
+    (gpr_write2 & (wb_upd_ra == id_uop.rb)) ? wb_upd_val :
+    (gpr_write & (wb_rd[5:0] == id_uop.rb)) ? wb_result[31:0] :
+    gpr_held_b ? gpr_held_b_value : gpr_rd_fb;
+wire [31:0] id_reg_c = (mem_upd_fwd & (mem_upd_ra == id_uop.rc)) ? mem_result[31:0] :
+    (mo_valid & mo_upd & (mo_upd_ra == id_uop.rc)) ? mo_result :
+    (gpr_write2 & (wb_upd_ra == id_uop.rc)) ? wb_upd_val :
+    (gpr_write & (wb_rd[5:0] == id_uop.rc)) ? wb_result[31:0] :
     gpr_held_ac ? gpr_held_c_value :
-    gpr_from_sequence ? (gpr_collision[4] ? gpr_collision_value : gpr_ram_sc) :
-                        (gpr_collision[2] ? gpr_collision_value : gpr_ram_fc);
+    gpr_from_sequence ? gpr_rd_sc : gpr_rd_fc;
 always_ff @(posedge clk) begin
 	gpr_held_a_value <= id_reg_a;
 	gpr_held_b_value <= id_reg_b;
@@ -1221,15 +1301,23 @@ wire ex_use_b = ex_dec.rb_rd & ~ex_dec.b_imm;
 // compare). Checked in simulation against the compares (*_c).
 logic fq_a_mem, fq_b_mem, fq_c_mem, fq_fa_mem, fq_fb_mem, fq_fc_mem;
 logic fq_a_wb, fq_b_wb, fq_c_wb, fq_fa_wb, fq_fb_wb, fq_fc_wb;
-wire fa_mem = fq_a_mem;
-wire fb_mem = fq_b_mem;
-wire fc_mem = fq_c_mem;
+logic fq_a_upd, fq_b_upd, fq_c_upd;      // ... MEM's load with update's rA
+// (MEM's result is the operand for either; a load's rD waits: ex_stall_ops)
+wire fa_mem = fq_a_mem | fq_a_upd;
+wire fb_mem = fq_b_mem | fq_b_upd;
+wire fc_mem = fq_c_mem | fq_c_upd;
+wire fa_ld  = fq_a_mem;
+wire fb_ld  = fq_b_mem;
+wire fc_ld  = fq_c_mem;
 wire fa_wb  = fq_a_wb;
 wire fb_wb  = fq_b_wb;
 wire fc_wb  = fq_c_wb;
 wire fa_mem_c = mem_valid & mem_rd_wr & ex_dec.ra_rd & (mem_rd == {1'b0, ex_dec.ra});
 wire fb_mem_c = mem_valid & mem_rd_wr & ex_use_b     & (mem_rd == {1'b0, ex_dec.rb});
 wire fc_mem_c = mem_valid & mem_rd_wr & ex_dec.rc_rd & (mem_rd == {1'b0, ex_dec.rc});
+wire fa_upd_c = mem_valid & mem_upd & ex_dec.ra_rd & (mem_upd_ra == ex_dec.ra);
+wire fb_upd_c = mem_valid & mem_upd & ex_use_b     & (mem_upd_ra == ex_dec.rb);
+wire fc_upd_c = mem_valid & mem_upd & ex_dec.rc_rd & (mem_upd_ra == ex_dec.rc);
 wire fa_wb_c  = wb_valid  & wb_rd_wr  & ex_dec.ra_rd & (wb_rd == {1'b0, ex_dec.ra});
 wire fb_wb_c  = wb_valid  & wb_rd_wr  & ex_use_b     & (wb_rd == {1'b0, ex_dec.rb});
 wire fc_wb_c  = wb_valid  & wb_rd_wr  & ex_dec.rc_rd & (wb_rd == {1'b0, ex_dec.rc});
@@ -1275,7 +1363,12 @@ wire mo_dep = mo_ld &
      (ex_dec.rc_rd & (mo_rd == {1'b0, ex_dec.rc}) & ~fc_mem) |
      (ex_dec.fra_rd & (mo_rd == {2'b10, ex_dec.fra}) & ~ffa_mem) |
      (ex_dec.frb_rd & (mo_rd == {2'b10, ex_dec.frb}) & ~ffb_mem) |
-     (ex_dec.frc_rd & (mo_rd == {2'b10, ex_dec.frc}) & ~ffc_mem));
+     (ex_dec.frc_rd & (mo_rd == {2'b10, ex_dec.frc}) & ~ffc_mem)) |
+    // ... or a passed load with update's rA (not forwarded from the older slot either)
+    (mo_valid & mo_upd &
+     ((ex_dec.ra_rd & (mo_upd_ra == ex_dec.ra) & ~fa_mem) |
+      (ex_use_b     & (mo_upd_ra == ex_dec.rb) & ~fb_mem) |
+      (ex_dec.rc_rd & (mo_upd_ra == ex_dec.rc) & ~fc_mem)));
 // a load's data is not there until it reaches WB
 wire completion_dependency =
     ((ex_dec.ra_rd & (|completion_match(ex_dec.ra, 1'b1))) |
@@ -1283,7 +1376,7 @@ wire completion_dependency =
      (ex_dec.rc_rd & (|completion_match(ex_dec.rc, 1'b1))));
 // sync waits until a posted store (one memory must get) is in memory
 wire ex_sync = (ex_insn[31:26] == 6'd31) & (ex_insn[10:1] == 10'd598);
-wire ex_stall_ops = completion_dependency | mo_dep | (mem_load & (fa_mem | fb_mem | fc_mem | ffa_mem | ffb_mem | ffc_mem)) |
+wire ex_stall_ops = completion_dependency | mo_dep | (mem_load & (fa_ld | fb_ld | fc_ld | ffa_mem | ffb_mem | ffc_mem)) |
                     (ex_sync & dc_posted);
 
 // ---- integer unit ----------------------------------------------------------
@@ -1884,6 +1977,9 @@ wire       fwd_take_wr = completion_pop | ex_rd_wr;
 wire       fwd_mem_v   = mem_take ? (fwd_take_v & fwd_take_wr) : (mem_valid & mem_rd_wr & ~(mem_leave & ~mo_valid));
 wire [6:0] fwd_mem_rd  = mem_take ? fwd_take_rd : mem_rd;
 wire       fwd_wb_v    = mem_leave & ~mem_fault & (mo_valid ? mo_rd_wr : mem_rd_wr);
+// MEM's load with update next cycle: EX's, taken now, or MEM's own unless it leaves
+wire       fwd_upd_v   = mem_take ? (ex_leave & ~ex_abort & ex_dec.upd) : (mem_valid & mem_upd & ~(mem_leave & ~mo_valid));
+wire [5:0] fwd_upd_ra  = mem_take ? ex_dec.ra : mem_upd_ra;
 wire [6:0] fwd_wb_rd   = mo_valid ? mo_rd : mem_rd;
 dec_t fwd_dec;
 assign fwd_dec = id_to_ex ? id_uop : ex_dec;
@@ -1895,6 +1991,9 @@ always_ff @(posedge clk) begin
 	fq_fa_mem <= fwd_mem_v & fwd_dec.fra_rd & (fwd_mem_rd == {2'b10, fwd_dec.fra});
 	fq_fb_mem <= fwd_mem_v & fwd_dec.frb_rd & (fwd_mem_rd == {2'b10, fwd_dec.frb});
 	fq_fc_mem <= fwd_mem_v & fwd_dec.frc_rd & (fwd_mem_rd == {2'b10, fwd_dec.frc});
+	fq_a_upd  <= fwd_upd_v & fwd_dec.ra_rd  & (fwd_upd_ra == fwd_dec.ra);
+	fq_b_upd  <= fwd_upd_v & fwd_use_b      & (fwd_upd_ra == fwd_dec.rb);
+	fq_c_upd  <= fwd_upd_v & fwd_dec.rc_rd  & (fwd_upd_ra == fwd_dec.rc);
 	fq_a_wb   <= fwd_wb_v  & fwd_dec.ra_rd  & (fwd_wb_rd == {1'b0, fwd_dec.ra});
 	fq_b_wb   <= fwd_wb_v  & fwd_use_b      & (fwd_wb_rd == {1'b0, fwd_dec.rb});
 	fq_c_wb   <= fwd_wb_v  & fwd_dec.rc_rd  & (fwd_wb_rd == {1'b0, fwd_dec.rc});
@@ -1907,9 +2006,9 @@ end
 always_ff @(posedge clk) begin
 	if (~reset & ex_valid)
 		if ({fq_a_mem, fq_b_mem, fq_c_mem, fq_fa_mem, fq_fb_mem, fq_fc_mem,
-		     fq_a_wb, fq_b_wb, fq_c_wb, fq_fa_wb, fq_fb_wb, fq_fc_wb} !=
+		     fq_a_wb, fq_b_wb, fq_c_wb, fq_fa_wb, fq_fb_wb, fq_fc_wb, fq_a_upd, fq_b_upd, fq_c_upd} !=
 		    {fa_mem_c, fb_mem_c, fc_mem_c, ffa_mem_c, ffb_mem_c, ffc_mem_c,
-		     fa_wb_c, fb_wb_c, fc_wb_c, ffa_wb_c, ffb_wb_c, ffc_wb_c})
+		     fa_wb_c, fb_wb_c, fc_wb_c, ffa_wb_c, ffb_wb_c, ffc_wb_c, fa_upd_c, fb_upd_c, fc_upd_c})
 			$fatal(1, "registered forwarding select differs from the compare");
 end
 /* synthesis translate_on */
@@ -1983,6 +2082,9 @@ always_ff @(posedge clk) begin
 		if (fa_wb & ~fa_mem) ex_a <= wb_result[31:0];
 		if (fb_wb & ~fb_mem) ex_b <= wb_result[31:0];
 		if (fc_wb & ~fc_mem) ex_c <= wb_result[31:0];
+		if (fq_a_upd & ~fq_a_mem) ex_a <= mem_result[31:0];   // a load with update's rA, before WB
+		if (fq_b_upd & ~fq_b_mem) ex_b <= mem_result[31:0];
+		if (fq_c_upd & ~fq_c_mem) ex_c <= mem_result[31:0];
 		if (ffa_wb & ~ffa_mem) ex_fa <= wb_value;
 		if (ffb_wb & ~ffb_mem) ex_fb <= wb_value;
 		if (ffc_wb & ~ffc_mem) ex_fc <= wb_value;
@@ -2420,6 +2522,8 @@ always_ff @(posedge clk) begin
 		mo_rd <= mem_rd;
 		mo_rd_wr <= mem_rd_wr;
 		mo_result <= mem_result[31:0];
+		mo_upd <= mem_upd;
+		mo_upd_ra <= mem_upd_ra;
 		mo_load <= mem_load;
 		mo_fp <= mem_fp;
 		mo_fsgl <= mem_fsgl;
@@ -2438,6 +2542,7 @@ always_ff @(posedge clk) begin
 		mem_last <= 1'b1;
 		mem_first <= 1'b1;
 		mem_fold <= 1'b0;
+		mem_upd <= 1'b0;
 		mem_rd <= {1'b0, completion_queue[completion_head].rd};
 		mem_rd_wr <= 1'b1;
 		mem_result <= {32'd0, completion_queue[completion_head].value};
@@ -2461,6 +2566,8 @@ always_ff @(posedge clk) begin
 		mem_last   <= ex_last;
 		// (an instruction that refetches does so at the b, which then runs)
 		mem_fold   <= ex_fold & ex_last & ~(is_rfi | is_mtmsr | is_xlate);
+		mem_upd    <= ex_dec.upd;
+		mem_upd_ra <= ex_dec.ra;
 		mem_fold_insn <= 32'h48000000 | ((ex_pred - ex_pc4) & 32'h03FFFFFC);
 		mem_first  <= ex_first;
 		mem_rd     <= ex_rd;
@@ -2504,6 +2611,9 @@ always_ff @(posedge clk) begin
 		wb_insn   <= mo_valid ? mo_insn : mem_insn;
 		wb_last   <= mo_valid ? mo_last : mem_last;
 		wb_fold   <= mo_valid ? mo_fold : mem_fold;
+		wb_upd    <= mo_valid ? mo_upd : mem_upd;
+		wb_upd_ra <= mo_valid ? mo_upd_ra : mem_upd_ra;
+		wb_upd_val <= mo_valid ? mo_result : mem_result[31:0];
 		wb_fold_insn <= mo_valid ? mo_fold_insn : mem_fold_insn;
 		wb_rd     <= mo_valid ? mo_rd : mem_rd;
 		wb_rd_wr  <= mo_valid ? mo_rd_wr : mem_rd_wr;
@@ -2524,6 +2634,9 @@ end
 assign trace_valid   = wb_valid;
 assign trace_last    = wb_last;
 assign trace_fold    = wb_last & wb_fold;
+assign trace_reg2_we  = wb_valid & wb_upd;
+assign trace_reg2_idx = wb_upd_ra;
+assign trace_reg2_val = wb_upd_val;
 assign trace_fold_insn = wb_fold_insn;
 assign trace_pc      = wb_pc;
 assign trace_insn    = wb_insn;

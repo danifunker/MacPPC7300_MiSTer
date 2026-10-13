@@ -201,6 +201,7 @@ package DSPPC604_pkg;
 		logic [6:0]  str_bytes;    // string forms: bytes in the whole operation, on its
 		                           // first access only (the alignment check is made there)
 		logic        mem_ext;      // eciwx, ecowx: a DSI, there being no external control facility
+		logic        upd;          // a load with update in one operation: also rA <- EA (second write port)
 		ck_t         cop;          // the cache instructions: what the access asks of the cache
 		resv_t       resv;
 		seq_t        seq;

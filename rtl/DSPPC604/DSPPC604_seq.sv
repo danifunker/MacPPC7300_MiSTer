@@ -36,6 +36,7 @@ module DSPPC604_seq
 	input  logic        strx,         // it is lswx or stswx, from the opcode bits directly
 	input  logic        ldux_rb,      // it is an indexed load with update whose rD is its rB, likewise
 	input  logic        upd_store,    // it is a store with update, likewise: one operation
+	input  logic        upd_load,     // it is a load with update in one operation (rA not 0, not rD), likewise
 	input  logic [6:0]  xer_count,    // XER byte count, for lswx and stswx
 	input  logic        take,         // the operation shown is accepted this cycle
 
@@ -110,6 +111,7 @@ always_comb begin
 				uop.rd    = dec.ra;
 				uop.rd_wr = 1'b1;
 			end
+			else if (upd_load) uop.upd = 1'b1;    // rD from memory, rA <- EA at once
 			else last_d = 1'b0;
 		end
 		else begin
@@ -195,7 +197,7 @@ end
 // the register fields, not for the decoder
 always_comb begin
 	case (seqk)
-	SEQ_UPDATE:          last = ldux_rb ? (step >= 6'd2) : (upd_store | (step != 6'd0));
+	SEQ_UPDATE:          last = ldux_rb ? (step >= 6'd2) : (upd_store | upd_load | (step != 6'd0));
 	SEQ_STWCX:           last = (step != 6'd0);
 	SEQ_MULTI:           last = ((rs + step[4:0]) == 5'd31);
 	SEQ_STRI:            last = (left_b <= 8'd4);
