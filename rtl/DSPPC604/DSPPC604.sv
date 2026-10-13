@@ -389,6 +389,16 @@ logic [31:0] wb_t_cr, wb_t_xer, wb_t_lr, wb_t_ctr, wb_t_fpscr, wb_t_msr;
 // registered word, rather than in the cache's answer cycle, where it sat in
 // series with the tag compare and the way select on the slowest path.
 wire [63:0] wb_value = wb_fsgl ? fp_single_to_double(wb_result[31:0]) : wb_result;
+// What WB forwards to EX: the conversion without denormals (a fixed
+// placement of the bits; a denormal needs the leading-zero count and the
+// shift). EX waits a cycle for a denormal single and takes wb_value then.
+function automatic logic [63:0] fp_single_to_double_nd(input logic [31:0] w);
+	logic x;
+	x = ((w[30:23] == 8'd0) | (w[30:23] == 8'hFF)) ? w[30] : ~w[30];
+	fp_single_to_double_nd = {w[31], w[30], {3{x}}, w[29:0], 29'd0};
+endfunction
+wire [63:0] wb_fwd   = wb_fsgl ? fp_single_to_double_nd(wb_result[31:0]) : wb_result;
+wire        wb_fden  = wb_fsgl & (wb_result[30:23] == 8'd0) & (wb_result[22:0] != 23'd0);
 
 // ---- stage handshakes ------------------------------------------------------
 logic        redir;         // EX redirects the fetch at the end of this cycle
@@ -1359,9 +1369,9 @@ wire ffa_wb_c  = wb_valid  & wb_rd_wr  & ex_dec.fra_rd & (wb_rd == {2'b10, ex_de
 wire ffb_wb_c  = wb_valid  & wb_rd_wr  & ex_dec.frb_rd & (wb_rd == {2'b10, ex_dec.frb});
 wire ffc_wb_c  = wb_valid  & wb_rd_wr  & ex_dec.frc_rd & (wb_rd == {2'b10, ex_dec.frc});
 
-wire [63:0] fop_a = ffa_mem ? mem_result : ffa_wb ? wb_value : ex_fa;
-wire [63:0] fop_b = ffb_mem ? mem_result : ffb_wb ? wb_value : ex_fb;
-wire [63:0] fop_c = ffc_mem ? mem_result : ffc_wb ? wb_value : ex_fc;
+wire [63:0] fop_a = ffa_mem ? mem_result : ffa_wb ? wb_fwd : ex_fa;
+wire [63:0] fop_b = ffb_mem ? mem_result : ffb_wb ? wb_fwd : ex_fb;
+wire [63:0] fop_c = ffc_mem ? mem_result : ffc_wb ? wb_fwd : ex_fc;
 
 // their classes, beside the operands: for a single still as lfs loaded it,
 // from the single's own fields, so the conversion is not in front of them
@@ -1396,7 +1406,8 @@ wire completion_dependency =
 // sync waits until a posted store (one memory must get) is in memory
 wire ex_sync = (ex_insn[31:26] == 6'd31) & (ex_insn[10:1] == 10'd598);
 wire ex_stall_ops = completion_dependency | mo_dep | (mem_load & (fa_ld | fb_ld | fc_ld | ffa_mem | ffb_mem | ffc_mem)) |
-                    (ex_sync & dc_posted);
+                    (ex_sync & dc_posted) |
+                    (wb_fden & ((ffa_wb & ~ffa_mem) | (ffb_wb & ~ffb_mem) | (ffc_wb & ~ffc_mem)));
 
 // ---- integer unit ----------------------------------------------------------
 wire is_int = (ex_dec.unit == UNIT_ALU) | (ex_dec.unit == UNIT_MUL) | (ex_dec.unit == UNIT_DIV);
