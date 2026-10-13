@@ -124,3 +124,57 @@ emulator's dispatch and its update loads. At 100 MHz (slow 100C -7.09
 ns) this build stops at the happy Mac (the 9b65cef-era build at -6.38 ns
 ran there): 100 MHz is past what this board takes with the larger fetch
 logic; 90 MHz boots and runs everything.
+
+## Timing, the night of 2026-10-12
+
+Paths cut without changing what the pipeline does (boot 330.76M ->
+331.00M cycles, all from the BTB change):
+
+- BTB/ITT hits compared per source (RAM row, held hit), the source only
+  selecting the bit; a BTB row written as it is read no longer forwards
+  (it does not hit: +0.07 % cycles); each return stack read at its own top.
+- A fold entry's BTB write row from the registered candidate.
+- Forwarding selects compared from registers for both operations EX can
+  hold next; EX leaving, MEM taking and ID moving only choose.
+- ex_pass_ok and the illegal-SPR decision made in ID and registered.
+- The memory unit shapes store data and checks for a second word per
+  descriptor (cp only selects); stfs converts into a register.
+- The I-side translates the registered read-ahead page and reads its
+  segment register a cycle after it (a fetch into another segment waits
+  a cycle).
+- mfsrin/mtsrin take a second EX cycle; mtsr's write lands a cycle after
+  its commit.
+- The D-cache picks a pending store's word in the answer cycle from
+  registers.
+- An lfs single is forwarded from WB without the denormal conversion
+  (a denormal single holds EX a cycle).
+- MACE has its own read multiplexer for the CPU.
+
+| Build | 90 MHz | 100 MHz |
+|---|---:|---:|
+| 1c985aa (evening) | -5.39 | -7.09 |
+| 34ed2a0 | -5.13 | -6.63 |
+| 986568a | -5.57 | -6.28 |
+| 0c5af13 | -5.85 | -6.25 |
+
+(slow 100C worst slack, ns; at 85-88 % ALMs a fit moves by a few tenths
+of a ns either way, the 90 MHz column shows it.)
+
+### Board, build 0c5af13 at 100 MHz
+
+It boots and runs Speedometer again (1c985aa did not). L2 off:
+
+| | 1c985aa, 90 MHz | 0c5af13, 100 MHz |
+|---|---:|---:|
+| CPU (the emulated 68k) | 4.857 | **5.396** |
+| Benchmark Mix | 15.367 | 16.662 |
+| FPU average | 6.426 | 6.552 |
+| Color average | 1.820 | 1.884 |
+
+Against the 9b65cef-era build at 90 MHz (4.069) the 68k CPU score is
++33 %. (Speedometer's FPU tests time 0.05-0.1 s each; their ratios move
+by several percent between runs.)
+
+The bench's snoop storm left a snoop in flight into the end-of-run
+write-back, whose first line was then never written back (random seed
+730, failing back to master); fixed in the bench, the cache was right.
