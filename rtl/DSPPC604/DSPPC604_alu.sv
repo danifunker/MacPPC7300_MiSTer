@@ -86,8 +86,7 @@ function automatic logic [31:0] mask_gen(input logic [4:0] mb, input logic [4:0]
 endfunction
 
 logic [5:0]  sh_n;       // shift count; bit 5 means "32 or more" for shifts
-logic [4:0]  rot_amt;
-logic [63:0] rot_dbl;
+logic [63:0] rotl_dbl, rotr_dbl;
 logic [31:0] rot;
 logic [31:0] mask;
 logic [31:0] rot_res;
@@ -96,12 +95,15 @@ logic        rot_ca;
 always_comb begin
 	sh_n = ctl.sh_reg ? b[5:0] : {1'b0, ctl.sh};
 
+	// a rotator each way, rather than right by n as left by 32-n: the
+	// subtraction was in series with the forwarded rB and the shift
+	// (2026-10-13, at 110 MHz)
+	rotl_dbl = {a, a} << sh_n[4:0];
+	rotr_dbl = {a, a} >> sh_n[4:0];
 	case (ctl.rot_op)
-		ROT_SRW, ROT_SRAW: rot_amt = 5'd0 - sh_n[4:0];   // right by n = left by 32-n
-		default:           rot_amt = sh_n[4:0];
+		ROT_SRW, ROT_SRAW: rot = rotr_dbl[31:0];
+		default:           rot = rotl_dbl[63:32];
 	endcase
-	rot_dbl = {a, a} << rot_amt;
-	rot     = rot_dbl[63:32];
 
 	case (ctl.rot_op)
 		ROT_SLW:           mask = sh_n[5] ? 32'd0 : mask_gen(5'd0, 5'd31 - sh_n[4:0]);

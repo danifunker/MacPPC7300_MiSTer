@@ -2239,7 +2239,19 @@ wire [63:0] store_fp_double = ffb_mem ? mem_result :
 // stfs of a single lfs loaded (still in WB as it was in memory) stores
 // it as it is; any other stfs's double is converted by the memory unit
 wire        store_raw_sgl = ffb_wb & wb_fsgl & ~ffb_mem;
-wire        ex_wconv  = ex_dec.mem_fp & ex_dec.mem_fsgl & ~store_raw_sgl;
+wire        ex_wconv  = ex_dec.mem_fp & ex_dec.mem_fsgl;
+// The single it stores: each source converted from its register, then the
+// choice (the forwarding select is not in front of the conversion's shift;
+// 2026-10-13, the worst family at 110 MHz)
+wire [31:0] ex_wconv_word = ffb_mem ? fp_double_to_single(mem_result) :
+                            ffb_wb  ? (wb_fsgl ? wb_result[31:0] : fp_double_to_single(wb_result)) :
+                                      fp_double_to_single(ex_fb);
+/* synthesis translate_off */
+always_ff @(posedge clk)
+	if (~reset & ex_valid & ex_wconv &
+	    (ex_wconv_word != (store_raw_sgl ? wb_result[31:0] : fp_double_to_single(store_fp_double))))
+		$fatal(1, "stfs's converted word differs");
+/* synthesis translate_on */
 
 // Doubleword stores retain the full converted forwarding value.
 wire [63:0] ex_wdata  = ~ex_dec.mem_fp   ? {32'd0, op_c} :
@@ -2456,6 +2468,7 @@ DSPPC604_mem_unit mem_unit
 	.ljust       (ex_dec.mem_ljust),
 	.wdata       (ex_wdata),
 	.conv        (ex_wconv),
+	.wconv       (ex_wconv_word),
 	.resp_valid  (mu_resp),
 	.resp_fault  (mu_fault),
 	.rdata       (mu_rdata),
