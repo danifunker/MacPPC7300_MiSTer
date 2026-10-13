@@ -585,11 +585,14 @@ wire [3:0] ras_ccount_next = ras_push ? ((ras_ccount == 4'd8) ? 4'd8 : ras_ccoun
                               ras_pop ? ras_ccount - 4'd1 : ras_ccount;
 wire [2:0] ras_read_ptr = ras_recover ? ras_cptr : ras_sptr;
 wire [3:0] ras_read_count = ras_recover ? ras_ccount : ras_scount;
-wire [2:0] ras_top = ras_read_ptr - 3'd1;
-wire [31:0] ras_commit_target = (ras_commit_write & (ras_commit_write_ptr == ras_top)) ?
-                               ras_commit_write_data : ras_committed[ras_top];
-wire [31:0] ras_spec_target = (ras_spec_write & (ras_spec_write_ptr == ras_top)) ?
-                             ras_spec_write_data : ras_speculative[ras_top];
+// (each stack's top read at its own pointer: the recovery choice only
+// selects the target, it is not in front of the reads)
+wire [2:0] ras_ctop = ras_cptr - 3'd1;
+wire [2:0] ras_stop = ras_sptr - 3'd1;
+wire [31:0] ras_commit_target = (ras_commit_write & (ras_commit_write_ptr == ras_ctop)) ?
+                               ras_commit_write_data : ras_committed[ras_ctop];
+wire [31:0] ras_spec_target = (ras_spec_write & (ras_spec_write_ptr == ras_stop)) ?
+                             ras_spec_write_data : ras_speculative[ras_stop];
 wire [31:0] ras_read_target = ras_recover ? ras_commit_target : ras_spec_target;
 
 wire [BTB_SET_BITS-1:0] btb_idx = btb_index(pc_f);
