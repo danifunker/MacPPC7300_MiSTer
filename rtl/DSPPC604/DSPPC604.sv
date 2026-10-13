@@ -1441,9 +1441,11 @@ wire fc_mem = fq_c_mem | fq_c_upd;
 wire fa_ld  = fq_a_mem;
 wire fb_ld  = fq_b_mem;
 wire fc_ld  = fq_c_mem;
-wire fa_wb  = fq_a_wb;
-wire fb_wb  = fq_b_wb;
-wire fc_wb  = fq_c_wb;
+// (WB's selects are registered without whether MEM's operation left: that
+// is wb_valid, applied here)
+wire fa_wb  = fq_a_wb & wb_valid;
+wire fb_wb  = fq_b_wb & wb_valid;
+wire fc_wb  = fq_c_wb & wb_valid;
 wire fa_mem_c = mem_valid & mem_rd_wr & ex_dec.ra_rd & (mem_rd == {1'b0, ex_dec.ra});
 wire fb_mem_c = mem_valid & mem_rd_wr & ex_use_b     & (mem_rd == {1'b0, ex_dec.rb});
 wire fc_mem_c = mem_valid & mem_rd_wr & ex_dec.rc_rd & (mem_rd == {1'b0, ex_dec.rc});
@@ -1462,9 +1464,9 @@ wire [31:0] op_c = fc_mem ? mem_result[31:0] : fc_wb ? wb_result[31:0] : ex_c;
 wire ffa_mem = fq_fa_mem;
 wire ffb_mem = fq_fb_mem;
 wire ffc_mem = fq_fc_mem;
-wire ffa_wb  = fq_fa_wb;
-wire ffb_wb  = fq_fb_wb;
-wire ffc_wb  = fq_fc_wb;
+wire ffa_wb  = fq_fa_wb & wb_valid;
+wire ffb_wb  = fq_fb_wb & wb_valid;
+wire ffc_wb  = fq_fc_wb & wb_valid;
 wire ffa_mem_c = mem_valid & mem_rd_wr & ex_dec.fra_rd & (mem_rd == {2'b10, ex_dec.fra});
 wire ffb_mem_c = mem_valid & mem_rd_wr & ex_dec.frb_rd & (mem_rd == {2'b10, ex_dec.frb});
 wire ffc_mem_c = mem_valid & mem_rd_wr & ex_dec.frc_rd & (mem_rd == {2'b10, ex_dec.frc});
@@ -2180,7 +2182,7 @@ wire        ex_rd_wr  = ex_dec.rd_wr | (ex_dec.frd_wr & (~is_fpu | fpu_result_we
 // WB gets the oldest MEM operation if it leaves. The operation in EX next
 // cycle is ID's if it moves, else EX's own. (When neither, EX is empty or
 // cancelled and the selects are unused.)
-wire       fwd_wb_v    = mem_leave & ~mem_fault & (mo_valid ? mo_rd_wr : mem_rd_wr);
+wire       fwd_wb_v    = mo_valid ? mo_rd_wr : mem_rd_wr;   // (if it leaves: wb_valid, at the use)
 wire [6:0] fwd_wb_rd   = mo_valid ? mo_rd : mem_rd;
 // Every candidate is compared from registers, for both operations EX can
 // hold next (ID's and its own); the late signals (EX leaving, MEM taking,
@@ -2220,7 +2222,7 @@ always_ff @(posedge clk)
 always_ff @(posedge clk) begin
 	if (~reset & ex_valid)
 		if ({fq_a_mem, fq_b_mem, fq_c_mem, fq_fa_mem, fq_fb_mem, fq_fc_mem,
-		     fq_a_wb, fq_b_wb, fq_c_wb, fq_fa_wb, fq_fb_wb, fq_fc_wb, fq_a_upd, fq_b_upd, fq_c_upd} !=
+		     fa_wb, fb_wb, fc_wb, ffa_wb, ffb_wb, ffc_wb, fq_a_upd, fq_b_upd, fq_c_upd} !=
 		    {fa_mem_c, fb_mem_c, fc_mem_c, ffa_mem_c, ffb_mem_c, ffc_mem_c,
 		     fa_wb_c, fb_wb_c, fc_wb_c, ffa_wb_c, ffb_wb_c, ffc_wb_c, fa_upd_c, fb_upd_c, fc_upd_c})
 			$fatal(1, "registered forwarding select differs from the compare");
@@ -2489,7 +2491,10 @@ assign mu_accept = mu_valid & mu_ready;
 // and cannot fault.
 assign mem_irq = ~mo_valid & mem_valid & mem_first & mu_pending & msr[MSR_EE] & (irq_in | dec_pending);
 assign mem_leave = mo_valid ? mu_resp : mem_valid & (~mem_mem | mu_resp | mem_irq);
-assign mem_dsi = ~mo_valid & mem_valid & mu_resp & mu_fault;
+// (the memory unit answers with every fault, and the MMU's fault is its
+// state, a register: mu_resp & mu_fault is mu_bfault, written so, without
+// the cache's hit in front of every user of mem_fault)
+assign mem_dsi = ~mo_valid & mem_valid & mu_bfault;
 assign mem_fault = mem_dsi | mem_irq;
 
 DSPPC604_mmu #(.TLB_BITS (TLB_BITS), .CANDIDATE_D_ADDR (1'b1)) mmu
@@ -2839,7 +2844,10 @@ end
 // ============================================================================
 always_ff @(posedge clk) begin
 	wb_valid <= mem_leave & ~mem_fault;
-	if (mem_leave) begin
+	// The payload loads every cycle: every reader qualifies it with wb_valid
+	// (or a forwarding select registered with it), so the cache's answer,
+	// through mem_leave, enables no register here.
+	begin
 		// the oldest: the older slot if it holds one (always an access)
 		wb_pc     <= mo_valid ? mo_pc : mem_pc;
 		wb_insn   <= mo_valid ? mo_insn : mem_insn;
@@ -2903,6 +2911,7 @@ always_ff @(posedge clk) begin
 		if (fetch_push & (fetch_count == 3'd4) & ~fetch_pop) $fatal(1, "unreserved fetch response");
 		if (mu_resp & ~mo_valid & ~(mem_valid & mem_mem)) $fatal(1, "unowned memory response");
 		if (mem_take & mo_valid) $fatal(1, "MEM's older slot overwritten");
+		if (mem_dsi != (~mo_valid & mem_valid & mu_resp & mu_fault)) $fatal(1, "the DSI differs from the answer's fault");
 		if (mo_valid & mo_rd_wr & ~mo_load & mo_rd[6]) $fatal(1, "a passed store writes an FP register");
 		if (mu_valid & ~mu_ready) $fatal(1, "memory access offered without a free descriptor");
 		if (completion_count > 4'd8) $fatal(1, "completion queue overflow");
