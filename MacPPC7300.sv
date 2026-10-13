@@ -18,8 +18,11 @@
 //
 //============================================================================
 //
-//  Clocks from one PLL (rtl/pll.v):
-//    clk_cpu  CPU_MHZ  the CPU and the machine (MacPPC7300_system)
+//  Clocks from one PLL (rtl/pll.v, reconfigurable):
+//    clk_cpu  the OSD's choice (100 MHz unless changed; MacPPC7300_clkadj sets
+//             the PLL's counter while the machine is in reset) for the CPU and
+//             the machine (MacPPC7300_system), whose time bases take the rate
+//             chosen (cpu_hz); CPU_MHZ is the nominal for what is built in
 //    clk_mem  100 MHz  the SDRAM controller, hps_io, the ROM upload, the VRAM in
 //                      DDR3 and the Control video's scan-out; also the video
 //                      clock, the debug readout's picture running on a 20 MHz
@@ -55,11 +58,9 @@ module emu
 	`include "sys/emu_ports.vh"
 );
 
-localparam int CPU_MHZ = 70;            // 60 and 65 also work with the PLL (VCO 1200, 1300 MHz); 70 since 2026-10-09
-localparam int MEM_MHZ = 100;           // the memory clock: 100, or the CPU's own (105: one VCO for both)
-// the PLL's settings for those, as strings (kept in step with the numbers by hand)
-localparam CPU_FREQ = "70.000000 MHz";
-localparam MEM_FREQ = "100.000000 MHz";
+localparam int CPU_MHZ = 100;           // the nominal CPU clock (the built-in dividers: Cuda's, the trace's); the PLL's choice is the OSD's
+localparam int MEM_MHZ = 100;           // the memory clock (rtl/pll/pll_0002.v: 1200 MHz / 12)
+localparam logic [2:0] CLK_BUILT_IN = 3'd1;   // the PLL's CPU counter as built: 1200 / 11 (MacPPC7300_clkadj's table)
 localparam int L2_KB = 128;             // 0: no L2 cache (its OSD option then does nothing; saves about 800 ALMs)
 localparam int TRACE = 0;               // 1: the DDR3 trace (syn\mister.py trace), for debugging builds
 localparam int SOUND_IN_DMA = 0;        // 1: DMA channel 9 (sound in, which records silence) a real channel
@@ -119,6 +120,7 @@ localparam CONF_STR = {
 	"O[3:1],RAM (on reset),16 MB,24 MB,48 MB,64 MB,96 MB,6 MB,120 MB;",
 	"O[4],L2 cache (on reset),On,Off;",
 	"O[16:15],Monitor (on reset),16-inch 832x624,13-inch 640x480,12-inch 512x384;",
+	"O[33:31],CPU clock (on reset),100 MHz,109 MHz,120 MHz,133 MHz,92 MHz,86 MHz,80 MHz,75 MHz;",
 	"-;",
 	"O[13:11],ADB controller (on reset),None,Gravis MouseStick II,Gravis Firebird,Gravis GamePad,SideWinder 3D Pro;",
 	"O[14],Stick moves pointer,No,Yes;",
@@ -165,15 +167,18 @@ localparam [31:0] BUILD = {8'h20, BD[43:40], BD[35:32], BD[27:24], BD[19:16], BD
 ///////////////////////   CLOCKS   ///////////////////////////////
 
 wire clk_vid, clk_cpu, clk_mem, pll_locked;
-pll #(.CPU_FREQ(CPU_FREQ), .MEM_FREQ(MEM_FREQ)) pll
+wire [63:0] reconfig_to_pll, reconfig_from_pll;
+pll pll
 (
 	.refclk(CLK_50M),
 	.rst(0),
 	.outclk_0(clk_vid),
 	.outclk_1(clk_cpu),
 	.outclk_2(clk_mem),
-	.locked(pll_locked)
+	.locked(pll_locked),
+	.reconfig_to_pll, .reconfig_from_pll
 );
+
 
 wire clk_sys = clk_mem;
 
@@ -402,8 +407,12 @@ wire sdram_ready;
 wire       power_wake;
 reg  [1:0] wake_m;
 always @(posedge clk_mem) wake_m <= {wake_m[0], power_wake};
+// the CPU's clock being changed (MacPPC7300_clkadj, below) holds the reset too
+wire       clk_busy;
+reg  [1:0] clk_busy_m = 2'b00;
+always @(posedge clk_mem) clk_busy_m <= {clk_busy_m[0], clk_busy};
 reg  [2:0] reset_in;
-always @(posedge clk_mem) reset_in <= {reset_in[1:0], RESET | status[0] | buttons[1] | wake_m[1]};
+always @(posedge clk_mem) reset_in <= {reset_in[1:0], RESET | status[0] | buttons[1] | wake_m[1] | clk_busy_m[1]};
 
 // the monitor's AppleSense codes (dingusppc's displayid.cpp): the 16-inch RGB
 // (7, 2D), the 13-inch (6, 2B) or the 12-inch (2, 21)
@@ -413,6 +422,58 @@ wire [5:0] mon_ext = (status[16:15] == 2'd1) ? 6'h2B : (status[16:15] == 2'd2) ?
 reg cpu_reset_m = 1;
 always @(posedge clk_mem)
 	cpu_reset_m <= reset_in[2] | ~sdram_ready | rom_dl | nv_dl | nvs_hold | (~boot_memtest & ~rom_loaded);
+
+// the CPU's clock from the OSD: the PLL's CPU counter is set while the machine
+// is in reset (MacPPC7300_clkadj), which holds the reset until it is done
+wire        cfg_waitrequest, cfg_write;
+wire  [5:0] cfg_address;
+wire [31:0] cfg_data;
+wire  [2:0] clk_cur;
+reg   [7:0] cfg_por = 8'd0;                 // the reconfiguration block's power-up reset
+always @(posedge CLK_50M) if (~&cfg_por) cfg_por <= cfg_por + 8'd1;
+altera_pll_reconfig_top #(.reconf_width(64), .device_family("Cyclone V"), .RECONFIG_ADDR_WIDTH(6),
+                          .RECONFIG_DATA_WIDTH(32), .ENABLE_MIF(0), .MIF_FILE_NAME(""),
+                          .ENABLE_BYTEENABLE(0), .BYTEENABLE_WIDTH(4), .WAIT_FOR_LOCK(1)) pll_cfg
+(
+	.mgmt_clk(CLK_50M),
+	.mgmt_reset(~&cfg_por),
+	.reconfig_to_pll, .reconfig_from_pll,
+	.mgmt_readdata(),
+	.mgmt_waitrequest(cfg_waitrequest),
+	.mgmt_address(cfg_address),
+	.mgmt_read(1'b0),
+	.mgmt_write(cfg_write),
+	.mgmt_writedata(cfg_data),
+	.mgmt_byteenable(4'hF)
+);
+MacPPC7300_clkadj #(.BUILT_IN(CLK_BUILT_IN)) clkadj
+(
+	.clk(CLK_50M),
+	.reset(~&cfg_por),
+	.sel(status[33:31]),
+	.machine_reset(cpu_reset_m),
+	.locked(pll_locked),
+	.mgmt_waitrequest(cfg_waitrequest),
+	.mgmt_write(cfg_write),
+	.mgmt_address(cfg_address),
+	.mgmt_writedata(cfg_data),
+	.busy(clk_busy),
+	.cur(clk_cur)
+);
+// the rate chosen, for the machine's time bases (as the RAM size: taken under reset)
+function [31:0] cpu_hz_of(input [2:0] k);
+	case (k)
+		3'd0:    cpu_hz_of = 32'd100_000_000;
+		3'd1:    cpu_hz_of = 32'd109_090_909;
+		3'd2:    cpu_hz_of = 32'd120_000_000;
+		3'd3:    cpu_hz_of = 32'd133_333_333;
+		3'd4:    cpu_hz_of = 32'd92_307_692;
+		3'd5:    cpu_hz_of = 32'd85_714_286;
+		3'd6:    cpu_hz_of = 32'd80_000_000;
+		default: cpu_hz_of = 32'd75_000_000;
+	endcase
+endfunction
+reg  [31:0] cpu_hz_m = 32'd100_000_000;
 
 // the options a running Mac cannot follow, taken under reset (a change waits for the next):
 // the RAM size, the monitor, the ADB game controller, the Ethernet bridge; MacPPC7300_adb
@@ -425,6 +486,7 @@ reg         tr_mesh_m = 0;                  // the trace also takes MESH (status
 reg         l2_on_m = 1;
 always @(posedge clk_mem) if (cpu_reset_m) begin
 	ram_mb    <= ram_opt;
+	cpu_hz_m  <= cpu_hz_of(clk_cur);
 	mon_m     <= {mon_std, mon_ext};
 	joy_mode  <= (status[13:11] > 3'd4) ? 3'd0 : status[13:11];
 	net_on    <= status[19:17] != 3'd0;     // the Main's mac_eth.cpp takes the interface from it too
@@ -436,6 +498,7 @@ wire [51:0] joy = {status[14], joy_mode, joystick_r_analog_0, joystick_l_analog_
 // into the CPU's clock (the options are quasi-static: they change only with the reset held)
 reg [2:0] cpu_reset_s = 3'b111;
 reg [7:0] ram_mb_c [2];
+reg [31:0] cpu_hz_c [2];
 reg [1:0] boot_memtest_c;
 reg [8:0] mon_c [2];
 reg [1:0] tr_mesh_c;
@@ -444,6 +507,8 @@ always @(posedge clk_cpu) begin
 	cpu_reset_s    <= {cpu_reset_s[1:0], cpu_reset_m};
 	ram_mb_c[0]    <= ram_mb;
 	ram_mb_c[1]    <= ram_mb_c[0];
+	cpu_hz_c[0]    <= cpu_hz_m;
+	cpu_hz_c[1]    <= cpu_hz_c[0];
 	boot_memtest_c <= {boot_memtest_c[0], boot_memtest};
 	mon_c[0]       <= mon_m;
 	mon_c[1]       <= mon_c[0];
@@ -615,6 +680,7 @@ MacPPC7300_system #(.CPU_HZ(CPU_MHZ * 1000000), .MEM_HZ(MEM_MHZ * 1000000), .L2_
 	.power_wake,
 	.reset_pc(32'hFFF00100),
 	.ram_mb(ram_mb_c[1]),
+	.cpu_hz(cpu_hz_c[1]),
 	.boot_memtest(boot_memtest_c[1]),
 	.l2_on(l2_on_c[1]),
 

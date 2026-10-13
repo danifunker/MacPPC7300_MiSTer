@@ -98,6 +98,7 @@ module MacPPC7300_machine
 	input  logic         clk,
 	input  logic         reset,
 	input  logic [7:0]   ram_mb,                    // installed RAM, at most SDRAM_MB - 4
+	input  logic [31:0]  cpu_hz,                    // the CPU's clock rate (quasi-static, taken under reset)
 	input  logic         boot_memtest,              // run the memory test in place of the ROM
 
 	// the CPU's memory port
@@ -512,58 +513,37 @@ end
 
 // ---- the time base, the VIA's clock, the ESCC's and the SCSI controllers', the microsecond, ----
 // ---- AWACS's twice 44,100 Hz ----
-logic [31:0] tb_acc, via_acc, rtxc_acc, scsi_acc, us_acc, snd_acc;
+// Each is an accumulator against the CPU's clock rate (cpu_hz, a register:
+// the clock is chosen at run time): every cycle adds the rate wanted, and a
+// cycle that starts with the sum not negative ticks and takes the clock rate
+// off, one add each with no compare behind it.
+logic signed [32:0] tb_acc, via_acc, rtxc_acc, scsi_acc, us_acc, snd_acc;
 logic        via_tick, rtxc_tick, scsi_tick, us_tick, snd_tick;
+wire signed [32:0] hz = {1'b0, cpu_hz};
+localparam logic signed [32:0] SCSI_K = 33'(SCSI_HZ);
+localparam logic signed [32:0] RTXC_K = 33'(RTXC_HZ);
+localparam logic signed [32:0] TB_K   = 33'(TB_HZ);
+localparam logic signed [32:0] VIA_K  = 33'(VIA_HZ);
 always_ff @(posedge clk) begin
-	tb_tick   <= 1'b0;
-	via_tick  <= 1'b0;
-	rtxc_tick <= 1'b0;
-	scsi_tick <= 1'b0;
-	us_tick   <= 1'b0;
-	snd_tick  <= 1'b0;
-	if (snd_acc + 32'd88_200 >= CPU_HZ) begin
-		snd_acc  <= snd_acc + 32'd88_200 - CPU_HZ;
-		snd_tick <= 1'b1;
-	end
-	else snd_acc <= snd_acc + 32'd88_200;
-	if (us_acc + 32'd1_000_000 >= CPU_HZ) begin
-		us_acc  <= us_acc + 32'd1_000_000 - CPU_HZ;
-		us_tick <= 1'b1;
-	end
-	else us_acc <= us_acc + 32'd1_000_000;
-	if (scsi_acc + SCSI_HZ >= CPU_HZ) begin
-		scsi_acc  <= scsi_acc + SCSI_HZ - CPU_HZ;
-		scsi_tick <= 1'b1;
-	end
-	else scsi_acc <= scsi_acc + SCSI_HZ;
-	if (rtxc_acc + RTXC_HZ >= CPU_HZ) begin
-		rtxc_acc  <= rtxc_acc + RTXC_HZ - CPU_HZ;
-		rtxc_tick <= 1'b1;
-	end
-	else rtxc_acc <= rtxc_acc + RTXC_HZ;
-	if (tb_acc + TB_HZ >= CPU_HZ) begin
-		tb_acc  <= tb_acc + TB_HZ - CPU_HZ;
-		tb_tick <= 1'b1;
-	end
-	else tb_acc <= tb_acc + TB_HZ;
-	if (via_acc + VIA_HZ >= CPU_HZ) begin
-		via_acc  <= via_acc + VIA_HZ - CPU_HZ;
-		via_tick <= 1'b1;
-	end
-	else via_acc <= via_acc + VIA_HZ;
+	tb_tick   <= ~tb_acc[32];
+	via_tick  <= ~via_acc[32];
+	rtxc_tick <= ~rtxc_acc[32];
+	scsi_tick <= ~scsi_acc[32];
+	us_tick   <= ~us_acc[32];
+	snd_tick  <= ~snd_acc[32];
+	snd_acc   <= snd_acc  + 33'sd88_200             - (snd_acc[32]  ? 33'sd0 : hz);
+	us_acc    <= us_acc   + 33'sd1_000_000          - (us_acc[32]   ? 33'sd0 : hz);
+	scsi_acc  <= scsi_acc + SCSI_K       - (scsi_acc[32] ? 33'sd0 : hz);
+	rtxc_acc  <= rtxc_acc + RTXC_K       - (rtxc_acc[32] ? 33'sd0 : hz);
+	tb_acc    <= tb_acc   + TB_K         - (tb_acc[32]   ? 33'sd0 : hz);
+	via_acc   <= via_acc  + VIA_K        - (via_acc[32]  ? 33'sd0 : hz);
 	if (reset) begin
-		tb_acc    <= 32'h0;
-		via_acc   <= 32'h0;
-		rtxc_acc  <= 32'h0;
-		scsi_acc  <= 32'h0;
-		us_acc    <= 32'h0;
-		snd_acc   <= 32'h0;
-		snd_tick  <= 1'b0;
-		tb_tick   <= 1'b0;
-		via_tick  <= 1'b0;
-		rtxc_tick <= 1'b0;
-		scsi_tick <= 1'b0;
-		us_tick   <= 1'b0;
+		tb_acc    <= -hz;
+		via_acc   <= -hz;
+		rtxc_acc  <= -hz;
+		scsi_acc  <= -hz;
+		us_acc    <= -hz;
+		snd_acc   <= -hz;
 	end
 end
 

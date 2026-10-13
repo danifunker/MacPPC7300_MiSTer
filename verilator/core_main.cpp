@@ -961,6 +961,7 @@ int main(int argc, char** argv) {
 		dut->ram_mb = opt.ram_mb;
 		dut->boot_memtest = opt.memtest;
 		dut->l2_on = opt.l2;
+		dut->cpu_hz = 65000000;          // MacPPC7300_system's CPU_HZ
 		dut->reset_pc = reset_pc;
 		dut->modem_rxd = term.txd;
 		dut->nv_ld_we = nv_ld >= 0;

@@ -221,6 +221,7 @@ int main(int argc, char** argv) {
 		dut->ram_mb = opt.ram_mb;
 		dut->boot_memtest = 0;
 		dut->l2_on = 1;
+		dut->cpu_hz = 65000000;
 		dut->reset_pc = 0xFFF00100;
 		dut->modem_rxd = modem.txd;
 		dut->nv_ld_we = nv_ld >= 0;

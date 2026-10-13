@@ -37,6 +37,7 @@ module MacPPC7300_system
 	output logic         power_wake,      // shut down, then the power key: the machine wants a reset
 	input  logic [31:0]  reset_pc,
 	input  logic [7:0]   ram_mb,          // installed RAM, at most SDRAM_MB - 4
+	input  logic [31:0]  cpu_hz,          // the CPU's clock rate, for the time bases (quasi-static, taken under reset)
 	input  logic         boot_memtest,    // the memory test in place of the ROM
 	input  logic         l2_on,           // the L2 cache in the memory path (quasi-static, taken under reset)
 
@@ -262,7 +263,7 @@ logic         snd_frame;
 
 MacPPC7300_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_FAST_BOOT(CUDA_FAST_BOOT),
                      .SOUND_IN_DMA(SOUND_IN_DMA)) machine (
-	.clk, .reset, .ram_mb, .boot_memtest,
+	.clk, .reset, .ram_mb, .cpu_hz, .boot_memtest,
 	.c_req, .c_we, .c_line, .c_addr, .c_be, .c_wdata, .c_ack, .c_rdata,
 	.m_req, .m_we, .m_line, .m_addr, .m_be, .m_wdata, .m_ack, .m_rdata,
 	.ext_irq, .tb_tick, .cpu_reset(cuda_reset), .power_wake,
