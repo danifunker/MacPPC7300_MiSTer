@@ -631,6 +631,11 @@ wire [161:0] norm_raw = r_q << lz_q;
 // zero (every other count is exact).
 wire         n_fix = ~norm_raw[161] & ~rzero_q;
 wire [161:0] norm  = n_fix ? {norm_raw[160:0], 1'b0} : norm_raw;
+// the sticky bits for both n_fix values, ORed from the shift beside n_fix
+// (which then only selects) rather than behind it
+wire st_w0 = |norm_raw[97:0],  st_w1 = |norm_raw[96:0];
+wire st_s0 = |norm_raw[136:0], st_s1 = |norm_raw[135:0];
+wire st_d0 = |norm_raw[107:0], st_d1 = |norm_raw[106:0];
 
 // exponent of the leading one, and where rounding happens: made for
 // both n_fix values beside the shifter, n_fix (the shifted top bit) then
@@ -1015,7 +1020,7 @@ always_ff @(posedge clk) begin
 
 	S_NORM: begin
 		w_q      <= norm[161:98];
-		w_sticky <= r_sticky | (|norm[97:0]);
+		w_sticky <= r_sticky | (n_fix ? st_w1 : st_w0);
 		tiny_q   <= ~int_q & tiny;
 		den_q    <= 1'b0;
 		top_q    <= top;
@@ -1041,7 +1046,7 @@ always_ff @(posedge clk) begin
 		// so round next. Integers and denormals take S_SHIFT.
 		k_q   <= sgl_q ? {40'd0, norm[161:138]} : {11'd0, norm[161:109]};
 		rb_q  <= sgl_q ? norm[137] : norm[108];
-		sk_q  <= r_sticky | (sgl_q ? (|norm[136:0]) : (|norm[107:0]));
+		sk_q  <= r_sticky | (sgl_q ? (n_fix ? st_s1 : st_s0) : (n_fix ? st_d1 : st_d0));
 		state <= (int_q | (tiny & ~ue)) ? S_SHIFT : S_ROUND;
 	end
 
