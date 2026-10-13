@@ -1467,7 +1467,9 @@ def fprandom(out, count, seed):
 PHYS_OFFSET = 0x00400000
 
 
-def gen_random(out, count, seed, translate=False):
+REPEAT_COUNT = 0x00300000     # the repeat option's pass counter (no data area near it)
+
+def gen_random(out, count, seed, translate=False, repeat=1, steady=False):
     rnd = random.Random(seed)
     p = Program()
 
@@ -1615,7 +1617,7 @@ def gen_random(out, count, seed, translate=False):
             return [(31 << 26) | (rd() << 21) | ((268 & 31) << 16) | ((268 >> 5) << 11) | (371 << 1)]  # mftb
         if k == 10:
             n = rnd.randrange(16)
-            if bit():
+            if bit() and not steady:     # (steady: no new fold epoch, so the BTB keeps its folds)
                 if translate:
                     return [tlbie(rs())]
                 return [mtsr(n, rs())]
@@ -1656,7 +1658,7 @@ def gen_random(out, count, seed, translate=False):
             # it throws away stores the data cache still holds, which dingusppc,
             # having no cache, would keep.
             t = rd()
-            return [M(21, base(), t, 0, 27, 19), X(0, 0, t, rnd.choice((54, 86, 982)))]
+            return [M(21, base(), t, 0, 27, 19), X(0, 0, t, rnd.choice((54, 86) if steady else (54, 86, 982)))]
         if k == 0:
             return [D(rnd.choice((32, 34, 40, 42)), rd(), base(), d)]                 # lwz lbz lhz lha
         if k == 1:
@@ -1764,6 +1766,13 @@ def gen_random(out, count, seed, translate=False):
             p.words += [D(15, t, 0, addr >> 16), D(24, t, t, addr), mtspr(spr, t),
                         (19 << 26) | (bo << 21) | (rnd.randrange(32) << 16) | (xo << 1) | bit()]
     assert len(p.words) == end
+    if repeat > 1 and not translate:
+        # run the body again (the branch target buffer then knows its branches,
+        # and folds them): a pass counter in memory, then back through CTR
+        p.data[REPEAT_COUNT] = repeat - 1
+        p.words += [D(15, 4, 0, REPEAT_COUNT >> 16), D(32, 3, 4, 0), D(13, 3, 3, 0xFFFF), D(36, 3, 4, 0)]
+        p.words += li32(5, CODE_BASE + 4 * starts[0]) + [mtspr(CTR, 5)]
+        p.words.append((19 << 26) | (4 << 21) | (2 << 16) | (528 << 1))                # bnectr
     p.words.append(B_SELF)
     p.write(out)
     print("%d instructions -> %s" % (len(p.words), out))
@@ -1971,7 +1980,10 @@ if __name__ == "__main__":
     elif len(a) >= 3 and a[0] == "fprandom":
         fprandom(a[1], int(a[2]), int(a[3]) if len(a) > 3 else 1)
     elif len(a) >= 3 and a[0] == "random":
-        gen_random(a[1], int(a[2]), int(a[3]) if len(a) > 3 else 1, len(a) > 4 and a[4] == "xlate")
+        opts = a[4:]
+        rep = [int(o.split("=")[1]) for o in opts if o.startswith("repeat=")]
+        gen_random(a[1], int(a[2]), int(a[3]) if len(a) > 3 else 1, "xlate" in opts, rep[0] if rep else 1,
+                   "steady" in opts)
     elif len(a) >= 2 and a[0] == "memtest":
         memtest(a[1])
     elif len(a) >= 2 and a[0] == "specfetchrom":

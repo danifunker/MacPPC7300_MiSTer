@@ -226,6 +226,24 @@ def main():
             for l in r.stdout.splitlines():
                 if l.endswith("per instruction)"):
                     total += int(l.split()[0])
+    # the same body run four times without new fold epochs (no mtsr or icbi),
+    # so that the branch target buffer folds its branches into the
+    # instructions before them, under the same exceptions and wait states
+    print("random programs in lockstep, repeated (folded branches):")
+    for seed in range(args.first_seed, args.first_seed + max(2, args.seeds // 2)):
+        prog = os.path.join(progs, "random.prog")
+        r = run([sys.executable, os.path.join(HERE, "progs.py"), "random", prog, str(args.count), str(seed),
+                 "repeat=4", "steady"])
+        if r.returncode:
+            print(r.stdout)
+            return 1
+        stall = (0, 15, 40, 70)[seed % 4]
+        storm = ["--snoop-every", "2"] if seed % 5 == 0 else []
+        r = run([tb, "--prog", prog, "--lockstep", "--stall", str(stall), "--seed", str(seed)] + storm)
+        report("  seed %d, wait states %d%%%s" % (seed, stall, ", snooped" if storm else ""), r)
+        for l in r.stdout.splitlines():
+            if l.endswith("per instruction)"):
+                total += int(l.split()[0])
     print("%d random instructions compared" % total)
 
     # Checked mixes exercise the completion FIFO's simultaneous append/pop,

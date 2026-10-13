@@ -230,6 +230,11 @@ logic [1:0]  if2_cnt;       // ... with this taken/not-taken counter
 logic        if2_itt;       // ... marked as an indirect branch the ITT predicts
 logic [11:0] if2_itt_idx;   // the ITT row for this address and history
 logic        if2_fold;      // ... the BTB folded the b after this word
+logic        if2_cf;        // ... or the conditional branch after it (cf_*: that branch)
+logic [1:0]  if2_cf_kind;
+logic [4:0]  if2_cf_bo, if2_cf_bi;
+logic [1:0]  if2_cf_bh;
+logic [29:0] if2_cf_tgt;
 
 // Three completed words plus one reserved response slot. Fetch admission
 // depends only on registered occupancy, never on ID/EX/MEM readiness.
@@ -240,6 +245,11 @@ typedef struct packed {
 	logic        itt;
 	logic [11:0] itt_idx;
 	logic        fold;      // the fetch went past an unconditional b after this word (folded)
+	logic        cf;        // ... or past a conditional branch, folded (below)
+	logic [1:0]  cf_kind;
+	logic [4:0]  cf_bo, cf_bi;
+	logic [1:0]  cf_bh;
+	logic [29:0] cf_tgt;
 } fetch_t;
 fetch_t fetch_queue [4];
 logic [1:0] fetch_head, fetch_tail;
@@ -271,6 +281,11 @@ logic [1:0]  id_cnt;
 logic        id_itt;
 logic [11:0] id_itt_idx;
 logic        id_fold;
+logic        id_cf;
+logic [1:0]  id_cf_kind;
+logic [4:0]  id_cf_bo, id_cf_bi;
+logic [1:0]  id_cf_bh;
+logic [29:0] id_cf_tgt;
 logic        id_isi;
 logic [31:0] id_isi_info;
 
@@ -292,6 +307,12 @@ logic [1:0]  ex_cnt;
 logic        ex_itt;
 logic [11:0] ex_itt_idx;
 logic        ex_fold;
+logic        ex_cf;         // a conditional branch folded after this instruction: evaluated beside it
+logic [1:0]  ex_cf_kind;    // ... bc (0), bclr (1), bcctr (2)
+logic [4:0]  ex_cf_bo, ex_cf_bi;
+logic [1:0]  ex_cf_bh;
+logic [29:0] ex_cf_tgt;     // ... a bc's target
+logic [31:0] ex_pc8;
 logic [31:0] ex_a;
 logic [31:0] ex_b;
 logic [31:0] ex_c;
@@ -406,6 +427,8 @@ logic [31:0] redir_pc;
 logic        br_taken;      // EX's branch is taken (the BTB reads the redirect's set from it)
 logic [31:0] br_target;
 logic [31:0] ex_pc4;
+logic [31:0] ex_seq;        // where EX's instruction continues untaken (past a folded conditional branch too)
+br_t         br_kind;       // EX's branch, its own or folded
 logic        id_take;       // ID's operation moves to EX
 logic        id_leave;      // ... and it was the instruction's last
 logic        ex_leave;
@@ -514,7 +537,8 @@ assign fetch_bypass = (fetch_count == 3'd0) & fetch_stage_ready & fetch_response
 assign fetch_deliver = (fetch_stage_count != 2'd0) & id_ready;
 assign fetch_word = fetch_stage[fetch_stage_head];
 assign fetch_source_word = (fetch_count != 3'd0) ? fetch_queue[fetch_head] :
-                    {if2_pc, if_rdata, if2_pred, if_srr1, if2_btb, if_fault, if2_way, if2_cnt, if2_itt, if2_itt_idx, if2_fold};
+                    {if2_pc, if_rdata, if2_pred, if_srr1, if2_btb, if_fault, if2_way, if2_cnt, if2_itt, if2_itt_idx, if2_fold,
+                     if2_cf, if2_cf_kind, if2_cf_bo, if2_cf_bi, if2_cf_bh, if2_cf_tgt};
 
 assign if_req  = ~reset & ~fetch_full;
 assign if_addr = pc_f;
@@ -545,6 +569,10 @@ typedef struct packed {
 	logic fold;         // not a branch: a sequential instruction followed by an unconditional b (below)
 	logic fold_ir;      // ... learned with MSR[IR] so
 	logic [3:0] fold_ep;// ... in this fold epoch
+	logic cf;           // fold: the branch folded is conditional (bc, or bclr/bcctr: ret/ctr), with
+	logic [4:0] cf_bo;  // ... these fields (the target, a bc's, in the target RAM)
+	logic [4:0] cf_bi;
+	logic [1:0] cf_bh;
 } btb_meta_t;
 (* ramstyle = "no_rw_check" *) btb_meta_t btb_meta0 [BTB_SETS], btb_meta1 [BTB_SETS];
 (* ramstyle = "no_rw_check" *) logic [29:0] btb_target0 [BTB_SETS], btb_target1 [BTB_SETS];
@@ -571,6 +599,10 @@ logic                fold_wrap;         // the epoch wraps: sweep the BTB
 logic [31:0]         fold_prev_pc;      // the last instruction committed, if it can fold the next
 logic                fold_prev_way;
 logic                fold_prev_ok;
+logic                fold_prev_cfok;    // ... and may carry a conditional branch (an integer, FP or plain memory op)
+logic                fold_prev_crw;     // ... writing this CR field
+logic [2:0]          fold_prev_crf;
+logic                cf_cand;           // EX's branch can fold into the instruction before it
 logic [3:0]          fold_epoch;
 function automatic logic fold_ok(input btb_meta_t m, input logic [3:0] ep, input logic ir);
 	fold_ok = ~m.fold | ((m.fold_ep == ep) & (m.fold_ir == ir));
@@ -612,7 +644,7 @@ wire [BTB_SET_BITS-1:0] btb_idx = btb_index(pc_f);
 // decision only selects. An exception's vector reads an unrelated set and
 // goes unpredicted, as before.
 wire [BTB_SET_BITS-1:0] btb_tgt_idx = btb_index(br_target);
-wire [BTB_SET_BITS-1:0] btb_seq_idx = btb_index(ex_pc4);
+wire [BTB_SET_BITS-1:0] btb_seq_idx = btb_index(ex_seq);
 wire [BTB_SET_BITS-1:0] btb_redir_idx = br_taken ? btb_tgt_idx : btb_seq_idx;
 wire [BTB_SET_BITS-1:0] btb_ridx = redir ? btb_redir_idx : btb_index(pc_ahead);
 // The rows are read ahead for the predicted next address without waiting
@@ -663,6 +695,9 @@ wire btb_taken = btb_hit & btb_c[1];
 wire btb_is_ctr = btb_hit0 ? btb_meta_q0.ctr : btb_meta_q1.ctr;
 wire btb_itt = btb_hit0 ? btb_meta_q0.itt : btb_meta_q1.itt;
 wire btb_fold = btb_hit0 ? btb_meta_q0.fold : btb_meta_q1.fold;
+wire btb_hit_cf = (btb_hit0 & btb_meta_q0.cf) | (btb_hit1 & btb_meta_q1.cf);
+btb_meta_t btb_meta_hit;
+assign btb_meta_hit = btb_hit0 ? btb_meta_q0 : btb_meta_q1;
 
 // ---- indirect target table -------------------------------------------------
 // The 68k emulator dispatches every opcode through bclr/bcctr to one of
@@ -704,7 +739,8 @@ wire itt_use = (ITT_BITS != 0) & btb_itt & itt_match;
 wire [31:0] btb_destination = itt_use ? {itt_tgt_q, 2'b00} :
                               (btb_is_return & ~btb_itt & (ras_read_count != 4'd0)) ?
                               ras_read_target : {btb_target, 2'b00};
-wire [31:0] pred_pc = btb_taken ? btb_destination : (pc_f + 32'd4);
+// (a folded conditional branch not taken continues after it)
+wire [31:0] pred_pc = btb_taken ? btb_destination : btb_hit_cf ? (pc_f + 32'd8) : (pc_f + 32'd4);
 
 // written from EX (below)
 logic                btb_we;
@@ -718,12 +754,17 @@ logic                btb_wway;          // the way written
 logic [BTB_TAGW-1:0] btb_wtag;          // ... and its tag
 
 logic                btb_meta_itt;      // an indirect branch whose BTB or RAS target once missed
+wire [29:0]          btb_wtgt_data = cf_cand ? br_target[31:2] : redir_pc[31:2];
 assign btb_new_meta = {btb_we, btb_wtag, btb_wcnt,                            // valid, tag, count,
                        ~fold_learn & ex_dec.br_lk,                             // call,
-                       ~fold_learn & (ex_dec.br == BR_LR) & ~ex_dec.br_lk,     // ret,
-                       ~fold_learn & (ex_dec.br == BR_CTR),                    // ctr,
+                       ~fold_learn & (br_kind == BR_LR) & ~ex_dec.br_lk,       // ret,
+                       ~fold_learn & (br_kind == BR_CTR),                      // ctr,
                        ~fold_learn & btb_meta_itt,                             // itt (below),
-                       fold_learn, msr[MSR_IR], fold_epoch};                   // fold, its MSR[IR] and epoch
+                       fold_learn | cf_cand | ex_cf, msr[MSR_IR], fold_epoch,  // fold, its MSR[IR] and epoch,
+                       cf_cand | ex_cf,                                        // a conditional branch folded:
+                       cf_cand ? ex_dec.bo : ex_cf_bo,                         // ... its BO, BI, BH
+                       cf_cand ? ex_dec.bi : ex_cf_bi,
+                       cf_cand ? ex_insn[12:11] : ex_cf_bh};
 
 // Whether the row read at this edge is the row written: the candidates
 // compared in parallel, the late grant/redirect control only selects.
@@ -767,8 +808,8 @@ always_ff @(posedge clk) begin
 		if (btb_wr_meta & ~btb_wway) btb_meta0[btb_widx] <= btb_new_meta;
 		if (btb_wr_meta & btb_wway) btb_meta1[btb_widx] <= btb_new_meta;
 	end
-	if (btb_we & btb_wtgt & ~btb_wway) btb_target0[btb_widx] <= redir_pc[31:2];
-	if (btb_we & btb_wtgt & btb_wway) btb_target1[btb_widx] <= redir_pc[31:2];
+	if (btb_we & btb_wtgt & ~btb_wway) btb_target0[btb_widx] <= btb_wtgt_data;
+	if (btb_we & btb_wtgt & btb_wway) btb_target1[btb_widx] <= btb_wtgt_data;
 	// replacement order a cycle late (a hint): the late commit decision
 	// enables only these three registers, not the LRU array's write
 	btb_lru_we  <= btb_we & ~reset;
@@ -863,7 +904,8 @@ always_ff @(posedge clk) begin
 		default: ;
 	endcase
 	if (fetch_push) begin
-		fetch_queue[fetch_tail] <= {if2_pc, if_rdata, if2_pred, if_srr1, if2_btb, if_fault, if2_way, if2_cnt, if2_itt, if2_itt_idx, if2_fold};
+		fetch_queue[fetch_tail] <= {if2_pc, if_rdata, if2_pred, if_srr1, if2_btb, if_fault, if2_way, if2_cnt, if2_itt, if2_itt_idx, if2_fold,
+                     if2_cf, if2_cf_kind, if2_cf_bo, if2_cf_bi, if2_cf_bh, if2_cf_tgt};
 		fetch_tail <= fetch_tail + 2'd1;
 	end
 	if (fetch_pop) fetch_head <= fetch_head + 2'd1;
@@ -884,7 +926,13 @@ always_ff @(posedge clk) begin
 		if2_cnt   <= btb_c;
 		if2_itt   <= btb_hit & btb_itt;
 		if2_itt_idx <= itt_idx_f;
-		if2_fold  <= btb_hit & btb_fold;
+		if2_fold  <= btb_hit & btb_fold & ~btb_hit_cf;
+		if2_cf    <= btb_hit_cf;
+		if2_cf_kind <= {btb_is_ctr, btb_is_return};
+		if2_cf_bo <= btb_meta_hit.cf_bo;
+		if2_cf_bi <= btb_meta_hit.cf_bi;
+		if2_cf_bh <= btb_meta_hit.cf_bh;
+		if2_cf_tgt <= btb_target;
 	end
 
 	// a fetch still waiting for its word is dropped when the word comes
@@ -1304,13 +1352,19 @@ always_ff @(posedge clk) begin
 		id_pred     <= fetch_word.pred;
 		// Branch BI is a fixed instruction field. Decode its one-hot selector
 		// before ID, leaving an AND/reduction on the preceding CR result path.
-		id_cr_select <= 32'h80000000 >> fetch_word.insn[20:16];
+		id_cr_select <= 32'h80000000 >> (fetch_word.cf ? fetch_word.cf_bi : fetch_word.insn[20:16]);
 		id_btb      <= fetch_word.btb;
 		id_way      <= fetch_word.way;
 		id_cnt      <= fetch_word.cnt;
 		id_itt      <= fetch_word.itt;
 		id_itt_idx  <= fetch_word.itt_idx;
 		id_fold     <= fetch_word.fold;
+		id_cf       <= fetch_word.cf;
+		id_cf_kind  <= fetch_word.cf_kind;
+		id_cf_bo    <= fetch_word.cf_bo;
+		id_cf_bi    <= fetch_word.cf_bi;
+		id_cf_bh    <= fetch_word.cf_bh;
+		id_cf_tgt   <= fetch_word.cf_tgt;
 		id_isi      <= fetch_word.isi;
 		id_isi_info <= fetch_word.info;
 	end
@@ -1571,23 +1625,34 @@ assign ex_done = x_pre | (~ex_stall & (is_int ? int_resp : is_fpu ? fpu_resp : 1
 assign ex_leave = ex_valid & ex_done & mem_room & ex_order_ready & ~mem_fault;
 
 // ---- branch ----------------------------------------------------------------
+// (a folded conditional branch, ex_cf, is evaluated here as the
+// instruction's own would be: it has no link and does not count, its CR
+// field is one the instruction does not write, its target a bc's from the
+// BTB or LR or CTR, and it continues at ex_pc + 8)
 wire        is_br    = (ex_dec.br != BR_NONE);
+assign br_kind = ~ex_cf ? ex_dec.br : (ex_cf_kind == 2'd1) ? BR_LR : (ex_cf_kind == 2'd2) ? BR_CTR : BR_IMM;
+wire [4:0]  br_bo    = ex_cf ? ex_cf_bo : ex_dec.bo;
 wire        cr_bit   = |(cr & ex_cr_select);
 wire [31:0] ctr_m1   = ctr - 32'd1;
 wire        br_count = is_br & ~ex_dec.bo[2];
-wire        ctr_ok   = ex_dec.bo[2] | ((ctr_m1 != 32'd0) ^ ex_dec.bo[1]);
-wire        cond_ok  = ex_dec.bo[4] | (cr_bit == ex_dec.bo[3]);
-assign br_taken = is_br & ctr_ok & cond_ok;
+wire        ctr_ok   = br_bo[2] | ((ctr_m1 != 32'd0) ^ br_bo[1]);
+wire        cond_ok  = br_bo[4] | (cr_bit == br_bo[3]);
+assign br_taken = (is_br | ex_cf) & ctr_ok & cond_ok;
 
 always_comb begin
-	case (ex_dec.br)
+	case (br_kind)
 		BR_LR:   br_target = {lr[31:2], 2'b00};
 		BR_CTR:  br_target = {ctr[31:2], 2'b00};
-		default: br_target = (ex_dec.br_aa ? 32'd0 : ex_pc) + ex_dec.imm;
+		default: br_target = ex_cf ? {ex_cf_tgt, 2'b00} : (ex_dec.br_aa ? 32'd0 : ex_pc) + ex_dec.imm;
 	endcase
 end
 
 assign ex_pc4 = ex_pc + 32'd4;
+assign ex_seq = ex_cf ? ex_pc8 : ex_pc4;
+// the folded branch's word, for the trace
+wire [31:0] cf_bd   = {ex_cf_tgt, 2'b00} - ex_pc4;
+wire [31:0] cf_word = (ex_cf_kind == 2'd0) ? {6'd16, ex_cf_bo, ex_cf_bi, cf_bd[15:2], 2'b00} :
+                      {6'd19, ex_cf_bo, ex_cf_bi, 3'b000, ex_cf_bh, (ex_cf_kind == 2'd2) ? 10'd528 : 10'd16, 1'b0};
 
 // Where this instruction really continues, against where the fetch went.
 // Only an instruction's last operation decides. An exception goes to its
@@ -1622,17 +1687,17 @@ function automatic logic pass_ok_of(input dec_t d);
 endfunction
 logic ex_pass_ok_q;
 assign ex_pass_ok = ex_pass_ok_q;
-wire [31:0] next_pc   = is_rfi ? {srr0[31:2], 2'b00} : br_taken ? br_target : ex_pc4;
+wire [31:0] next_pc   = is_rfi ? {srr0[31:2], 2'b00} : br_taken ? br_target : ex_seq;
 wire [31:0] vec_base  = {{12{msr[MSR_IP]}}, 8'h00, 12'h000};
 assign redir_pc = mem_fault ? (vec_base | (mem_irq ? (irq_in ? 32'h500 : 32'h900) :
                                                          (mu_falign ? 32'h600 : 32'h300))) :
                   ex_exc    ? (vec_base | {20'd0, exc_vector}) : next_pc;
 wire   ex_final = ex_leave & ~ex_exc & ex_last;
 assign ras_push = ex_final & br_taken & ex_dec.br_lk;
-assign ras_pop = ex_final & br_taken & (ex_dec.br == BR_LR) & ~ex_dec.br_lk & ~ex_itt & (ras_ccount != 4'd0);
+assign ras_pop = ex_final & br_taken & (br_kind == BR_LR) & ~ex_dec.br_lk & ~ex_itt & (ras_ccount != 4'd0);
 // an indirect branch (bclr without link, bcctr) committing taken: into the
 // committed history and the ITT
-wire   ex_ind  = ((ex_dec.br == BR_LR) & ~ex_dec.br_lk) | (ex_dec.br == BR_CTR);
+wire   ex_ind  = ((br_kind == BR_LR) & ~ex_dec.br_lk) | (br_kind == BR_CTR);
 wire   ex_ind_commit = ex_final & ~is_rfi & br_taken & ex_ind;
 assign btb_meta_itt = (ITT_BITS != 0) & ex_ind & (ex_itt | pc_miss);
 wire [11:0] itt_com_h_next = ex_ind_commit ? itt_fold(itt_com_h, next_pc) : itt_com_h;
@@ -1660,7 +1725,7 @@ end
 // (the fetch went elsewhere: both candidates compared with the prediction
 // beside the branch decision, which then only selects; rfi redirects anyway)
 wire        tgt_miss  = (br_target != ex_pred);
-wire        seq_miss  = (ex_pc4 != ex_pred);
+wire        seq_miss  = (ex_seq != ex_pred);
 wire        pc_miss   = br_taken ? tgt_miss : (~ex_fold & seq_miss);
 assign redir    = mem_fault |
                   (ex_leave & (ex_exc | (ex_last & (is_rfi | is_mtmsr | is_xlate | pc_miss))));
@@ -1675,6 +1740,20 @@ wire ex_is_b = (ex_insn[31:26] == 6'd18) & (ex_insn[1:0] == 2'b00);
 // commit, behind EX's add and exception checks, only enables the write)
 wire fold_cand = ex_is_b & fold_prev_ok & (fold_prev_pc + 32'd4 == ex_pc) & (ex_pc[11:2] != 10'd0);
 assign fold_learn = ex_final & ~is_rfi & fold_cand;
+// ... and a conditional branch with no link that does not count (bc
+// relative, bclr, bcctr), whose CR field the instruction before it does not
+// write: the BTB learns that instruction's address as a fold entry with the
+// branch's fields; the fetch goes from it to the branch's predicted target or
+// past it, and EX evaluates the branch beside the instruction (ex_cf)
+wire cf_branch = (((ex_dec.br == BR_IMM) & (ex_insn[31:26] == 6'd16) & ~ex_dec.br_aa) |
+                  (ex_dec.br == BR_LR) | (ex_dec.br == BR_CTR)) &
+                 ~ex_dec.br_lk & ex_dec.bo[2] & ~ex_cf & ~ex_fold;
+wire cf_dep    = ~ex_dec.bo[4] & fold_prev_crw & (fold_prev_crf == ex_dec.bi[4:2]);
+assign cf_cand = cf_branch & ~cf_dep & fold_prev_ok & fold_prev_cfok &
+                 (fold_prev_pc + 32'd4 == ex_pc) & (ex_pc[11:2] != 10'd0);
+wire cf_learn  = ex_final & cf_cand;
+wire [1:0] cf_cnt_new = br_taken ? (~ex_btb ? 2'd2 : (ex_cnt == 2'd3) ? 2'd3 : (ex_cnt + 2'd1)) :
+                                   (~ex_btb ? 2'd1 : (ex_cnt == 2'd0) ? 2'd0 : (ex_cnt - 2'd1));
 always_comb begin
 	btb_widx = btb_index(ex_pc);
 	btb_wway = ex_way;
@@ -1691,13 +1770,21 @@ always_comb begin
 		btb_wtgt = fold_learn;
 		btb_wcnt = 2'd3;
 	end
+	else if (cf_cand) begin
+		btb_widx = btb_index(fold_prev_pc);
+		btb_wway = fold_prev_way;
+		btb_wtag = fold_prev_pc[31:BTB_SET_BITS+2];
+		btb_we   = cf_learn;
+		btb_wtgt = cf_learn;
+		btb_wcnt = cf_cnt_new;
+	end
 	else if (ex_final & ~is_rfi) begin
 		if (br_taken) begin
 			btb_we   = 1'b1;
 			btb_wtgt = 1'b1;
 			btb_wcnt = ~ex_btb ? 2'd2 : (ex_cnt == 2'd3) ? 2'd3 : (ex_cnt + 2'd1);
 		end
-		else if (ex_btb & is_br) begin
+		else if (ex_btb & (is_br | ex_cf)) begin
 			btb_we   = 1'b1;
 			btb_wcnt = (ex_cnt == 2'd0) ? 2'd0 : (ex_cnt - 2'd1);
 		end
@@ -1712,8 +1799,11 @@ wire fold_epoch_step = ex_leave & ~ex_abort & ((ex_last & is_xlate) | (ex_dec.me
 assign fold_wrap = fold_epoch_step & (&fold_epoch);
 always_ff @(posedge clk) begin
 	if (ex_leave) begin
-		fold_prev_ok  <= ex_final & ex_first & (ex_dec.br == BR_NONE) & ~ex_fold &
+		fold_prev_ok  <= ex_final & ex_first & (ex_dec.br == BR_NONE) & ~ex_fold & ~ex_cf &
 		                 ~(is_rfi | is_mtmsr | is_xlate | x_sc);
+		fold_prev_cfok <= is_int | is_fpu | ((ex_dec.mem_rd | ex_dec.mem_wr) & (ex_dec.cop == CK_WORD));
+		fold_prev_crw <= ex_dec.cr_wr;
+		fold_prev_crf <= ex_dec.cr_fld;
 		fold_prev_pc  <= ex_pc;
 		fold_prev_way <= ex_way;
 	end
@@ -2148,6 +2238,13 @@ always_ff @(posedge clk) begin
 		ex_itt   <= id_itt;
 		ex_itt_idx <= id_itt_idx;
 		ex_fold  <= id_fold;
+		ex_cf    <= id_cf;
+		ex_cf_kind <= id_cf_kind;
+		ex_cf_bo <= id_cf_bo;
+		ex_cf_bi <= id_cf_bi;
+		ex_cf_bh <= id_cf_bh;
+		ex_cf_tgt <= id_cf_tgt;
+		ex_pc8   <= id_pc + 32'd8;
 		ex_a     <= id_a;
 		ex_b     <= id_b;
 		ex_c     <= id_c;
@@ -2651,10 +2748,10 @@ always_ff @(posedge clk) begin
 		mem_insn   <= ex_insn;
 		mem_last   <= ex_last;
 		// (an instruction that refetches does so at the b, which then runs)
-		mem_fold   <= ex_fold & ex_last & ~(is_rfi | is_mtmsr | is_xlate);
+		mem_fold   <= (ex_fold | ex_cf) & ex_last & ~(is_rfi | is_mtmsr | is_xlate);
 		mem_upd    <= ex_dec.upd;
 		mem_upd_ra <= ex_dec.ra;
-		mem_fold_insn <= 32'h48000000 | ((ex_pred - ex_pc4) & 32'h03FFFFFC);
+		mem_fold_insn <= ex_cf ? cf_word : (32'h48000000 | ((ex_pred - ex_pc4) & 32'h03FFFFFC));
 		mem_first  <= ex_first;
 		mem_rd     <= ex_rd;
 		mem_rd_wr  <= ex_rd_wr;
