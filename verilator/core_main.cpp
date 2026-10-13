@@ -1354,6 +1354,7 @@ int main(int argc, char** argv) {
 	// the snoop port: driven by the DMA engine below while the program runs,
 	// and at the end to collect the dirty lines
 	bool snoop_req = false, snoop_we = false;
+	bool storm_on = true;          // the snoop storm runs until the end-of-run write-back
 	uint32_t snoop_addr = 0;
 	// A DMA engine, for the cache test: a store to 00FFFFF4 starts a write of
 	// 64 bytes at 00FFF000 (pattern from the value stored), a store to
@@ -1462,7 +1463,7 @@ int main(int argc, char** argv) {
 			}
 		}
 		// the snoop storm: read snoops change no program state, so any program runs under them
-		else if (opt.snoop_every > 0) {
+		else if (opt.snoop_every > 0 && storm_on) {
 			if (snoop_req) {
 				if (snoop_acked) snoop_req = false;
 			}
@@ -2007,6 +2008,13 @@ int main(int argc, char** argv) {
 #else
 	// let the last access finish, then have the cache write back every line
 	// it may hold dirty, through the snoop port as a DMA engine would
+	// (the storm stops first, and its snoop in flight finishes: its
+	// acknowledgement must not be taken for the first write-back's)
+	storm_on = false;
+	for (int n = 0; snoop_req && n < 1000; n++) {
+		tick();
+		if (snoop_acked) { snoop_req = false; tick(); }
+	}
 	for (int i = 0; i < 16; i++) tick();
 	for (uint32_t a : touched) {
 		snoop_req = true; snoop_we = false; snoop_addr = a;
