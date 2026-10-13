@@ -83,3 +83,44 @@ build gave a black screen at 100):
 | CD-ROM | | | 693 |
 
 At 90 MHz the core scores 55-59 % of the real 7300 (macbenchresults copy.png).
+
+## Work per clock (later on 2026-10-12)
+
+ROM boot, 300M instructions (mostly the 68k emulator), cycles:
+
+| Change | Cycles | |
+|---|---:|---|
+| start of this section (3e124ef) | 385.99M | |
+| a3136a3 indirect target table (68k dispatch bflr/bctr) | 361.50M | -6.3 % |
+| 1de13ec BTB 2048, ITT 4096 entries | 354.81M | |
+| cf2f0ee a load crossing a word: one wide access | 352.68M | |
+| 6e7fed2 fold an unconditional b into the instruction before it | 347.50M | |
+| c3b7aec BTB/ITT read ahead without waiting for the grant (timing; cycles unchanged) | 347.61M | |
+| b282d9a stores with update in one operation | 342.22M | |
+| 1c985aa loads with update in one operation (second GPR write port) | **330.76M** | -14.3 % in all |
+
+Mispredictions 8.88M -> 3.3M. The 68k emulator dispatches each opcode
+with mtlr two instructions before bflr; the ITT predicts from the address
+and a folded history of the last indirect targets. lhau (the emulator's
+opcode fetch) was 11 % of its instructions and two operations each.
+
+Not taken: 32 KB data cache (-0.2 %), BTB 4096 (-0.3 % more), an I-side
+translation cache (+0.6 % cycles), 110 MHz (black screen on the board).
+
+### Board, build 1c985aa (all of the above)
+
+90 MHz (slow 100C -5.39 ns), L2 off, Speedometer 4.02, against 9b65cef at 90 MHz:
+
+| | 9b65cef | 1c985aa |
+|---|---:|---:|
+| CPU (the emulated 68k) | 4.069 | **4.857** (+19 %) |
+| Benchmark Mix | 15.294 | 15.367 |
+| FPU average | 6.406 | 6.426 |
+| Color average | 1.796 | 1.820 |
+
+MacBench 4 at 90 MHz, L2 on: Processor 150 (148), Floating Point 127
+(126). The native benchmarks barely move: the work went into the 68k
+emulator's dispatch and its update loads. At 100 MHz (slow 100C -7.09
+ns) this build stops at the happy Mac (the 9b65cef-era build at -6.38 ns
+ran there): 100 MHz is past what this board takes with the larger fetch
+logic; 90 MHz boots and runs everything.
