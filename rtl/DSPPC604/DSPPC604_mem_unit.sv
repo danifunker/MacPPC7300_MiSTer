@@ -75,7 +75,12 @@ module DSPPC604_mem_unit
 	input  logic        dbus_fault,
 	input  logic [31:0] dbus_rdata,
 	input  logic        dbus_rwide,
-	input  logic [31:0] dbus_rdata_next
+	input  logic [31:0] dbus_rdata_next,
+	// the data cache's answer before its way choice (DSPPC604_cache way_*)
+	input  logic [3:0][31:0] way_rdata,
+	input  logic [3:0][31:0] way_rdata_next,
+	input  logic [3:0]  way_hit,
+	input  logic        way_look
 );
 
 import DSPPC604_pkg::*;
@@ -232,21 +237,50 @@ function automatic logic [3:0][7:0] load_select(
 	end
 endfunction
 
-logic sign_bit;
-logic [31:0] lword;
-always_comb begin
+function automatic logic [63:0] shaped(input desc_t d, input logic [63:0] win);
+	logic sign_bit;
+	logic [31:0] lw;
 	sign_bit = 1'b0;
-	for (int j = 0; j < 8; j++) sign_bit |= c.sign_select[j] & rwin[63 - 8*j];
-	lword = '0;
+	for (int j = 0; j < 8; j++) sign_bit |= d.sign_select[j] & win[63 - 8*j];
+	lw = '0;
 	for (int k = 0; k < 4; k++) begin
 		for (int j = 0; j < 8; j++)
-			lword[31 - 8*k -: 8] |= {8{c.load_select[k][j]}} & rwin[63 - 8*j -: 8];
-		lword[31 - 8*k -: 8] |= {8{c.load_sext[k] & sign_bit}};
+			lw[31 - 8*k -: 8] |= {8{d.load_select[k][j]}} & win[63 - 8*j -: 8];
+		lw[31 - 8*k -: 8] |= {8{d.load_sext[k] & sign_bit}};
 	end
-end
+	shaped = d.nbytes[3] ? win : {32'd0, lw};
+endfunction
+function automatic logic is_den(input logic [31:0] w);
+	is_den = (w[30:23] == 8'd0) & (w[22:0] != 23'd0);
+endfunction
 
-assign rdata      = dword ? rwin : {32'd0, lword};
-assign rden       = (dbus_rdata[30:23] == 8'd0) & (dbus_rdata[22:0] != 23'd0);
+// A lookup's answer (way_look: always a hit for a load) is shaped from each
+// way's word, beside the tag compare, and the way that hit only chooses
+// among them: the byte placement is not behind the way choice (2026-10-13,
+// the load's data was the slowest family at 110 MHz). Any other answer
+// (an uncached word's) is shaped from the bus's word.
+logic [63:0] way_shaped [4];
+logic [3:0]  way_den;
+always_comb
+	for (int w = 0; w < 4; w++) begin
+		way_shaped[w] = shaped(c, (state == S_RSP1) ? {word0_q, way_rdata[w]} :
+		                          {way_rdata[w], dbus_rwide ? way_rdata_next[w] : 32'd0});
+		way_den[w]    = is_den(way_rdata[w]);
+	end
+logic [63:0] look_rdata;
+always_comb begin
+	look_rdata = '0;
+	for (int w = 0; w < 4; w++) look_rdata |= way_shaped[w] & {64{way_hit[w]}};
+end
+wire [63:0] bus_rdata_shaped = shaped(c, rwin);
+assign rdata      = way_look ? look_rdata : bus_rdata_shaped;
+assign rden       = way_look ? |(way_den & way_hit) : is_den(dbus_rdata);
+/* synthesis translate_off */
+always_ff @(posedge clk)
+	if (~reset & resp_valid & ~dbus_fault & way_look & ~c.we & (c.kind == CK_WORD) &
+	    ((look_rdata != bus_rdata_shaped) | (rden != is_den(dbus_rdata))))
+		$fatal(1, "the load's data shaped by way differs from the bus's");
+/* synthesis translate_on */
 assign resp_fault = dbus_rvalid & dbus_fault;
 assign resp_valid = dbus_rvalid & (dbus_fault | ((state == S_RSP0) & (~two_words | dbus_rwide)) | (state == S_RSP1));
 

@@ -76,6 +76,13 @@ module DSPPC604_cache
 	output logic        rvalid_wide,
 	output logic [31:0] rdata_next,
 	output logic        wide_sure,           // the request in hand (S_LOOK on) is wide and will be answered wide
+	// the answer's words before the way choice: each way's word and next,
+	// and the way that hit when a lookup answers (one-hot; none otherwise),
+	// so that the reader can shape each way's word beside the tag compare
+	output logic [3:0][31:0] way_rdata,
+	output logic [3:0][31:0] way_rdata_next,
+	output logic [3:0]  way_hit,
+	output logic        way_look,            // the answer, if any, is a lookup's (S_LOOK): rdata is way_hit's word
 	output logic        slow,                // busy beyond a lookup: a miss, a write-back, a snoop, a sweep
 	output logic        posted,              // a posted write has not reached memory yet (sync waits)
 
@@ -403,6 +410,13 @@ always_comb
 		way_word_next[w] = (forward_pending & wr_data_we[w] & wr_wwe[word_bit_next]) ? pending_word_next :
 		                   landed_data_we[w][word_bit_next] ? landed_word_next : (r_word[0] ? even_q[w] : odd_q[w]);
 	end
+always_comb
+	for (int w = 0; w < 4; w++) begin
+		way_rdata[w]      = (w < WAYS) ? way_word[w] : 32'd0;
+		way_rdata_next[w] = (w < WAYS) ? way_word_next[w] : 32'd0;
+		way_hit[w]        = (w < WAYS) & (state == S_LOOK) & hit_w[w];
+	end
+assign way_look = ~LATE_ANSWER & (state == S_LOOK);
 logic [31:0] hit_word;
 logic [31:0] hit_word_next;
 always_comb begin

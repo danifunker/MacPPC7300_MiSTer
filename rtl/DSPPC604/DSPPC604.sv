@@ -500,6 +500,9 @@ logic [31:0] if_srr1;
 logic        mu_req, mu_we, mu_gnt, mu_rvalid, mu_bfault;
 ck_t         mu_kind;
 logic [29:0] mu_addr;
+logic [3:0][31:0] dc_way_rdata, dc_way_rdata_next;   // the data cache's answer before its way choice
+logic [3:0]  dc_way_hit;
+logic        dc_way_look;
 logic [3:0]  mu_be;
 logic [31:0] mu_wdata, mu_bus_rdata;
 logic        mu_wide, mu_rwide;
@@ -2543,7 +2546,11 @@ DSPPC604_mem_unit mem_unit
 	.dbus_fault  (mu_bfault),
 	.dbus_rdata  (mu_bus_rdata),
 	.dbus_rwide  (mu_rwide),
-	.dbus_rdata_next (mu_rdata_next)
+	.dbus_rdata_next (mu_rdata_next),
+	.way_rdata   (dc_way_rdata),
+	.way_rdata_next (dc_way_rdata_next),
+	.way_hit     (dc_way_hit),
+	.way_look    (dc_way_look)
 );
 
 assign mu_valid = ex_valid & ex_done & mem_room & ex_order_ready & ~mem_fault & ~ex_abort & ex_mem_access;
@@ -2712,6 +2719,10 @@ DSPPC604_cache #(.WRITABLE (0), .IDXW (IC_IDXW)) icache
 	.rvalid_wide (),
 	.rdata_next (),
 	.wide_sure  (),
+	.way_rdata  (),
+	.way_rdata_next (),
+	.way_hit    (),
+	.way_look   (),
 	.slow       (),
 	.posted     (),
 	.inv_req    (),
@@ -2755,6 +2766,10 @@ DSPPC604_cache #(.WRITABLE (1), .LATE_ANSWER (0), .IDXW (DC_IDXW)) dcache
 	.rvalid_wide (db_rwide),
 	.rdata_next (db_rdata_next),
 	.wide_sure  (dc_wide_sure),
+	.way_rdata  (dc_way_rdata),
+	.way_rdata_next (dc_way_rdata_next),
+	.way_hit    (dc_way_hit),
+	.way_look   (dc_way_look),
 	.slow       (dc_slow),
 	.posted     (dc_posted),
 	.inv_req    (dc_inv_req),
