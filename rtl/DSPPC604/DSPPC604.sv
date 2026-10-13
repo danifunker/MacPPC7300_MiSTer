@@ -1431,9 +1431,23 @@ wire ex_use_b = ex_dec.rb_rd & ~ex_dec.b_imm;
 // multiplexers are driven by registers and not by register-number compares
 // (they were in front of the adder, the cache's address and the MMU's
 // compare). Checked in simulation against the compares (*_c).
-logic fq_a_mem, fq_b_mem, fq_c_mem, fq_fa_mem, fq_fb_mem, fq_fc_mem;
+logic fq_a_mem_r, fq_b_mem_r, fq_c_mem_r, fq_fa_mem_r, fq_fb_mem_r, fq_fc_mem_r;
 logic fq_a_wb, fq_b_wb, fq_c_wb, fq_fa_wb, fq_fb_wb, fq_fc_wb;
-logic fq_a_upd, fq_b_upd, fq_c_upd;      // ... MEM's load with update's rA
+logic fq_a_upd_r, fq_b_upd_r, fq_c_upd_r;      // ... MEM's load with update's rA
+// MEM's selects for an operation staying there are registered without
+// whether it leaves (the cache's answer); one that left is cancelled here
+// from two registers: the selects came from MEM's own operation, and it left
+logic fq_own_q, mem_own_left_q;
+wire  fq_kill = fq_own_q & mem_own_left_q;
+wire fq_a_mem = fq_a_mem_r & ~fq_kill;
+wire fq_b_mem = fq_b_mem_r & ~fq_kill;
+wire fq_c_mem = fq_c_mem_r & ~fq_kill;
+wire fq_fa_mem = fq_fa_mem_r & ~fq_kill;
+wire fq_fb_mem = fq_fb_mem_r & ~fq_kill;
+wire fq_fc_mem = fq_fc_mem_r & ~fq_kill;
+wire fq_a_upd = fq_a_upd_r & ~fq_kill;
+wire fq_b_upd = fq_b_upd_r & ~fq_kill;
+wire fq_c_upd = fq_c_upd_r & ~fq_kill;
 // (MEM's result is the operand for either; a load's rD waits: ex_stall_ops)
 wire fa_mem = fq_a_mem | fq_a_upd;
 wire fb_mem = fq_b_mem | fq_b_upd;
@@ -1751,7 +1765,23 @@ assign ras_pop = ex_final & br_taken & (br_kind == BR_LR) & ~ex_dec.br_lk & ~ex_
 wire   ex_ind  = ((br_kind == BR_LR) & ~ex_dec.br_lk) | (br_kind == BR_CTR);
 wire   ex_ind_commit = ex_final & ~is_rfi & br_taken & ex_ind;
 assign btb_meta_itt = (ITT_BITS != 0) & ex_ind & (ex_itt | pc_miss);
-wire [11:0] itt_com_h_next = ex_ind_commit ? itt_fold(itt_com_h, next_pc) : itt_com_h;
+// The commit lands a cycle later, from registers (the history and the
+// ITT only steer predictions, which EX checks): ex_ind_commit waits for the
+// exception decision, which was in front of the history and the RAM's write
+// port (2026-10-13, at 110 MHz). A redirect in the commit's own cycle takes
+// the history with the branch's target before that decision.
+logic        itt_c_q;
+logic [11:0] itt_c_idx_q;
+logic [7:0]  itt_c_tag_q;
+logic [29:0] itt_c_tgt_q;
+wire [11:0] itt_com_h_now = itt_c_q ? itt_fold(itt_com_h, {itt_c_tgt_q, 2'b00}) : itt_com_h;
+wire        ex_ind_cand   = ex_last & ~is_rfi & br_taken & ex_ind & ~mem_fault;
+always_ff @(posedge clk) begin
+	itt_c_q     <= ex_ind_commit & ~reset;
+	itt_c_idx_q <= ex_itt_idx;
+	itt_c_tag_q <= ex_pc[ITT_BITS+2 +: 8];
+	itt_c_tgt_q <= next_pc[31:2];
+end
 always_ff @(posedge clk) begin
 	itt_tag_ram <= itt_tag_mem[itt_ridx[ITT_BITS-1:0]];
 	itt_tgt_ram <= itt_tgt_mem[itt_ridx[ITT_BITS-1:0]];
@@ -1761,12 +1791,12 @@ always_ff @(posedge clk) begin
 	itt_hold_idx <= itt_read_idx;
 	itt_hit_q <= itt_match;
 	itt_read_valid <= ~reset;
-	if (ex_ind_commit) begin
-		itt_tag_mem[ex_itt_idx[ITT_BITS-1:0]] <= ex_pc[ITT_BITS+2 +: 8];
-		itt_tgt_mem[ex_itt_idx[ITT_BITS-1:0]] <= next_pc[31:2];
+	if (itt_c_q) begin
+		itt_tag_mem[itt_c_idx_q[ITT_BITS-1:0]] <= itt_c_tag_q;
+		itt_tgt_mem[itt_c_idx_q[ITT_BITS-1:0]] <= itt_c_tgt_q;
 	end
-	itt_com_h <= itt_com_h_next;
-	if (redir) itt_spec_h <= itt_com_h_next;
+	itt_com_h <= itt_com_h_now;
+	if (redir) itt_spec_h <= ex_ind_cand ? itt_fold(itt_com_h_now, next_pc) : itt_com_h_now;
 	else if (fetch_go & btb_taken & (btb_is_return | btb_is_ctr)) itt_spec_h <= itt_fold(itt_spec_h, pred_pc);
 	if (reset) begin
 		itt_com_h <= 12'd0;
@@ -2199,7 +2229,7 @@ function automatic logic [2:0] ra_match(input dec_t d, input logic [5:0] r);
 	ra_match = {d.ra_rd & (r == d.ra), d.rb_rd & ~d.b_imm & (r == d.rb), d.rc_rd & (r == d.rc)};
 endfunction
 wire       fwd_ex_ok   = ex_leave & ~ex_abort;
-wire       fwd_mem_own = mem_valid & ~(mem_leave & ~mo_valid);
+wire       fwd_mem_own = mem_valid;   // (if it leaves: fq_kill, at the use)
 function automatic logic [14:0] fwd_sel(input dec_t d);
 	logic [5:0] m_take, m_mem, m_wb;
 	logic [2:0] u;
@@ -2214,9 +2244,13 @@ endfunction
 wire [14:0] fwd_sel_id = fwd_sel(id_uop);
 wire [14:0] fwd_sel_ex = fwd_sel(ex_dec);
 always_ff @(posedge clk)
-	{fq_a_mem, fq_b_mem, fq_c_mem, fq_fa_mem, fq_fb_mem, fq_fc_mem,
+	{fq_a_mem_r, fq_b_mem_r, fq_c_mem_r, fq_fa_mem_r, fq_fb_mem_r, fq_fc_mem_r,
 	 fq_a_wb, fq_b_wb, fq_c_wb, fq_fa_wb, fq_fb_wb, fq_fc_wb,
-	 fq_a_upd, fq_b_upd, fq_c_upd} <= id_to_ex ? fwd_sel_id : fwd_sel_ex;
+	 fq_a_upd_r, fq_b_upd_r, fq_c_upd_r} <= id_to_ex ? fwd_sel_id : fwd_sel_ex;
+always_ff @(posedge clk) begin
+	fq_own_q       <= ~mem_take;
+	mem_own_left_q <= mem_leave & ~mo_valid;
+end
 
 /* synthesis translate_off */
 always_ff @(posedge clk) begin
