@@ -88,6 +88,7 @@ typedef enum logic [2:0] {
 
 state_t      state;
 logic [31:0] word0_q;
+logic [31:0] conv_q;        // the descriptor under way's stfs data, converted (a cycle after it is current)
 
 // a descriptor, with the load's byte placement decoded when it is accepted
 typedef struct packed {
@@ -136,7 +137,10 @@ wire bus_touch = ((saved ? c.kind : kind) != CK_WORD);
 // the first word, S_RSP1 for the second): the store's data is not in front
 // of the request (the cache takes it a cycle after the grant), and stfs's
 // conversion is made here rather than in EX.
-wire [31:0] w = c.conv ? fp_double_to_single(c.wdata) : c.wdata[31:0];
+// stfs's double is converted into conv_q from the descriptor, so the
+// conversion is not in the cache's lookup cycle; such a store waits a
+// cycle in S_HOLD0 for it (no bypass to the bus when it is accepted)
+wire [31:0] w = c.conv ? conv_q : c.wdata[31:0];
 logic [31:0] sbytes;
 
 always_comb begin
@@ -159,7 +163,7 @@ wire [7:0]  bewin = bus_nbytes[3] ? 8'hFF : (ones >> bus_ea[1:0]);
 assign req_ready  = ~qv;
 assign pending_ungranted = (state == S_HOLD0);
 assign final_q    = ((state == S_RSP0) & (~two_words | dbus_sure)) | (state == S_RSP1);
-assign dbus_req   = ~reset & ((req_valid & first_slot) | (state == S_HOLD0) | (state == S_REQ1));
+assign dbus_req   = ~reset & ((req_valid & first_slot & ~conv) | (state == S_HOLD0) | (state == S_REQ1));
 assign dbus_we    = saved ? c.we : we;
 assign dbus_kind  = saved ? c.kind : kind;
 assign dbus_addr  = second ? c.next_word : saved ? c.addr[31:2] : addr[31:2];
@@ -255,6 +259,7 @@ always_ff @(posedge clk) begin
 		desc[wi].conv        <= conv;
 	end
 	if (dbus_rvalid & (state == S_RSP0)) word0_q <= dbus_rdata;
+	conv_q <= fp_double_to_single(c.wdata);
 
 	case (state)
 		S_REQ0: if (accept) state <= dbus_gnt ? S_RSP0 : S_HOLD0;

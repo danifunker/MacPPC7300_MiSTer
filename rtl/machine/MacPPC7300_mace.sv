@@ -81,6 +81,8 @@ module MacPPC7300_mace
 	input  logic [4:0]  rn,              // offset >> 4
 	input  logic [7:0]  wdata,
 	output logic [7:0]  rq,              // what a read of rn returns now
+	input  logic [4:0]  rn_cpu,          // the CPU's register number, alone (Grand Central's read path)
+	output logic [7:0]  rq_cpu,          // ... and what a read of it returns
 
 	// the transmit DMA channel's bytes
 	output logic        do_ready,
@@ -144,28 +146,35 @@ assign irq      = |(int_stat & ~int_mask);
 assign xmtsv    = xmt_fs[7];
 assign do_ready = ~f_held;
 
-always_comb begin
-	case (rn)
-		5'd2:    rq = xmt_fc;
-		5'd3:    rq = xmt_fs;
-		5'd5:    rq = rcv_fc;
-		5'd7:    rq = {7'h0, f_held};
-		5'd8:    rq = int_stat;
-		5'd9:    rq = int_mask;
-		5'd10:   rq = {xmt_fs[7], ~f_held, 6'h0};
-		5'd11:   rq = biu_cc;
-		5'd12:   rq = fifo_cc;
-		5'd13:   rq = mac_cc;
-		5'd14:   rq = pls_cc;
-		5'd15:   rq = {~phy_cc[6] & ~link, phy_cc[6:0]};
-		5'd16:   rq = 8'h41;
-		5'd17:   rq = 8'h09;
-		5'd18:   rq = iac;
-		5'd24:   rq = mpc;
-		5'd29:   rq = utr;
-		default: rq = 8'h00;
+// (one multiplexer for rn, which the DMA shares, and one for the CPU's
+// register number alone, so that Grand Central's choice between them is
+// not in front of the CPU's read data)
+function automatic logic [7:0] reg_read(input logic [4:0] n);
+	logic [7:0] r;
+	case (n)
+		5'd2:    r = xmt_fc;
+		5'd3:    r = xmt_fs;
+		5'd5:    r = rcv_fc;
+		5'd7:    r = {7'h0, f_held};
+		5'd8:    r = int_stat;
+		5'd9:    r = int_mask;
+		5'd10:   r = {xmt_fs[7], ~f_held, 6'h0};
+		5'd11:   r = biu_cc;
+		5'd12:   r = fifo_cc;
+		5'd13:   r = mac_cc;
+		5'd14:   r = pls_cc;
+		5'd15:   r = {~phy_cc[6] & ~link, phy_cc[6:0]};
+		5'd16:   r = 8'h41;
+		5'd17:   r = 8'h09;
+		5'd18:   r = iac;
+		5'd24:   r = mpc;
+		5'd29:   r = utr;
+		default: r = 8'h00;
 	endcase
-end
+	return r;
+endfunction
+assign rq     = reg_read(rn);
+assign rq_cpu = reg_read(rn_cpu);
 
 // ---- receive -------------------------------------------------------------------------------------
 typedef enum logic [2:0] { R_IDLE, R_DST, R_TYPE, R_DMA, R_SEND, R_DONE } r_t;

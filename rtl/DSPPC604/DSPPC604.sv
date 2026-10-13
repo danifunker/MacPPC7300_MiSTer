@@ -618,10 +618,22 @@ assign btb_meta_q0 = btb_meta_bits0;
 assign btb_meta_q1 = btb_meta_bits1;
 assign btb_valid_q0 = btb_meta_q0.valid;
 assign btb_valid_q1 = btb_meta_q1.valid;
-wire btb_hit0 = btb_fresh & btb_valid_q0 & (btb_meta_q0.tag == pc_f[31:BTB_SET_BITS+2]) &
-                fold_ok(btb_meta_q0, fold_epoch, msr[MSR_IR]);
-wire btb_hit1 = btb_fresh & btb_valid_q1 & (btb_meta_q1.tag == pc_f[31:BTB_SET_BITS+2]) &
-                fold_ok(btb_meta_q1, fold_epoch, msr[MSR_IR]);
+// Each source's hit is compared on its own, the source then only selects
+// the bit: the RAM's row or the forwarded write (both from btb_read_idx),
+// or, while the fetch waits, last cycle's hit (same address, same rows;
+// a fold entry's epoch and MSR[IR] checked again from the held row).
+function automatic logic btb_hit_of(input btb_meta_t m, input logic [BTB_TAGW-1:0] t,
+                                    input logic [3:0] ep, input logic ir);
+	btb_hit_of = m.valid & (m.tag == t) & fold_ok(m, ep, ir);
+endfunction
+wire btb_fresh_rd = btb_read_valid & (btb_read_idx == btb_idx);
+logic btb_hit0_q, btb_hit1_q;
+wire btb_hit0 = pred_hold ? (btb_hit0_q & fold_ok(btb_meta_hold0, fold_epoch, msr[MSR_IR])) :
+                btb_fresh_rd & (btb_forward0 ? btb_hit_of(btb_write_meta, pc_f[31:BTB_SET_BITS+2], fold_epoch, msr[MSR_IR]) :
+                                               btb_hit_of(btb_meta_ram0, pc_f[31:BTB_SET_BITS+2], fold_epoch, msr[MSR_IR]));
+wire btb_hit1 = pred_hold ? (btb_hit1_q & fold_ok(btb_meta_hold1, fold_epoch, msr[MSR_IR])) :
+                btb_fresh_rd & (btb_forward1 ? btb_hit_of(btb_write_meta, pc_f[31:BTB_SET_BITS+2], fold_epoch, msr[MSR_IR]) :
+                                               btb_hit_of(btb_meta_ram1, pc_f[31:BTB_SET_BITS+2], fold_epoch, msr[MSR_IR]));
 wire btb_hit = btb_hit0 | btb_hit1;
 wire btb_way = btb_hit0 ? 1'b0 : btb_hit1 ? 1'b1 :
                (btb_fresh & ~btb_valid_q0) ? 1'b0 : (btb_fresh & ~btb_valid_q1) ? 1'b1 : btb_lru[btb_idx];
@@ -663,13 +675,17 @@ logic [7:0]  itt_tag_hold;
 logic [29:0] itt_tgt_hold;
 logic [11:0] itt_hold_idx;
 wire  [7:0]  itt_tag_q    = pred_hold ? itt_tag_hold : itt_tag_ram;
+logic        itt_hit_q;
 wire  [29:0] itt_tgt_q    = pred_hold ? itt_tgt_hold : itt_tgt_ram;
 wire  [11:0] itt_read_idx = pred_hold ? itt_hold_idx : itt_ram_idx;
 logic        itt_read_valid;
 wire [11:0] itt_idx_f = (pc_f[13:2] ^ itt_spec_h) & 12'((ITT_N - 1));     // this fetch's row
 logic [11:0] itt_ridx;                                                     // the next one's, read now (below)
-wire itt_use = (ITT_BITS != 0) & btb_itt & itt_read_valid & (itt_read_idx == itt_idx_f) &
-               (itt_tag_q == pc_f[ITT_BITS+2 +: 8]);
+// (the row's match compared from the RAM's output; while the fetch waits,
+// last cycle's match, as for the BTB)
+wire itt_match = pred_hold ? itt_hit_q :
+                 itt_read_valid & (itt_ram_idx == itt_idx_f) & (itt_tag_ram == pc_f[ITT_BITS+2 +: 8]);
+wire itt_use = (ITT_BITS != 0) & btb_itt & itt_match;
 
 wire [31:0] btb_destination = itt_use ? {itt_tgt_q, 2'b00} :
                               (btb_is_return & ~btb_itt & (ras_read_count != 4'd0)) ?
@@ -714,6 +730,8 @@ always_ff @(posedge clk) begin
 	btb_target_ram0 <= btb_target0[btb_ridx];
 	btb_target_ram1 <= btb_target1[btb_ridx];
 	btb_read_idx <= btb_ridx;
+	btb_hit0_q <= btb_hit0;
+	btb_hit1_q <= btb_hit1;
 	btb_meta_hold0 <= btb_meta_q0;
 	btb_meta_hold1 <= btb_meta_q1;
 	btb_target_hold0 <= btb_target_q0;
@@ -1601,6 +1619,7 @@ always_ff @(posedge clk) begin
 	itt_tag_hold <= itt_tag_q;
 	itt_tgt_hold <= itt_tgt_q;
 	itt_hold_idx <= itt_read_idx;
+	itt_hit_q <= itt_match;
 	itt_read_valid <= ~reset;
 	if (ex_ind_commit) begin
 		itt_tag_mem[ex_itt_idx[ITT_BITS-1:0]] <= ex_pc[ITT_BITS+2 +: 8];
@@ -1628,8 +1647,10 @@ assign redir    = mem_fault |
 // an unconditional b (opcode 18, relative, no link) committing right after
 // an instruction that can fold it
 wire ex_is_b = (ex_insn[31:26] == 6'd18) & (ex_insn[1:0] == 2'b00);
-assign fold_learn = ex_final & ~is_rfi & ex_is_b & fold_prev_ok & (fold_prev_pc + 32'd4 == ex_pc) &
-                    (ex_pc[11:2] != 10'd0);
+// (the candidate from registers selects the row and way written; the
+// commit, behind EX's add and exception checks, only enables the write)
+wire fold_cand = ex_is_b & fold_prev_ok & (fold_prev_pc + 32'd4 == ex_pc) & (ex_pc[11:2] != 10'd0);
+assign fold_learn = ex_final & ~is_rfi & fold_cand;
 always_comb begin
 	btb_widx = btb_index(ex_pc);
 	btb_wway = ex_way;
@@ -1638,12 +1659,12 @@ always_comb begin
 	btb_wtgt = 1'b0;
 	btb_clr  = 1'b0;
 	btb_wcnt = 2'd2;
-	if (fold_learn) begin
+	if (fold_cand) begin
 		btb_widx = btb_index(fold_prev_pc);
 		btb_wway = fold_prev_way;
 		btb_wtag = fold_prev_pc[31:BTB_SET_BITS+2];
-		btb_we   = 1'b1;
-		btb_wtgt = 1'b1;
+		btb_we   = fold_learn;
+		btb_wtgt = fold_learn;
 		btb_wcnt = 2'd3;
 	end
 	else if (ex_final & ~is_rfi) begin

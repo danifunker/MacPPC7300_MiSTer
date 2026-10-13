@@ -455,7 +455,7 @@ endgenerate
 
 // ---- MACE (MacPPC7300_mace): byte registers at (offset >> 4) & 1F (grandcentral.cpp:190), ----
 // ---- and its DMA channels, 2 out and 3 in ----
-logic [7:0]  mace_rq;
+logic [7:0]  mace_rq, mace_rq_cpu;
 logic [31:0] dma_2_rle, dma_3_rle;
 logic        e2_ready, e2_put, e2_last, e2_irq, e3_irq, e2_fin, e3_fin;
 logic [1:0]  e2_fin_dec, e3_fin_dec;
@@ -483,6 +483,7 @@ MacPPC7300_mace mace (
 	.rn(sel ? off[8:4] : dq_off[8:4]),
 	.wdata(sel ? wb : (e2_dq_req ? e2_dq_wd : e3_dq_wd)),
 	.rq(mace_rq),
+	.rn_cpu(off[8:4]), .rq_cpu(mace_rq_cpu),
 	.do_ready(e2_ready), .do_data(e2_data), .do_put(e2_put), .do_last(e2_last),
 	.di_valid(e3_valid), .di_data(e3_data), .di_last(e3_last), .di_take(e3_take), .rx_dma(e3_xin),
 	.link(net_link), .tx_we(net_tx_we), .tx_wa(net_tx_wa), .tx_wd(net_tx_wd), .tx_go(net_tx_go),
@@ -661,7 +662,7 @@ always_comb begin
 	else begin
 		case (sub)
 			4'h0:       rq = byte_reg_rdata(be, curio_rq);
-			4'h1:       rq = byte_reg_rdata(be, mace_rq);
+			4'h1:       rq = byte_reg_rdata(be, mace_rq_cpu);
 			4'h8:       rq = byte_reg_rdata(be, mesh_rq);
 			4'h5:       rq = byte_reg_rdata(be, swim_rq);
 			4'h2, 4'h3: if (scc_compat | scc_risc) rq = byte_reg_rdata(be, scc_rq);
