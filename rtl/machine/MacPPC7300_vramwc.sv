@@ -53,6 +53,17 @@ module MacPPC7300_vramwc
 
 localparam int NB = $clog2(N);
 
+// ---- the request, registered first ----------------------------------------------
+// The port's request comes through the CPU's port choice and the machine's
+// decode; nothing here compares or writes from it directly. A store is
+// taken into this stage and answered at once (it is applied from the stage,
+// held there while the entries are full); a load waits in it for the entries
+// to drain and is answered from the read line.
+logic         s_v, s_we, s_line;
+logic [21:2]  s_addr;
+logic [3:0]   s_be;
+logic [255:0] s_wdata;
+
 // ---- the entries -------------------------------------------------------------
 logic [N-1:0]   valid;
 logic [21:5]    tag  [N];
@@ -64,17 +75,17 @@ logic           d_v;                        // the head entry is being drained (
 logic           d_sent;                     // ... and offered to the crossing (its data read)
 logic [255:0]   d_data;
 
-// the store's place in its line, as a byte mask over the line
-wire [2:0]  w_k   = a_addr[4:2];
+// the staged store's place in its line, as a byte mask over the line
+wire [2:0]  w_k   = s_addr[4:2];
 logic [31:0] w_mask;
 always_comb begin
 	w_mask = '0;
-	if (a_line) w_mask = '1;
-	else for (int j = 0; j < 4; j++) w_mask[28 - 4 * w_k + j] = a_be[j];
+	if (s_line) w_mask = '1;
+	else for (int j = 0; j < 4; j++) w_mask[28 - 4 * w_k + j] = s_be[j];
 end
-wire [255:0] w_data = a_line ? a_wdata : {8{a_wdata[31:0]}};
+wire [255:0] w_data = s_line ? s_wdata : {8{s_wdata[31:0]}};
 
-// a store merges into the entry holding its line, unless that one is draining
+// it merges into the entry holding its line, unless that one is draining
 logic [N-1:0] match;
 logic         hit;
 logic [NB-1:0] hit_idx;
@@ -82,7 +93,7 @@ always_comb begin
 	hit = 1'b0;
 	hit_idx = '0;
 	for (int i = 0; i < N; i++) begin
-		match[i] = valid[i] & (tag[i] == a_addr[21:5]) & ~(d_v & (head == NB'(i)));
+		match[i] = valid[i] & (tag[i] == s_addr[21:5]) & ~(d_v & (head == NB'(i)));
 		if (match[i]) begin hit = 1'b1; hit_idx = NB'(i); end
 	end
 end
@@ -91,15 +102,17 @@ end
 logic         rb_v;
 logic [21:5]  rb_tag;
 logic [255:0] rb;
-wire          rb_hit = rb_v & (rb_tag == a_addr[21:5]);
+wire          rb_hit = rb_v & (rb_tag == s_addr[21:5]);
 logic         r_wait;                       // a load is out on the crossing
+logic         r_done;                       // ... and its line has landed in rb: answer
 
-// ---- taking the request --------------------------------------------------------
-wire take    = a_req & ~a_ack;
-wire st_take = take & a_we & (hit | (count != (NB+1)'(N)));
-wire ld_now  = take & ~a_we & (count == '0) & ~d_v & rb_hit;          // answered from the read line
-wire ld_go   = take & ~a_we & (count == '0) & ~d_v & ~rb_hit & ~r_wait;   // goes out as a line read
-wire w_en    = st_take;
+// ---- the stage and the entries ------------------------------------------------
+wire st_apply = s_v & s_we & (hit | (count != (NB+1)'(N)));   // the staged store goes into an entry
+wire ld_ready = s_v & ~s_we & (count == '0) & ~d_v & ~r_wait & ~r_done;
+wire ld_now   = ld_ready & rb_hit;                               // answered from the read line
+wire ld_go    = ld_ready & ~rb_hit;                              // goes out as a line read
+wire take     = a_req & ~a_ack & (~s_v | st_apply);             // the stage free, or freed now
+wire w_en     = st_apply;
 wire [NB-1:0] w_idx = hit ? hit_idx : tail;
 
 always_ff @(posedge clk) begin
@@ -110,27 +123,35 @@ always_ff @(posedge clk) begin
 end
 
 always_ff @(posedge clk) begin
-	a_ack <= 1'b0;
-	if (st_take) begin
-		a_ack <= 1'b1;
+	a_ack  <= 1'b0;
+	r_done <= 1'b0;
+	if (take) begin
+		s_v     <= 1'b1;
+		s_we    <= a_we;
+		s_line  <= a_line;
+		s_addr  <= a_addr;
+		s_be    <= a_be;
+		s_wdata <= a_wdata;
+		a_ack   <= a_we;                      // a store: taken, answered
+	end
+	else if (st_apply | ld_now | r_done) s_v <= 1'b0;
+	if (st_apply) begin
 		if (hit) mask[hit_idx] <= mask[hit_idx] | w_mask;
 		else begin
 			valid[tail] <= 1'b1;
-			tag[tail]   <= a_addr[21:5];
+			tag[tail]   <= s_addr[21:5];
 			mask[tail]  <= w_mask;
 			tail        <= tail + 1'b1;
 		end
 		if (rb_hit) rb_v <= 1'b0;             // the read line is stale
 	end
-	if (ld_now) begin
-		a_ack <= 1'b1;
-	end
+	if (ld_now | r_done) a_ack <= 1'b1;
 	if (ld_go) begin
 		r_wait <= 1'b1;
 		b_req  <= 1'b1;
 		b_we   <= 1'b0;
 		b_line <= 1'b1;
-		b_addr <= {a_addr[21:5], 3'b000};
+		b_addr <= {s_addr[21:5], 3'b000};
 	end
 	if (r_wait & b_ack) begin
 		r_wait <= 1'b0;
@@ -138,7 +159,7 @@ always_ff @(posedge clk) begin
 		rb     <= b_rdata;
 		rb_tag <= b_addr[21:5];
 		rb_v   <= 1'b1;
-		a_ack  <= 1'b1;
+		r_done <= 1'b1;
 	end
 	// the drain: the head entry, read out and offered until the crossing takes it
 	if (~d_v & (count != '0) & ~r_wait & ~ld_go) d_v <= 1'b1;
@@ -157,7 +178,7 @@ always_ff @(posedge clk) begin
 		valid[head] <= 1'b0;
 		head        <= head + 1'b1;
 	end
-	count <= count + {{NB{1'b0}}, st_take & ~hit} - {{NB{1'b0}}, d_sent & b_ack};
+	count <= count + {{NB{1'b0}}, st_apply & ~hit} - {{NB{1'b0}}, d_sent & b_ack};
 	if (reset) begin
 		valid  <= '0;
 		head   <= '0;
@@ -166,23 +187,24 @@ always_ff @(posedge clk) begin
 		d_v    <= 1'b0;
 		d_sent <= 1'b0;
 		r_wait <= 1'b0;
+		r_done <= 1'b0;
 		rb_v   <= 1'b0;
 		b_req  <= 1'b0;
 		a_ack  <= 1'b0;
+		s_v    <= 1'b0;
 	end
 end
 assign b_wdata = d_data;
 
-// what a load gets: its word of the line (bits 31-0), or the line
-wire [255:0] line_now = (r_wait & b_ack) ? b_rdata : rb;
-wire [2:0]   r_k      = a_addr[4:2];
-assign a_rdata = a_line ? line_now : {224'd0, line_now[255 - 32 * r_k -: 32]};
+// what a load gets, from the read line: its word (bits 31-0), or the line
+wire [2:0] r_k = s_addr[4:2];
+assign a_rdata = s_line ? rb : {224'd0, rb[255 - 32 * r_k -: 32]};
 
 /* synthesis translate_off */
 always_ff @(posedge clk)
 	if (~reset) begin
 		if (d_sent & b_ack & ~valid[head]) $fatal(1, "VRAM combiner drained an empty entry");
-		if (st_take & ~hit & valid[tail]) $fatal(1, "VRAM combiner allocated a held entry");
+		if (st_apply & ~hit & valid[tail]) $fatal(1, "VRAM combiner allocated a held entry");
 		if (ld_go & d_v) $fatal(1, "VRAM combiner read while draining");
 	end
 /* synthesis translate_on */
