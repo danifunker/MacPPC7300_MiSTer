@@ -133,3 +133,12 @@ carry-free sum-and-compare for the page match), or EX's other families
   candidates: next-line instruction prefetch, or the L2 (on by default;
   the test settings keep it off).
 
+## Later (2026-10-11 to 14)
+
+The branch went on from here: the records are `docs/speed_results_20261011.md`
+(the VIA timer fix, posted stores), `..._20261012.md` (MEM's second slot,
+the cache banks, the BTB and ITT, branch folding), `docs/speed_results_20261013.md`
+(the 110 MHz verdict) and `docs/speed_profile_20261013.md` (the profile,
+the frame buffer's combiner, 100 MHz, the shrinking, the 64 KB I-cache).
+The next-line prefetch above was overtaken by the 64 KB instruction cache
+(fetch waits 23.5 % to 7.6 % on the idle desktop).

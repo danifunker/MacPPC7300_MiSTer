@@ -8,6 +8,24 @@ the end.)
 
 Paste everything below the line into a new session started in `C:\Temp\mistercore\PPC_Mac`.
 
+**State on 2026-10-14 (branch `fpu-pipe`, pushed to origin):** the work
+below was done and went further; this prompt's "Where things stand" is
+2026-10-10's. The record is `docs/speed_results_20261010.md`,
+`..._20261011.md`, `..._20261012.md`, `docs/speed_results_20261013.md` and
+`docs/speed_profile_20261013.md`, and the plan's Speed table (its last row
+and the "speed" decisions). In short: the FPU pipelined, MEM's second
+slot, the BTB and the ITT, branch folding, posted stores, the frame
+buffer's write combiner, the port's registered copy, a 64 KB instruction
+cache; the CPU closes 60 MHz and runs 70 to 100 MHz on the board as an
+overclock, 100 MHz from about half the fits (the 100 MHz test build is
+`releases/MacPPC7300_20261014_100MHz.rbf`: CPU 5.44, Mix 17.4, Color
+2.56, FPU 7.10). 110 MHz needs a deeper pipeline (not pursued). Open: the
+L2 on by default (free: +8 % Color, the idle loop's CPI -25 %), Ethernet
+and the floppy as build options if 100 MHz is to boot from every fit,
+then dual issue or the core's deep paths. The sessions of 10-11 to 10-14
+ran from macOS with Quartus on a Linux host; the environment below is the
+Windows one.
+
 
 **Merged 2026-10-10:** the tree also carries the AT CPU work (branch `speed-at`: the fetch FIFO, one cached access a cycle in MEM, a two-way 128-entry BTB with an eight-entry return stack, an ordered ALU completion queue). Its log is `docs/speed_AT_log.md`. On the board at 55 MHz with `pm761_speedo.hda` (single runs) Speedometer's CPU score is 2.301 against the original's 1.886; Dhrystones, Puzzle, Int. Matrix, Matrix Mult. and Fast Fourier are slower. It does not close 70 MHz (about 60 MHz).
 
