@@ -86,7 +86,7 @@ module DSPPC604
 	parameter int          ITT_BITS = 12,             // indirect target table entries, as a power of two (8 to 12)
 	parameter int          BTB_BITS = 11,             // branch target buffer entries, as a power of two (two ways): 2048 since 2026-10-12
 	parameter int          TLB_BITS = 6,              // entries in each TLB, as a power of two
-	parameter int          IC_IDXW  = 8,              // instruction cache sets, as a power of two: 8 is 32 KB (the 604e's), 7 is 16 KB (the 604's)
+	parameter int          IC_IDXW  = 9,              // instruction cache sets, as a power of two: 8 is 32 KB (the 604e's), 7 is 16 KB (the 604's)
 	parameter int          DC_IDXW  = 7,              // data cache sets, likewise
 	parameter int          FPU_OPERAND_REG = 0,       // 1: the FPU takes its operands into a register first (a cycle each; on 2026-10-06 to 2026-10-09 for timing)
 	parameter int          PERF     = 1,              // 1: the performance counters (perf_cnt; 0 leaves them out)

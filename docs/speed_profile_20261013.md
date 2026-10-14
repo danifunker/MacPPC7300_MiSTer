@@ -202,7 +202,17 @@ ALMs), measured on the idle desktop 25 s after the boot, two builds
 with the counters at 90 MHz: CPI 2.05 → 1.73, fetch waits 23.5 % →
 7.6 %, instruction-cache misses 15.9 → 4.3 per 1,000 instructions, the
 data cache's misses and the mispredictions unchanged. That is the
-Finder's and the toolbox's code.
+Finder's and the toolbox's code. It is the default now (IC_IDXW = 9):
+at 100 MHz Speedometer gives CPU 5.438, Mix 17.40, Color 2.555, FPU
+7.10 (32 KB: 5.386, 17.00, 2.518, 6.98); the ROM boot in the bench
+315.43M → 312.12M cycles, its instruction-cache transactions 900k →
+278k.
+
+The slimmed RTL's fits at 100 MHz land at 36.3–37.0k ALMs (87–88 %)
+against 36.7–37.4k before; of five, two boot (−5.91 and −5.93) and
+three fail (−6.58 a hang at the Finder's start, −5.94 and −6.15 black):
+the odds have not visibly moved with a few hundred ALMs, and the
+sample is small.
 
 ## Next
 
