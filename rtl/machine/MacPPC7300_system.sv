@@ -288,7 +288,7 @@ MacPPC7300_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_
 );
 
 // the frame buffer's stores gathered into lines, its loads a line at a time
-MacPPC7300_vramwc #(.N(8)) vramwc (
+MacPPC7300_vramwc #(.N(4)) vramwc (
 	.clk, .reset,
 	.a_req(v_req), .a_we(v_we), .a_line(v_line), .a_addr(v_addr), .a_be(v_be), .a_wdata(v_wdata),
 	.a_ack(v_ack), .a_rdata(v_rdata),

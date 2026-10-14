@@ -22,7 +22,7 @@
 
 module MacPPC7300_vramwc
 #(
-	parameter int N = 8                       // line entries (a power of two)
+	parameter int N = 4                       // line entries (a power of two)
 )
 (
 	input  logic         clk,
@@ -111,7 +111,7 @@ wire st_apply = s_v & s_we & (hit | (count != (NB+1)'(N)));   // the staged stor
 wire ld_ready = s_v & ~s_we & (count == '0) & ~d_v & ~r_wait & ~r_done;
 wire ld_now   = ld_ready & rb_hit;                               // answered from the read line
 wire ld_go    = ld_ready & ~rb_hit;                              // goes out as a line read
-wire take     = a_req & ~a_ack & (~s_v | st_apply);             // the stage free, or freed now
+wire take     = a_req & ~a_ack & ~s_v;                          // the stage free (not freed now: that would hang its 300 enables on the compares)
 wire w_en     = st_apply;
 wire [NB-1:0] w_idx = hit ? hit_idx : tail;
 
