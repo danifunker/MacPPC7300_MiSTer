@@ -19,6 +19,9 @@
 //============================================================================
 
 module DSPPC604_memcdc
+#(
+	parameter int BEW = 4                     // the byte enables' width (32: a line's mask, the VRAM's)
+)
 (
 	// the CPU's side
 	input  logic         clk_a,
@@ -27,7 +30,7 @@ module DSPPC604_memcdc
 	input  logic         a_we,
 	input  logic         a_line,
 	input  logic [31:2]  a_addr,
-	input  logic [3:0]   a_be,
+	input  logic [BEW-1:0] a_be,
 	input  logic [255:0] a_wdata,
 	output logic         a_ack,
 	output logic [255:0] a_rdata,
@@ -39,7 +42,7 @@ module DSPPC604_memcdc
 	output logic         b_we,
 	output logic         b_line,
 	output logic [31:2]  b_addr,
-	output logic [3:0]   b_be,
+	output logic [BEW-1:0] b_be,
 	output logic [255:0] b_wdata,
 	input  logic         b_ack,
 	input  logic [255:0] b_rdata
@@ -54,7 +57,7 @@ logic [255:0] b_data_q;       // the answer, in the memory's clock (read below)
 // the request, standing still from the toggle until the answer
 logic         q_we, q_line;
 logic [31:2]  q_addr;
-logic [3:0]   q_be;
+logic [BEW-1:0] q_be;
 logic [255:0] q_wdata;
 
 wire a_answer = a_ack_sync2 ^ a_ack_seen;

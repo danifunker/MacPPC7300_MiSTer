@@ -1120,11 +1120,14 @@ int main(int argc, char** argv) {
 				ddr_note("%llu: write %06X be %02X %016llX", (unsigned long long)sd.clocks,
 					((ddr.wr_left ? ddr.wr_addr : addr) - Ddr::BASE) * 8, (unsigned)dut->ddr_be, (unsigned long long)dut->ddr_din);
 			if (ddr.wr_left == 0) { ddr.wr_addr = addr; ddr.wr_left = cnt ? cnt : 1; }
-			uint64_t& w = ddr.m[(ddr.wr_addr - Ddr::BASE) % Ddr::WORDS];
-			uint64_t din = dut->ddr_din;
-			unsigned be = dut->ddr_be;
-			for (int k = 0; k < 8; k++)
-				if (be & (1u << k)) w = (w & ~(0xFFull << (8 * k))) | (din & (0xFFull << (8 * k)));
+			// (a write outside the VRAM, the trace's ring, is not folded into it)
+			if (ddr.wr_addr - Ddr::BASE < Ddr::WORDS) {
+				uint64_t& w = ddr.m[ddr.wr_addr - Ddr::BASE];
+				uint64_t din = dut->ddr_din;
+				unsigned be = dut->ddr_be;
+				for (int k = 0; k < 8; k++)
+					if (be & (1u << k)) w = (w & ~(0xFFull << (8 * k))) | (din & (0xFFull << (8 * k)));
+			}
 			ddr.wr_addr++;
 			ddr.wr_left--;
 		}
@@ -1987,6 +1990,16 @@ int main(int argc, char** argv) {
 		std::printf("vram-check: %llu line reads, %llu line writes, %llu word reads, %llu word writes of the VRAM window; "
 			"%llu bytes read back differently from what was written\n", (unsigned long long)v_lr, (unsigned long long)v_lw,
 			(unsigned long long)v_wr, (unsigned long long)v_ww, (unsigned long long)v_bad);
+	if (opt.vram_check) {
+		// ... and what the DDR3 holds against what the CPU wrote, byte by byte
+		unsigned long long nd = 0;
+		for (uint32_t a = 0; a <= VRAM_MASK; a++) {
+			if (!vknown[a]) continue;
+			uint8_t m = (uint8_t)(ddr.m[(a >> 3) % Ddr::WORDS] >> (8 * (a & 7)));
+			if (m != vshadow[a] && nd++ < 12) std::printf("vram byte %06X: the DDR3 holds %02X, the CPU wrote %02X\n", a, m, vshadow[a]);
+		}
+		std::printf("vram-check: %llu bytes of the DDR3 differ from what the CPU wrote\n", nd);
+	}
 	if (stuck) std::printf("STUCK: nothing retired for %llu cycles\n", (unsigned long long)opt.stuck);
 	if (opt.lockstep) std::printf("lockstep with the reference: %s\n", diverged ? "DIVERGED" : "identical");
 	bool ok = !diverged && !stuck && (done || cycles >= opt.max_cycles);

@@ -60,7 +60,7 @@ module MacPPC7300_video
 	input  logic         c_we,
 	input  logic         c_line,
 	input  logic [21:2]  c_addr,          // VRAM byte address
-	input  logic [3:0]   c_be,
+	input  logic [31:0]  c_be,            // a word's four (be[3] the lowest address); a line write's mask (bit j: the line's byte in bits 8j+7..8j)
 	input  logic [255:0] c_wdata,
 	output logic         c_ack,
 	output logic [255:0] c_rdata,
@@ -254,6 +254,13 @@ function automatic logic [63:0] line_beat(input logic [255:0] w, input logic [1:
 	w1 = w[223 - 64 * k -: 32];
 	line_beat = {w1[7:0], w1[15:8], w1[23:16], w1[31:24], w0[7:0], w0[15:8], w0[23:16], w0[31:24]};
 endfunction
+// a line write's beat k: its two words' mask bits in VRAM's lane order
+function automatic logic [7:0] beat_be(input logic [31:0] m, input logic [1:0] k);
+	logic [3:0] m0, m1;
+	m0 = m[31 - 8 * k -: 4];
+	m1 = m[27 - 8 * k -: 4];
+	beat_be = {m1[0], m1[1], m1[2], m1[3], m0[0], m0[1], m0[2], m0[3]};
+endfunction
 function automatic logic [31:0] lane_word(input logic [63:0] q, input logic hi);
 	lane_word = hi ? {q[39:32], q[47:40], q[55:48], q[63:56]} : {q[7:0], q[15:8], q[23:16], q[31:24]};
 endfunction
@@ -283,7 +290,7 @@ always_ff @(posedge clk) begin
 				if (c_we) begin
 					ddr_we  <= 1'b1;
 					ddr_din <= c_line ? line_beat(c_wdata, 2'd0) : c_word64;
-					ddr_be  <= c_line ? 8'hFF : c_be8;
+					ddr_be  <= c_line ? beat_be(c_be, 2'd0) : c_be8;
 					ds      <= D_CWRITE;
 				end
 				else begin
@@ -328,6 +335,7 @@ always_ff @(posedge clk) begin
 			else begin
 				c_beat  <= c_beat + 3'd1;
 				ddr_din <= line_beat(c_wdata, 2'(c_beat + 3'd1));
+				ddr_be  <= beat_be(c_be, 2'(c_beat + 3'd1));
 			end
 		end
 		default: ds <= D_IDLE;

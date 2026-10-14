@@ -240,8 +240,12 @@ logic [3:0]   v_be;
 logic [255:0] v_wdata, v_rdata;
 logic         vb_req, vb_we, vb_line, vb_ack;
 logic [31:2]  vb_addr;
-logic [3:0]   vb_be;
+logic [31:0]  vb_be;                          // a line write's byte mask
 logic [255:0] vb_wdata, vb_rdata;
+logic         vw_req, vw_we, vw_line, vw_ack; // the combiner's side of the crossing
+logic [21:2]  vw_addr;
+logic [31:0]  vw_be;
+logic [255:0] vw_wdata, vw_rdata;
 logic         timing_on, hs_pos, vs_pos, vbl_start_tog, vbl_end_tog;
 logic [191:0] sw_params, cursor_clut;
 logic [21:0]  fb_base;
@@ -283,10 +287,19 @@ MacPPC7300_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_
 	.tr_mesh, .tr_ev(scsi_tr_ev), .tr_rec(scsi_tr_rec)
 );
 
-DSPPC604_memcdc vcdc (
-	.clk_a(clk), .reset_a(reset),
-	.a_req(v_req), .a_we(v_we), .a_line(v_line), .a_addr({10'h0, v_addr}), .a_be(v_be), .a_wdata(v_wdata),
+// the frame buffer's stores gathered into lines, its loads a line at a time
+MacPPC7300_vramwc #(.N(8)) vramwc (
+	.clk, .reset,
+	.a_req(v_req), .a_we(v_we), .a_line(v_line), .a_addr(v_addr), .a_be(v_be), .a_wdata(v_wdata),
 	.a_ack(v_ack), .a_rdata(v_rdata),
+	.b_req(vw_req), .b_we(vw_we), .b_line(vw_line), .b_addr(vw_addr), .b_be(vw_be), .b_wdata(vw_wdata),
+	.b_ack(vw_ack), .b_rdata(vw_rdata)
+);
+
+DSPPC604_memcdc #(.BEW(32)) vcdc (
+	.clk_a(clk), .reset_a(reset),
+	.a_req(vw_req), .a_we(vw_we), .a_line(vw_line), .a_addr({10'h0, vw_addr}), .a_be(vw_be), .a_wdata(vw_wdata),
+	.a_ack(vw_ack), .a_rdata(vw_rdata),
 	.clk_b, .reset_b,
 	.b_req(vb_req), .b_we(vb_we), .b_line(vb_line), .b_addr(vb_addr), .b_be(vb_be), .b_wdata(vb_wdata),
 	.b_ack(vb_ack), .b_rdata(vb_rdata)
