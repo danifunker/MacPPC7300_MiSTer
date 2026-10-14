@@ -60,11 +60,12 @@ localparam int NB = $clog2(N);
 // ---- the request, registered first ----------------------------------------------
 // The port's request comes from the machine's registered copy of the CPU's
 // port; nothing here compares or writes from it directly. A store is taken
-// into this stage and answered in the same cycle (the machine's copy then
-// drops for a cycle, so a store costs the port two cycles; it is applied
-// from the stage, held there while the entries are full); a load waits in
-// it for the entries to drain and is answered from the read line, the
-// cycle after.
+// into this stage and answered the next cycle (it is applied from the
+// stage, held there while the entries are full); a load waits in it for
+// the entries to drain and is answered from the read line. (The answer
+// with the take itself was tried: it made the port's acknowledge
+// combinational into the CPU's cache fills, a -6.5 ns family at 100 MHz,
+// for a gain within the Color tests' noise.)
 logic         s_v, s_we, s_line;
 logic [21:2]  s_addr;
 logic [3:0]   s_be;
@@ -110,14 +111,13 @@ logic [255:0] rb;
 wire          rb_hit = rb_v & (rb_tag == s_addr[21:5]);
 logic         r_wait;                       // a load is out on the crossing
 logic         r_done;                       // ... and its line has landed in rb: answer
-logic         ld_ack;                       // a load's answer, the cycle after
 
 // ---- the stage and the entries ------------------------------------------------
 wire st_apply = s_v & s_we & (hit | (count != (NB+1)'(N)));   // the staged store goes into an entry
 wire ld_ready = s_v & ~s_we & (count == '0) & ~d_v & ~r_wait & ~r_done;
 wire ld_now   = ld_ready & rb_hit;                               // answered from the read line
 wire ld_go    = ld_ready & ~rb_hit;                              // goes out as a line read
-wire take     = a_req & ~ld_ack & ~s_v;                         // the stage free (not freed now: that would hang its 300 enables on the compares)
+wire take     = a_req & ~a_ack & ~s_v;                          // the stage free (not freed now: that would hang its 300 enables on the compares)
 wire w_en     = st_apply;
 wire [NB-1:0] w_idx = hit ? hit_idx : tail;
 
@@ -128,7 +128,7 @@ always_ff @(posedge clk) begin
 end
 
 always_ff @(posedge clk) begin
-	ld_ack <= 1'b0;
+	a_ack  <= 1'b0;
 	r_done <= 1'b0;
 	if (take) begin
 		s_v     <= 1'b1;
@@ -137,6 +137,7 @@ always_ff @(posedge clk) begin
 		s_addr  <= a_addr;
 		s_be    <= a_be;
 		s_wdata <= a_wdata;
+		a_ack   <= a_we;                      // a store: taken, answered
 	end
 	else if (st_apply | ld_now | r_done) s_v <= 1'b0;
 	if (st_apply) begin
@@ -149,7 +150,7 @@ always_ff @(posedge clk) begin
 		end
 		if (rb_hit) rb_v <= 1'b0;             // the read line is stale
 	end
-	if (ld_now | r_done) ld_ack <= 1'b1;
+	if (ld_now | r_done) a_ack <= 1'b1;
 	if (ld_go) begin
 		r_wait <= 1'b1;
 		b_req  <= 1'b1;
@@ -194,11 +195,10 @@ always_ff @(posedge clk) begin
 		r_done <= 1'b0;
 		rb_v   <= 1'b0;
 		b_req  <= 1'b0;
-		ld_ack <= 1'b0;
+		a_ack  <= 1'b0;
 		s_v    <= 1'b0;
 	end
 end
-assign a_ack   = (take & a_we) | ld_ack;      // a store answered as it is taken
 assign b_wdata = data[head];                  // (the entries are registers: a mux, not a copy)
 
 logic [31:0] n_st, n_dr, n_ld, n_wait;

@@ -123,9 +123,12 @@ the devices' take and the request's 300-odd registers (−7.1 ns, `p_k`,
 requests from a registered copy of the port (`q_*`, standing for the
 request still up: the port's request was not answered the cycle before);
 the memory path keeps the live decode. The CPU's reset also comes from a
-register. The combiner answers a store in the cycle it takes it, so a
-store still costs the port two cycles. Three fits at 100 MHz: −5.58,
-−6.15, −6.40, the machine's families gone from the worst lists. The board
+register. Three fits at 100 MHz: −5.58, −6.15, −6.40, the machine's
+families gone from the worst lists. (Answering a store in the cycle the
+combiner takes it, to give the port back the cycle the copy costs, was
+tried and reverted: the acknowledge then runs combinationally from the
+copy's address compare into the CPU's cache fills, a −6.5 ns family of
+its own, for a gain within the Color tests' noise at 100 MHz.) The board
 at 90 MHz ran Speedometer clean (CPU 4.851, Mix 15.39, FPU 6.32, Color
 2.355: the port's extra cycle, before the same-cycle answer, cost the
 Color tests 2.5 %). The −5.58 fit at 100 MHz got to "Welcome to Mac OS"
@@ -149,8 +152,8 @@ and 2.555 in two runs (the 8-bit test 4.01–4.22 s, the 16-bit 5.50–5.52
 s) against 1.920 without it at 100 MHz. The fits that boot at 100 MHz
 use 36.4–37.3 k ALMs; the ones that fail 37.2–38.0 k; the overlap is the
 fit lottery, and every few hundred ALMs shift the odds. The entries are
-now two by default (3e52ed9 and after); the drain reads them through a
-mux instead of a copy.
+now two by default; the drain reads them through a mux instead of a
+copy.
 
 Where the ALMs go (the two-entry fit, 36,945): the framework's scaler,
 audio filters, OSDs, HDMI PLL and video output about 7,000, untouchable;
@@ -168,8 +171,10 @@ ports 1,630.
   in the framework: the DMA channels' line buffers, the SCSI disk model,
   the ADB devices; the combiner's read line (256 registers) if the
   screen is seldom read.
-- A fit with more placement effort (PLACEMENT_EFFORT_MULTIPLIER 3,
-  ROUTER_TIMING_OPTIMIZATION_LEVEL MAXIMUM) for the same design.
+- More placement effort: PLACEMENT_EFFORT_MULTIPLIER 3 with
+  ROUTER_TIMING_OPTIMIZATION_LEVEL MAXIMUM turned one seed's −6.27 into
+  −5.85 (a fit that boots; it then hung at shutdown once) for ten
+  minutes more of fitting. One sample; worth more.
 - A 64 KB instruction cache (`IC_IDXW = 9`: 56 M10Ks more, the index
   already from a translated bit) for the 68k code's fetch misses: the
   ROM boot's fetch waits 3.6 → 2.6 %; the idle loop is the real measure.
