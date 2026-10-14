@@ -347,7 +347,7 @@ wire        q_is_hh   = qa[31:12] == 20'hF8000 && qa[11:4] < 8'h50;
 wire        q_is_via  = q_is_gc && qa[16:13] == 4'b1011;      // F3016000-F3017FFF
 wire        q_is_ctl  = (ctl_regs_base != 20'h0) && (qa[31:12] == ctl_regs_base);
 wire        q_is_vram = (ctl_vram_base != 6'h0) && (qa[31:26] == ctl_vram_base);
-wire        q_req     = q_valid & c_req;
+wire        q_req     = q_valid;                            // (not qualified by the live c_req: the combiner's store answer comes from it in the same cycle, and the port's request itself follows its answer)
 
 // ---- RAM and ROM: the CPU's accesses and the DMA channels', one port ------------------------
 // The crossing captures a request and holds it, and ignores it in the cycle
