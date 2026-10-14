@@ -215,7 +215,10 @@ logic         ext_irq, tb_tick;
 logic         snoop_req, snoop_we, snoop_ack;   // the DMA channels' lines, through the caches
 logic [31:5]  snoop_addr;
 logic         cuda_reset;         // Cuda holds the CPU in reset (MacPPC7300_cuda)
-wire          cpu_reset = reset | cuda_reset;
+// (from a register: it fans out to every register of the CPU, and from
+// Cuda's own register through the OR it was a 100 MHz path, 2026-10-13)
+logic         cpu_reset = 1'b1;
+always_ff @(posedge clk) cpu_reset <= reset | cuda_reset;
 
 assign cpu_in_reset = cpu_reset;
 
