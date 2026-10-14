@@ -120,6 +120,8 @@ module MacPPC7300_dbdma
 	output logic [255:0] dm_wdata,
 	input  logic         dm_ack,
 	input  logic [255:0] dm_rdata,
+	output logic         dm_half,         // a command fetch: the line's upper half (cmd_ptr[4])
+	input  logic [127:0] dm_rdesc,        // ... that half of dm_rdata, chosen once for all the channels
 
 	// a quad to a device register (DEV_QUAD): held until dq_ack, dq_rd in that clock
 	output logic         dq_req,
@@ -159,6 +161,7 @@ localparam int RUN = 15, PAUSE = 14, FLUSH = 13, WAKE = 12, DEAD = 11, ACTIVE = 
 
 logic [15:0] stat;
 logic [31:0] cmd_ptr, int_sel, br_sel, wait_sel;
+assign dm_half = cmd_ptr[4];
 logic        in_end;                    // the device ended the INPUT_LAST's frame
 assign active = stat[ACTIVE];
 // with the device's bits
@@ -354,7 +357,7 @@ always_ff @(posedge clk) begin
 			end
 			if (dm_req & dm_ack) begin
 				logic [127:0] c;
-				c = cmd_ptr[4] ? dm_rdata[127:0] : dm_rdata[255:128];
+				c = dm_rdesc;
 				req_count  <= {c[119:112], c[127:120]};
 				cmd_bits   <= c[111:104];
 				cmd        <= c[103:100];
