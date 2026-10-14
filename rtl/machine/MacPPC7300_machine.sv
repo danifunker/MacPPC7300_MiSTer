@@ -322,22 +322,21 @@ logic [31:26] ctl_vram_base;
 // (2026-10-13). The memory path keeps the live decode. The copy stands for
 // the request still up (q_valid: not answered in the cycle it was taken),
 // so a request made right after an answer waits a cycle for its copy.
-logic         q_valid, q_we, q_line;
+logic         q_valid, q_we, q_line, q_to_mem;
 logic [31:2]  q_addr;
 logic [3:0]   q_be;
 logic [255:0] q_wdata;
 always_ff @(posedge clk) begin
-	q_valid <= c_req & ~c_ack & ~reset;
-	q_we    <= c_we;
-	q_line  <= c_line;
-	q_addr  <= c_addr;
-	q_be    <= c_be;
-	q_wdata <= c_wdata;
+	q_valid  <= c_req & ~c_ack & ~reset;
+	q_we     <= c_we;
+	q_line   <= c_line;
+	q_addr   <= c_addr;
+	q_be     <= c_be;
+	q_wdata  <= c_wdata;
+	q_to_mem <= to_mem;                            // the live decode's answer for the same request (a RAM map instance less)
 end
 wire [31:0] qa        = {q_addr, 2'b00};
-wire [27:0] qa_map    = ram_map(qa, ram_mb, banked, bk_bases);
 wire        q_is_rom  = qa[31:22] == 10'h3FF;
-wire        q_to_mem  = qa_map[27] | (q_is_rom & ~q_we & ~boot_memtest);
 wire        q_is_boot = q_is_rom & ~q_we & boot_memtest;
 wire        q_is_dbg  = qa[31:8] == 24'hF90000;
 wire        q_is_cha  = qa[31:24] == 8'hF0;

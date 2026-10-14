@@ -106,20 +106,17 @@ module MacPPC7300_video
 	output logic         vblank
 );
 
-// ---- the video registers, taken over loosely: they stand still while used -------------------
-logic [191:0] prm;
-logic [21:0]  fbb;
-logic [14:0]  roww;
-logic [7:0]   dcr, dbl;
-logic [15:0]  cx;
-logic [191:0] cclut;
-logic [7:0]   ad2, an2, ap2;
-logic         hsp, vsp;
-always_ff @(posedge clk) begin
-	prm <= sw_params; fbb <= fb_base; roww <= row_words; dcr <= dac_cr; dbl <= dbl_buf_cr;
-	cx <= cursor_x; cclut <= cursor_clut; ad2 <= athens_d2; an2 <= athens_n2; ap2 <= athens_p2;
-	hsp <= hs_pos; vsp <= vs_pos;
-end
+// ---- the video registers: Control's own, which stand still while used --------------------
+// (they were copied here once, 450 registers; the CPU writes them between
+// frames and the paths from Control's registers are a level of logic)
+wire [191:0] prm  = sw_params;
+wire [21:0]  fbb  = fb_base;
+wire [14:0]  roww = row_words;
+wire [7:0]   dcr  = dac_cr, dbl = dbl_buf_cr;
+wire [15:0]  cx   = cursor_x;
+wire [191:0] cclut = cursor_clut;
+wire [7:0]   ad2  = athens_d2, an2 = athens_n2, ap2 = athens_p2;
+wire         hsp  = hs_pos, vsp = vs_pos;
 
 wire [11:0] PIPE = prm[12 * 7 +: 12];
 wire [11:0] HFP  = prm[12 * 9 +: 12];

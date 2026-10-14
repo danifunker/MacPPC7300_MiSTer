@@ -24,7 +24,7 @@ for k in range(0, len(raw) - 35, 36):
     st, dr, ld, wt = (dbg >> 128) & 0xFFFFFFFF, (dbg >> 96) & 0xFFFFFFFF, (dbg >> 64) & 0xFFFFFFFF, (dbg >> 32) & 0xFFFFFFFF
     cnt, head, tail = (dbg >> 24) & 0xFF, (dbg >> 16) & 0xFF, (dbg >> 8) & 0xFF
     bits = dbg & 0xFF
-    names = ["a_req", "b_req", "s_we", "s_v", "r_done", "r_wait", "d_sent", "d_v"]
+    names = ["a_req", "b_req", "a_we", "st_apply", "r_done", "r_wait", "d_sent", "d_v"]
     state = " ".join(nm for i, nm in enumerate(names) if (bits >> i) & 1)
     print("%12u cyc  stores %9u drains %9u loads %7u waited %9u | count %d head %d tail %d | %s" % (cyc, st, dr, ld, wt, cnt, head, tail, state))
 print("%d records" % n)
