@@ -175,6 +175,35 @@ SWIM 300, MESH 300), the SCSI disks 2,020, the ADB devices 780, the
 video 850, Cuda 540, the combiner 560, the machine's own decode and
 ports 1,630.
 
+## Shrinking (2026-10-14)
+
+Synthesis gives the per-entity counts in twelve minutes (`quartus_map`
+alone; the fitter's figure runs about 2,000 ALMs above its estimate).
+From the slimming so far, all behaviour-neutral, each checked by the
+machine bench's boot plain and with wait states (frames identical):
+
+| Edit | own ALUTs | registers |
+|---|---:|---:|
+| Each DMA channel chose its 16-byte descriptor out of the fetched line with a 128-bit mux; Grand Central chooses once for the channel that owns the port | −350 (+64) | |
+| The disk model's three 32-bit range checks became one on the command's fields | −186 | |
+| The combiner's request stage, redundant since the port's copy (its bench runs 13 % faster without it) | | −300 |
+| The video's copies of Control's parameter and cursor registers | | −450 |
+| The port copy's memory bit registered from the live decode instead of a second RAM map | −37 | |
+
+35,105 → 34,854 ALMs by the estimate (−597 LUTs, −671 registers).
+Registers hardly move the estimate: the ALM count follows the LUTs. The
+remaining machine-side LUTs are the models themselves — the disk 2,500,
+Grand Central 1,500, ADB 1,000, the SCSI DMA channel 970 — and the
+only large blocks left are features: Ethernet (MACE and the queue,
+1,100 LUTs) and the floppy (560), which could be build options.
+
+**The 64 KB instruction cache** (`IC_IDXW = 9`, 32 M10Ks more, no
+ALMs), measured on the idle desktop 25 s after the boot, two builds
+with the counters at 90 MHz: CPI 2.05 → 1.73, fetch waits 23.5 % →
+7.6 %, instruction-cache misses 15.9 → 4.3 per 1,000 instructions, the
+data cache's misses and the mispredictions unchanged. That is the
+Finder's and the toolbox's code.
+
 ## Next
 
 - Area: a few hundred ALMs decide the 100 MHz lottery. Candidates not
