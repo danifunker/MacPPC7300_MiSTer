@@ -153,7 +153,17 @@ s) against 1.920 without it at 100 MHz. The fits that boot at 100 MHz
 use 36.4–37.3 k ALMs; the ones that fail 37.2–38.0 k; the overlap is the
 fit lottery, and every few hundred ALMs shift the odds. The entries are
 now two by default; the drain reads them through a mux instead of a
-copy.
+copy. Two entries at 90 MHz: Color 2.332 (four: 2.355; the eight of the
+first build, with the port's old decode, 2.415); CPU 4.843, Mix 15.48,
+FPU 6.29. Ten fits of the two-entry design at 100 MHz: six boot (−5.80
+to −6.31) and four fail (−5.71 to −6.27: a bus error or a hang at
+"Welcome", a Finder error); the slow-corner slack does not order them,
+and the failing fits' worst families are the booting fits' (the
+sequencer's result into the memory unit's state, the data cache's
+address into the write-back result, the cache states into the L2's
+write data). A build for the board at 100 MHz is a handful of seeds and
+the board: the best so far is `seed_x100r2_s3` (−5.86, Speedometer
+clean, `X100r2_S3_PM761.mgl`).
 
 Where the ALMs go (the two-entry fit, 36,945): the framework's scaler,
 audio filters, OSDs, HDMI PLL and video output about 7,000, untouchable;
@@ -171,10 +181,14 @@ ports 1,630.
   in the framework: the DMA channels' line buffers, the SCSI disk model,
   the ADB devices; the combiner's read line (256 registers) if the
   screen is seldom read.
-- More placement effort: PLACEMENT_EFFORT_MULTIPLIER 3 with
-  ROUTER_TIMING_OPTIMIZATION_LEVEL MAXIMUM turned one seed's −6.27 into
-  −5.85 (a fit that boots; it then hung at shutdown once) for ten
-  minutes more of fitting. One sample; worth more.
+- More placement effort (PLACEMENT_EFFORT_MULTIPLIER 3,
+  ROUTER_TIMING_OPTIMIZATION_LEVEL MAXIMUM) over three seeds: +0.4,
+  −0.3 and +0.4 ns against the same seeds without, two of the three
+  boot. Noise; not adopted.
+- Lasting margin at 100 MHz needs the core's deep paths cut (the memory
+  unit's state from the write-back result, the data cache's address
+  into the result), the work `addr-stage` found expensive, or a few
+  thousand ALMs freed.
 - A 64 KB instruction cache (`IC_IDXW = 9`: 56 M10Ks more, the index
   already from a translated bit) for the 68k code's fetch misses: the
   ROM boot's fetch waits 3.6 → 2.6 %; the idle loop is the real measure.
