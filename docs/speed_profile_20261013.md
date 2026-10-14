@@ -197,6 +197,20 @@ Grand Central 1,500, ADB 1,000, the SCSI DMA channel 970 — and the
 only large blocks left are features: Ethernet (MACE and the queue,
 1,100 LUTs) and the floppy (560), which could be build options.
 
+**Yosys instead of Quartus's synthesis** (tried 2026-10-14 after a
+report of a 68060 core halving with it): the CPU elaborated with the
+slang frontend, synthesized with `synth_intel_alm` for Cyclone V, per
+unit against Quartus's fit — FPU 3,920 against 4,004 ALM-equivalents,
+integer unit 1,060 against 1,137, MMU 1,130 against 1,071, the smaller
+units 20-40 % larger. The FPU's Yosys netlist in Quartus's own
+primitives (`cyclonev_lcell_comb`, `dffeas`, `cyclonev_mac`), fitted
+standalone with the project's settings at 10 ns: 4,320 ALMs against
+4,261 from the RTL, the worst setup slack −7.25 against −4.42 ns. Same
+area, worse timing: our RTL is already in the form both tools reduce to
+the same logic; the gain reported elsewhere is that design's slack.
+(The whole-CPU run is not comparable: Yosys maps the caches' mixed-width
+byte-enabled RAMs to MLABs and registers.)
+
 **The 64 KB instruction cache** (`IC_IDXW = 9`, 32 M10Ks more, no
 ALMs), measured on the idle desktop 25 s after the boot, two builds
 with the counters at 90 MHz: CPI 2.05 → 1.73, fetch waits 23.5 % →
