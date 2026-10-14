@@ -243,6 +243,7 @@ logic [31:2]  vb_addr;
 logic [31:0]  vb_be;                          // a line write's byte mask
 logic [255:0] vb_wdata, vb_rdata;
 logic         vw_req, vw_we, vw_line, vw_ack; // the combiner's side of the crossing
+logic [159:0] vw_dbg;
 logic [21:2]  vw_addr;
 logic [31:0]  vw_be;
 logic [255:0] vw_wdata, vw_rdata;
@@ -293,7 +294,8 @@ MacPPC7300_vramwc #(.N(4)) vramwc (
 	.a_req(v_req), .a_we(v_we), .a_line(v_line), .a_addr(v_addr), .a_be(v_be), .a_wdata(v_wdata),
 	.a_ack(v_ack), .a_rdata(v_rdata),
 	.b_req(vw_req), .b_we(vw_we), .b_line(vw_line), .b_addr(vw_addr), .b_be(vw_be), .b_wdata(vw_wdata),
-	.b_ack(vw_ack), .b_rdata(vw_rdata)
+	.b_ack(vw_ack), .b_rdata(vw_rdata),
+	.dbg(vw_dbg)
 );
 
 DSPPC604_memcdc #(.BEW(32)) vcdc (
@@ -408,8 +410,23 @@ always_ff @(posedge clk) begin
 	end
 	if (reset) cs_ev <= 1'b0;
 end
-wire         tr_ev  = scsi_tr_ev | pf_ev | sn_ev | cs_ev;
-wire [255:0] tr_rec = scsi_tr_ev ? scsi_tr_rec : pf_ev ? pf_rec : sn_ev ? sn_rec : cs_rec;
+// kind 15 (TRACE): the VRAM combiner's counts and state every 2^20 cycles
+// (syn/vramstat.py): bytes 4-7 the cycle count, 8-27 its dbg; it waits
+// behind the records above
+logic         vc_ev = 1'b0;
+logic [255:0] vc_rec;
+logic [31:0]  vc_cyc = '0;
+always_ff @(posedge clk) begin
+	vc_cyc <= vc_cyc + 32'd1;
+	if (vc_ev & ~scsi_tr_ev & ~pf_ev & ~sn_ev & ~cs_ev) vc_ev <= 1'b0;
+	if (TRACE != 0 && vc_cyc[19:0] == 20'd0) begin
+		vc_ev  <= 1'b1;
+		vc_rec <= {32'd0, vw_dbg, vc_cyc, 24'd0, 8'd15};
+	end
+	if (reset) begin vc_ev <= 1'b0; vc_cyc <= '0; end
+end
+wire         tr_ev  = scsi_tr_ev | pf_ev | sn_ev | cs_ev | vc_ev;
+wire [255:0] tr_rec = scsi_tr_ev ? scsi_tr_rec : pf_ev ? pf_rec : sn_ev ? sn_rec : cs_ev ? cs_rec : vc_rec;
 
 generate
 if (TRACE != 0) begin : g_trace

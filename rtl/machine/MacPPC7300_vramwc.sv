@@ -48,7 +48,11 @@ module MacPPC7300_vramwc
 	output logic [31:0]  b_be,
 	output logic [255:0] b_wdata,
 	input  logic         b_ack,
-	input  logic [255:0] b_rdata
+	input  logic [255:0] b_rdata,
+
+	// for the trace (kind 15): counts of stores taken, drains done, loads
+	// answered, cycles the port waited; then the state
+	output logic [159:0] dbg
 );
 
 localparam int NB = $clog2(N);
@@ -195,6 +199,18 @@ always_ff @(posedge clk) begin
 	end
 end
 assign b_wdata = d_data;
+
+logic [31:0] n_st, n_dr, n_ld, n_wait;
+always_ff @(posedge clk) begin
+	if (take & a_we) n_st <= n_st + 32'd1;
+	if (d_sent & b_ack) n_dr <= n_dr + 32'd1;
+	if (ld_now | r_done) n_ld <= n_ld + 32'd1;
+	if (a_req & ~a_ack & ~take) n_wait <= n_wait + 32'd1;
+	if (reset) begin n_st <= '0; n_dr <= '0; n_ld <= '0; n_wait <= '0; end
+end
+assign dbg = {n_st, n_dr, n_ld, n_wait,
+              8'(count), 8'(head), 8'(tail),
+              d_v, d_sent, r_wait, r_done, s_v, s_we, b_req, a_req};
 
 // what a load gets, from the read line: its word (bits 31-0), or the line
 wire [2:0] r_k = s_addr[4:2];
