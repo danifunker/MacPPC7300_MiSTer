@@ -60,7 +60,7 @@ module MacPPC7300_video
 	input  logic         c_we,
 	input  logic         c_line,
 	input  logic [21:2]  c_addr,          // VRAM byte address
-	input  logic [3:0]   c_be,
+	input  logic [31:0]  c_be,            // a word's four (be[3] the lowest address); a line write's mask (bit j: the line's byte in bits 8j+7..8j)
 	input  logic [255:0] c_wdata,
 	output logic         c_ack,
 	output logic [255:0] c_rdata,
@@ -106,20 +106,17 @@ module MacPPC7300_video
 	output logic         vblank
 );
 
-// ---- the video registers, taken over loosely: they stand still while used -------------------
-logic [191:0] prm;
-logic [21:0]  fbb;
-logic [14:0]  roww;
-logic [7:0]   dcr, dbl;
-logic [15:0]  cx;
-logic [191:0] cclut;
-logic [7:0]   ad2, an2, ap2;
-logic         hsp, vsp;
-always_ff @(posedge clk) begin
-	prm <= sw_params; fbb <= fb_base; roww <= row_words; dcr <= dac_cr; dbl <= dbl_buf_cr;
-	cx <= cursor_x; cclut <= cursor_clut; ad2 <= athens_d2; an2 <= athens_n2; ap2 <= athens_p2;
-	hsp <= hs_pos; vsp <= vs_pos;
-end
+// ---- the video registers: Control's own, which stand still while used --------------------
+// (they were copied here once, 450 registers; the CPU writes them between
+// frames and the paths from Control's registers are a level of logic)
+wire [191:0] prm  = sw_params;
+wire [21:0]  fbb  = fb_base;
+wire [14:0]  roww = row_words;
+wire [7:0]   dcr  = dac_cr, dbl = dbl_buf_cr;
+wire [15:0]  cx   = cursor_x;
+wire [191:0] cclut = cursor_clut;
+wire [7:0]   ad2  = athens_d2, an2 = athens_n2, ap2 = athens_p2;
+wire         hsp  = hs_pos, vsp = vs_pos;
 
 wire [11:0] PIPE = prm[12 * 7 +: 12];
 wire [11:0] HFP  = prm[12 * 9 +: 12];
@@ -159,7 +156,10 @@ MacPPC7300_swatch swatch (
 );
 
 // ---- the line fetch ----------------------------------------------------------------------------
-wire [11:0] width  = 12'((HFP - HAL) * {8'd0, clk_div});
+// clk_div is 2, 4, 8, 1 for the four DAC modes. A shift keeps the same
+// 12-bit wraparound without a DSP multiplier after the width subtraction.
+wire [1:0] width_shift = dcr[7:6] + 2'd1;
+wire [11:0] width  = 12'((HFP - HAL) << width_shift);
 wire        plus16 = (HAL != PIPE + 12'd1) || (pw >= 2'd2);
 // bytes from the cursor's data to the line's last pixel, in 64-bit words
 wire [14:0] lpix   = (pw == 2'd0) ? {3'd0, width} : (pw == 2'd1) ? {2'd0, width, 1'b0} : {1'd0, width, 2'b00};
@@ -190,8 +190,11 @@ logic        f_bank;
 logic [7:0]  f_burst;                  // the burst asked for
 logic [7:0]  f_due;                    // its words still to come
 logic        f_issue;
+logic        f_last;                   // the last DDR3 access was a scan-out burst
 wire         f_word = (ds == D_FWAIT) && ddr_dout_ready;
-wire  [7:0]  f_next = (f_left > 12'd128) ? 8'd128 : 8'(f_left);
+// bursts of 32 words: a CPU access waits for one of them at most (the
+// line buffers hold a whole line ahead, so the scan-out has time to spare)
+wire  [7:0]  f_next = (f_left > 12'd32) ? 8'd32 : 8'(f_left);
 
 always_ff @(posedge clk) begin
 	f_calc <= 1'b0;
@@ -229,7 +232,9 @@ always_ff @(posedge clk) begin
 	if (f_word && f_put == 12'd1 &&  f_bank) cur1[127:64] <= ddr_dout;
 end
 
-// ---- DDR3: the scan-out first, then the CPU ---------------------------------------------------------
+// ---- DDR3: the scan-out and the CPU in turn ---------------------------------------------------------
+// After a scan-out burst a waiting CPU access goes first; after a CPU
+// access the scan-out does, so neither can starve the other.
 logic [2:0]  c_beat;                   // CPU beats done
 logic [63:0] c_got0, c_got1, c_got2, c_got3;
 wire  [2:0]  c_n = c_line ? 3'd4 : 3'd1;
@@ -246,6 +251,13 @@ function automatic logic [63:0] line_beat(input logic [255:0] w, input logic [1:
 	w1 = w[223 - 64 * k -: 32];
 	line_beat = {w1[7:0], w1[15:8], w1[23:16], w1[31:24], w0[7:0], w0[15:8], w0[23:16], w0[31:24]};
 endfunction
+// a line write's beat k: its two words' mask bits in VRAM's lane order
+function automatic logic [7:0] beat_be(input logic [31:0] m, input logic [1:0] k);
+	logic [3:0] m0, m1;
+	m0 = m[31 - 8 * k -: 4];
+	m1 = m[27 - 8 * k -: 4];
+	beat_be = {m1[0], m1[1], m1[2], m1[3], m0[0], m0[1], m0[2], m0[3]};
+endfunction
 function automatic logic [31:0] lane_word(input logic [63:0] q, input logic hi);
 	lane_word = hi ? {q[39:32], q[47:40], q[55:48], q[63:56]} : {q[7:0], q[15:8], q[23:16], q[31:24]};
 endfunction
@@ -257,7 +269,8 @@ always_ff @(posedge clk) begin
 		D_IDLE: begin
 			ddr_rd <= 1'b0;
 			ddr_we <= 1'b0;
-			if (f_pend && !f_issue && !f_calc) begin
+			if (f_pend && !f_issue && !f_calc && !(c_req && !c_ack && f_last)) begin
+				f_last       <= 1'b1;
 				f_burst      <= f_next;
 				ddr_addr     <= DDR_BASE + {10'd0, f_addr[21:3]};
 				ddr_burstcnt <= f_next;
@@ -265,6 +278,7 @@ always_ff @(posedge clk) begin
 				ds           <= D_FREAD;
 			end
 			else if (c_req && !c_ack) begin
+				f_last       <= 1'b0;
 				// a line from its first word: the CPU's cache asks for a line
 				// with the address of the word it wants (bits 4-2 not 0)
 				ddr_addr     <= DDR_BASE + {10'd0, c_addr[21:5], c_line ? 2'b00 : c_addr[4:3]};
@@ -273,7 +287,7 @@ always_ff @(posedge clk) begin
 				if (c_we) begin
 					ddr_we  <= 1'b1;
 					ddr_din <= c_line ? line_beat(c_wdata, 2'd0) : c_word64;
-					ddr_be  <= c_line ? 8'hFF : c_be8;
+					ddr_be  <= c_line ? beat_be(c_be, 2'd0) : c_be8;
 					ds      <= D_CWRITE;
 				end
 				else begin
@@ -318,6 +332,7 @@ always_ff @(posedge clk) begin
 			else begin
 				c_beat  <= c_beat + 3'd1;
 				ddr_din <= line_beat(c_wdata, 2'(c_beat + 3'd1));
+				ddr_be  <= beat_be(c_be, 2'(c_beat + 3'd1));
 			end
 		end
 		default: ds <= D_IDLE;
@@ -326,6 +341,7 @@ always_ff @(posedge clk) begin
 		ds     <= D_IDLE;
 		ddr_rd <= 1'b0;
 		ddr_we <= 1'b0;
+		f_last <= 1'b0;
 	end
 end
 

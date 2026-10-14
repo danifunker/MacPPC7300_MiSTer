@@ -493,6 +493,11 @@ wire [31:0] rd_l    = (op == 8'h08) ? lba6 : lba10;
 wire [31:0] rd_n    = (op == 8'h08) ? cnt6 : (op == 8'hA8) ? cnt12 : cnt10;
 wire [31:0] rd_l4   = is_cd ? {rd_l[29:0], 2'b00} : rd_l;
 wire [31:0] rd_n4   = is_cd ? {rd_n[29:0], 2'b00} : rd_n;
+// a read's or write's blocks against the image, checked once for every command
+// (a 6-byte command's fields for group 0, the CD's blocks four of the slot's)
+wire [31:0] rg_first = (op[7:5] == 3'd0) ? lba6 : lba10;
+wire [31:0] rg_n     = (op[7:5] == 3'd0) ? cnt6 : (op == 8'hA8) ? cnt12 : cnt10;
+wire        rg_ok    = in_range(is_cd ? {rg_first[29:0], 2'b00} : rg_first, is_cd ? {rg_n[29:0], 2'b00} : rg_n, m_blocks[cur]);
 // the Toolbox: on ID 0 file sharing (slot 3), on ID 3 the CD changer (slot 5)
 wire        tb_fs   = cur == 2'd0 && m_tb && op >= 8'hD0 && op <= 8'hD5;
 wire        tb_cdc  = is_cd && m_cdc && (op == 8'hD7 || op == 8'hD8 || op == 8'hDA);
@@ -755,7 +760,7 @@ always_ff @(posedge clk) begin
 					8'h15: if (cdb[4] != 8'd0) data_out(alloc6, cdb[4] >= 8'd4);   // MODE SELECT: judged below
 					8'h25: respond(R_CAP, 10'd8);
 					8'h08, 8'h28, 8'hA8: begin
-						if (!in_range(rd_l4, rd_n4, m_blocks[2])) check(4'h5, 8'h21);
+						if (!rg_ok) check(4'h5, 8'h21);
 						else if (rd_n4 != 32'd0) begin
 							a_stop_ev <= 1'b1;                                  // a data read stops the audio
 							read_blocks(3'd4, rd_l4, rd_n4, 10'd512);
@@ -802,15 +807,14 @@ always_ff @(posedge clk) begin
 					8'h25: respond(R_CAP,   10'd8);
 					8'h3C: respond(R_BUF,   clamp(10'd4, {cdb[7], cdb[8]}));
 					8'h08, 8'h28: begin
-						if (!in_range(rd_l, rd_n, m_blocks[cur])) check(4'h5, 8'h21);
+						if (!rg_ok) check(4'h5, 8'h21);
 						else if (rd_n != 32'd0) read_blocks({1'b0, cur}, rd_l, rd_n, 10'd512);
 					end
 					8'h0A, 8'h2A: begin
 						lba         <= (op == 8'h0A) ? lba6 : lba10;
 						blocks_left <= (op == 8'h0A) ? cnt6 : cnt10;
 						if (m_ro[cur]) check(4'h7, 8'h27);
-						else if (!in_range((op == 8'h0A) ? lba6 : lba10, (op == 8'h0A) ? cnt6 : cnt10, m_blocks[cur]))
-							check(4'h5, 8'h21);
+						else if (!rg_ok) check(4'h5, 8'h21);
 						else if (((op == 8'h0A) ? cnt6 : cnt10) != 32'd0) begin
 							half   <= 1'b0;
 							bidx   <= 9'd0;

@@ -40,6 +40,7 @@
 typedef VMacPPC7300_system Top;
 #else
 #include "VDSPPC604.h"
+#include "VDSPPC604___024root.h"
 typedef VDSPPC604 Top;
 #endif
 
@@ -90,7 +91,9 @@ struct Options {
 	std::string prog;
 	bool lockstep = false;
 	bool trace = false;
+	bool profile = false;
 	int stall = 0;                 // percent chance of a wait state, per bus per cycle
+	int ack_hold = 0;              // extra clocks before the memory's ACK drops
 	long irq_every = 0;            // raise the external interrupt every N cycles
 	bool tb_run = false;           // time base and decrementer advance every cycle
 	int  snoop_every = 0;          // a read snoop of a random line every N cycles (0: none)
@@ -128,6 +131,7 @@ struct Options {
 	std::string disk[2];           // disk images for SCSI IDs 0 and 1 (hps_io slots 0 and 1)
 	unsigned disk_latency = 2000;  // memory clocks from a block request to hps_io's acknowledge
 	bool disk_log = false;         // print every block moved
+	bool disk_ignore_cd_probe = false; // negative control: reproduce the old unanswered slot-4 probe
 	std::string exc_log;           // every exception the CPU takes, and every rfi
 	std::vector<uint64_t> dump_at; // after these instruction counts, print the registers ...
 	std::vector<std::pair<uint32_t, uint32_t>> dump_mem;   // ... and these ranges of RAM (start, length)
@@ -267,6 +271,8 @@ struct SdHost {
 	unsigned buff_addr = 0, buff_dout = 0;
 	bool buff_wr = false;
 	uint64_t reads = 0, writes = 0;
+	uint64_t absent_cd_probes = 0;
+	bool cd_probe_noted = false;
 };
 
 struct Frame {
@@ -282,6 +288,7 @@ struct Frame {
 struct Mem {
 	bool pending = false;          // a request is in progress
 	int wait = 0;                  // cycles until it is answered
+	int hold = 0;
 	bool ack = false;              // presented to the core this cycle
 	uint32_t rdata[8] = {0};
 };
@@ -342,6 +349,7 @@ void usage() {
 		"                   is not changed)\n"
 		"  --disk-latency N memory clocks from a block request to its answer (default 2000)\n"
 		"  --disk-log       print every block moved\n"
+		"  --disk-ignore-cd-probe   diagnostic: leave the absent-CD capability probe unanswered\n"
 		"  --exc-log FILE   write every exception the CPU takes (E count vector pc-before srr0\n"
 		"                   srr1 dar dsisr) and every rfi (R count pc srr0 srr1); the counts by\n"
 		"                   vector go with the progress lines and the summary\n"
@@ -366,8 +374,10 @@ void usage() {
 		"                   the program stored to (the DMA engine's traffic beside the CPU's)\n"
 		"  --seed N         seed for the wait states\n"
 		"  --max-cycles N   give up after N clocks\n"
+		"  --ack-hold N     keep a memory acknowledgement high N extra clocks (core bench)\n"
 		"  --show N         mismatches printed before stopping (default 10)\n"
-		"  --trace          print every retired instruction\n");
+		"  --trace          print every retired instruction\n"
+		"  --profile        count pipeline events and exclusive cycle buckets\n");
 }
 
 #ifdef MACPPC7300_MACHINE
@@ -377,6 +387,7 @@ struct DevAccess {
 	uint32_t addr;                 // byte address of the word, or of the line
 	uint32_t be, wdata, rdata;     // a word access
 	uint32_t lw[8], lr[8];         // a line, the lowest address first
+	bool instruction = false;     // the arbiter's owner at acceptance
 };
 
 // The device accesses not yet consumed by the reference, in order.
@@ -389,7 +400,7 @@ struct DevQueue {
 	FILE* log = nullptr;
 	uint64_t icount = 0;           // instructions before the one being stepped
 	uint32_t pc = 0;
-	uint64_t reads = 0, writes = 0, lines = 0, line_writes = 0, hits = 0;
+	uint64_t reads = 0, writes = 0, lines = 0, line_writes = 0, hits = 0, instruction_reads = 0;
 
 	// a line written back to a device is the cache's business, not the
 	// instruction's; it is not matched with the reference's stores
@@ -642,7 +653,9 @@ int main(int argc, char** argv) {
 		if (a == "--prog") opt.prog = next();
 		else if (a == "--lockstep") opt.lockstep = true;
 		else if (a == "--trace") opt.trace = true;
+		else if (a == "--profile") opt.profile = true;
 		else if (a == "--stall") opt.stall = std::atoi(next().c_str());
+		else if (a == "--ack-hold") opt.ack_hold = std::max(0, std::atoi(next().c_str()));
 		else if (a == "--snoop-every") opt.snoop_every = std::atoi(next().c_str());
 		else if (a == "--seed") opt.seed = (unsigned)std::strtoul(next().c_str(), nullptr, 0);
 		else if (a == "--max-cycles") opt.max_cycles = std::strtoull(next().c_str(), nullptr, 0);
@@ -692,6 +705,7 @@ int main(int argc, char** argv) {
 		else if (a == "--disk1") opt.disk[1] = next();
 		else if (a == "--disk-latency") opt.disk_latency = (unsigned)std::atoi(next().c_str());
 		else if (a == "--disk-log") opt.disk_log = true;
+		else if (a == "--disk-ignore-cd-probe") opt.disk_ignore_cd_probe = true;
 		else if (a == "--exc-log") opt.exc_log = next();
 		else if (a == "--dump-at") opt.dump_at.push_back(std::strtoull(next().c_str(), nullptr, 0));
 		else if (a == "--dump-bin") opt.dump_bin = next();
@@ -861,6 +875,34 @@ int main(int argc, char** argv) {
 	int beats_n = 0;
 	uint64_t fpr[32] = {0};
 	uint64_t cycles = 0, retired = 0;
+	uint64_t perf_cycles = 0, perf_events[20] = {}, perf_buckets[7] = {};
+	bool profile_running = false;
+	auto profile_cycle = [&]() {
+		if (!opt.profile || !profile_running) return;
+#ifdef MACPPC7300_MACHINE
+		if (dut->cpu_in_reset) return;
+		uint32_t e = dut->rootp->MacPPC7300_system__DOT__cpu__DOT__perf_events;
+#else
+		uint32_t e = dut->rootp->DSPPC604__DOT__perf_events;
+#endif
+		perf_cycles++;
+		for (int i = 0; i < 20; i++) perf_events[i] += (e >> i) & 1;
+		// Attribute each sampled cycle once. Events above retain overlapping waits.
+		unsigned bucket = (e & 1) ? 0 : (e & (1u << 3)) ? 1 : (e & (1u << 2)) ? 2 :
+		                  (e & (1u << 4)) ? 3 : (e & (1u << 5)) ? 4 : (e & (1u << 7)) ? 5 : 6;
+		perf_buckets[bucket]++;
+	};
+	auto profile_report = [&]() {
+		if (!opt.profile) return;
+		const char* events[] = {"retired", "issued_uops", "load_use_wait", "memory_wait", "integer_unit_wait",
+		    "fpu_wait", "execute_backpressure", "decode_empty", "branch_mispredict", "icache_memory_wait",
+		    "dcache_memory_wait", "fetch_grant", "redirect", "fetch_drain", "fetch_queue_full", "executed_uops", "walk_cancel",
+		    "overlap_execute", "overlap_retire", "overlap_parallel"};
+		const char* buckets[] = {"retiring", "memory_wait", "load_use_wait", "integer_unit_wait", "fpu_wait", "decode_empty", "other"};
+		std::printf("profile: %llu sampled cycles; events overlap\n", (unsigned long long)perf_cycles);
+		for (int i = 0; i < 20; i++) std::printf("  event %-24s %llu\n", events[i], (unsigned long long)perf_events[i]);
+		for (int i = 0; i < 7; i++) std::printf("  bucket %-23s %llu\n", buckets[i], (unsigned long long)perf_buckets[i]);
+	};
 	long checked = 0, failed = 0;
 	bool done = false, diverged = false;
 	int cacheop_dsi_notes = 0;      // DSIs at cache instructions handed to the reference (both benches)
@@ -954,8 +996,17 @@ int main(int argc, char** argv) {
 		switch (sd.st) {
 			case 0: {
 				unsigned rd = dut->sd_rd, wr = dut->sd_wr;
-				if ((rd | wr) & 3) {
-					sd.slot = ((rd | wr) & 1) ? 0 : 1;
+				// The target probes Main's CD capability window even without
+				// a CD image. Complete it with zeros: this bench models no CD
+				// drive. Ignoring slot 4 blocks the channel shared by the disks.
+				bool cd_probe = (rd & 0x10u) && !(wr & 0x10u) && dut->sd_lba == 0x7E120000u;
+				if (cd_probe && !sd.cd_probe_noted) {
+					std::printf("disk host: CD probe slot 4 block %08X, sd_rd %02X sd_wr %02X (%s)\n",
+						(uint32_t)dut->sd_lba, rd, wr, opt.disk_ignore_cd_probe ? "left unanswered" : "answering no CD drive");
+					sd.cd_probe_noted = true;
+				}
+				if (((rd | wr) & 3) || (cd_probe && !opt.disk_ignore_cd_probe)) {
+					sd.slot = ((rd | wr) & 1) ? 0 : ((rd | wr) & 2) ? 1 : 4;
 					sd.we = (wr >> sd.slot) & 1;
 					sd.lba = dut->sd_lba;
 					sd.wait = opt.disk_latency;
@@ -967,7 +1018,10 @@ int main(int argc, char** argv) {
 				if (sd.wait > 0) { sd.wait--; break; }
 				sd.ack = 1u << sd.slot;
 				sd.k = 0; sd.sub = 0;
-				if (!sd.we) sd.disk[sd.slot].read(sd.lba, sd.buf);
+				if (!sd.we) {
+					if (sd.slot < 2) sd.disk[sd.slot].read(sd.lba, sd.buf);
+					else std::memset(sd.buf, 0, sizeof(sd.buf));
+				}
 				sd.buff_addr = 0;
 				sd.st = 2;
 				break;
@@ -984,8 +1038,9 @@ int main(int argc, char** argv) {
 				}
 				break;
 			default:
-				if (sd.we) { sd.disk[sd.slot].write(sd.lba, sd.buf); sd.writes++; } else sd.reads++;
-				if (opt.disk_log)
+				if (sd.slot == 4) sd.absent_cd_probes++;
+				else if (sd.we) { sd.disk[sd.slot].write(sd.lba, sd.buf); sd.writes++; } else sd.reads++;
+				if (opt.disk_log && sd.slot < 2)
 					std::printf("disk %d: %s block %u after %llu instructions\n", sd.slot, sd.we ? "wrote" : "read", sd.lba,
 						(unsigned long long)retired);
 				sd.ack = 0;
@@ -1065,11 +1120,14 @@ int main(int argc, char** argv) {
 				ddr_note("%llu: write %06X be %02X %016llX", (unsigned long long)sd.clocks,
 					((ddr.wr_left ? ddr.wr_addr : addr) - Ddr::BASE) * 8, (unsigned)dut->ddr_be, (unsigned long long)dut->ddr_din);
 			if (ddr.wr_left == 0) { ddr.wr_addr = addr; ddr.wr_left = cnt ? cnt : 1; }
-			uint64_t& w = ddr.m[(ddr.wr_addr - Ddr::BASE) % Ddr::WORDS];
-			uint64_t din = dut->ddr_din;
-			unsigned be = dut->ddr_be;
-			for (int k = 0; k < 8; k++)
-				if (be & (1u << k)) w = (w & ~(0xFFull << (8 * k))) | (din & (0xFFull << (8 * k)));
+			// (a write outside the VRAM, the trace's ring, is not folded into it)
+			if (ddr.wr_addr - Ddr::BASE < Ddr::WORDS) {
+				uint64_t& w = ddr.m[ddr.wr_addr - Ddr::BASE];
+				uint64_t din = dut->ddr_din;
+				unsigned be = dut->ddr_be;
+				for (int k = 0; k < 8; k++)
+					if (be & (1u << k)) w = (w & ~(0xFFull << (8 * k))) | (din & (0xFFull << (8 * k)));
+			}
 			ddr.wr_addr++;
 			ddr.wr_left--;
 		}
@@ -1138,11 +1196,51 @@ int main(int argc, char** argv) {
 
 	// one cycle of the CPU's clock, with the memory's edges in between
 	auto tick = [&]() {
+		// Sample accepted transfers before the rising edge: the CPU can
+		// select its next request, and DMA can advance its buffer, at it.
+		bool cpu_access = false, dma_write = false, dma_line = false;
+		DevAccess accepted_cpu{};
+		uint32_t dma_addr = 0, dma_be = 0, dma_data[8] = {};
 		for (;;) {
 			bool a_edge = ta <= tb;
 			if (a_edge) ta += pa; else tb += pb;
 			drive();
 			if (a_edge) {
+				if (!dut->clk) {
+					dut->eval(); profile_cycle();
+					if (opt.trace_count && retired >= opt.trace_from && retired < opt.trace_from + opt.trace_count && dut->trace_dreq)
+						std::printf("data take after %llu instructions: %s physical %08X kind %u be %X\n",
+						    (unsigned long long)retired, dut->trace_dwe ? "write" : "read",
+						    (uint32_t)dut->trace_daddr << 2, (unsigned)dut->trace_dkind, (unsigned)dut->trace_dbe);
+					uint32_t addr = (uint32_t)dut->cpu_addr << 2;
+					if (opt.trace_count && retired >= opt.trace_from && retired < opt.trace_from + opt.trace_count &&
+					    (dut->cpu_req || dut->cpu_ack))
+						std::printf("bus after %llu instructions: req %u ack %u %s %s %08X data %08X busy %u dcstate %u ci %u hit %u\n",
+						    (unsigned long long)retired, (unsigned)dut->cpu_req, (unsigned)dut->cpu_ack,
+						    dut->cpu_we ? "write" : "read", dut->cpu_line ? "line" : "word", addr,
+						    (uint32_t)dut->cpu_rdata[0], (unsigned)dut->rootp->MacPPC7300_system__DOT__cpu__DOT__mem_busy,
+						    (unsigned)dut->rootp->MacPPC7300_system__DOT__cpu__DOT__dcache__DOT__state,
+						    (unsigned)dut->rootp->MacPPC7300_system__DOT__cpu__DOT__dcache__DOT__r_ci,
+						    (unsigned)dut->rootp->MacPPC7300_system__DOT__cpu__DOT__dcache__DOT__hit);
+					bool rom_read = addr >= ROM_BASE && !dut->cpu_we;
+					cpu_access = dut->cpu_ack && dut->cpu_req && addr >= RAM_SIZE && !rom_read;
+					if (cpu_access) {
+						accepted_cpu = {(bool)dut->cpu_we, (bool)dut->cpu_line, addr,
+						    dut->cpu_be, dut->cpu_wdata[0], dut->cpu_rdata[0], {}, {}};
+						for (int k = 0; k < 8; k++) {
+							accepted_cpu.lw[k] = dut->cpu_wdata[7 - k];
+							accepted_cpu.lr[k] = dut->cpu_rdata[7 - k];
+						}
+						accepted_cpu.instruction = dut->rootp->MacPPC7300_system__DOT__cpu__DOT__mem_owner_i;
+					}
+					dma_write = opt.lockstep && dut->dma_wr;
+					if (dma_write) {
+						dma_line = dut->dma_wr_line;
+						dma_addr = (uint32_t)dut->dma_wr_addr << 2;
+						dma_be = dut->dma_wr_be;
+						for (int k = 0; k < 8; k++) dma_data[k] = dut->dma_wr_data[k];
+					}
+				}
 				dut->clk = !dut->clk;
 				dut->eval();
 				if (dut->clk) break;
@@ -1164,36 +1262,40 @@ int main(int argc, char** argv) {
 		}
 #ifdef WITH_REF
 		// a DMA write to RAM goes into the reference's RAM too (it has no DMA)
-		if (opt.lockstep && dut->dma_wr) {
+		if (dma_write) {
 			uint8_t* rr = ref_ram();
-			uint32_t addr = (uint32_t)dut->dma_wr_addr << 2;
-			if (dut->dma_wr_line) {
+			uint32_t addr = dma_addr;
+			if (dma_line) {
 				uint32_t base = addr & ~31u;
 				for (int k = 0; k < 8; k++) {
-					uint32_t w = dut->dma_wr_data[7 - k];
+					uint32_t w = dma_data[7 - k];
 					for (int i = 0; i < 4; i++)
 						if (base + 4 * k + i < RAM_SIZE) rr[base + 4 * k + i] = (uint8_t)(w >> (24 - 8 * i));
 				}
 			} else {
-				uint32_t w = dut->dma_wr_data[0], be = dut->dma_wr_be;
+				uint32_t w = dma_data[0], be = dma_be;
 				for (int i = 0; i < 4; i++)
 					if ((be & (8u >> i)) && addr + i < RAM_SIZE) rr[addr + i] = (uint8_t)(w >> (24 - 8 * i));
 			}
 		}
 #endif
 		// a device access answered by the machine: everything but RAM and ROM reads
-		if (dut->cpu_ack && dut->cpu_req) {
-			uint32_t addr = (uint32_t)dut->cpu_addr << 2;
-			bool rom_read = addr >= ROM_BASE && !dut->cpu_we;
-			if (addr >= RAM_SIZE && !rom_read) {
-				DevAccess a{(bool)dut->cpu_we, (bool)dut->cpu_line, addr, dut->cpu_be, dut->cpu_wdata[0], dut->cpu_rdata[0], {}, {}};
-				for (int k = 0; k < 8; k++) { a.lw[k] = dut->cpu_wdata[7 - k]; a.lr[k] = dut->cpu_rdata[7 - k]; }
+		if (cpu_access) {
+			uint32_t addr = accepted_cpu.addr;
+			{
+				DevAccess a = accepted_cpu;
 				if (a.line) {
 					a.addr &= ~31u;
 					if (line_notes++ < 10) std::printf("note: a line %s at %08X outside RAM and ROM, after %llu instructions%s\n",
 						a.we ? "write" : "read", a.addr, (unsigned long long)retired, line_notes == 10 ? " (no more notes)" : "");
 				}
-				if (opt.lockstep) devq.q.push_back(a);
+				if (opt.lockstep) {
+					// The interpreter fetches instructions from RAM/ROM and
+					// calls dev_read only for data. A discarded I-cache fetch
+					// must not block a later architectural device access.
+					if (a.instruction) devq.instruction_reads++;
+					else devq.q.push_back(a);
+				}
 				else if (devq.log && retired >= opt.dev_log_from) {
 					// (the pc is the last instruction retired, not the access's own)
 					if (a.we) std::fprintf(devq.log, "A %llu %08X W 4 %08X %08X be %X\n", (unsigned long long)retired, (uint32_t)dut->trace_pc, addr, a.wdata, a.be);
@@ -1255,6 +1357,7 @@ int main(int argc, char** argv) {
 	// the snoop port: driven by the DMA engine below while the program runs,
 	// and at the end to collect the dirty lines
 	bool snoop_req = false, snoop_we = false;
+	bool storm_on = true;          // the snoop storm runs until the end-of-run write-back
 	uint32_t snoop_addr = 0;
 	// A DMA engine, for the cache test: a store to 00FFFFF4 starts a write of
 	// 64 bytes at 00FFF000 (pattern from the value stored), a store to
@@ -1277,6 +1380,7 @@ int main(int argc, char** argv) {
 	// Word k of a line, the lowest address first, is in bits 255-32k downward:
 	// Verilator's chunk 7-k.
 	auto step_mem = [&](bool req, bool we, bool line, uint32_t addr, uint32_t be, const uint32_t* wdata) {
+		if (mm.ack && mm.hold > 0) { mm.hold--; return; }
 		bool answered = mm.ack;             // the request seen in this cycle is the one just answered
 		if (answered) mm.pending = false;
 		mm.ack = false;
@@ -1288,6 +1392,7 @@ int main(int argc, char** argv) {
 		if (mm.pending) {
 			if (--mm.wait == 0) {
 				mm.ack = true;
+				mm.hold = opt.ack_hold;
 				if (line) {
 					uint32_t base = addr & ~31u;
 					for (int k = 0; k < 8; k++) {
@@ -1307,6 +1412,7 @@ int main(int argc, char** argv) {
 	auto tick = [&]() {
 		drive();
 		dut->clk = 0; dut->eval();
+		profile_cycle();
 		snoop_acked = dut->snoop_ack;
 		bool req = dut->mem_req, we = dut->mem_we, line = dut->mem_line;
 		uint32_t addr = (uint32_t)dut->mem_addr << 2, be = dut->mem_be;
@@ -1315,9 +1421,10 @@ int main(int argc, char** argv) {
 		// data accesses as they reach the cache
 		bool dreq = dut->trace_dreq, dwe = dut->trace_dwe;
 		uint32_t dkind = dut->trace_dkind, daddr = (uint32_t)dut->trace_daddr << 2;
+		uint32_t dvalue = dut->trace_dwdata;
 		if (opt.trace && dreq)
 			std::printf("%10llu        data %s kind %u at %08X be %X %08X\n", (unsigned long long)cycles,
-				dwe ? "write" : "read ", dkind, daddr, (unsigned)dut->trace_dbe, (uint32_t)dut->trace_dwdata);
+				dwe ? "write" : "read ", dkind, daddr, (unsigned)dut->trace_dbe, dvalue);
 		if (opt.trace && req && !mm.pending)
 			std::printf("%10llu        memory %s %s at %08X\n", (unsigned long long)cycles,
 				we ? "write" : "read ", line ? "line" : "word", addr);
@@ -1329,7 +1436,7 @@ int main(int argc, char** argv) {
 		// the cache test starts a DMA transfer by storing to these
 		if (dreq && dwe && dkind == 0 && (daddr == 0x00FFFFF4 || daddr == 0x00FFFFF8) && dma_step == 0) {
 			dma_write = daddr == 0x00FFFFF4;
-			dma_value = dut->trace_dwdata;
+			dma_value = dvalue;
 			dma_sum   = 0;
 			dma_step  = 1;
 		}
@@ -1359,7 +1466,7 @@ int main(int argc, char** argv) {
 			}
 		}
 		// the snoop storm: read snoops change no program state, so any program runs under them
-		else if (opt.snoop_every > 0) {
+		else if (opt.snoop_every > 0 && storm_on) {
 			if (snoop_req) {
 				if (snoop_acked) snoop_req = false;
 			}
@@ -1385,6 +1492,7 @@ int main(int argc, char** argv) {
 	mm = Mem();
 #endif
 
+	profile_running = true;
 	while (!done && cycles < opt.max_cycles) {
 		tick();
 
@@ -1440,8 +1548,17 @@ int main(int argc, char** argv) {
 				else if (idx >= 64) fpr[idx - 64] = dut->trace_reg_val;
 				if (beats_n < 8) beats[beats_n++] = {idx, (uint64_t)dut->trace_reg_val};
 			}
+			if (dut->trace_reg2_we) {                   // a load with update's rA, in the same retirement
+				unsigned idx = dut->trace_reg2_idx;
+				if (idx < 32) gpr[idx] = (uint32_t)dut->trace_reg2_val;
+				if (beats_n < 8) beats[beats_n++] = {idx, (uint64_t)dut->trace_reg2_val};
+			}
 			if (dut->trace_last) {
-				uint32_t pc = dut->trace_pc, insn = dut->trace_insn;
+				// a folded unconditional b retires right after the instruction before it
+				for (int fk = 0; fk < (dut->trace_fold ? 2 : 1); fk++) {
+				uint32_t pc = fk ? (uint32_t)dut->trace_pc + 4 : (uint32_t)dut->trace_pc;
+				uint32_t insn = fk ? (uint32_t)dut->trace_fold_insn : (uint32_t)dut->trace_insn;
+				if (fk) beats_n = 0;
 				retired++;
 #ifdef MACPPC7300_MACHINE
 				last_retire_cycle = cycles;
@@ -1757,6 +1874,16 @@ int main(int argc, char** argv) {
 					if (!devq.error.empty()) {
 						std::printf("DEVICE ACCESSES DIFFER after %llu instructions at %08X insn=%08X: %s\n",
 							(unsigned long long)retired, pc, insn, devq.error.c_str());
+						unsigned rd = (insn >> 21) & 31, ra = (insn >> 16) & 31;
+						std::printf("  operand r%u=%08X; core r%u=%08X, reference r%u=%08X\n",
+						    ra, before.gpr[ra], rd, gpr[rd], rd, s.gpr[rd]);
+						std::printf("  queued device accesses: %zu; remembered lines: %zu\n", devq.q.size(), devq.cached.size());
+						for (size_t k = 0; k < devq.q.size() && k < 8; k++) {
+							const DevAccess& a = devq.q[k];
+							std::printf("  queue[%zu]: %s %s %08X be %X data %08X owner %s\n", k,
+							    a.we ? "write" : "read", a.line ? "line" : "word", a.addr, a.be,
+							    a.line ? a.lr[0] : a.rdata, a.instruction ? "I" : "D");
+						}
 						diverged = true;
 						break;
 					}
@@ -1816,10 +1943,13 @@ int main(int argc, char** argv) {
 #endif
 				beats_n = 0;
 				if (pc == end_pc) done = true;
+				}
+				if (diverged) break;
 			}
 		}
 	}
 
+	profile_running = false;
 	bool mem_ok = true;
 #ifdef MACPPC7300_MACHINE
 	dut->final();
@@ -1836,6 +1966,7 @@ int main(int argc, char** argv) {
 	if (term.chars || !term.script.empty())
 		std::printf("serial: %llu characters received, %zu of %zu lines typed\n", (unsigned long long)term.chars,
 			term.next_line, term.script.size());
+	profile_report();
 	std::printf("%llu instructions in %llu cycles after Cuda released the CPU (%.2f cycles per instruction)\n",
 		(unsigned long long)retired, (unsigned long long)(cycles - release_cycle),
 		retired ? (double)(cycles - release_cycle) / retired : 0.0);
@@ -1846,14 +1977,29 @@ int main(int argc, char** argv) {
 			"outside RAM and ROM, %llu reads answered from a cached device line\n",
 			(unsigned long long)devq.reads, (unsigned long long)devq.writes, (unsigned long long)devq.lines,
 			(unsigned long long)devq.line_writes, (unsigned long long)devq.hits);
+	if (opt.lockstep && devq.instruction_reads)
+		std::printf("instruction fetches outside RAM and ROM: %llu (separate from data comparison)\n",
+			(unsigned long long)devq.instruction_reads);
 	if (vlog) std::fclose(vlog);
 	if (xlog) { exc_summary("exceptions taken, by vector:"); std::fclose(xlog); }
 	if (sd.reads || sd.writes)
 		std::printf("disks: %llu blocks read, %llu written\n", (unsigned long long)sd.reads, (unsigned long long)sd.writes);
+	if (sd.absent_cd_probes)
+		std::printf("disk host: %llu absent-CD probes completed (no CD mounted)\n", (unsigned long long)sd.absent_cd_probes);
 	if (opt.vram_check)
 		std::printf("vram-check: %llu line reads, %llu line writes, %llu word reads, %llu word writes of the VRAM window; "
 			"%llu bytes read back differently from what was written\n", (unsigned long long)v_lr, (unsigned long long)v_lw,
 			(unsigned long long)v_wr, (unsigned long long)v_ww, (unsigned long long)v_bad);
+	if (opt.vram_check) {
+		// ... and what the DDR3 holds against what the CPU wrote, byte by byte
+		unsigned long long nd = 0;
+		for (uint32_t a = 0; a <= VRAM_MASK; a++) {
+			if (!vknown[a]) continue;
+			uint8_t m = (uint8_t)(ddr.m[(a >> 3) % Ddr::WORDS] >> (8 * (a & 7)));
+			if (m != vshadow[a] && nd++ < 12) std::printf("vram byte %06X: the DDR3 holds %02X, the CPU wrote %02X\n", a, m, vshadow[a]);
+		}
+		std::printf("vram-check: %llu bytes of the DDR3 differ from what the CPU wrote\n", nd);
+	}
 	if (stuck) std::printf("STUCK: nothing retired for %llu cycles\n", (unsigned long long)opt.stuck);
 	if (opt.lockstep) std::printf("lockstep with the reference: %s\n", diverged ? "DIVERGED" : "identical");
 	bool ok = !diverged && !stuck && (done || cycles >= opt.max_cycles);
@@ -1875,6 +2021,13 @@ int main(int argc, char** argv) {
 #else
 	// let the last access finish, then have the cache write back every line
 	// it may hold dirty, through the snoop port as a DMA engine would
+	// (the storm stops first, and its snoop in flight finishes: its
+	// acknowledgement must not be taken for the first write-back's)
+	storm_on = false;
+	for (int n = 0; snoop_req && n < 1000; n++) {
+		tick();
+		if (snoop_acked) { snoop_req = false; tick(); }
+	}
 	for (int i = 0; i < 16; i++) tick();
 	for (uint32_t a : touched) {
 		snoop_req = true; snoop_we = false; snoop_addr = a;
@@ -1905,6 +2058,7 @@ int main(int argc, char** argv) {
 	}
 #endif
 
+	profile_report();
 	std::printf("%llu instructions in %llu cycles (%.2f cycles per instruction)\n",
 		(unsigned long long)retired, (unsigned long long)cycles, retired ? (double)cycles / retired : 0.0);
 	print_perf(dut.get());

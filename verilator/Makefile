@@ -3,6 +3,7 @@
 #   make            build $(BUILD)/vector_tb   single-instruction golden vectors
 #   make core       build $(BUILD)/core/core_tb   programs on the pipeline
 #   make cdc        build $(BUILD)/cdc/cdc_tb   the memory port across two clocks
+#   make vramwc     build $(BUILD)/vramwc/vramwc_tb   the VRAM's write combiner against a model
 #   make machine    build $(BUILD)/machine/machine_tb   the whole machine (MacPPC7300_system) running a ROM
 #   make gui        build $(BUILD)/gui/macppc7300_gui   the whole machine in a window (ImGui, SDL2, OpenGL)
 #   make sdram      build $(BUILD)/sdram/sdram_tb   the SDRAM controller against a model of the board
@@ -149,6 +150,16 @@ $(BUILD)/escc/escc_tb: $(MACH)/MacPPC7300_escc.sv $(HERE)escc_main.cpp $(HERE)Ma
 		$(MACH)/MacPPC7300_escc.sv $(HERE)escc_main.cpp \
 		> $(BUILD)/escc/build.log 2>&1 || (cat $(BUILD)/escc/build.log; false)
 	@grep -E '^%Warning' $(BUILD)/escc/build.log || true
+
+vramwc: $(BUILD)/vramwc/vramwc_tb
+
+$(BUILD)/vramwc/vramwc_tb: $(MACH)/MacPPC7300_vramwc.sv $(HERE)vramwc_main.cpp $(HERE)Makefile
+	@mkdir -p $(BUILD)/vramwc
+	@$(VERILATOR) $(VFLAGS) --top-module MacPPC7300_vramwc -Mdir $(BUILD)/vramwc -o vramwc_tb \
+		-CFLAGS "-O2 -std=c++17" \
+		$(MACH)/MacPPC7300_vramwc.sv $(HERE)vramwc_main.cpp \
+		> $(BUILD)/vramwc/build.log 2>&1 || (cat $(BUILD)/vramwc/build.log; false)
+	@grep -E '^%Warning' $(BUILD)/vramwc/build.log || true
 
 cdc: $(BUILD)/cdc/cdc_tb
 

@@ -299,18 +299,22 @@ logic         e2_req, e2_we, e2_line, e3_req, e3_we, e3_line, f1_req, f1_we, f1_
 logic [31:2]  a_addr, s8_addr, s9_addr, e2_addr, e3_addr, f1_addr;
 logic [3:0]   a_be, s8_be, s9_be, e2_be, e3_be, f1_be;
 logic [255:0] a_wdata, s8_wdata, s9_wdata, e2_wdata, e3_wdata, f1_wdata;
+logic         a_half, s8_half, s9_half, e2_half, e3_half, f1_half;
+logic         dm_half;
 logic         g_busy;
 logic [2:0]   g_own;                           // 0 MESH (A), 1 sound out (8), 2 sound in (9), 3 Ethernet out (2), 4 in (3), 5 floppy (1)
 always_comb begin
 	case (g_own)
-		3'd1:    begin dm_req = g_busy & s8_req; dm_we = s8_we; dm_line = s8_line; dm_addr = s8_addr; dm_be = s8_be; dm_wdata = s8_wdata; end
-		3'd2:    begin dm_req = g_busy & s9_req; dm_we = s9_we; dm_line = s9_line; dm_addr = s9_addr; dm_be = s9_be; dm_wdata = s9_wdata; end
-		3'd3:    begin dm_req = g_busy & e2_req; dm_we = e2_we; dm_line = e2_line; dm_addr = e2_addr; dm_be = e2_be; dm_wdata = e2_wdata; end
-		3'd4:    begin dm_req = g_busy & e3_req; dm_we = e3_we; dm_line = e3_line; dm_addr = e3_addr; dm_be = e3_be; dm_wdata = e3_wdata; end
-		3'd5:    begin dm_req = g_busy & f1_req; dm_we = f1_we; dm_line = f1_line; dm_addr = f1_addr; dm_be = f1_be; dm_wdata = f1_wdata; end
-		default: begin dm_req = g_busy & a_req;  dm_we = a_we;  dm_line = a_line;  dm_addr = a_addr;  dm_be = a_be;  dm_wdata = a_wdata;  end
+		3'd1:    begin dm_req = g_busy & s8_req; dm_we = s8_we; dm_line = s8_line; dm_addr = s8_addr; dm_be = s8_be; dm_wdata = s8_wdata; dm_half = s8_half; end
+		3'd2:    begin dm_req = g_busy & s9_req; dm_we = s9_we; dm_line = s9_line; dm_addr = s9_addr; dm_be = s9_be; dm_wdata = s9_wdata; dm_half = s9_half; end
+		3'd3:    begin dm_req = g_busy & e2_req; dm_we = e2_we; dm_line = e2_line; dm_addr = e2_addr; dm_be = e2_be; dm_wdata = e2_wdata; dm_half = e2_half; end
+		3'd4:    begin dm_req = g_busy & e3_req; dm_we = e3_we; dm_line = e3_line; dm_addr = e3_addr; dm_be = e3_be; dm_wdata = e3_wdata; dm_half = e3_half; end
+		3'd5:    begin dm_req = g_busy & f1_req; dm_we = f1_we; dm_line = f1_line; dm_addr = f1_addr; dm_be = f1_be; dm_wdata = f1_wdata; dm_half = f1_half; end
+		default: begin dm_req = g_busy & a_req;  dm_we = a_we;  dm_line = a_line;  dm_addr = a_addr;  dm_be = a_be;  dm_wdata = a_wdata;  dm_half = a_half;  end
 	endcase
 end
+// a command descriptor is 16 of the line's 32 bytes: the half chosen here, once
+wire [127:0] dm_rdesc = dm_half ? dm_rdata[127:0] : dm_rdata[255:128];
 wire a_ack  = dm_ack & g_busy & (g_own == 3'd0);
 wire s8_ack = dm_ack & g_busy & (g_own == 3'd1);
 wire s9_ack = dm_ack & g_busy & (g_own == 3'd2);
@@ -351,7 +355,7 @@ MacPPC7300_dbdma dma_a (
 	.clk, .reset,
 	.sel(dma_a_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_a_rle),
 	.dm_req(a_req), .dm_we(a_we), .dm_line(a_line), .dm_addr(a_addr), .dm_be(a_be), .dm_wdata(a_wdata),
-	.dm_ack(a_ack), .dm_rdata,
+	.dm_ack(a_ack), .dm_rdata, .dm_half(a_half), .dm_rdesc,
 	.di_valid(mi_valid), .di_data(mi_data), .di_take(mi_take), .di_flush(mi_flush), .di_last(1'b0), .dev_st(8'h00),
 	.do_ready(mo_ready), .do_data(mo_data), .do_put(mo_put), .dq_ack(1'b0), .dq_rd(8'h00),
 	/* verilator lint_off PINCONNECTEMPTY */
@@ -384,7 +388,7 @@ MacPPC7300_dbdma #(.LINE(1'b0)) dma_8 (
 	.clk, .reset,
 	.sel(dma_8_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_8_rle),
 	.dm_req(s8_req), .dm_we(s8_we), .dm_line(s8_line), .dm_addr(s8_addr), .dm_be(s8_be), .dm_wdata(s8_wdata),
-	.dm_ack(s8_ack), .dm_rdata,
+	.dm_ack(s8_ack), .dm_rdata, .dm_half(s8_half), .dm_rdesc,
 	.di_valid(1'b0), .di_data(8'h00), .di_flush(1'b0), .di_last(1'b0), .dev_st(8'h00),
 	.do_ready(s8_ready), .do_data(s8_data), .do_put(s8_put), .dq_ack(1'b0), .dq_rd(8'h00),
 	/* verilator lint_off PINCONNECTEMPTY */
@@ -409,7 +413,7 @@ if (SOUND_IN_DMA != 0) begin : g_dma_9
 		.clk, .reset,
 		.sel(dma_9_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_9_rle),
 		.dm_req(s9_req), .dm_we(s9_we), .dm_line(s9_line), .dm_addr(s9_addr), .dm_be(s9_be), .dm_wdata(s9_wdata),
-		.dm_ack(s9_ack), .dm_rdata,
+		.dm_ack(s9_ack), .dm_rdata, .dm_half(s9_half), .dm_rdesc,
 		.di_valid(s9_valid), .di_data(s9_data), .di_take(s9_take), .di_flush(1'b0), .di_last(1'b0), .dev_st(8'h00),
 		.do_ready(1'b0), .dq_ack(1'b0), .dq_rd(8'h00),
 		/* verilator lint_off PINCONNECTEMPTY */
@@ -448,14 +452,14 @@ else begin : g_dma_9_stub
 		if (reset) begin st9 <= 16'h0; ptr9 <= 32'h0; isel9 <= 32'h0; bsel9 <= 32'h0; wsel9 <= 32'h0; end
 	end
 	assign s9_req = 1'b0;   assign s9_we = 1'b0;      assign s9_line = 1'b0;   assign s9_addr = '0;
-	assign s9_be = 4'h0;    assign s9_wdata = '0;     assign s9_take = 1'b0;   assign s9_active = 1'b0;
+	assign s9_be = 4'h0;    assign s9_wdata = '0;     assign s9_take = 1'b0;   assign s9_active = 1'b0;   assign s9_half = 1'b0;
 	assign s9_irq = 1'b0;
 end
 endgenerate
 
 // ---- MACE (MacPPC7300_mace): byte registers at (offset >> 4) & 1F (grandcentral.cpp:190), ----
 // ---- and its DMA channels, 2 out and 3 in ----
-logic [7:0]  mace_rq;
+logic [7:0]  mace_rq, mace_rq_cpu;
 logic [31:0] dma_2_rle, dma_3_rle;
 logic        e2_ready, e2_put, e2_last, e2_irq, e3_irq, e2_fin, e3_fin;
 logic [1:0]  e2_fin_dec, e3_fin_dec;
@@ -483,6 +487,7 @@ MacPPC7300_mace mace (
 	.rn(sel ? off[8:4] : dq_off[8:4]),
 	.wdata(sel ? wb : (e2_dq_req ? e2_dq_wd : e3_dq_wd)),
 	.rq(mace_rq),
+	.rn_cpu(off[8:4]), .rq_cpu(mace_rq_cpu),
 	.do_ready(e2_ready), .do_data(e2_data), .do_put(e2_put), .do_last(e2_last),
 	.di_valid(e3_valid), .di_data(e3_data), .di_last(e3_last), .di_take(e3_take), .rx_dma(e3_xin),
 	.link(net_link), .tx_we(net_tx_we), .tx_wa(net_tx_wa), .tx_wd(net_tx_wd), .tx_go(net_tx_go),
@@ -495,7 +500,7 @@ MacPPC7300_dbdma #(.DEV_QUAD(1'b1), .LINE(1'b0)) dma_2 (
 	.clk, .reset,
 	.sel(dma_2_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_2_rle),
 	.dm_req(e2_req), .dm_we(e2_we), .dm_line(e2_line), .dm_addr(e2_addr), .dm_be(e2_be), .dm_wdata(e2_wdata),
-	.dm_ack(e2_ack), .dm_rdata,
+	.dm_ack(e2_ack), .dm_rdata, .dm_half(e2_half), .dm_rdesc,
 	.dq_req(e2_dq_req), .dq_we(e2_dq_we), .dq_off(e2_dq_off), .dq_wd(e2_dq_wd),
 	.dq_ack(dq_go & e2_dq_req), .dq_rd(dq_m ? mace_rq : 8'h00),
 	.di_valid(1'b0), .di_data(8'h00), .di_flush(1'b0), .di_last(1'b0),
@@ -511,7 +516,7 @@ MacPPC7300_dbdma #(.S6_EOF(1'b1), .DEV_QUAD(1'b1), .LINE(1'b0)) dma_3 (
 	.clk, .reset,
 	.sel(dma_3_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_3_rle),
 	.dm_req(e3_req), .dm_we(e3_we), .dm_line(e3_line), .dm_addr(e3_addr), .dm_be(e3_be), .dm_wdata(e3_wdata),
-	.dm_ack(e3_ack), .dm_rdata,
+	.dm_ack(e3_ack), .dm_rdata, .dm_half(e3_half), .dm_rdesc,
 	.dq_req(e3_dq_req), .dq_we(e3_dq_we), .dq_off(e3_dq_off), .dq_wd(e3_dq_wd),
 	.dq_ack(dq_go & ~e2_dq_req), .dq_rd(dq_m ? mace_rq : 8'h00),
 	.di_valid(e3_valid), .di_data(e3_data), .di_flush(1'b0), .di_last(e3_last), .di_take(e3_take), .dev_st(8'h00),
@@ -548,7 +553,7 @@ MacPPC7300_dbdma #(.LINE(1'b0)) dma_1 (
 	.clk, .reset,
 	.sel(dma_1_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_1_rle),
 	.dm_req(f1_req), .dm_we(f1_we), .dm_line(f1_line), .dm_addr(f1_addr), .dm_be(f1_be), .dm_wdata(f1_wdata),
-	.dm_ack(f1_ack), .dm_rdata,
+	.dm_ack(f1_ack), .dm_rdata, .dm_half(f1_half), .dm_rdesc,
 	.di_valid(fd_valid), .di_data(fd_data), .di_take(fd_take), .di_flush(fd_flush), .di_last(1'b0), .dev_st(8'h00),
 	.do_ready(1'b0), .dq_ack(1'b0), .dq_rd(8'h00),
 	/* verilator lint_off PINCONNECTEMPTY */
@@ -574,6 +579,7 @@ logic [7:0]  t1ll, t1lh, t2ll;
 logic [15:0] t1, t2;                 // the counters
 logic [17:0] t1_left, t2_left;       // VIA clocks until the flag
 logic        t1_run, t2_run;
+logic        t1_reload;              // free-running T1: the latch goes in at the next clock
 logic [4:0]  sr_cnt;                 // CB1 edges until the flag (MAME's m_shift_counter)
 logic        cb1_q;                  // CB1 as last seen
 logic        cb2_q;                  // what the VIA drives on CB2
@@ -660,7 +666,7 @@ always_comb begin
 	else begin
 		case (sub)
 			4'h0:       rq = byte_reg_rdata(be, curio_rq);
-			4'h1:       rq = byte_reg_rdata(be, mace_rq);
+			4'h1:       rq = byte_reg_rdata(be, mace_rq_cpu);
 			4'h8:       rq = byte_reg_rdata(be, mesh_rq);
 			4'h5:       rq = byte_reg_rdata(be, swim_rq);
 			4'h2, 4'h3: if (scc_compat | scc_risc) rq = byte_reg_rdata(be, scc_rq);
@@ -739,16 +745,25 @@ end
 
 // ---- writes, and the reads that change something --------------------------------------
 always_ff @(posedge clk) begin
-	// the VIA's timers count all the time
+	// the VIA's timers count all the time. As a 6522's, a timer loaded with
+	// N sets its flag in the clock its counter goes from 0 to FFFF (N + 1
+	// clocks on); a free-running T1 takes the latch in the clock after, so
+	// its period is N + 2. (dingusppc's flag comes two clocks later, when the
+	// counter already reads FFFE: Microseconds, which reads T2 and then its
+	// flag, would miss the wrap.)
 	if (via_tick) begin
 		t1 <= t1 - 16'd1;
 		t2 <= t2 - 16'd1;
-		if (t1_run) begin
+		t1_reload <= 1'b0;
+		if (t1_reload) begin
+			t1 <= {t1lh, t1ll};
+			t1_left <= 18'({t1lh, t1ll}) + 18'd1;
+		end
+		else if (t1_run) begin
 			if (t1_left == 18'd1) begin
 				via_ifr[6] <= 1'b1;                            // T1
-				t1 <= {t1lh, t1ll};
-				t1_left <= 18'({t1lh, t1ll}) + 18'd3;
-				t1_run <= via_acr[6];                          // free-running, or once
+				t1_run    <= via_acr[6];                       // free-running, or once
+				t1_reload <= via_acr[6];
 			end
 			else t1_left <= t1_left - 18'd1;
 		end
@@ -825,8 +840,9 @@ always_ff @(posedge clk) begin
 					4'd5: if (we) begin
 						t1lh <= wb;
 						t1 <= {wb, t1ll};
-						t1_left <= 18'({wb, t1ll}) + 18'd3;
+						t1_left <= 18'({wb, t1ll}) + 18'd1;
 						t1_run <= 1'b1;
+						t1_reload <= 1'b0;
 						via_ifr[6] <= 1'b0;
 					end
 					4'd6:        if (we) t1ll <= wb;
@@ -834,7 +850,7 @@ always_ff @(posedge clk) begin
 					4'd8:        if (we) t2ll <= wb; else via_ifr[5] <= 1'b0;
 					4'd9: if (we) begin
 						t2 <= {wb, t2ll};
-						t2_left <= 18'({wb, t2ll}) + 18'd3;
+						t2_left <= 18'({wb, t2ll}) + 18'd1;
 						t2_run <= 1'b1;
 						via_ifr[5] <= 1'b0;
 					end
@@ -891,6 +907,7 @@ always_ff @(posedge clk) begin
 		t2_left     <= 18'h0;
 		t1_run      <= 1'b0;
 		t2_run      <= 1'b0;
+		t1_reload   <= 1'b0;
 		nv_hi       <= 16'h0;
 		nv_rd_q     <= 1'b0;
 		rad_rd_q    <= 1'b0;

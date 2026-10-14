@@ -145,6 +145,7 @@ generate if (HAVE_FPU != 0) begin : g_fpu
 		.clk        (clk),
 		.reset      (reset),
 		.flush      (1'b0),
+		.no_early   (1'b0),
 		.req_valid  ((state == S_EXEC) & is_fpu),
 		.req_ready  (fpu_ready),
 		.ctl        (dec.fc),

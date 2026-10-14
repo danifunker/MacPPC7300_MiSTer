@@ -14,7 +14,8 @@
 //    and fpscr_in steady until the response is taken. resp_valid stays high,
 //    with the results, until a cycle in which resp_ready is high too.
 //
-//    fmr fneg fabs fnabs fsel fcmpu fcmpo   same cycle (combinational)
+//    fmr fneg fabs fnabs fsel                same cycle (combinational)
+//    fcmpu fcmpo                            operand + response registers
 //    everything else                        several cycles, see the stages
 //
 //    result_we is low when an enabled invalid-operation or zero-divide
@@ -36,8 +37,9 @@
 //
 //  OPERAND_REG = 1 takes the operands, control and FPSCR into registers in
 //  the request cycle and works from those a cycle later, so the requester's
-//  forwarding network ends at a register; every instruction then takes one
-//  cycle more (the moves and compares one instead of none).
+//  forwarding network ends at a register; arithmetic, moves and selects then
+//  take one cycle more. Compares always use the operand registers and then
+//  register their condition/FPSCR response, independently of OPERAND_REG.
 //
 //  The results that need no arithmetic (NaN operands, infinities, zeros, the
 //  invalid operations) are found in the cycle after the request, from the
@@ -56,6 +58,7 @@ module DSPPC604_fpu
 	input  logic        clk,
 	input  logic        reset,
 	input  logic        flush,
+	input  logic        no_early,     // MSR[FE0] | MSR[FE1]: answer from S_DONE only (see the response)
 
 	input  logic        req_valid,
 	output logic        req_ready,
@@ -221,26 +224,36 @@ wire op_neg    = od.neg;
 wire use_a     = od.use_a, use_b = od.use_b, use_c = od.use_c;
 wire op_sgl    = od.sgl;
 
-// ---- moves, select and compare: combinational ------------------------------
+// ---- moves and select: combinational; compare: registered operands ----------
 logic [63:0] simple_result;
 logic [31:0] simple_fpscr;
 logic [3:0]  simple_cr;
 
-wire cmp_un = a_nan | b_nan;
-wire cmp_bz = a_zero & b_zero;
-wire cmp_lt = ~cmp_un & ~cmp_bz & ((a_s & ~b_s) |
-              (~a_s & ~b_s & (ia[62:0] < ib[62:0])) | (a_s & b_s & (ia[62:0] > ib[62:0])));
-wire cmp_eq = ~cmp_un & (cmp_bz | (ia == ib));
+// Compare always uses the captured request. This separates forwarded LFS
+// normalization from the magnitude comparison, including OPERAND_REG=0.
+wire cmp_un = ka_q.nan | kb_q.nan;
+wire cmp_bz = ka_q.zero & kb_q.zero;
+wire cmp_lt = ~cmp_un & ~cmp_bz & ((ka_q.s & ~kb_q.s) |
+              (~ka_q.s & ~kb_q.s & (a_q[62:0] < b_q[62:0])) |
+              (ka_q.s & kb_q.s & (a_q[62:0] > b_q[62:0])));
+wire cmp_eq = ~cmp_un & (cmp_bz | (a_q == b_q));
 wire cmp_gt = ~cmp_un & ~cmp_lt & ~cmp_eq;
 wire [3:0] cmp_cc = {cmp_lt, cmp_gt, cmp_eq, cmp_un};
+logic [31:0] cmp_fpscr;
+
+always_comb begin : compare_fpscr
+	logic [31:0] set_bits;
+	logic cmp_snan;
+	set_bits = 32'd0;
+	cmp_snan = ka_q.snan | kb_q.snan;
+	set_bits[B_VXSNAN] = cmp_snan;
+	if (ctl_q.op == FPU_CMPO)
+		set_bits[B_VXVC] = cmp_snan ? ~fpscr_i_q[B_VE] : cmp_un;
+	cmp_fpscr = fpscr_update(fpscr_i_q, set_bits, 1'b0, 1'b0, 1'b0,
+	                         1'b1, {fpscr_i_q[16], cmp_cc});
+end
 
 always_comb begin : simple_ops
-	logic [31:0] set_bits;
-	logic        cmp_snan;
-
-	set_bits = 32'd0;
-	cmp_snan = a_snan | b_snan;
-
 	simple_result = ib;
 	simple_fpscr  = ifpscr;
 	simple_cr     = ifpscr[31:28];
@@ -250,14 +263,6 @@ always_comb begin : simple_ops
 		FPU_ABS:  simple_result = {1'b0, ib[62:0]};
 		FPU_NABS: simple_result = {1'b1, ib[62:0]};
 		FPU_SEL:  simple_result = (~a_nan & (a_zero | ~a_s)) ? ic : ib;
-		FPU_CMPU, FPU_CMPO: begin
-			set_bits[B_VXSNAN] = cmp_snan;
-			if (ictl.op == FPU_CMPO)
-				set_bits[B_VXVC] = cmp_snan ? ~ifpscr[B_VE] : cmp_un;
-			simple_fpscr = fpscr_update(ifpscr, set_bits, 1'b0, 1'b0, 1'b0,
-			                            1'b1, {ifpscr[16], cmp_cc});
-			simple_cr = cmp_cc;
-		end
 		default: ;
 	endcase
 end
@@ -418,18 +423,19 @@ always_comb begin : special_results
 end
 
 // ---- state -----------------------------------------------------------------
-typedef enum logic [3:0] {
+typedef enum logic [4:0] {
 	S_IDLE,
 	S_OPND,     // OPERAND_REG: the operands are in their registers
 	S_PREA,     // normalise denormal operands, two cycles each
 	S_PREB,
 	S_PREC,
 	S_MUL1,     // partial products; alignment distance
+	S_ALGN,     // fadd, fsub: no product to form; alignment distance and aligned addend at once
 	S_MUL2,     // product; aligned addend
 	S_ADD,      // magnitude of product +/- addend
 	S_LZC,      // leading zeros counted: a sum that may have cancelled (the rest know theirs)
 	S_NORM,     // normalise; where to round
-	S_SHIFT,    // bring the rounding point to bit 0
+	S_SHIFT,    // bring the rounding point to bit 0 (integers and denormals; the rest round from S_NORM)
 	S_ROUND,    // round, range checks, pack
 	S_DIV0,     // divide set-up
 	S_DIV,      // two quotient bits per cycle
@@ -464,6 +470,9 @@ logic        fin_fr;
 logic        fin_fi;
 logic        fin_fprf_we;
 logic        fin_den;      // the result was denormalised in its own format
+logic        fin_compare;
+logic [31:0] fin_cmp_fpscr;
+logic [3:0]  fin_cmp_cr;
 
 wire ue = fpscr_q[B_UE];
 wire oe = fpscr_q[B_OE];
@@ -573,6 +582,37 @@ wire        add_fast = add_pin | (sr >= 8'd58);
 wire [4:0]  add_win  = add_pin ? r_next[161:157] : r_next[107:103];
 wire [7:0]  add_lz   = (add_pin ? 8'd0 : 8'd54) + (add_win[4] ? 8'd0 : add_win[3] ? 8'd1 :
                                                    add_win[2] ? 8'd2 : add_win[1] ? 8'd3 : 8'd4);
+// An effective addition's larger term has its top at 160 - sr (the addend)
+// or at 105 or 104 (the product); the sum's leading one is there or one
+// place above. The count for the place above, from registers alone:
+wire [7:0]  add_plz    = p_q[105] ? 8'd55 : 8'd56;
+// S_ALGN's distance: fadd's y is 1.0 (ey = -52), so e_dist is ex - ez + 56,
+// one subtraction. The shifter starts from its low byte at once; whether
+// the addend is pinned at the top (a negative distance) or wholly shifted
+// out (beyond 163) is decided beside it and only selects at the end.
+wire signed [13:0] a_dist = ex - ez + 14'sd56;
+wire        a_pin      = p_zero | (~z_zero & a_dist[13]);
+wire        a_big      = ~a_dist[13] & (a_dist > 14'sd163);
+wire [7:0]  algn_sr    = a_pin ? 8'd0 : a_big ? 8'd163 : a_dist[7:0];
+// S_ALGN's sticky bit without OR-ing through the shifter: the addend's bit i
+// sits at 108 + i and is shifted out when that is below the distance, so
+// some one is lost exactly when the distance exceeds 108 plus its trailing
+// zero count (from mz, a register, beside the distance).
+logic [52:0] mz_rev;
+always_comb for (int i = 0; i < 53; i++) mz_rev[i] = mz[52 - i];
+logic [5:0]  mz_tz;
+DSPPC604_lzc #(.WIDTH(53)) mz_tzc (.in(mz_rev), .count(mz_tz));
+wire [160:0] a_sh      = {mz, 108'd0} >> a_dist[7:0];
+wire        algn_st    = ~a_pin & (a_big ? (mz != 53'd0) : ({1'b0, a_dist[7:0]} > (9'd108 + {3'd0, mz_tz})));
+wire [160:0] algn_zal  = a_pin ? {mz, 108'd0} : a_big ? 161'd0 : a_sh;
+wire [7:0]  add_lz_eff = (sr < add_plz) ? sr : add_plz;
+// An effective subtraction of terms at least two places apart loses at most
+// one place: count for the larger term's top (S_NORM corrects the one).
+// The addend's top 160 - sr is two above the product's when sr <= plz - 2;
+// the product's two above the addend's when sr >= plz + 2.
+wire        sub_z_big  = (sr <= add_plz - 8'd2);
+wire        sub_p_big  = (sr >= add_plz + 8'd2);
+wire [7:0]  sub_lz     = sub_z_big ? (sr + 8'd1) : (add_plz + 8'd1);
 
 // ---- normalise -------------------------------------------------------------
 logic [7:0]  lz_cnt;
@@ -585,14 +625,34 @@ DSPPC604_lzc #(.WIDTH(162)) r_lzc
 	.count (lz_cnt)
 );
 
-wire [161:0] norm = r_q << lz_q;
+wire [161:0] norm_raw = r_q << lz_q;
+// An effective addition's count assumed a carry into the place above, an
+// effective subtraction's no lost place: one more place when the top is
+// zero (every other count is exact).
+wire         n_fix = ~norm_raw[161] & ~rzero_q;
+wire [161:0] norm  = n_fix ? {norm_raw[160:0], 1'b0} : norm_raw;
+// the sticky bits for both n_fix values, ORed from the shift beside n_fix
+// (which then only selects) rather than behind it
+wire st_w0 = |norm_raw[97:0],  st_w1 = |norm_raw[96:0];
+wire st_s0 = |norm_raw[136:0], st_s1 = |norm_raw[135:0];
+wire st_d0 = |norm_raw[107:0], st_d1 = |norm_raw[106:0];
 
-// exponent of the leading one, and where rounding happens
-wire signed [13:0] top     = e_win + 14'sd161 - $signed({6'd0, lz_q});
+// exponent of the leading one, and where rounding happens: made for
+// both n_fix values beside the shifter, n_fix (the shifted top bit) then
+// only selecting, so that no adder or compare follows the shift
 wire signed [13:0] emin    = sgl_q ? -14'sd126 : -14'sd1022;
-wire               tiny    = (top < emin);
-wire signed [13:0] under   = emin - top;                        // how far below
-wire signed [13:0] int_pos = 14'sd63 - top;
+wire signed [13:0] top0    = e_win + 14'sd161 - $signed({6'd0, lz_q});
+wire signed [13:0] top1    = top0 - 14'sd1;
+wire               tiny0   = (top0 < emin);
+wire               tiny1   = (top1 < emin);
+wire signed [13:0] under0  = emin - top0;
+wire signed [13:0] under1  = under0 + 14'sd1;
+wire signed [13:0] ipos0   = 14'sd63 - top0;
+wire signed [13:0] ipos1   = ipos0 + 14'sd1;
+wire signed [13:0] top     = n_fix ? top1 : top0;
+wire               tiny    = n_fix ? tiny1 : tiny0;
+wire signed [13:0] under   = n_fix ? under1 : under0;           // how far below
+wire signed [13:0] int_pos = n_fix ? ipos1 : ipos0;
 
 logic [63:0]        w_q;       // normalised, leading one at bit 63
 logic               w_sticky;
@@ -610,8 +670,9 @@ logic        rb_q;         // first dropped bit
 logic        sk_q;         // any later bit
 
 // ---- divide ----------------------------------------------------------------
-// Restoring, radix 4. The operands are normalised, so the first quotient bit
-// is 0 or 1; every cycle after that produces two more.
+// Restoring, radix 4, two steps a cycle in cascade. The operands are
+// normalised, so the first quotient bit is 0 or 1; every cycle after that
+// produces four more (28 steps for a double, 14 for a single: whole pairs).
 logic [52:0] d_rem;
 logic [54:0] d_three;      // 3 * divisor
 logic [56:0] d_quo;
@@ -632,7 +693,23 @@ always_comb begin
 	else                begin d_digit = 2'd0; d_next = d_r4[52:0]; end
 end
 
-wire [56:0] d_quo_next = {d_quo[54:0], d_digit};
+// the second step, behind the first in the same cycle
+wire [55:0] d_r4_b = {1'b0, d_next, 2'b00};
+wire [55:0] d_t1_b = d_r4_b - {3'd0, mz};
+wire [55:0] d_t2_b = d_r4_b - {2'd0, mz, 1'b0};
+wire [55:0] d_t3_b = d_r4_b - {1'b0, d_three};
+
+logic [1:0]  d_digit_b;
+logic [52:0] d_next_b;
+
+always_comb begin
+	if (~d_t3_b[55])      begin d_digit_b = 2'd3; d_next_b = d_t3_b[52:0]; end
+	else if (~d_t2_b[55]) begin d_digit_b = 2'd2; d_next_b = d_t2_b[52:0]; end
+	else if (~d_t1_b[55]) begin d_digit_b = 2'd1; d_next_b = d_t1_b[52:0]; end
+	else                  begin d_digit_b = 2'd0; d_next_b = d_r4_b[52:0]; end
+end
+
+wire [56:0] d_quo_next = {d_quo[52:0], d_digit, d_digit_b};
 
 // ---- reciprocal square root estimate ---------------------------------------
 // Seven fraction bits, by the low bit of the exponent and the top four
@@ -807,6 +884,7 @@ end
 wire take     = req_valid & (state == S_IDLE);                            // a request arrives
 wire go       = (OPERAND_REG != 0) ? (state == S_OPND) : take;            // ... and its operands are in hand
 wire start    = go & ~op_simple;
+wire op_compare = (ictl.op == FPU_CMPU) | (ictl.op == FPU_CMPO);
 wire need_pre = (use_a & a_den) | (use_b & b_den) | (use_c & c_den);
 wire sb_eff   = b_s ^ op_sub;                                             // sign frB contributes with
 wire s_prod   = a_s ^ c_s;
@@ -825,12 +903,13 @@ always_ff @(posedge clk) begin
 			kc_q      <= cls_c;
 			ctl_q     <= ctl;
 			fpscr_i_q <= fpscr_in;
-			if (OPERAND_REG != 0) state <= S_OPND;
+			if ((OPERAND_REG != 0) | (ctl.op == FPU_CMPU) | (ctl.op == FPU_CMPO))
+				state <= S_OPND;
 		end
 	end
 
 	S_OPND: begin
-		// a move, select or compare answers from here; the rest start below
+		// Moves and selects answer here; compares register their result below.
 		if (op_simple & resp_ready) state <= S_IDLE;
 	end
 
@@ -874,6 +953,26 @@ always_ff @(posedge clk) begin
 		state <= S_MUL2;
 	end
 
+	S_ALGN: begin
+		// The product is a * 1.0 exactly: the operand at bits 104-52, as
+		// S_MUL2 would sum it. The distance and the aligned addend in one
+		// cycle (the exponents are registers here).
+		e_win <= a_pin ? (ez - 14'sd108) : e_prod;
+		sr    <= algn_sr;
+		p_q   <= {1'b0, mx, 52'd0};
+		zal   <= algn_zal;
+		zst   <= algn_st;
+		state <= S_ADD;
+		if (z_zero & ~p_zero) begin                  // no addend: the operand is the sum
+			r_q      <= {57'd0, mx, 52'd0};
+			r_sign   <= s_p;
+			r_sticky <= 1'b0;
+			lz_q     <= 8'd57;
+			rzero_q  <= 1'b0;
+			state    <= S_NORM;
+		end
+	end
+
 	S_MUL2: begin
 		p_q <= p_sum;
 		{zal, zst} <= align_z(mz, sr);
@@ -897,6 +996,19 @@ always_ff @(posedge clk) begin
 			rzero_q <= 1'b0;
 			state   <= S_NORM;
 		end
+		else if (~eff_sub) begin
+			// an effective addition cannot cancel: the sum's leading one is
+			// at the larger term's top place or one above; count for the
+			// place above, and S_NORM shifts once more if that is zero
+			lz_q    <= add_lz_eff;
+			rzero_q <= 1'b0;
+			state   <= S_NORM;
+		end
+		else if (sub_z_big | sub_p_big) begin
+			lz_q    <= sub_lz;
+			rzero_q <= 1'b0;
+			state   <= S_NORM;
+		end
 		else state <= S_LZC;
 	end
 
@@ -908,7 +1020,7 @@ always_ff @(posedge clk) begin
 
 	S_NORM: begin
 		w_q      <= norm[161:98];
-		w_sticky <= r_sticky | (|norm[97:0]);
+		w_sticky <= r_sticky | (n_fix ? st_w1 : st_w0);
 		tiny_q   <= ~int_q & tiny;
 		den_q    <= 1'b0;
 		top_q    <= top;
@@ -929,7 +1041,13 @@ always_ff @(posedge clk) begin
 			l_q   <= sgl_q ? 7'd40 : 7'd11;
 			if (tiny) top_q <= top + (sgl_q ? 14'sd192 : 14'sd1536);
 		end
-		state <= S_SHIFT;
+		// The rounding point fixed (a normal result, or an enabled
+		// underflow's): what S_SHIFT would find is a fixed slice of norm,
+		// so round next. Integers and denormals take S_SHIFT.
+		k_q   <= sgl_q ? {40'd0, norm[161:138]} : {11'd0, norm[161:109]};
+		rb_q  <= sgl_q ? norm[137] : norm[108];
+		sk_q  <= r_sticky | (sgl_q ? (n_fix ? st_s1 : st_s0) : (n_fix ? st_d1 : st_d0));
+		state <= (int_q | (tiny & ~ue)) ? S_SHIFT : S_ROUND;
 	end
 
 	S_SHIFT: begin
@@ -940,13 +1058,14 @@ always_ff @(posedge clk) begin
 	end
 
 	S_ROUND: begin
+		// answered from here (below); held in S_DONE if not taken
 		fin_result  <= rnd_result;
 		fin_set     <= rnd_set;
 		fin_fr      <= rnd_fr;
 		fin_fi      <= rnd_fi;
 		fin_fprf_we <= ~int_q;
 		fin_den     <= rnd_den;
-		state       <= S_DONE;
+		state       <= (resp_ready & ~no_early) ? S_IDLE : S_DONE;
 	end
 
 	S_DIV0: begin
@@ -960,12 +1079,12 @@ always_ff @(posedge clk) begin
 			d_quo <= 57'd0;
 		end
 		d_three <= {2'b00, mz} + {1'b0, mz, 1'b0};
-		d_cnt   <= sgl_q ? 5'd13 : 5'd27;
+		d_cnt   <= sgl_q ? 5'd6 : 5'd13;          // pairs of steps, less one
 		state   <= S_DIV;
 	end
 
 	S_DIV: begin
-		d_rem <= d_next;
+		d_rem <= d_next_b;
 		d_quo <= d_quo_next;
 		d_cnt <= d_cnt - 5'd1;
 		if (d_cnt == 5'd0) begin
@@ -973,7 +1092,7 @@ always_ff @(posedge clk) begin
 			// normalised operands is in (1/2, 2), so it or the next is the top
 			r_q      <= sgl_q ? {d_quo_next[28:0], 133'd0} : {d_quo_next, 105'd0};
 			r_sign   <= s_p;
-			r_sticky <= (d_next != 53'd0);
+			r_sticky <= (d_next_b != 53'd0);
 			e_win    <= ex - ez - 14'sd161;
 			lz_q     <= {7'd0, ~(sgl_q ? d_quo_next[28] : d_quo_next[56])};
 			rzero_q  <= 1'b0;
@@ -996,7 +1115,16 @@ always_ff @(posedge clk) begin
 	end
 	endcase
 
+	if ((state == S_OPND) & ((ctl_q.op == FPU_CMPU) | (ctl_q.op == FPU_CMPO))) begin
+		fin_result    <= b_q;
+		fin_cmp_fpscr <= cmp_fpscr;
+		fin_cmp_cr    <= cmp_cc;
+		fin_compare   <= 1'b1;
+		state         <= S_DONE;
+	end
+
 	if (start) begin
+		fin_compare <= 1'b0;
 		sgl_q   <= op_sgl;
 		int_q   <= op_int;
 		div_q   <= op_div;
@@ -1045,6 +1173,7 @@ always_ff @(posedge clk) begin
 		if (need_pre)    state <= S_PREA;
 		else if (op_div) state <= S_DIV0;
 		else if (op_rsq) state <= S_RSQ;
+		else if ((ictl.op == FPU_ADD) | (ictl.op == FPU_SUB)) state <= S_ALGN;
 		else             state <= S_MUL1;
 	end
 
@@ -1064,6 +1193,7 @@ always_ff @(posedge clk) begin
 	if (reset | flush) begin
 		state    <= S_IDLE;
 		sp_check <= 1'b0;
+		fin_compare <= 1'b0;
 	end
 end
 
@@ -1072,28 +1202,51 @@ assign req_ready = (state == S_IDLE);
 // ---- response --------------------------------------------------------------
 // An enabled invalid operation or zero divide leaves the target register and
 // the result class alone.
-wire done_vx       = |(fin_set & VX_ALL);
-wire done_suppress = (done_vx & fpscr_q[B_VE]) | (fin_set[B_ZX] & fpscr_q[B_ZE]);
-wire [31:0] done_fpscr = fpscr_update(fpscr_q, fin_set, 1'b1,
-                                      fin_fr & ~done_suppress, fin_fi & ~done_suppress,
-                                      fin_fprf_we & ~done_suppress, fprf_of(fin_result, fin_den));
+// The rounded result is answered in S_ROUND itself (a cycle sooner than
+// from S_DONE's registers) when FP exceptions cannot trap (no_early low);
+// it then goes only into the requester's registers (the FPSCR, the CR, the
+// next stage's result). With traps enabled the answer comes from S_DONE,
+// and fex, which the requester's trap decision uses, is taken from S_DONE's
+// registers alone (never from the rounding logic).
+wire        in_round   = (state == S_ROUND) & ~no_early;
+wire [63:0] f_result   = in_round ? rnd_result : fin_result;
+wire [31:0] f_set      = in_round ? rnd_set : fin_set;
+wire        f_fr       = in_round ? rnd_fr : fin_fr;
+wire        f_fi       = in_round ? rnd_fi : fin_fi;
+wire        f_fprf_we  = in_round ? ~int_q : fin_fprf_we;
+wire        f_den      = in_round ? rnd_den : fin_den;
+wire        f_compare  = ~in_round & fin_compare;
+// S_DONE's FPSCR from its registers alone, for fex
+wire done_suppress_r = ((|(fin_set & VX_ALL)) & fpscr_q[B_VE]) | (fin_set[B_ZX] & fpscr_q[B_ZE]);
+wire [31:0] done_fpscr_r = fpscr_update(fpscr_q, fin_set, 1'b1,
+                                        fin_fr & ~done_suppress_r, fin_fi & ~done_suppress_r,
+                                        fin_fprf_we & ~done_suppress_r, fprf_of(fin_result, fin_den));
+wire done_vx       = |(f_set & VX_ALL);
+wire done_suppress = (done_vx & fpscr_q[B_VE]) | (f_set[B_ZX] & fpscr_q[B_ZE]);
+wire [31:0] done_fpscr = fpscr_update(fpscr_q, f_set, 1'b1,
+                                      f_fr & ~done_suppress, f_fi & ~done_suppress,
+                                      f_fprf_we & ~done_suppress, fprf_of(f_result, f_den));
 
 always_comb begin
-	if (state == S_DONE) begin
+	if ((state == S_DONE) | in_round) begin
 		resp_valid = req_valid;
-		result     = fin_result;
-		result_we  = ~done_suppress;
-		fpscr_out  = done_fpscr;
-		cr_out     = done_fpscr[31:28];
+		result     = f_result;
+		result_we  = f_compare | ~done_suppress;
+		fpscr_out  = f_compare ? fin_cmp_fpscr : done_fpscr;
+		cr_out     = f_compare ? fin_cmp_cr : done_fpscr[31:28];
 	end
 	else begin
-		resp_valid = req_valid & go & op_simple;
+		resp_valid = req_valid & go & op_simple & ~op_compare;
 		result     = simple_result;
 		result_we  = 1'b1;
-		fpscr_out  = simple_fpscr;
-		cr_out     = simple_cr;
+		// Compare has no response until S_DONE. Keep its speculative condition
+		// and exception update off the requester's commit/redirect network;
+		// the registered fields above carry the valid response.
+		fpscr_out  = op_compare ? ifpscr : simple_fpscr;
+		cr_out     = op_compare ? ifpscr[31:28] : simple_cr;
 	end
-	fex = fpscr_out[30];
+	fex = (state == S_DONE) ? (fin_compare ? fin_cmp_fpscr[30] : done_fpscr_r[30]) :
+	      (state == S_ROUND) ? 1'b0 : fpscr_out[30];
 end
 
 endmodule

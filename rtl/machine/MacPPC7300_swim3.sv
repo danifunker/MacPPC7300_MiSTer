@@ -129,7 +129,18 @@ wire        d_ds  = d_fmt != 2'd0;
 
 // the command address of a phase write (the lines as written), the status
 // address of a handshake read (the lines as they are)
-wire [3:0] cmd_addr  = {1'b0, mode_r[5], wdata[1:0]};
+// (register writes land a clock after the access, from these: the write's
+// data comes through the device bus and Grand Central's byte lanes; reads,
+// and the reads that clear or select, are not delayed)
+logic       w_v;
+logic [3:0] w_rn;
+logic [7:0] w_d;
+always_ff @(posedge clk) begin
+	w_v  <= sel & we & ~reset;
+	w_rn <= rn;
+	w_d  <= wdata;
+end
+wire [3:0] cmd_addr  = {1'b0, mode_r[5], w_d[1:0]};
 wire [3:0] stat_addr = {mode_r[5], phase[2:0]};
 wire [6:0] stepped   = step_back ? (track == 7'd0 ? 7'd0 : track - 7'd1) : (track == 7'd79 ? 7'd79 : track + 7'd1);
 
@@ -402,25 +413,25 @@ always_ff @(posedge clk) begin
 		if (stat_addr == 4'hC) head <= 1'b1;
 	end
 
-	if (sel & we) begin
-		case (rn)
-			4'h1: timer_val <= wdata;
-			4'h3: pram <= wdata;
+	if (w_v) begin
+		case (w_rn)
+			4'h1: timer_val <= w_d;
+			4'h3: pram <= w_d;
 			4'h4: begin
-				phase <= wdata[3:0];
-				if (wdata[3] & mode_r[1]) begin
+				phase <= w_d[3:0];
+				if (w_d[3] & mode_r[1]) begin
 					case (cmd_addr)
-						4'h0: step_back <= wdata[2];
-						4'h1: if (~wdata[2]) track <= stepped;
-						4'h2: if (motor_on != ~wdata[2]) begin
-							motor_on <= ~wdata[2];
-							if (~wdata[2]) begin
+						4'h0: step_back <= w_d[2];
+						4'h1: if (~w_d[2]) track <= stepped;
+						4'h2: if (motor_on != ~w_d[2]) begin
+							motor_on <= ~w_d[2];
+							if (~w_d[2]) begin
 								ready   <= has_disk;
 								rot_sec <= 5'd31;          // from the index gap
 								rot_us  <= 14'd0;
 							end
 						end
-						4'h3: if (wdata[2]) begin
+						4'h3: if (w_d[2]) begin
 							has_disk    <= 1'b0;
 							eject_latch <= 1'b1;
 							motor_on    <= 1'b0;
@@ -428,42 +439,42 @@ always_ff @(posedge clk) begin
 							ready       <= 1'b0;
 							drive_mfm   <= 1'b1;
 						end
-						4'h4: if (wdata[2]) eject_latch <= 1'b0;
-						4'h5: if (drive_mfm != ~wdata[2]) begin
-							drive_mfm <= ~wdata[2];
+						4'h4: if (w_d[2]) eject_latch <= 1'b0;
+						4'h5: if (drive_mfm != ~w_d[2]) begin
+							drive_mfm <= ~w_d[2];
 							ready     <= 1'b1;
 						end
 						default: ;
 					endcase
 				end
-				else if (wdata[3:0] == 4'h4 & mode_r[1]) head <= mode_r[5];   // swim3.cpp's rd_line read
+				else if (w_d[3:0] == 4'h4 & mode_r[1]) head <= mode_r[5];   // swim3.cpp's rd_line read
 			end
-			4'h5: setup_r <= wdata;
+			4'h5: setup_r <= w_d;
 			4'h6: begin
-				mode_r <= mode_r & ~wdata;
-				if (wdata[7]) begin stepping <= 1'b0; step_count <= 8'd0; end
-				if (wdata[3] & mode_r[3]) acc <= A_IDLE;
+				mode_r <= mode_r & ~w_d;
+				if (w_d[7]) begin stepping <= 1'b0; step_count <= 8'd0; end
+				if (w_d[3] & mode_r[3]) acc <= A_IDLE;
 			end
 			4'h7: begin
-				mode_r <= mode_r | wdata;
+				mode_r <= mode_r | w_d;
 				// the steps start when GO_STEP is set with the step command on
 				// the phase lines: the first step at once (swim3.cpp start_stepping)
-				if (wdata[7] & ~mode_r[7] & ~stepping & (step_count != 8'd0) & ({1'b0, mode_r[5], phase[1:0]} == 4'h1)) begin
+				if (w_d[7] & ~mode_r[7] & ~stepping & (step_count != 8'd0) & ({1'b0, mode_r[5], phase[1:0]} == 4'h1)) begin
 					track      <= stepped;
 					step_count <= step_count - 8'd1;
 					if (step_count == 8'd1) int_flags <= int_flags | I_STEP;
 					else begin stepping <= 1'b1; step_wait <= 7'd79; end
 				end
 				// GO: a disk access for "first sector", not while stepping or writing
-				else if (wdata[3] & ~mode_r[3] & ~wdata[7] & ~(mode_r[4] | wdata[4]) & ~stepping) begin
+				else if (w_d[3] & ~mode_r[3] & ~w_d[7] & ~(mode_r[4] | w_d[4]) & ~stepping) begin
 					target <= first_sec;
 					acc    <= A_SEARCH;
 				end
 			end
-			4'h9: step_count <= wdata;
-			4'hD: first_sec <= wdata;
-			4'hE: xfer_cnt <= wdata;
-			4'hF: int_mask <= wdata;
+			4'h9: step_count <= w_d;
+			4'hD: first_sec <= w_d;
+			4'hE: xfer_cnt <= w_d;
+			4'hF: int_mask <= w_d;
 			default: ;
 		endcase
 	end

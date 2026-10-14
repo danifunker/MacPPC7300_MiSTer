@@ -11,11 +11,15 @@
     python progs.py mmutest OUT                  address translation: BATs, page tables, DSI, ISI, tlbie
     python progs.py resvtest OUT                 lwarx/stwcx., dcbz and the cache instructions
     python progs.py cachetest OUT                the caches: write-back, the cache instructions, HID0, DMA
+    python progs.py widecachetest OUT            doublewords through cached and uncached aliases
     python progs.py updtest OUT                  the update forms, the indexed loads with rD = rB first
     python progs.py irqtest OUT [LOOPS]          a computation that interrupts must not disturb
                                                  (run with --irq-every and --tb-run)
+    python progs.py irqwalktest OUT [LOOPS]      the same with a page-table walk every loop
+    python progs.py irqwalkfaulttest OUT [LOOPS] interrupts while walks end in page faults
     python progs.py memtest OUT.sv               the machine's memory-test boot ROM, as RTL
                                                  (rtl/machine/MacPPC7300_bootrom.sv)
+    python progs.py specfetchrom OUT.rom         machine lockstep: discarded I-fetch before an MMIO load
 
 The file format is described at the top of core_main.cpp.
 """
@@ -365,10 +369,13 @@ def fpexctest(out):
     for i, w in enumerate(body + [D(14, 30, 3, 4), mtspr(SRR0, 30)] + tail):
         p.data[0x700 + 4 * i] = w
     FE0 = 0x800
-    p.words += caches_on() + set_msr(MSR_FP | FE0, 7)
+    p.words += caches_on() + set_msr(MSR_FP | FE0, 7) + li32(1, DATA_A) + li32(9, 0)
     p.words.append((63 << 26) | (6 << 23) | (8 << 12) | (134 << 1))      # mtfsfi 6,8: FPSCR[VE] on
     at = p.pc()
     p.words.append((63 << 26) | (3 << 21) | (0 << 16) | (0 << 11) | (18 << 1))   # fdiv f3,f0,f0: 0/0
+    # Independent work may execute speculatively behind the faulting FPU
+    # instruction. Each increment must retire exactly once after the handler.
+    p.words += [D(14, 9, 9, 1)] * 4
     fpscr = 0x80000000 | 0x40000000 | 0x20000000 | 0x00200000 | 0x80     # FX FEX VX VXZDZ, VE
     srr1 = (MSR_FP | FE0) | 0x00100000
     p.words.append(NOP)
@@ -381,6 +388,8 @@ def fpexctest(out):
     p.words.append(D(14, 9, 0, 0x55))                                    # li r9,0x55: must not execute
     p.words.append(NOP)
     p.checks.append((len(p.words) - 1, check_text([at, srr1 | 0x00010000, 0, 0], 0, 0, 0, fpscr, [0, 0, 0, 0], "pending")))
+    p.words.append(D(36, 9, 1, 0))
+    p.expect[DATA_A] = 4
     p.words.append(B_SELF)
     p.write(out)
     print("%d instructions, %d checks -> %s" % (len(p.words), len(p.checks), out))
@@ -912,6 +921,71 @@ def cachetest(out):
     print("%d instructions, %d checks, %d memory words -> %s" % (len(p.words), len(p.checks), len(p.expect), out))
 
 
+def widecachetest(out):
+    """Doubleword loads/stores at every useful line position and across a
+    page boundary, with cache misses, hits, write-through, cache-inhibited,
+    locked and disabled caches. Check both words through aliases after each
+    phase so a stale half or wrong byte order cannot hide in the cache."""
+    p = Program()
+    phys, source = 0x00A00000, 0x00080000
+    ca, ci, wt = 0x00700000, 0x00702000, 0x00704000
+    srs, sdr1 = {n: 0x300 + n for n in range(16)}, 0x00100000
+    table = PageTable(p, sdr1, srs)
+    for ea, wimg in ((ca, 0), (ci, 4), (wt, 8)):
+        for page in (0, 0x1000):
+            table.map(ea + page, phys + page, 2, wimg=wimg, r_final=1, c_final=1)
+    a, b = 0x400921FB54442D18, 0xC010123456ABCDEF
+    p.data[source], p.data[source + 4] = a >> 32, a & 0xFFFFFFFF
+    p.data[source + 8], p.data[source + 12] = b >> 32, b & 0xFFFFFFFF
+    p.words += caches_on() + set_msr(0, 7)
+    for n, v in srs.items():
+        p.words += li32(7, v) + [mtsr(n, 7)]
+    for spr, v in ((IBAT0U, batu(0, 8, 1, 1)), (IBAT0U + 1, batl(0, 2)),
+                   (DBAT0U, batu(0, 8, 1, 1)), (DBAT0U + 1, batl(0, 2)), (SDR1, sdr1)):
+        p.words += li32(7, v) + [mtspr(spr, 7)]
+    p.words += set_msr(MSR_IR | MSR_DR | MSR_FP, 7) + li32(11, source)
+    p.words += [D(50, 3, 11, 0), D(50, 4, 11, 8)]
+    f = [a, b, 0, 0]
+
+    def load(fr, ra, value, tag):
+        p.words += [D(50, fr, ra, 0), NOP]
+        f[fr - 3] = value
+        p.checks.append((len(p.words) - 1, check_text([0] * 4, 0, 0, 0, 0, list(f), tag)))
+
+    for off in (0, 4, 8, 24, 28, 0xFFC):
+        p.words += li32(8, ca + off) + li32(9, ci + off) + li32(10, wt + off)
+        p.words += [X(0, 0, 8, 470), D(54, 3, 8, 0)]
+        load(5, 8, a, "cached_%x" % off)
+        p.words.append(X(0, 0, 8, 54))
+        if off & 31 == 28:
+            p.words += li32(12, ca + off + 4) + [X(0, 0, 12, 54)]
+        load(6, 9, a, "flushed_%x" % off)
+        p.words.append(D(54, 4, 10, 0))
+        load(5, 9, b, "write_through_memory_%x" % off)
+        load(6, 8, b, "write_through_cache_%x" % off)
+        p.words += [D(54, 3, 9, 0), X(0, 0, 8, 470)]
+        if off & 31 == 28:
+            p.words.append(X(0, 0, 12, 470))
+        load(5, 8, a, "inhibited_%x" % off)
+        p.words.append(X(0, 0, 8, 470))
+        if off & 31 == 28:
+            p.words.append(X(0, 0, 12, 470))
+        p.words += caches_on(7, HID0_ICE | HID0_DCE | 0x1000) + [D(54, 4, 8, 0)]
+        load(6, 9, b, "locked_miss_%x" % off)
+        p.words += caches_on(7, HID0_ICE) + [D(54, 3, 8, 0)]
+        load(5, 9, a, "disabled_%x" % off)
+        p.words += caches_on(7, HID0_ICE | HID0_DCE)
+        load(6, 8, a, "enabled_%x" % off)
+        p.expect[phys + off], p.expect[phys + off + 4] = a >> 32, a & 0xFFFFFFFF
+    # Overlapping stores in the first line leave the later store's word.
+    p.expect[phys + 4], p.expect[phys + 8] = a >> 32, a >> 32
+    p.expect[phys + 28] = a >> 32
+    p.expect.update(table.ptes)
+    p.words.append(B_SELF)
+    p.write(out)
+    print("%d instructions, %d checks -> %s" % (len(p.words), len(p.checks), out))
+
+
 def updtest(out):
     """The update forms. First the indexed loads whose rD is their rB
     (lwzux r4,r3,r4, and lbzux, lhzux, lhaux the same: a valid form, only
@@ -1099,7 +1173,20 @@ def updtest(out):
     print("%d instructions, %d checks, %d memory words -> %s" % (len(p.words), len(p.checks), len(p.expect), out))
 
 
-def irqtest(out, loops):
+def acktest(out):
+    """Cold instruction lines competing with uncached data transfers.
+    The bus response may remain high after the receiving cache advances."""
+    p = Program()
+    p.words = caches_on(value=HID0_ICE) + li32(1, DATA_A) + li32(4, 0) + li32(2, 0x00900000)
+    p.data[DATA_A] = 42
+    for _ in range(1000):
+        p.words += [D(32, 3, 1, 0), D(14, 4, 4, 1)] + [D(14, 0, 0, 0)] * 6
+    p.words += [D(36, 3, 2, 0), D(36, 4, 2, 4), B_SELF]
+    p.expect[0x00900000], p.expect[0x00900004] = 42, 1000
+    p.write(out)
+
+
+def irqtest(out, loops, translated=False, faulting=False, overlap=False):
     """A loop whose results are known, running with interrupts enabled. The
     external and decrementer handlers each count in memory (00FFFFE0 and
     00FFFFE4) and change nothing the loop can see; the external one also
@@ -1115,12 +1202,36 @@ def irqtest(out, loops):
         p.data[0x500 + 4 * i] = w
     for i, w in enumerate(dec):
         p.data[0x900 + 4 * i] = w
+    if faulting:
+        # Skip each faulting store/load and count it. A cancelled walk must
+        # never fault on an instruction in the interrupt handler instead.
+        dsi = save + [D(32, 31, 30, 8), D(14, 31, 31, 1), D(36, 31, 30, 8),
+                      mfspr(SRR0, 31), D(14, 31, 31, 4), mtspr(SRR0, 31)] + back
+        for i, w in enumerate(dsi):
+            p.data[0x300 + 4 * i] = w
+        p.expect[COUNT + 8] = 2 * loops
 
     p.words += caches_on() + set_msr(0, 7)
+    if translated:
+        # Keep code/vectors, the page table, and interrupt counters on BATs.
+        # The loop's data page is invalidated each time to force a walk
+        # which an interrupt may cancel before the request is granted.
+        for spr, value in (
+                (IBAT0U, batu(0, 1)), (IBAT0U + 1, batl(0, 2)),
+                (DBAT0U, batu(0, 1)), (DBAT0U + 1, batl(0, 2)),
+                (DBAT0U + 2, batu(0x00100000, 1)), (DBAT0U + 3, batl(0x00100000, 2)),
+                (DBAT0U + 4, batu(0x00FE0000, 1)), (DBAT0U + 5, batl(0x00FE0000, 2)),
+                (SDR1, 0x00100000)):
+            p.words += li32(7, value) + [mtspr(spr, 7)]
+        p.words += li32(7, 0x10) + [mtsr(0, 7)]
+        pt = PageTable(p, 0x00100000, {0: 0x10})
+        if not faulting:
+            pt.map(DATA_A, DATA_A, 2, r_final=1, c_final=1)
+        p.expect.update(pt.ptes)
     p.words += li32(1, DATA_A) + li32(3, 1) + li32(4, 0) + li32(5, 0) + li32(6, 0)
     p.words += li32(7, 100) + [mtspr(DEC, 7)]
     p.words += li32(7, loops) + [mtspr(CTR, 7)]
-    p.words += set_msr(MSR_EE, 7)
+    p.words += set_msr(MSR_EE | (0x30 if translated else 0), 7)
     body = [D(7, 3, 3, 33),            # mulli r3,r3,33
             D(14, 3, 3, 7),            # addi  r3,r3,7
             X(4, 4, 3, 266),           # add   r4,r4,r3
@@ -1128,6 +1239,12 @@ def irqtest(out, loops):
             D(32, 5, 1, 0),            # lwz   r5,0(r1)
             X(5, 6, 3, 316),           # xor   r6,r5,r3
             X(6, 6, 4, 459)]           # divwu r6,r6,r4 (a long instruction to interrupt)
+    if overlap:
+        # These wrap and fill the completion queue during the division;
+        # interrupts may cancel them and restart the interrupted instruction.
+        body += [D(14, 3, 3, 1)] * 12
+    if translated:
+        body = [X(0, 0, 1, 306)] + body
     p.words += body
     p.words.append((16 << 26) | (16 << 21) | ((-4 * len(body)) & 0xFFFC))     # bdnz
     p.words += set_msr(0, 7)
@@ -1135,12 +1252,14 @@ def irqtest(out, loops):
     for _ in range(loops):
         r3 = (r3 * 33 + 7) & 0xFFFFFFFF
         r4 = (r4 + r3) & 0xFFFFFFFF
-        r5 = r4
+        r5 = 0 if faulting else r4
         r6 = r5 ^ r3
         r6 = (r6 // r4) if r4 else ((r6 << 4) | 0xF) & 0xFFFFFFFF
+        if overlap:
+            r3 = (r3 + 12) & 0xFFFFFFFF
     p.words.append(NOP)
     p.checks.append((len(p.words) - 1, check_text([r3, r4, r5, r6], 0, 0, 0, 0, [0, 0, 0, 0], "loop")))
-    p.expect[DATA_A] = r4
+    p.expect[DATA_A] = 0 if faulting else r4
     p.words.append(B_SELF)
     p.write(out)
     print("%d instructions, %d loops -> %s" % (len(p.words), loops, out))
@@ -1348,7 +1467,9 @@ def fprandom(out, count, seed):
 PHYS_OFFSET = 0x00400000
 
 
-def gen_random(out, count, seed, translate=False):
+REPEAT_COUNT = 0x00300000     # the repeat option's pass counter (no data area near it)
+
+def gen_random(out, count, seed, translate=False, repeat=1, steady=False):
     rnd = random.Random(seed)
     p = Program()
 
@@ -1496,7 +1617,7 @@ def gen_random(out, count, seed, translate=False):
             return [(31 << 26) | (rd() << 21) | ((268 & 31) << 16) | ((268 >> 5) << 11) | (371 << 1)]  # mftb
         if k == 10:
             n = rnd.randrange(16)
-            if bit():
+            if bit() and not steady:     # (steady: no new fold epoch, so the BTB keeps its folds)
                 if translate:
                     return [tlbie(rs())]
                 return [mtsr(n, rs())]
@@ -1537,7 +1658,7 @@ def gen_random(out, count, seed, translate=False):
             # it throws away stores the data cache still holds, which dingusppc,
             # having no cache, would keep.
             t = rd()
-            return [M(21, base(), t, 0, 27, 19), X(0, 0, t, rnd.choice((54, 86, 982)))]
+            return [M(21, base(), t, 0, 27, 19), X(0, 0, t, rnd.choice((54, 86) if steady else (54, 86, 982)))]
         if k == 0:
             return [D(rnd.choice((32, 34, 40, 42)), rd(), base(), d)]                 # lwz lbz lhz lha
         if k == 1:
@@ -1645,6 +1766,13 @@ def gen_random(out, count, seed, translate=False):
             p.words += [D(15, t, 0, addr >> 16), D(24, t, t, addr), mtspr(spr, t),
                         (19 << 26) | (bo << 21) | (rnd.randrange(32) << 16) | (xo << 1) | bit()]
     assert len(p.words) == end
+    if repeat > 1 and not translate:
+        # run the body again (the branch target buffer then knows its branches,
+        # and folds them): a pass counter in memory, then back through CTR
+        p.data[REPEAT_COUNT] = repeat - 1
+        p.words += [D(15, 4, 0, REPEAT_COUNT >> 16), D(32, 3, 4, 0), D(13, 3, 3, 0xFFFF), D(36, 3, 4, 0)]
+        p.words += li32(5, CODE_BASE + 4 * starts[0]) + [mtspr(CTR, 5)]
+        p.words.append((19 << 26) | (4 << 21) | (2 << 16) | (528 << 1))                # bnectr
     p.words.append(B_SELF)
     p.write(out)
     print("%d instructions -> %s" % (len(p.words), out))
@@ -1774,6 +1902,49 @@ def memtest(out):
     print("memory test: %d instructions, %d words in the image -> %s" % (n, sum(1 for w in img if w), out))
 
 
+def specfetchrom(out):
+    """Train a conditional call with IR on, then take its fallthrough with
+    IR off. The stale prediction reads an unmapped instruction line. Its
+    response must not enter the reference's data-device queue and block
+    the subsequent Hammerhead motherboard-ID load. Run machine_tb with
+    --machine --rom OUT.rom --lockstep --max-instr 100; require an observed
+    instruction fetch outside RAM/ROM and one compared device read.
+    """
+    rom = bytearray(4 << 20)
+
+    def put(pc, words):
+        for w in words:
+            off = pc - 0xFFC00000
+            rom[off:off + 4] = w.to_bytes(4, "big")
+            pc += 4
+        return pc
+
+    def branch(pc, target):
+        return 0x48000000 | ((target - pc) & 0x03FFFFFC)
+
+    call, done = 0xFFF00200, 0xFFF00280
+    words = caches_on(value=HID0_ICE)
+    # Four-MB IBATs: retain ROM's identity mapping and map 68000000 to ROM.
+    for spr, value in ((529, 0xFFC00002), (528, 0xFFC0007F),
+                       (531, 0xFFC00002), (530, 0x6800007F)):
+        words += li32(3, value) + [mtspr(spr, 3)]
+    words += set_msr(0x20, scratch=3) + li32(4, 1)
+    words += li32(3, 0x68000400) + [mtspr(LR, 3), cmpwi(4, 1)]
+    pc = put(0xFFF00100, words)
+    put(pc, [branch(pc, call)])
+    pc = put(call, [0x4D820021, cmpwi(4, 0)])  # bclrl 12,2; cmpwi r4,0
+    put(pc, [0x41820000 | ((done - pc) & 0xFFFC)])
+    pc = put(pc + 4, li32(4, 0) + set_msr(0, scratch=3) +
+             li32(3, 0x68000400) + [mtspr(LR, 3), cmpwi(4, 1)])
+    put(pc, [branch(pc, call)])
+    pc = put(done, li32(3, 0xF8000000) + [D(32, 4, 3, 32), D(14, 5, 0, 42)])
+    put(pc, [B_SELF])
+    put(0xFFC00400, [0x4E800020])             # blr: return from the trained call
+    with open(out, "wb") as fh:
+        fh.write(rom)
+    print("speculative I-fetch regression ROM ->", out)
+
+
 if __name__ == "__main__":
     here = os.path.dirname(os.path.abspath(__file__))
     a = sys.argv[1:]
@@ -1792,16 +1963,31 @@ if __name__ == "__main__":
         resvtest(a[1])
     elif len(a) >= 2 and a[0] == "cachetest":
         cachetest(a[1])
+    elif len(a) >= 2 and a[0] == "widecachetest":
+        widecachetest(a[1])
     elif len(a) >= 2 and a[0] == "updtest":
         updtest(a[1])
     elif len(a) >= 2 and a[0] == "irqtest":
         irqtest(a[1], int(a[2]) if len(a) > 2 else 3000)
+    elif len(a) >= 2 and a[0] == "irqwalktest":
+        irqtest(a[1], int(a[2]) if len(a) > 2 else 3000, translated=True)
+    elif len(a) >= 2 and a[0] == "irqwalkfaulttest":
+        irqtest(a[1], int(a[2]) if len(a) > 2 else 3000, translated=True, faulting=True)
+    elif len(a) >= 2 and a[0] == "acktest":
+        acktest(a[1])
+    elif len(a) >= 2 and a[0] == "irqoverlaptest":
+        irqtest(a[1], int(a[2]) if len(a) > 2 else 3000, overlap=True)
     elif len(a) >= 3 and a[0] == "fprandom":
         fprandom(a[1], int(a[2]), int(a[3]) if len(a) > 3 else 1)
     elif len(a) >= 3 and a[0] == "random":
-        gen_random(a[1], int(a[2]), int(a[3]) if len(a) > 3 else 1, len(a) > 4 and a[4] == "xlate")
+        opts = a[4:]
+        rep = [int(o.split("=")[1]) for o in opts if o.startswith("repeat=")]
+        gen_random(a[1], int(a[2]), int(a[3]) if len(a) > 3 else 1, "xlate" in opts, rep[0] if rep else 1,
+                   "steady" in opts)
     elif len(a) >= 2 and a[0] == "memtest":
         memtest(a[1])
+    elif len(a) >= 2 and a[0] == "specfetchrom":
+        specfetchrom(a[1])
     else:
         print(__doc__)
         sys.exit(2)

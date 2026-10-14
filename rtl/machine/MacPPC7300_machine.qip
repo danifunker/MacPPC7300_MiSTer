@@ -2,6 +2,7 @@
 # verilator/Makefile reads its file list from here.
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) MacPPC7300_pkg.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) MacPPC7300_pcicfg.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) MacPPC7300_vramwc.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) MacPPC7300_escc.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) MacPPC7300_swim3.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) MacPPC7300_fdblk.sv]

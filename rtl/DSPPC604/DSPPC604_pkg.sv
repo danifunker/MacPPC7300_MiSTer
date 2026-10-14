@@ -201,6 +201,7 @@ package DSPPC604_pkg;
 		logic [6:0]  str_bytes;    // string forms: bytes in the whole operation, on its
 		                           // first access only (the alignment check is made there)
 		logic        mem_ext;      // eciwx, ecowx: a DSI, there being no external control facility
+		logic        upd;          // a load with update in one operation: also rA <- EA (second write port)
 		ck_t         cop;          // the cache instructions: what the access asks of the cache
 		resv_t       resv;
 		seq_t        seq;
@@ -293,17 +294,21 @@ package DSPPC604_pkg;
 		end
 	endfunction
 
-	// lfs: single to double
+	// lfs: single to double. Decode the highest fraction bit once, then
+	// select fixed shifts/exponents in parallel. No encoded leading-zero
+	// count, exponent subtractor or variable barrel shift is on this path.
 	function automatic logic [63:0] fp_single_to_double(input logic [31:0] w);
-		logic [4:0]  lz;
+		logic [22:0] leading;
 		logic [22:0] sh;
 		logic [10:0] e;
 		begin
-			lz = 5'd0;
-			for (int i = 0; i < 23; i++)
-				if (w[i]) lz = 5'd22 - i[4:0];
-			sh = w[22:0] << (lz + 5'd1);          // leading one shifted out
-			e  = 11'd896 - {6'd0, lz};
+			sh = '0;
+			e = '0;
+			for (int i = 0; i < 23; i++) begin
+				leading[i] = w[i] & ~|(w[22:0] >> (i + 1));
+				sh |= (w[22:0] << (23 - i)) & {23{leading[i]}};
+				e |= (11'd874 + 11'(i)) & {11{leading[i]}};
+			end
 			if (w[30:23] == 8'd0 && w[22:0] != 23'd0)
 				fp_single_to_double = {w[31], e, sh, 29'd0};                             // denormal
 			else if (w[30:23] == 8'd0 || w[30:23] == 8'hFF)

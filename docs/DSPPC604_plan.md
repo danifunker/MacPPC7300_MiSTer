@@ -18,6 +18,667 @@ working sessions, not calendar promises.
 | M5 | MMU and caches | translation and cache tests; lockstep with translation on | done 2026-10-06 (timing pass stopped at 64-65 MHz) |
 | M6 | Real ROM in simulation, first MiSTer build | the 7600 ROM runs from reset until it needs hardware; timing met at 66 MHz or better | done 2026-10-06, apart from timing: the ROM runs in simulation and on the board, identically, to Open Firmware's wait for Cuda; the CPU's clock closes at 64.6 MHz (65 asked) |
 
+## CPU performance goal (2026-10-09)
+
+**Current handoff, 2026-10-10 12:24 PDT:** work is paused at the user's
+request. [RESUME_speed.md](../RESUME_speed.md) is authoritative for retained
+CPU work, exact source hashes, tests, candidate timing and next steps; the
+older progression below is historical. Root retains AT. The goal remains
+70 MHz full-machine closure plus measured overall2x at fixed clock against
+0186181, followed by higher-clock work; neither acceptance gate is met.
+Newest isolated CL/CM pass functional gates and300M ROM lockstep but fail
+CPU setup at59.81/59.65 MHz. All owned builds/runs are terminal. The original
+CPU and AT both diverge at the same lswx4KB-boundary alignment exception;
+strict reference diagnosis is next. The board is baseline55/new Main/one
+SC0 disk, with no confirmed clean shutdown or hardware performance scores.
+
+Root now matches verified AT CPU/video source hashes. CPU/lint, all checked
+mixes, specfetch, 6 MB memtest and 300 M ROM lockstep pass. Full-machine seed 1
+with retiming off fits at 34,701 ALMs (83%): CPU setup still fails at
+60.38 MHz / -2.278 ns. Memory 100 MHz setup passes with only +0.001 ns
+minimum margin; all-corner hold passes (+0.087 ns). Newer AU–BY experiments
+remain isolated. The passing AT55 comparison build is temporarily on the
+board; failed 70 MHz candidates remain undeployed. The following measurements record
+the progression to AT. Root clock/PLL/QSF/SDC are unchanged. The 70 MHz
+and 2x board acceptance gates remain open.
+
+Latest isolated timing candidate U combines RAM predictor/FPRs, registered
+data translation, cache forwarding/byte selection and pipelined RAS payload
+writes. CPU/lint, all 16 checked mixes, collision-poisoned suite, 6 MB memtest
+and trained discarded-I-fetch regression pass. A 600 M ROM/disk lockstep
+also passes with identical state/device accesses (946,832,881 post-Cuda
+cycles, 18 out-of-RAM/ROM instruction fetches). This does not establish OS
+boot or performance. U reaches 57.33 MHz / 14,964 ALMs with retiming off;
+the same source reaches 59.32 MHz / 16,542 ALMs with retiming on (V).
+Y adds registered ICBI ACK, data read-ahead/TLB collision freshness,
+predictor validity and one-hot branch CR selection. CPU/lint and all 16
+mixes pass; retiming-off/on diagnostics finish at 57.80 / 58.03 MHz. Z adds
+a registered FP compare response (one additional compare cycle). It passes
+CPU/lint/unit vectors (operand register off/on), cache/tag/data/TLB collision
+poisoning, 16 checked mixes, 6 MB memtest, trained discarded-I-fetch regression
+and 300 M ROM/disk lockstep (465,358,126 post-Cuda cycles; 16 I-device fetches).
+The zero-wait FP vector program costs 590,750 cycles versus Y's 590,423.
+Z reaches 58.97 MHz / 14,940 ALMs retiming off, 59.31 MHz / 16,995 ALMs on;
+both fail 70 MHz. Z was integrated before verified AF. Full-machine
+seed 1 (`seed_fcmp_reg_no_retiming_v2/`) fits at 35,935 ALMs (86%) but fails
+setup: CPU 55.17 MHz / -3.841 ns; memory 88.83 MHz / -1.257 ns versus 100 MHz.
+All four hold corners pass; clocks are constrained, but stock external I/O
+still has unconstrained ports. The first scratch copy omitted the PLL inputs
+and stopped before fitting. Full-machine timing at
+70 MHz and the matched fixed-clock Speedometer 2x target are outstanding.
+
+Later isolated cuts AA (registered data lookup page) and AB (ID completion
+predecode) pass CPU/lint/performance but reach only 58.34 and 57.64 MHz.
+AC adds two registered fetch FIFO output slots; AD selects branch CR from
+committed CR using an EX one-hot selector. CPU/lint and all 16 checked mixes
+pass for both; AD also passes full cache/tag/data/TLB/BTB/target/FPR collision
+poisoning, trained discarded-I-fetch regression and 6 MB memtest. Their
+standalone timing finishes at 56.93 / 59.14 MHz, both failing 70 MHz. AD's
+300 M lockstep passes (481,830,131 post-Cuda cycles; 25 I-device fetches).
+AE hides unused combinational compare FPSCR/CR outputs until its registered
+response is valid. CPU/lint, unit vectors in both operand modes, all checked
+mixes, full collision-poisoning suite, trained specfetch and memtest pass;
+300 M lockstep passes (481,830,131 post-Cuda cycles). Standalone retiming
+off/on reaches 59.95 / 56.44 MHz. AF parallelizes current/predicted BTB-valid
+selection and replaces the video width's power-of-two multiply with a shift.
+CPU/lint, exact AE performance counts, specfetch and memtest pass; standalone
+timing improves to 61.88 MHz. AF 300 M lockstep passes. Its full-machine
+build fits at 36,631 ALMs; CPU setup fails at 57.97 MHz, but the 100 MHz
+memory domain passes all four corners (minimum setup +0.268 ns).
+AG forwards an LFS word directly to STFS, removing the conversion round trip;
+CPU/lint, exact checked mixes, collision poisoning and 48 directed edge cases
+pass. Standalone timing worsens to 58.70 MHz as cache-hit-to-commit control
+becomes critical. AH separates ID/EX admission capacity from abort/fault
+decisions (60.68 MHz); AI simplifies repeated memory-acceptance qualification.
+CPU/lint and exact mixes pass for both. AJ captures FP compare operands before
+comparison, adding one cycle only for OPERAND_REG=0 compares. CPU and unit
+vectors in both operand modes, full collision poisoning, 576 directed
+compare cases and 300 M lockstep pass. Full-machine CPU timing reaches only
+57.61 MHz (-3.074 ns). AK removes redundant redirect qualification from
+completion admission (62.91 MHz standalone). AL/AM/AN remove late exception
+control from admission/payload capture and reuse parallel BTB row equality.
+AN passes CPU/lint, exact mixes, collision poisoning and 300 M lockstep;
+its full-machine CPU timing worsens to 55.98 MHz while memory 100 MHz passes.
+AO computes FPSCR candidates before selecting forwarding tags. CPU/lint,
+exact mixes, collision poisoning and 480 directed field-mask/denormal/NaN
+cases pass, including full-helper/original-updater equivalence assertions.
+Standalone AO reaches 60.76 MHz; specfetch, memtest and 300 M lockstep pass.
+AP compares cache tags before forwarded-hit selection: CPU/lint, exact mixes,
+collision poisoning and specfetch/memtest pass. Standalone reaches 61.85 MHz;
+300 M lockstep passes; full-machine CPU57.95/memory96.7 MHz both miss targets.
+AQ registers cache-control
+replies while preserving word throughput; it passes CPU/lint/exact mixes and
+collision poisoning but standalone timing worsens to 60.65 MHz, so it stays
+isolated. AR branches from AP and replaces LFS denormal conversion with
+parallel fixed shifts/exponents. All 34.6 M equivalence checks pass, as do
+CPU/lint, exact mixes, collision poisoning and directed edge cases. Machine
+specfetch/memtest pass and 300 M lockstep is running. Standalone AR worsens
+to 60.32 MHz: cache-response-to-BAT-write control becomes critical. AS tests
+ordinary-capacity system-register commit with an assertion of exact original
+commit equality. CPU/lint/exact mixes/collision poisoning pass; standalone
+60.53 MHz. AT stores the integer register file in five synchronous RAMs,
+with prospective instruction and sequencer reads independently of admission.
+CPU/lint/exact mixes/collision poisoning against the original asynchronous
+RF pass; all five forwarded collision samples have positive coverage.
+Specfetch/memtest/300 M lockstep pass. Standalone AT uses 13,907 ALMs /
+9,925 registers, saving 1,808 ALMs and 1,175 registers versus AS; timing is
+61.16 MHz. Retiming on worsens standalone timing to 57.86 MHz. Full-machine
+AT improves CPU timing by 2.41 MHz and saves 1,930 ALMs versus AF; AT is
+integrated with exact hashes and the root suite/lint rerun passes.
+AU compares branch PCs before selecting mismatch by outcome; CPU/lint,
+exact mixes and collision poisoning pass; timing is 61.43 MHz.
+Specfetch/memtest/300 M lockstep pass.
+AV holds redirect payloads in alternating banks so late control updates
+only selectors; CPU/lint/exact mixes/collision poisoning pass with exact
+original PC state assertion. Standalone timing is 62.42 MHz; specfetch and
+memtest/300 M lockstep pass; full-machine CPU reaches 58.69 MHz and MEM100
+fails by -0.003 ns, worse than integrated AT. AW applies
+the earlier registered cache-control reply cut to AU; CPU/lint/exact mixes/
+collision poisoning pass, timing is 61.87 MHz. AX registers live GPR WB
+forwarding indices; CPU/lint/exact mixes/collision poisoning pass, timing
+improves to 62.66 MHz. AY replaces shift-mask boundary arithmetic with
+constant comparisons; 192,512 RTL ALU equivalence cases and full correctness
+gates pass, but timing worsens to 62.09 MHz. AZ tests alternating EX operand
+banks to remove late cache replies from wide operand load enables; CPU/
+lint/exact mixes/collision poisoning pass; timing reaches 62.73 MHz.
+AU–BC pass specfetch, memtest and 300 M ROM lockstep. BA samples status
+using earlier ordinary capacity; BB samples fault payload independently
+of admission; BC uses a synchronous instruction-side SR copy. These reach
+61.20, 62.09 and 60.68 MHz respectively. BD banks memory request payloads
+and reaches 62.61 MHz. BE is a direct AT fork with registered forwarding
+flags: full CPU/lint/exact mixes/collision tests pass, 62.27 MHz. Full BE
+fits at 34,650 ALMs, CPU70 -2.723 ns, MEM100 -0.259 ns; keep it isolated.
+BD/BE also pass specfetch/memtest/300 M machine lockstep. BF tests parallel
+BTB validity candidates before late fetch admission; CPU/lint/exact mixes/
+collision/specfetch/memtest/300 M pass, but timing worsens to 60.38 MHz.
+Matched AT and original baseline builds at 60 MHz failed timing, including
+both AT seeds and a retimed baseline. Matched 55 MHz builds pass CPU/MEM
+setup and all-clock hold at all four corners, with verified derived clocks.
+The AT55 build reaches OS8.1’s desktop background, but Finder reports the
+Mac disk cannot be found and clean shutdown also fails. No scores or
+baseline boot comparison yet; preserve the disposable disk and obtain an
+explicit exception to the no-reload-while-mounted rule before resetting.
+Root remains 70 MHz
+and fixed-70 acceptance remains outstanding.
+Root remains AT;
+`RESUME_speed.md` records exact paths, hashes, measurements and active jobs.
+
+Further isolated experiments: BG enables the existing registered D-cache
+answer on BE. CPU/lint/16 lockstep mixes pass, standalone reaches 64.95 MHz,
+but cached streams regress from roughly one to two cycles per access;
+keep it isolated. BH's aggregate MLAB attribute leaves M10K inference and
+timing unchanged. BI declares a packed tag array per generated way; full
+CPU/lint/collision tests and all 16 exact BE mixes pass; Quartus still maps
+tags to M10K and timing remains 62.27 MHz. Specfetch/memtest and 300 M
+machine lockstep pass (481,830,131 post-Cuda cycles, 25 I-device fetches).
+BJ's explicit QSF memory assignment was ignored: braced node pattern invalid
+(Critical Warning 136021). BK corrects quotation; BL broadens the pattern;
+both still produce identical M10K implementation/timing. A minimal Quartus17
+probe proves the tested generated RAM declarations ignore the same hints
+that work at module scope. BM places tag RAM declarations in a helper module:
+CPU/full collision suites and all16 exact BI mixes/events pass. Synthesis
+finally infers all8 tag RAMs as MLAB (22,528 bits), but final timing worsens
+to 58.11 MHz with 14,628 ALMs / 10,149 registers / 93 RAM. Lint/specfetch/
+6MB memtest pass; remaining 300M run stopped after timing rejected BM.
+Keep this candidate isolated. Module-scope M10K RAMs with honored
+no_rw_check may be worth testing next; currently a hypothesis.
+BN applies module-scope M10K/no_rw_check to all72 cache tag/data RAMs;
+synthesis confirms DONT_CARE; CPU/full collision/lint/exact mixes pass,
+standalone63.34MHz. Full70 machine fails CPU59.84MHz/-2.426ns and
+MEM10098.63MHz/-0.139ns; hold passes all4corners, minimum+0.076ns.
+Keep isolated. Specfetch/memtest
+and300M lockstep pass (481,830,131 post-Cuda cycles, 25 I-device fetches).
+BO predecodes static FPSCR selectors at ID-to-EX to shorten the measured
+FPSCR-to-redirect path; CPU/full collisions/lint/786432-case equivalence/
+exact mixes pass; standalone63.32MHz. BP combines these independent cuts;
+CPU/full collisions/lint/exact mixes/specfetch/6MB memtest pass, but timing
+regresses to61.52MHz. Keep it isolated; no full-machine compile/300M/hardware.
+BQ targets fullBN's CR-to-fetchFIFO RAM write-enable path by separating
+physical stores from logical enqueues: redirect-discarded writes have no
+visible effect. Original FIFO shadow checks every occupied word. CPU/full
+collision/lint/exact mixes pass; seven mixes exercise discarded writes and
+a wrong write-address negative control trips the shadow. Full70MHz timing
+finishes at about60.71MHz (CPU setup-2.188ns); MEM100 cold also fails
+(-0.099ns), while four-corner hold passes (minimum+0.091ns). Specfetch,
+6MB memtest and300M lockstep pass; no OS boot or Speedometer proof.
+BR reuses parallel row comparisons for BTB target forwarding too, avoiding
+comparison after late fetch index selection. CPU/full collision/lint/exact
+mixes/specfetch/6MB memtest pass. Standalone63.44MHz/-1.476ns improves
+BQ's60.94MHz; full-machine timing remains necessary.
+Full70MHz retiming-off seed1 completes at58.26MHz (CPUhot-2.878ns), worse
+thanBQ/AT. MEM100 passes (+0.126ns minimum); all-corner hold passes
+(+0.115ns minimum). Worst path is EX CR select -> MMU fault DAR capture.
+Keep isolated; no300M or board result.
+No new candidate is integrated or deployed.
+
+BS replaces binary completion occupancy with nine-bit one-hot shifts,
+targeting BQ's cache-response-to-completion-count timing path. Original
+binary shadows check both total and older counts; a wrong-shift negative
+control trips the shadow. CPU/full collision/lint/exact mixes/specfetch/6MB
+memtest pass. A Quartus17 simulation-guard error was corrected with explicit
+synthesis translate_off/on, and final functional checks rerun. Corrected
+standalone timing completes at62.20MHz (14,030 ALMs/10,051 registers),
+belowBR63.44MHz. Full70MHz retiming-off seed1 completes at59.53MHz
+(CPUhot-2.514ns), aboveBR but belowBQ/AT. MEM100 fails cold-0.306ns;
+all-corner hold passes (+0.059ns minimum). Worst CPU is WB operand
+forwarding -> rotate/shift -> CR record field. Keep isolated; no board claim.
+
+BT imports BB's prospective D-fault payload capture into BS, targeting
+BR's branch-to-DAR enable path. Original visible fault payload shadow,
+CPU/full collisions/lint/exact mixes/specfetch/6MB memtest pass; wrong DAR
+negative control trips the shadow. Standalone63.57MHz improvesBS by1.37MHz.
+300M machine lockstep passes. Full70MHz retiming-off seed1 completes at
+58.97MHz (CPUhot-2.674ns), belowBQ/AT. MEM100 and all-corner hold pass
+(+0.116/+0.117ns minimum). Keep isolated: CPU70 fails; no board claim.
+
+BU direct word shifts preserve all9 raw ALU outputs in1,179,648 old/new
+cases; negative saturated-carry control trips the miter. CPU/full collision/
+lint/exact mixes/specfetch/6MB memtest pass, but standalone61.91MHz is
+belowBT. No full compile/300M/board claim; keep isolated.
+BV moves final CR overwrite application to MEM, with same-cycle effective
+CR forwarding. Original next-value/EX-commit/MEM-snapshot shadows, CPU/full
+collisions/lint/exact mixes/specfetch/6MB memtest/300M lockstep pass. Disabled
+forwarding negative control trips the shadow. Standalone61.74MHz still
+misses70; full70MHz retiming-off seed1 completes at58.32MHz (CPUhot-2.862ns),
+belowBT/BQ/AT. MEM100 and all-corner hold pass (+0.054/+0.066ns minimum).
+Worst CPU cache tag RAM -> HID0[15] captures still expose late reply feedback.
+Keep isolated: CPU70 fails. No board performance claim.
+
+BW pre-captures EX operands and HID0 in alternating banks, switching only
+one-bit owners on original admission/commit. Owned-operand/HID0 shadows,
+CPU/full collisions/lint/exact16 mixes/specfetch/6MB memtest pass. Disabled
+EX bank switch trips the shadow. Standalone59.73MHz is belowBV; its worst
+path runs from system-op decode through exception/redirect into BTB target
+forwarding. All63 reported suite cycle counts and 300M machine lockstep
+also match BV (481,830,131postCuda cycles); no OS boot or Speedometer proof.
+Full70MHz retiming-off seed1 completes at58.53MHz:CPUhot-2.799ns/cold-2.796ns,
+35,348ALMs/37,998registers/346RAM/48DSP. MEM100 and all-corner hold pass
+(+0.118/+0.096ns minimum). Worst cache tag RAM -> wide-response qualification
+-> load-window/format -> WB result. Keep isolated; CPU70 fails, belowAT/BQ.
+BX removes the late wide-response zero-fill mux from BW's first-phase load
+window. Successful first-phase doublewords already require wide validity;
+noncrossing narrow loads use only the first word, and fallback loads use
+saved word0/current second word. Original successful-load formatting shadow,
+CPU/full collisions/exact16 mixes/all63 suite counts pass. Nonzero discarded
+second-word coverage and corrupted first-word negative control are exercised.
+Lint/specfetch/6MB memtest pass with exact BW counts. Standalone63.56MHz
+improvesBW by3.83MHz (14,507ALMs/10,368registers/101RAM), but still misses70.
+300M machine lockstep also passes at481,830,131postCuda cycles,exactBW.
+Full70MHz retiming-off seed1 completes at57.90MHz (CPUhot-2.985ns/cold-2.863ns),
+35,335ALMs/38,052registers/346RAM/48DSP. MEM100 also fails (-0.237ns cold);
+all-corner hold passes (+0.114ns minimum). Worst cache tag RAM -> data-way
+selection/load formatting -> WB result; the late wide qualification is gone
+but full timing worsens. Keep isolated; no70MHz or board performance claim.
+BY revisits actual module-scope MLAB tag RAMs in a full fit, since BM's
+earlier slower result was only standalone and M10K tag-to-CPU return paths
+still carry about2.4ns clock skew. Separate fixed32x128 data-word helper
+retains M10K/no_rw_check and identical synchronous read/write transitions.
+CPU/full collisions/lint/exact16 mixes/all63 suite counts/specfetch/6MB
+memtest pass. Actual mapping confirms8MLABtaginstances/22,528bits and
+64M10Kdatawordinstances. Standalone60.75MHz is belowBX63.56MHz
+(14,901ALMs/10,462registers/93RAM). 300M ROM lockstep passes at481,830,131
+postCuda cycles,exactBX. Full70MHz retiming-off seed1 improves to61.39MHz
+(CPUhot-2.004ns/cold-1.950ns),36,083ALMs/38,314registers/338RAM/48DSP.
+Full mapping also confirms8MLABtags and64M10Kdataword memories. MEM100
+still fails cold setup (-0.193ns); all-corner hold passes (+0.106ns minimum).
+Worst Dcache request tag -> hit response/completion/admission -> MEMforward
+flags,15.748ns data delay. The tag-memory clock skew family is removed;
+late control feedback remains. Keep isolated; CPU70 fails, no board claim.
+BZ implements that cut in an isolated directBY fork: registers all three
+producer-by-two-consumer forwarding masks, registers narrow selectors with
+original admission priority, and qualifies visible masks with registered
+MEM/WB validity. CPU/full inherited collision-poison suite/lint pass; all63
+suite counts and all16 cycle/event dictionaries exactly matchBY. Original
+captured-mask and tag-match observers check every cycle including invalid
+EX; inverted consumer selection fails the original observer. Specfetch/
+6MB memtest pass at522/27,333,623postCuda cycles with zero errors. 300M ROM
+lockstep passes at481,830,131postCuda cycles,exactBY state/device accesses.
+Standalone completes at61.39MHz hot/61.87cold (-2.002ns worst),14,962ALMs/
+10,582registers/93RAM. Worst cache hit -> ID admission/fetch delivery ->
+fetch-stage RAM bypass; the two-entry133bit output stage maps to4M10Ks
+with automatic pass-through logic. Full70MHz OFF seed1 completes at59.08MHz
+(CPUhot-2.641ns/cold-2.448ns),36,262ALMs/38,342registers/338RAM/48DSP,
+worseBY61.39MHz. MEM100 all-corner setup passes,min+0.272ns; all-corner
+hold passes,min+0.114ns. Worst Dcache request tag -> hit response/MEMleave/
+ID admission -> saved GPR index enable,16.433ns data delay/-0.413ns clock
+skew; fetch-delivery control has225loads. Only the intended CPU file differs
+among118 full inputs,postbuild RTL matches manifest. Reject for integration,
+keep isolated. No closure or board performance claim.
+
+CA directBY fork excludesBZ and replaces the admission-enabled181bit ID
+packet with two explicit named banks. The inactive bank samples the next
+fetch packet; original delivery changes only a one-bit owner. Owner starts
+at power-up and retains across CPU reset to preserve the original unreset
+payload. Original181bit shadow compares every nonreset cycle including
+invalid ID; disabled owner switching fails it. CPU/full inherited collisions/
+lint/all63 suite counts/exact16 mixes/specfetch/6MB memtest pass with exact
+BY cycles and zero memory errors. 300M ROM lockstep passes at481,830,131
+postCuda cycles,exactBY state/device accesses. Standalone58.66MHz hot/
+59.40cold (-2.761ns worst),15,045ALMs/10,688registers/93RAM; the worst
+owner signal has680loads into raw instruction decode/sequence/EX operands.
+Full70 OFF seed1 timing is running. Only the intended CPU file differs among118
+full inputs. Validate mapping/owner fanout/EX-input mux costs against full
+timing; keep isolated, no closure or board performance claim.
+
+CB directCA fork captures the existing222bit fetch decode in the packet
+banks (403bits per bank), moving raw decoding before ID selection. ISI
+packets preserve the original all-zero decode of insn=0. An independent
+original decoder compares every nonreset cycle including invalid ID;
+corrupted decoded-valid fails this checker. CPU/full inherited collisions/
+lint/exact16 mixes/all63 counts/specfetch/6MB memtest pass with exactCA
+cycles and zero memory errors. 300M ROM lockstep and standalone/full70 OFF
+seed1 timing are running. All118 full input hashes compared againstCA;
+only intended CPU file differs,transferred hashes verified. Keep isolated;
+no decoder-rule,operand,stage-handshake or latency change; no closure/board claim.
+
+The user authorized the five architectural changes proposed in the CPU review:
+buffered fetch, cache RAM addressing independent of grants, pipelined L1
+accesses, improved branch prediction, and execution overlap or dual issue.
+The first acceptance target is **2x Speedometer CPU performance at the same
+70 MHz clock**, against build 46 / commit `0186181`, with full-machine
+70 MHz timing closure. Only after that should a higher clock contribute to
+the performance target. Quartus validation resumed when the user supplied
+`misterubuntu` and MiSTer `10.0.2.14`; its objective is unchanged. Simulation cases that
+exceed 2x are evidence about individual bottlenecks, not achievement of
+the whole-machine target.
+
+The implementation keeps the two architectural commit points, the existing
+unit interfaces, and WB availability for load consumers:
+
+- Fetch has a four-word queue with capacity reserved for its outstanding
+  response. Admission uses registered occupancy, independent of ID/EX/MEM
+  readiness. An empty queue passes a response directly to ID, retaining
+  the original branch-recovery latency. Redirects discard queued words and
+  drain an already accepted request. The MMU prevents an ISI from overtaking
+  an older cache response and cancels ungranted walks on a redirect.
+- Cache RAMs read a candidate set without waiting for a grant. The set bits
+  come directly from the untranslated page offset. A dirty victim's tag and
+  full line are captured before a speculative read replaces the RAM outputs;
+  write-back uses those registers. Pending cache writes and writes colliding
+  with a RAM read are forwarded per word and tag, allowing consecutive store
+  hits and store/load pairs to the same set. Snoops still wait for pending
+  same-set writes, and snoop priority is unchanged.
+- The memory unit accepts a descriptor when a memory operation leaves EX.
+  It retains that descriptor for response alignment and any second word.
+  A subsequent request can be accepted during the preceding response, so
+  independent L1 word loads sustain one per cycle. Data accesses still
+  fault in MEM, stores still wait for all older faults to resolve, and load
+  consumers still receive their result through WB. An interrupt can cancel
+  a walk before acceptance; a cancelled walk cannot later fabricate a DSI.
+  Doubleword hits within a line transfer both words in one access. Uncached,
+  write-through stores, and line/page crossings retain the two-word fallback.
+- The branch target buffer has two ways and 64 sets, retaining 128 total
+  entries, with folded address indexing. An eight-entry speculative return
+  stack is restored from committed call/return state on every redirect,
+  including the branch committing at that edge. Predictions remain hints
+  checked against the actual next PC in EX.
+- An eight-entry completion FIFO holds speculative ALU results behind a
+  multiply, divide or FP operation. Eligibility comes from the decoder's
+  unit, register and side-effect declarations: no memory, traps, privilege,
+  carry input, or status writes. Operands select the latest writer in program
+  order; older and younger writer masks distinguish each side of the current
+  EX operation. Older queued results drain through ordinary MEM/WB while
+  independent younger ALU work appends. EX cannot commit status or issue a
+  memory request ahead of older entries. A redirect discards younger results.
+  This provides execution overlap; fetch and architectural retirement still
+  sustain at most one instruction per cycle, and FP arithmetic is not pipelined.
+
+`verilator/perf.py --tb PATH --out Scratch/perf/architecture --lockstep`
+generates and checks repeatable warm-cache cases. The original CPU executable
+was built before the architectural edits; both versions run the same programs
+for 10,000 loop iterations. Cycle counts include setup and final cache drain.
+
+| Case | Original cycles | Current architecture | Speedup at fixed clock |
+|---|---:|---:|---:|
+| Independent ALU operations | 170,226 | 170,219 | 1.00x |
+| Dependent ALU operations | 170,226 | 170,219 | 1.00x |
+| Independent L1 loads | 330,224 | 170,221 | 1.94x |
+| Load followed by use | 330,223 | 250,213 | 1.32x |
+| L1 store hits | 470,234 | 170,229 | 2.76x |
+| Store/load pairs | 410,225 | 170,224 | 2.41x |
+| Multiply/integer mix | 330,222 | 260,210 | 1.27x |
+| FP multiply | 570,223 | 570,211 | 1.00x |
+| FP/integer mix, one ALU per FP | 650,225 | 580,211 | 1.12x |
+| FP/integer mix, four ALUs per FP | 890,237 | 610,213 | 1.46x |
+| Divide/integer mix | 1,570,223 | 1,450,208 | 1.08x |
+| Divide with younger overwrite/ALU chain | 1,570,223 | 1,450,208 | 1.08x |
+| Divide with dependent next operands | 790,219 | 790,208 | 1.00x |
+| Independent FP doubleword loads | 650,224 | 170,217 | 3.82x |
+| FP doubleword stores | 950,259 | 240,247 | 3.96x |
+| Calls and returns with predictor conflicts | 970,282 | 490,281 | 1.98x |
+
+The scalar ALU already sustains approximately one instruction per cycle.
+Long arithmetic and dependent operands still limit throughput. These cases
+do not demonstrate a general 2x CPU improvement. The golden integer program
+is 243,770 -> 237,063 cycles (1.85 -> 1.80 CPI, 1.03x); the golden FP program
+is 973,140 -> 589,997 cycles (3.46 -> 2.10 CPI, 1.65x). These programs are
+correctness workloads, not substitutes for Speedometer. First measure the
+current implementation on the board and fit it at 70 MHz. If CPU performance
+is short of 2x, use its measured mix to choose between wider fetch/issue,
+earlier load availability, a shorter divider, and pipelined FP arithmetic.
+Any wider issue still needs ordered completion and decoder-based dependencies.
+
+Verification so far: the complete `run_core.py` suite passes, with 535,481
+random instructions compared in lockstep, golden integer/FP programs, snoop
+storms, exceptions, interrupts, MMU/cache/reservation/update-form checks,
+clock-crossing tests and SDRAM-controller tests. The execute-unit vector
+suite passes 11,444 defined integer, 25,598 FP, and 132 undefined-divide
+vectors. New interrupt/walk tests include a faulting-page run with 997
+cancelled walks and exactly 2,000 expected DSIs; removing the cancellation
+guard in a temporary RTL copy makes that test fail. Simulation-only events
+and exclusive cycle buckets are available with `core_tb --profile` or
+`machine_tb --profile`; they add no FPGA counters. The bench samples request
+data before the accepting edge, including the DMA trigger's value.
+The new doubleword alias tests check both words at offsets 0, 4, 8, 24, 28
+and 4092 under cache hits/misses, write-through, cache-inhibited, locked and
+disabled caches, including heavy wait states and snoops. A temporary RAM
+model that returns deliberately incorrect words/tags on read/write collisions
+also passes the complete CPU suite, exercising forwarding independently of
+the RAM's collision behavior. Interrupt tests fill and wrap the completion
+FIFO; enabled FP exceptions discard speculative increments, which execute
+exactly once after return. Checked overlap mixes require simultaneous FIFO
+append/pop and test younger overwrites and dependent next operands.
+The full-machine 6 MB memory-test boot passes with zero errors: 19,660,841
+instructions in 26,938,856 cycles after Cuda releases reset (1.37 CPI).
+Logs, checked programs, cycle/event results, and source hashes are retained
+under `Scratch/perf/architecture/`; the original results are under
+`Scratch/perf/baseline/`. Full-machine ROM lockstep now passes
+3,000,000 instructions using the bundled 7300 ROM (`releases/boot0.rom`,
+md5 `edcf3422d712f61f83c07efc2401cbb8`): 3,606,216 cycles after Cuda releases
+reset, 6,635 device reads and 7,342 writes compared, identical state. Its
+log is `Scratch/perf/architecture/verification/rom-lockstep.log`. Extending
+the run to 60,000,000 instructions also passes (60,839,260 cycles, 34,413
+device reads and 7,342 writes compared); the last PC is `FF808764`, still
+in firmware polling. This run does not establish NanoKernel or disk-boot
+coverage. Log: `verification/rom-lockstep60m.log` in the same archive. These
+simulated CPU/memory/ROM tests do not replace disk boot and board DMA validation.
+
+This Mac has Verilator 5.044. Full lint passes with the new `PROCASSINIT`
+warning disabled for the existing machine register initializers; those
+initializers were not changed. `MACPPC7300_CACHE` lets `run_core.py` place
+its reference build under a writable test directory. The original pinned
+dingusppc tree (`3f070249`) builds unmodified with `HIDE=0` on macOS.
+
+Still required: Quartus area and full-machine timing reports at 70 MHz,
+disk/DMA boot tests, the additional 7300 vector file, and
+fixed-condition board Speedometer runs. Quartus Lite 17.0.2 is now available
+on `misterubuntu`. Original full-machine seeds 1 and 2 in
+`/home/alans/.cache/macppc7300/cpu70_20261009_a/` failed area as detailed below.
+`compile.pid`, `compile.log`, and eventual `compile.exit` record its status.
+A standalone CPU diagnosis from the same sources completed under
+`cpu_diagnostic/` beside the two seeds, using `syn/check.py core --mhz 70
+--paths 40 --detail 6`. Its result does not replace full-machine timing.
+The supplied MiSTer runs SharpMZ2500 and has no MacPPC7300 test directory;
+the user authorized taking it for temporary testing after timing passes,
+and a Quadra disk from Downloads is prepared below. No clock or SDC
+constraints, board core or Main have been changed. Earlier simulation jobs
+have all exited successfully, and archived source hashes match the checkout.
+The bundled `releases/boot0.rom` is the documented 7300 ROM and is available
+for ROM lockstep. The additional 7300 vectors remain unavailable.
+
+Timing work resumes with `syn/check.py core --mhz 70 --paths 40 --detail 6`
+for CPU area/path diagnosis, followed by a full-machine Quartus fit. The
+70 MHz period is 14.286 ns; require nonnegative setup and hold slack and no
+unconstrained CPU paths at the required corners. Compare at least two fitter
+seeds because the prior builds varied by about 2 ns. Check RAM inference,
+ALMs, RAM blocks and routing headroom: cache write forwarding, wide response
+selection and completion operand selection add logic that has not been
+timed. The former grant-to-I-cache-address chain is removed structurally;
+that does not establish timing closure. If the new worst path is the queue's
+operand/ALU path or cache forwarding, cut that measured path and rerun both
+timing and fixed-clock performance; extra latency can erase the CPI gain.
+
+`syn/prepare_timing.py --out NEW_DIRECTORY --seed N` prepares an isolated
+full-machine project and rejects CPU sources differing from the archived
+verification hashes. It verifies the 70 MHz PLL selection, preserves the
+main project's settings, and enables multicorner analysis in the copy.
+Projects for seeds 1 and 2 are prepared under `Scratch/cpu70_seed1/` and
+`Scratch/cpu70_seed2/`, with source manifests. A Tcl reference check confirms
+all 103 project/QIP inputs exist; this is not Quartus elaboration or timing
+validation. Run `quartus_sh --flow compile MacPPC7300` inside each copy on a
+Quartus 17 machine, then inspect the fitter and all timing reports. Use a
+new directory to regenerate a snapshot; the helper never overwrites one.
+
+The synthesis review also moved the overlap block's stall/done signal
+declarations ahead of their uses, following the Quartus compatibility rule.
+Simulation's executed-uop event now includes completion-FIFO retirement;
+cycles and architectural behavior are unchanged. The complete CPU suite,
+full lint and checked performance cases pass after those corrections.
+
+First Quartus results on `misterubuntu`: both full-machine seeds fail
+fitting because the design exceeds the device's capacity. Seed 1 needs
+45,475 ALMs / 4,576 LABs; the device has 41,910 ALMs / 4,191 LABs.
+The standalone CPU fits at 24,512 ALMs but closes at only 43.85 MHz
+(slow -40 C; 44.18 MHz at 100 C). Its worst setup slack is -8.349 ns.
+The path runs from the D-cache tags through the response, memory-unit
+descriptor selection and next-word adder, MMU translation, then ID/fetch
+readiness. Reports are archived under `Scratch/perf/architecture/quartus/`.
+
+The memory-unit timing cut presents the candidate first descriptor throughout
+the first response phase and captures the fallback's next-word address at
+acceptance. The response still gates acceptance; it no longer selects the
+address ahead of translation. A two-word fallback waits until S_REQ0 before
+accepting a new operation (one extra admission cycle only for that fallback).
+The complete CPU suite, lint, and all 16 checked performance cases pass;
+all 16 cycle counts are unchanged. New evidence is in `Scratch/perf/timing_cut/`.
+The corrected standalone run, `cpu_diagnostic_b/` on the host, completes
+at 25,749 ALMs, 52.35 MHz worst case (52.80 MHz at 100 C), and -4.655 ns
+setup slack. The new critical family is ID decode -> forwarded integer
+operands -> completion ALU -> completion FIFO. The memory-path cut helps,
+but the speculative ALU currently combines decode, operand selection and
+execution in one cycle. Log: `Scratch/perf/timing_cut/cpu-diagnostic-retiming-on.log`.
+The corrected full-machine 6 MB memtest also passes with zero errors over
+19,660,841 instructions; its log is in `timing_cut/verification/`.
+
+The first full fit also shows the CPU's own combinational ALUTs rising from
+11,765 after synthesis to 23,234 after physical synthesis. The next comparison
+disables physical register retiming in isolated projects, using the verified
+memory-unit cut: host `cpu_diagnostic_c/` and `seed_cut_no_retiming/`, under
+`/home/alans/.cache/macppc7300/cpu70_20261009_a/`. The main QSF is untouched.
+`syn/check.py --no-retiming` and `syn/prepare_timing.py --no-retiming
+--verification ...` reproduce that comparison. The standalone comparison
+finishes at 19,958 ALMs (5,791 fewer than retiming on), 50.33 MHz worst case
+and -5.582 ns setup, with the same decode-to-completion-ALU family.
+Log: `Scratch/perf/timing_cut/cpu-diagnostic-retiming-off.log`.
+The full-machine comparison fails routing at 41,100 / 41,910 ALMs (98%).
+
+The next measured-path cut registers the speculative ALU's operands and
+control, reserving its FIFO entry at admission and writing its value one
+cycle later. Pending results forward into the next registered operands;
+retirement waits until the value is stored. This separates decode/operand
+selection from execution while retaining dependent issue throughput. The
+complete CPU suite, full lint and all 16 checked performance cases pass,
+with all 16 cycle counts unchanged. Evidence and source hashes:
+`Scratch/perf/completion_stage/`. Standalone `cpu_diagnostic_d/` completes
+at 19,806 ALMs, 52.99 MHz worst case, -4.587 ns setup. Its new critical
+path is WB forwarding -> effective-address adder -> MMU translation ->
+pipeline readiness (469-load ID-to-EX enable). The full-machine
+`seed_completion_stage_no_retiming/` finishes with routing failure at
+41,200 ALMs / 44,514 registers (compile exit 3), retiming off.
+A 300 M instruction ROM/disk lockstep with 16 MB RAM fails
+with the ACK-owner fix below; the older 60 M checks did not reach the documented long
+chime wait's completion. Timing and board acceptance remain unproved.
+The attempted 120 MB lockstep reproduces the same divergence before and
+after this cut at instruction 15,778 / FFF04360. The reference's flat RAM
+map does not model Hammerhead bank placement during sizing. Keep the
+documented 16 MB lockstep gate and test 120 MB sizing separately without
+lockstep.
+The 120 MB non-lockstep 3 M run passes, with final bank bases 0, 64, 96,
+112 MB. The initial longer 16 MB run reached NanoKernel code but stopped
+at 175,866,608 instructions / 68065E98 on a missing F8000020 read in the
+bench's device queue. The machine bench now samples CPU accepted transfers
+and DMA data before the clock edge changes ownership/buffer state. That
+alone reproduces the same failure and is not its resolution.
+
+A short held-ACK test exposes a bus ownership bug: after an I-cache
+response, the still-high ACK could be routed to the D-cache, which returned
+instruction word 38840001 in place of data 42 at instruction 7. The arbiter
+now retains the acknowledged owner, delivers the response only while that
+transaction is busy, and drains a high ACK before presenting another
+request. The checked 8,009-instruction case passes after the fix, and three
+suite cases cover I/D turnover, longer ACK levels and doublewords with
+snoops. The complete CPU suite passes; all 16 full-length performance cycle
+counts remain unchanged. Evidence is being archived in `Scratch/perf/ack_owner/`.
+The rerun still fails at the same 175,866,608-instruction device comparison.
+The original `0186181` CPU passes the matched 300 M check with identical
+state and device accesses (469,681,030 cycles after Cuda reset), archived
+as `ack_owner/verification/baseline-quadra300m.log`. Bounded current-core
+trace shows the correct physical F8000020 request and motherboard ID
+90000000 in r4, while the reference queue has no matching access. Further
+bus/cache and queue diagnosis is required; no current-core long pass is claimed.
+Older Quartus snapshots exclude the ACK fix.
+
+The queue diagnostic identifies an unrelated 6806D940 line ahead of the
+two correct motherboard reads. The machine bench now records the saved I/D
+owner and sends only data transactions to the interpreter's data-device
+queue. `progs.py specfetchrom` trains a conditional call with instruction
+translation on, then takes its fallthrough with translation off: the stale
+prediction reads a discarded instruction line at 68000400. The old bench
+fails at instruction 40 because that I-owned line blocks a D-owned F8000020
+load. The corrected bench passes all 100 instructions, counts the instruction
+fetch separately and still compares the device read. Before/after evidence
+is in `ack_owner/verification/`; the matched 300 M rerun passes with
+435,386,869 post-Cuda cycles, identical state and device accesses, and
+16 instruction fetches outside RAM/ROM counted separately. No disk blocks
+were accessed; this is long ROM/NanoKernel coverage, not a booted OS or
+Speedometer acceptance. Timer-driven paths differ between architectures,
+so comparing these fixed instruction counts is not the performance gate.
+This correction changes no RTL or CPU cycle counts.
+
+An elastic memory-descriptor experiment is parked in
+`Scratch/perf/memory_descriptor_experiment/`, outside the checkout. Its
+architectural-result tests pass, but accepting into MEM before translation
+makes interrupts wait for the older memory operation and removes pre-grant
+data-walk cancellations. The existing cancellation coverage fails and was
+not weakened. Revisit this measured timing cut after resolving boot, with
+explicit interrupt-boundary semantics and meaningful verification.
+
+A revised isolated candidate now accepts the memory descriptor before its
+grant and takes an interrupt in MEM only while the first micro-op's first
+bus access remains ungranted. It saves the operation's PC for retry, keeps
+DAR/DSISR, suppresses the ungranted request and cancels/drains its MMU walk.
+The full CPU suite, lint, all 16 unchanged full-length performance counts,
+the 6 MB machine memtest and the speculative-fetch ROM pass. The stronger
+late-fault test passes with 1,999 cancellations; removing the sticky
+cancellation guard makes it fail (expected 2,000 DSI counts, got 1).
+That case is added to the normal CPU suite. Evidence:
+`Scratch/perf/elastic_irq/`. Its 300 M machine check passes with identical
+state and device accesses (435,400,392 post-Cuda cycles; no disk blocks
+accessed). Diagnostic E finishes at 19,183 ALMs / 19,986 registers,
+55.87 MHz worst case, -3.612 ns setup. E was integrated before the later Z
+RAM/translation improvements above. Its longest path is an 806-load BTB lookup index -> predicted
+address -> MMU instruction segment read-ahead. A synchronous BTB experiment
+passes the complete CPU suite, lint and all 16 unchanged full-length cycle
+counts; diagnostic F finishes at 16,558 ALMs / 12,694 registers and
+54.19 MHz worst case (-4.136 ns), versus E's 19,183 ALMs. The BTB path is
+removed, but EA forwarding -> DBAT -> D-cache admission now limits timing.
+The first synchronous FP-register read experiment passes CPU/lint/performance,
+6 MB memtest and 300 M ROM/disk lockstep, but adds no inferred RAM and
+finishes at 49.76 MHz / 16,138 ALMs. It is excluded from root. Explicit
+three-copy FPR RAM with admission-independent fetch indices passes CPU,
+lint, all 16 unchanged counts and the trained speculative-fetch regression;
+diagnostic I confirms three 32x64 M10Ks and finishes at 14,744 ALMs,
+58.39 MHz worst case (-2.778 ns at 70 MHz).
+A registered one-page data-translation experiment also passes CPU/lint and
+all checked cases (0-4 initial lookup cycles added, warm throughput retained).
+Its 1,999-cancellation test passes; removing the sticky guard fails. The
+combined explicit FPR/data-translation candidate passes CPU/lint, all checked
+cases, memtest and 300 M ROM/disk lockstep. It finishes at 14,781 ALMs,
+53.10 MHz (-4.548 ns).
+The verified Z combination is integrated in root, with evidence under
+`Scratch/perf/`. The older full-machine
+memory cut, retiming off, fails routing at 41,100 / 41,910 ALMs (98%),
+so reducing area and congestion is required alongside shorter logic paths.
+
+The user authorized temporary tests on `10.0.2.14` after timing passes and
+asked to try a Quadra disk while obtaining a PPC image. A copy extracted
+from `~/Downloads/QuadSquad8.hda.zip` is staged as
+`games/MacPPC7300/quadra_test81.hda`, with its System Folder 8.1 still blessed,
+volume named Mac, and Speedometer 4.02 / Machine Records copied to the root
+with both forks preserved through rb-cli. SCP succeeded; size 2,146,461,696
+and MD5 `9645f183ddb14eac752bbb43c23b30e0` match the prepared local copy.
+The original ZIP is untouched.
+The bundled ROM is staged too. MiSTer Remote was initially stopped and is
+started for testing; restore its stopped state afterward. The passing AT55
+core is temporarily loaded. OS8.1 reaches startup/desktop background, but
+Finder cannot find the Mac volume; no Speedometer scores or baseline boot
+comparison have been obtained. A verified full recovery copy of the test
+disk is retained. Clean shutdown has failed, so reset approval is pending
+under the no-reload-while-mounted rule. The Main remains unchanged (md5
+`2f21ff276ebf429ab91a8b4e33314623`); restore SharpMZ2500 after testing.
+Benchmark launch tools now locate `mister.py`
+beside themselves instead of using the older Windows path. Their dependencies
+are in `/tmp/macppc7300-board-venv`. No 2x board measurement or timing closure
+has been obtained.
+
+After 70 MHz closure and the architectural performance target, try higher
+frequencies supported by the generated PLL and close the entire machine at
+each setting. `MacPPC7300.sv` currently maps CPU_MHZ only to 60, 70 or a
+default 65 MHz PLL frequency: changing the integer to 75 or 80 alone would
+silently select 65 MHz while CPU_HZ says otherwise. Extend the PLL selection
+and verify its actual output and CPU_HZ together, retain the 20/100 MHz
+outputs and CDC constraints, then repeat boot/DMA/Speedometer checks.
+
 ## Rules that keep the pipeline from growing special cases
 
 A CPU that is pipelined late ends up with one-off stall and fix-up paths per
@@ -67,8 +728,8 @@ IF1 -> IF2 -> ID -> EX -> MEM -> WB
 | IF1 | next PC, branch prediction, instruction cache and ITLB address |
 | IF2 | instruction cache data, hit check |
 | ID | decode, register read, sequencer for multi-operation instructions |
-| EX | ALU, effective address, branch resolution, multiply/divide/FPU request |
-| MEM | data cache and DTLB access, load alignment |
+| EX | ALU, effective address, branch resolution, multiply/divide/FPU request; memory request acceptance |
+| MEM | data cache/MMU response, load alignment |
 | WB | commit, exception entry |
 
 Expected costs: 3 cycles for a mispredicted branch, 1 for a load followed by a

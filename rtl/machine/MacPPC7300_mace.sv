@@ -81,6 +81,8 @@ module MacPPC7300_mace
 	input  logic [4:0]  rn,              // offset >> 4
 	input  logic [7:0]  wdata,
 	output logic [7:0]  rq,              // what a read of rn returns now
+	input  logic [4:0]  rn_cpu,          // the CPU's register number, alone (Grand Central's read path)
+	output logic [7:0]  rq_cpu,          // ... and what a read of it returns
 
 	// the transmit DMA channel's bytes
 	output logic        do_ready,
@@ -128,7 +130,24 @@ logic [10:0] lb_len;
 logic [11:0] f_us;                     // microseconds left on the wire
 logic [63:0] t_word;                   // the frame's word being gathered
 logic        tx_seen;
-wire         swrst = sel & we & (rn == 5'd11) & wdata[0];
+// BIUCC's software reset, a clock after the write: the write's data comes
+// through the device bus and Grand Central's decode, and the reset clears
+// some 120 registers (the transmitter's word among them), which was a path
+// the clock could not take
+// (register writes land a clock after the access, from these: the write's
+// data comes through the device bus and Grand Central's byte lanes; reads,
+// and the reads that clear, are not delayed, and nothing reads a register
+// in the clock after writing it)
+logic        w_v;
+logic [4:0]  w_rn;
+logic [7:0]  w_d;
+always_ff @(posedge clk) begin
+	w_v  <= sel & we & ~reset;
+	w_rn <= rn;
+	w_d  <= wdata;
+end
+logic        swrst;
+always_ff @(posedge clk) swrst <= w_v & (w_rn == 5'd11) & w_d[0] & ~reset;
 // the frame's time on the wire: 16 us, and 13/16 us a byte (0.8, near enough)
 wire  [11:0] len_a = f_len - {2'b00, f_len[11:2]};
 wire  [11:0] len_b = len_a + {4'h0, f_len[11:4]};
@@ -139,28 +158,35 @@ assign irq      = |(int_stat & ~int_mask);
 assign xmtsv    = xmt_fs[7];
 assign do_ready = ~f_held;
 
-always_comb begin
-	case (rn)
-		5'd2:    rq = xmt_fc;
-		5'd3:    rq = xmt_fs;
-		5'd5:    rq = rcv_fc;
-		5'd7:    rq = {7'h0, f_held};
-		5'd8:    rq = int_stat;
-		5'd9:    rq = int_mask;
-		5'd10:   rq = {xmt_fs[7], ~f_held, 6'h0};
-		5'd11:   rq = biu_cc;
-		5'd12:   rq = fifo_cc;
-		5'd13:   rq = mac_cc;
-		5'd14:   rq = pls_cc;
-		5'd15:   rq = {~phy_cc[6] & ~link, phy_cc[6:0]};
-		5'd16:   rq = 8'h41;
-		5'd17:   rq = 8'h09;
-		5'd18:   rq = iac;
-		5'd24:   rq = mpc;
-		5'd29:   rq = utr;
-		default: rq = 8'h00;
+// (one multiplexer for rn, which the DMA shares, and one for the CPU's
+// register number alone, so that Grand Central's choice between them is
+// not in front of the CPU's read data)
+function automatic logic [7:0] reg_read(input logic [4:0] n);
+	logic [7:0] r;
+	case (n)
+		5'd2:    r = xmt_fc;
+		5'd3:    r = xmt_fs;
+		5'd5:    r = rcv_fc;
+		5'd7:    r = {7'h0, f_held};
+		5'd8:    r = int_stat;
+		5'd9:    r = int_mask;
+		5'd10:   r = {xmt_fs[7], ~f_held, 6'h0};
+		5'd11:   r = biu_cc;
+		5'd12:   r = fifo_cc;
+		5'd13:   r = mac_cc;
+		5'd14:   r = pls_cc;
+		5'd15:   r = {~phy_cc[6] & ~link, phy_cc[6:0]};
+		5'd16:   r = 8'h41;
+		5'd17:   r = 8'h09;
+		5'd18:   r = iac;
+		5'd24:   r = mpc;
+		5'd29:   r = utr;
+		default: r = 8'h00;
 	endcase
-end
+	return r;
+endfunction
+assign rq     = reg_read(rn);
+assign rq_cpu = reg_read(rn_cpu);
 
 // ---- receive -------------------------------------------------------------------------------------
 typedef enum logic [2:0] { R_IDLE, R_DST, R_TYPE, R_DMA, R_SEND, R_DONE } r_t;
@@ -315,36 +341,36 @@ always_ff @(posedge clk) begin
 	if (sel & ~we & (rn == 5'd3)) xmt_fs <= 8'h00;
 	if (sel & ~we & (rn == 5'd24)) mpc <= 8'h00;
 
-	if (sel & we) begin
-		case (rn)
-			5'd2:  xmt_fc   <= wdata;
-			5'd5:  rcv_fc   <= wdata;
-			5'd9:  int_mask <= wdata;
-			5'd11: biu_cc   <= wdata & 8'hFE;
-			5'd12: fifo_cc  <= wdata;
-			5'd13: mac_cc   <= wdata;
-			5'd14: pls_cc   <= wdata;
-			5'd15: phy_cc   <= wdata & 8'h7F;
+	if (w_v) begin
+		case (w_rn)
+			5'd2:  xmt_fc   <= w_d;
+			5'd5:  rcv_fc   <= w_d;
+			5'd9:  int_mask <= w_d;
+			5'd11: biu_cc   <= w_d & 8'hFE;
+			5'd12: fifo_cc  <= w_d;
+			5'd13: mac_cc   <= w_d;
+			5'd14: pls_cc   <= w_d;
+			5'd15: phy_cc   <= w_d & 8'h7F;
 			5'd18: begin
 				// LOGADDR wins over PHYADDR; either sets the pointer to 0
-				iac  <= {1'b0, wdata[6:3], (wdata[2] & ~wdata[1]), wdata[1:0]};
-				if (wdata[2] | wdata[1]) aptr <= 3'd0;
-				if (wdata[1]) ladr_any <= 1'b0;
+				iac  <= {1'b0, w_d[6:3], (w_d[2] & ~w_d[1]), w_d[1:0]};
+				if (w_d[2] | w_d[1]) aptr <= 3'd0;
+				if (w_d[1]) ladr_any <= 1'b0;
 			end
 			5'd20: if (iac[1]) begin
-				if (wdata != 8'h00) ladr_any <= 1'b1;
+				if (w_d != 8'h00) ladr_any <= 1'b1;
 				aptr <= aptr + 3'd1;
 				if (aptr == 3'd7) iac[1] <= 1'b0;
 			end
 			5'd21: if (iac[2]) begin
-				padr[aptr] <= wdata;
+				padr[aptr] <= w_d;
 				if (aptr == 3'd5) begin
 					aptr    <= 3'd0;
 					iac[2]  <= 1'b0;
 				end
 				else aptr <= aptr + 3'd1;
 			end
-			5'd29: utr      <= wdata;
+			5'd29: utr      <= w_d;
 			default: ;
 		endcase
 	end

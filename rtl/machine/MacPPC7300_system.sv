@@ -178,6 +178,11 @@ module MacPPC7300_system
 	output logic         trace_last,
 	output logic [31:0]  trace_pc,
 	output logic [31:0]  trace_insn,
+	output logic         trace_reg2_we,
+	output logic [5:0]   trace_reg2_idx,
+	output logic [31:0]  trace_reg2_val,
+	output logic         trace_fold,
+	output logic [31:0]  trace_fold_insn,
 	output logic         trace_reg_we,
 	output logic [6:0]   trace_reg_idx,
 	output logic [63:0]  trace_reg_val,
@@ -210,20 +215,25 @@ logic         ext_irq, tb_tick;
 logic         snoop_req, snoop_we, snoop_ack;   // the DMA channels' lines, through the caches
 logic [31:5]  snoop_addr;
 logic         cuda_reset;         // Cuda holds the CPU in reset (MacPPC7300_cuda)
-wire          cpu_reset = reset | cuda_reset;
+// (from a register: it fans out to every register of the CPU, and from
+// Cuda's own register through the OR it was a 100 MHz path, 2026-10-13)
+logic         cpu_reset = 1'b1;
+always_ff @(posedge clk) cpu_reset <= reset | cuda_reset;
 
 assign cpu_in_reset = cpu_reset;
 
+logic         cpu_dbg_ev;
+logic [223:0] cpu_dbg_rec;
 DSPPC604 #(.PERF(PERF)) cpu (
 	.clk, .reset(cpu_reset), .reset_pc,
 	.ext_irq, .tb_tick,
 	.mem_req(c_req), .mem_we(c_we), .mem_line(c_line), .mem_addr(c_addr), .mem_be(c_be),
 	.mem_wdata(c_wdata), .mem_ack(c_ack), .mem_rdata(c_rdata),
 	.snoop_req, .snoop_we, .snoop_addr, .snoop_ack,
-	.trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_reg_we, .trace_reg_idx, .trace_reg_val,
+	.trace_valid, .trace_last, .trace_pc, .trace_insn, .trace_fold, .trace_fold_insn, .trace_reg2_we, .trace_reg2_idx, .trace_reg2_val, .trace_reg_we, .trace_reg_idx, .trace_reg_val,
 	.trace_cr, .trace_xer, .trace_lr, .trace_ctr, .trace_fpscr, .trace_msr,
 	.trace_dreq, .trace_dwe, .trace_dkind, .trace_daddr, .trace_dbe, .trace_dwdata,
-	.perf_cnt
+	.perf_cnt, .dbg_ev(cpu_dbg_ev), .dbg_rec(cpu_dbg_rec)
 );
 
 // the VRAM's path and the video registers, between the machine and the picture side
@@ -233,8 +243,13 @@ logic [3:0]   v_be;
 logic [255:0] v_wdata, v_rdata;
 logic         vb_req, vb_we, vb_line, vb_ack;
 logic [31:2]  vb_addr;
-logic [3:0]   vb_be;
+logic [31:0]  vb_be;                          // a line write's byte mask
 logic [255:0] vb_wdata, vb_rdata;
+logic         vw_req, vw_we, vw_line, vw_ack; // the combiner's side of the crossing
+logic [159:0] vw_dbg;
+logic [21:2]  vw_addr;
+logic [31:0]  vw_be;
+logic [255:0] vw_wdata, vw_rdata;
 logic         timing_on, hs_pos, vs_pos, vbl_start_tog, vbl_end_tog;
 logic [191:0] sw_params, cursor_clut;
 logic [21:0]  fb_base;
@@ -276,10 +291,20 @@ MacPPC7300_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_
 	.tr_mesh, .tr_ev(scsi_tr_ev), .tr_rec(scsi_tr_rec)
 );
 
-DSPPC604_memcdc vcdc (
-	.clk_a(clk), .reset_a(reset),
-	.a_req(v_req), .a_we(v_we), .a_line(v_line), .a_addr({10'h0, v_addr}), .a_be(v_be), .a_wdata(v_wdata),
+// the frame buffer's stores gathered into lines, its loads a line at a time
+MacPPC7300_vramwc #(.N(2)) vramwc (
+	.clk, .reset,
+	.a_req(v_req), .a_we(v_we), .a_line(v_line), .a_addr(v_addr), .a_be(v_be), .a_wdata(v_wdata),
 	.a_ack(v_ack), .a_rdata(v_rdata),
+	.b_req(vw_req), .b_we(vw_we), .b_line(vw_line), .b_addr(vw_addr), .b_be(vw_be), .b_wdata(vw_wdata),
+	.b_ack(vw_ack), .b_rdata(vw_rdata),
+	.dbg(vw_dbg)
+);
+
+DSPPC604_memcdc #(.BEW(32)) vcdc (
+	.clk_a(clk), .reset_a(reset),
+	.a_req(vw_req), .a_we(vw_we), .a_line(vw_line), .a_addr({10'h0, vw_addr}), .a_be(vw_be), .a_wdata(vw_wdata),
+	.a_ack(vw_ack), .a_rdata(vw_rdata),
 	.clk_b, .reset_b,
 	.b_req(vb_req), .b_we(vb_we), .b_line(vb_line), .b_addr(vb_addr), .b_be(vb_be), .b_wdata(vb_wdata),
 	.b_ack(vb_ack), .b_rdata(vb_rdata)
@@ -374,8 +399,37 @@ always_ff @(posedge clk) begin
 		sn_cnt <= 24'd0;
 	end
 end
-wire         tr_ev  = scsi_tr_ev | pf_ev | sn_ev;
-wire [255:0] tr_rec = scsi_tr_ev ? scsi_tr_rec : pf_ev ? pf_rec : sn_rec;
+// kind 14 (PERF): the CPU's sample every 65536 cycles (syn/cpusample.py):
+// bytes 4-7 the cycle count, then EX's address, the last exception's
+// address, its vector, MSR, eight exception counts by vector, EX's
+// instruction; it waits behind the records above
+logic         cs_ev = 1'b0;
+logic [255:0] cs_rec;
+always_ff @(posedge clk) begin
+	if (cs_ev & ~scsi_tr_ev & ~pf_ev & ~sn_ev) cs_ev <= 1'b0;
+	if (PERF != 0 && TRACE != 0 && cpu_dbg_ev) begin
+		cs_ev  <= 1'b1;
+		cs_rec <= {cpu_dbg_rec[223:32], perf_cnt[0], 24'd0, 8'd14};
+	end
+	if (reset) cs_ev <= 1'b0;
+end
+// kind 15 (TRACE): the VRAM combiner's counts and state every 2^20 cycles
+// (syn/vramstat.py): bytes 4-7 the cycle count, 8-27 its dbg; it waits
+// behind the records above
+logic         vc_ev = 1'b0;
+logic [255:0] vc_rec;
+logic [31:0]  vc_cyc = '0;
+always_ff @(posedge clk) begin
+	vc_cyc <= vc_cyc + 32'd1;
+	if (vc_ev & ~scsi_tr_ev & ~pf_ev & ~sn_ev & ~cs_ev) vc_ev <= 1'b0;
+	if (TRACE != 0 && vc_cyc[19:0] == 20'd0) begin
+		vc_ev  <= 1'b1;
+		vc_rec <= {32'd0, vw_dbg, vc_cyc, 24'd0, 8'd15};
+	end
+	if (reset) begin vc_ev <= 1'b0; vc_cyc <= '0; end
+end
+wire         tr_ev  = scsi_tr_ev | pf_ev | sn_ev | cs_ev | vc_ev;
+wire [255:0] tr_rec = scsi_tr_ev ? scsi_tr_rec : pf_ev ? pf_rec : sn_ev ? sn_rec : cs_ev ? cs_rec : vc_rec;
 
 generate
 if (TRACE != 0) begin : g_trace
@@ -422,6 +476,10 @@ logic [31:2]  l_addr;
 logic [3:0]   l_be;
 logic [255:0] l_wdata, l_rdata;
 
+// (L2_KB = 0 builds none: the port goes straight to the crossing, as the
+// cache switched off would pass it, and the OSD's L2 option does nothing)
+generate
+if (L2_KB != 0) begin : g_l2
 MacPPC7300_l2 #(.L2_KB(L2_KB)) l2 (
 	.clk, .reset, .on(l2_on),
 	.a_req(m_req), .a_we(m_we), .a_line(m_line), .a_addr(m_addr), .a_be(m_be), .a_wdata(m_wdata),
@@ -429,6 +487,12 @@ MacPPC7300_l2 #(.L2_KB(L2_KB)) l2 (
 	.b_req(l_req), .b_we(l_we), .b_line(l_line), .b_addr(l_addr), .b_be(l_be), .b_wdata(l_wdata),
 	.b_ack(l_ack), .b_rdata(l_rdata)
 );
+end
+else begin : g_no_l2
+assign {l_req, l_we, l_line, l_addr, l_be, l_wdata} = {m_req, m_we, m_line, m_addr, m_be, m_wdata};
+assign {m_ack, m_rdata} = {l_ack, l_rdata};
+end
+endgenerate
 
 DSPPC604_memcdc cdc (
 	.clk_a(clk), .reset_a(reset),

@@ -54,7 +54,7 @@ def q(path):
     return path.replace("\\", "/")
 
 
-def write_project(top, mhz, build):
+def write_project(top, mhz, build, retiming=True):
     files = [os.path.join(RTL, f) for f in cpu_sources()] + [os.path.join(HERE, top + ".sv")]
     for f in files:
         if not os.path.exists(f):
@@ -70,7 +70,7 @@ def write_project(top, mhz, build):
         "set_global_assignment -name OPTIMIZATION_TECHNIQUE SPEED",
         "set_global_assignment -name PHYSICAL_SYNTHESIS_COMBO_LOGIC ON",
         "set_global_assignment -name PHYSICAL_SYNTHESIS_REGISTER_DUPLICATION ON",
-        "set_global_assignment -name PHYSICAL_SYNTHESIS_REGISTER_RETIMING ON",
+        "set_global_assignment -name PHYSICAL_SYNTHESIS_REGISTER_RETIMING " + ("ON" if retiming else "OFF"),
         "set_global_assignment -name ALLOW_POWER_UP_DONT_CARE ON",
         "set_global_assignment -name SEED 1",
         'set_global_assignment -name MIN_CORE_JUNCTION_TEMP "-40"',
@@ -206,6 +206,7 @@ def main():
     ap.add_argument("target", choices=sorted(TARGETS))
     ap.add_argument("--mhz", type=float, default=75.0, help="clock constraint (default 75)")
     ap.add_argument("--report-only", action="store_true", help="re-read the reports of the last run")
+    ap.add_argument("--no-retiming", action="store_true", help="disable physical register retiming for an area/timing comparison")
     ap.add_argument("--paths", type=int, default=0, metavar="N", help="also list the N slowest distinct paths")
     ap.add_argument("--detail", type=int, default=0, metavar="N", help="also print the N slowest paths cell by cell")
     ap.add_argument("--to", action="append", metavar="PATTERN",
@@ -217,7 +218,7 @@ def main():
     os.makedirs(build, exist_ok=True)
 
     if not args.report_only:
-        write_project(top, args.mhz, build)
+        write_project(top, args.mhz, build, retiming=not args.no_retiming)
         exe = os.path.join(QUARTUS_BIN, "quartus_sh")
         log = os.path.join(build, "compile.log")
         print("compiling %s for %s at %.2f MHz (log: %s)" % (top, DEVICE, args.mhz, log))

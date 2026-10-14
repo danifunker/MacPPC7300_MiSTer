@@ -6,7 +6,9 @@
 //  Expands the instructions that are several operations in one into simple
 //  operations, so that no later stage has to know about them:
 //
-//    update forms    the access, then rA <- rA + displacement or rB; an
+//    update forms    a store: one operation, which also writes rA <- EA
+//                    (a store writes no other register); a load: the
+//                    access, then rA <- rA + displacement or rB; an
 //                    indexed load whose rD is its rB (lwzux r4,r3,r4, a
 //                    valid form) cannot form the update from rB after the
 //                    load, so it goes scratch <- rA + rB, rD <- [scratch],
@@ -28,21 +30,28 @@ module DSPPC604_seq
 
 	input  logic        valid,        // an instruction is in the decode stage
 	input  DSPPC604_pkg::dec_t dec,   // its decode
+	input  DSPPC604_pkg::seq_t seqk,  // dec.seq, from the opcode bits directly (for last)
+	input  logic [4:0]  rs,           // the instruction's rS/rD field, likewise
 	input  logic [4:0]  nb,           // its NB field, for lswi and stswi
 	input  logic        strx,         // it is lswx or stswx, from the opcode bits directly
 	input  logic        ldux_rb,      // it is an indexed load with update whose rD is its rB, likewise
+	input  logic        upd_store,    // it is a store with update, likewise: one operation
+	input  logic        upd_load,     // it is a load with update in one operation (rA not 0, not rD), likewise
 	input  logic [6:0]  xer_count,    // XER byte count, for lswx and stswx
 	input  logic        take,         // the operation shown is accepted this cycle
 
 	output DSPPC604_pkg::dec_t uop,
 	output logic        first,        // first operation of the instruction
 	output logic        last,         // last operation of the instruction
-	output logic        wait_xer      // XER's byte count must be final first
+	output logic        wait_xer,     // XER's byte count must be final first
+	output logic [5:0]  next_ra,      // prospective next micro-op, independent of take
+	output logic [5:0]  next_rc
 );
 
 import DSPPC604_pkg::*;
 
 logic [5:0] step;
+logic       last_d;               // last, as the decoder's seq field has it (checked against last)
 
 wire        is_load = dec.mem_rd;
 wire [4:0]  base_r  = dec.rc[4:0];        // rS or rD: the same field, which the decoder puts in rc for every instruction
@@ -60,11 +69,17 @@ wire [4:0]  str_r   = base_r + word_i[4:0];
 // enable; it is decided from the opcode bits the pipeline compares directly,
 // not from the decoder's seq field, which keeps the decoder out of that chain.
 assign wait_xer = strx & (step == 6'd0);
+// The next operation is read speculatively even while this one stalls.
+// Only a non-last take consumes these RAM samples; the next fetched word
+// has independent register-file copies. RB is unchanged throughout a macro.
+wire [4:0] next_word_i = strx ? step[4:0] : (step[4:0] + 5'd1);
+assign next_ra = (strx | ldux_rb) ? REG_TEMP : dec.ra;
+assign next_rc = {1'b0, base_r + next_word_i};
 
 always_comb begin
 	uop      = dec;
 	first    = (step == 6'd0);
-	last     = 1'b1;
+	last_d   = 1'b1;
 
 	case (dec.seq)
 	SEQ_UPDATE: begin
@@ -74,7 +89,7 @@ always_comb begin
 			if (step == 6'd0) begin
 				uop.mem_rd = 1'b0;
 				uop.rd     = REG_TEMP;
-				last       = 1'b0;
+				last_d       = 1'b0;
 			end
 			else begin
 				uop.ra_rd  = 1'b1;                // the scratch register (see the read indexes below)
@@ -82,7 +97,7 @@ always_comb begin
 				uop.b_imm  = 1'b1;
 				uop.imm    = 32'd0;
 				if (step == 6'd1) begin
-					last = 1'b0;
+					last_d = 1'b0;
 				end
 				else begin
 					uop.mem_rd = 1'b0;
@@ -91,7 +106,13 @@ always_comb begin
 			end
 		end
 		else if (step == 6'd0) begin
-			last = 1'b0;
+			if (~is_load) begin
+				// a store: rA <- EA as its own result
+				uop.rd    = dec.ra;
+				uop.rd_wr = 1'b1;
+			end
+			else if (upd_load) uop.upd = 1'b1;    // rD from memory, rA <- EA at once
+			else last_d = 1'b0;
 		end
 		else begin
 			// rA <- rA + B, with what the access left in place
@@ -108,7 +129,7 @@ always_comb begin
 
 	SEQ_STWCX: begin
 		if (step == 6'd0) begin
-			last = 1'b0;
+			last_d = 1'b0;
 		end
 		else begin
 			// CR0 <- 0 0 stored SO, from what the store left behind
@@ -123,7 +144,7 @@ always_comb begin
 	SEQ_MULTI: begin
 		uop.imm = dec.imm + {24'd0, step, 2'b00};
 		if (is_load) uop.rd = {1'b0, base_r + step[4:0]};
-		last = ((base_r + step[4:0]) == 5'd31);
+		last_d = ((base_r + step[4:0]) == 5'd31);
 	end
 
 	SEQ_STRI, SEQ_STRX: begin
@@ -141,7 +162,7 @@ always_comb begin
 			uop.rc_rd  = 1'b0;
 			uop.rd     = REG_TEMP;
 			uop.rd_wr  = 1'b1;
-			last       = 1'b0;
+			last_d       = 1'b0;
 		end
 		else begin
 			if (dec.seq == SEQ_STRX) begin
@@ -153,7 +174,7 @@ always_comb begin
 			uop.mem_n = (left_b >= 8'd4) ? 4'd4 : left_b[3:0];
 			if (is_load) uop.rd = {1'b0, str_r};
 			if (word_i == 6'd0) uop.str_bytes = n_total;
-			last = (left_b <= 8'd4);
+			last_d = (left_b <= 8'd4);
 		end
 	end
 
@@ -171,6 +192,25 @@ always_comb begin
 	uop.rb = dec.rb;
 	uop.rc = (step != 6'd0) ? {1'b0, str_r} : dec.rc;
 end
+
+// last from seqk: ID's handshake waits for the opcode bits, the step and
+// the register fields, not for the decoder
+always_comb begin
+	case (seqk)
+	SEQ_UPDATE:          last = ldux_rb ? (step >= 6'd2) : (upd_store | upd_load | (step != 6'd0));
+	SEQ_STWCX:           last = (step != 6'd0);
+	SEQ_MULTI:           last = ((rs + step[4:0]) == 5'd31);
+	SEQ_STRI:            last = (left_b <= 8'd4);
+	SEQ_STRX:            last = (n_total == 7'd0) | ((step != 6'd0) & (left_b <= 8'd4));
+	default:             last = 1'b1;
+	endcase
+end
+
+// synthesis translate_off
+always_ff @(posedge clk)
+	if (~reset & valid & ((seqk != dec.seq) | (last != last_d)))
+		$fatal(1, "DSPPC604_seq: seqk %0d / last %0d differ from the decoder's %0d / %0d", seqk, last, dec.seq, last_d);
+// synthesis translate_on
 
 always_ff @(posedge clk) begin
 	if (valid & take) step <= last ? 6'd0 : (step + 6'd1);

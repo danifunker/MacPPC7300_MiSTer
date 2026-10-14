@@ -310,18 +310,43 @@ wire [27:0] a_map   = ram_map(a, ram_mb, banked, bk_bases);
 wire        is_ram  = a_map[27];
 wire        is_rom  = a[31:22] == 10'h3FF;
 wire        to_mem  = is_ram | (is_rom & ~c_we & ~boot_memtest);
-wire        is_boot = is_rom & ~c_we & boot_memtest;
-wire        is_dbg  = a[31:8] == 24'hF90000;
-wire        is_cha  = a[31:24] == 8'hF0;
-wire        is_ban  = a[31:24] == 8'hF2;
-wire        is_gc   = a[31:17] == 15'h7980;                 // F3000000-F301FFFF
-wire        is_hh   = a[31:12] == 20'hF8000 && a[11:4] < 8'h50;
-wire        is_via  = is_gc && a[16:13] == 4'b1011;              // F3016000-F3017FFF
 // Control's registers and VRAM, where Open Firmware put them (Chaos's BARs)
 logic [31:12] ctl_regs_base;
 logic [31:26] ctl_vram_base;
-wire        is_ctl  = (ctl_regs_base != 20'h0) && (a[31:12] == ctl_regs_base);
-wire        is_vram = (ctl_vram_base != 6'h0) && (a[31:26] == ctl_vram_base);
+
+// ---- the request, registered, for the devices and the VRAM --------------------------------
+// The devices' and the VRAM's requests are decided from a registered copy of
+// the CPU's port: its address and store data come straight off its caches'
+// RAMs and through the RAM map, and deciding their take and the enables of
+// their 300-odd registers from that was the slowest family at 100 MHz
+// (2026-10-13). The memory path keeps the live decode. The copy stands for
+// the request still up (q_valid: not answered in the cycle it was taken),
+// so a request made right after an answer waits a cycle for its copy.
+logic         q_valid, q_we, q_line, q_to_mem;
+logic [31:2]  q_addr;
+logic [3:0]   q_be;
+logic [255:0] q_wdata;
+always_ff @(posedge clk) begin
+	q_valid  <= c_req & ~c_ack & ~reset;
+	q_we     <= c_we;
+	q_line   <= c_line;
+	q_addr   <= c_addr;
+	q_be     <= c_be;
+	q_wdata  <= c_wdata;
+	q_to_mem <= to_mem;                            // the live decode's answer for the same request (a RAM map instance less)
+end
+wire [31:0] qa        = {q_addr, 2'b00};
+wire        q_is_rom  = qa[31:22] == 10'h3FF;
+wire        q_is_boot = q_is_rom & ~q_we & boot_memtest;
+wire        q_is_dbg  = qa[31:8] == 24'hF90000;
+wire        q_is_cha  = qa[31:24] == 8'hF0;
+wire        q_is_ban  = qa[31:24] == 8'hF2;
+wire        q_is_gc   = qa[31:17] == 15'h7980;                // F3000000-F301FFFF
+wire        q_is_hh   = qa[31:12] == 20'hF8000 && qa[11:4] < 8'h50;
+wire        q_is_via  = q_is_gc && qa[16:13] == 4'b1011;      // F3016000-F3017FFF
+wire        q_is_ctl  = (ctl_regs_base != 20'h0) && (qa[31:12] == ctl_regs_base);
+wire        q_is_vram = (ctl_vram_base != 6'h0) && (qa[31:26] == ctl_vram_base);
+wire        q_req     = q_valid & c_req;
 
 // ---- RAM and ROM: the CPU's accesses and the DMA channels', one port ------------------------
 // The crossing captures a request and holds it, and ignores it in the cycle
@@ -440,7 +465,7 @@ end
 // standard (writes to 1, which dingusppc also makes to the optional bank,
 // are not mirrored: MacPPC7300_stubs.md).
 logic [11:0] ctl_enables;
-wire  [25:0] vo     = a[25:0];
+wire  [25:0] vo     = qa[25:0];
 wire  [1:0]  v_swap = vo[23] ? 2'd0 : (dac_cr[3:2] == 2'd0) ? 2'd0 : (dac_cr[3:2] == 2'd1) ? 2'd1 : 2'd2;
 wire  [21:0] v_byte = ctl_enables[6] ? vo[21:0] : {vo[22:21] == 2'd3, vo[20:0]};
 
@@ -462,12 +487,12 @@ function automatic logic [255:0] v_swl(input logic [255:0] l, input logic [1:0] 
 	for (int i = 0; i < 8; i++) v_swl[32 * i +: 32] = v_sw(l[32 * i +: 32], s);
 endfunction
 
-assign v_req   = c_req & is_vram;
-assign v_we    = c_we;
-assign v_line  = c_line;
+assign v_req   = q_req & q_is_vram;
+assign v_we    = q_we;
+assign v_line  = q_line;
 assign v_addr  = v_byte[21:2];
-assign v_be    = v_swbe(c_be, v_swap);
-assign v_wdata = v_swl(c_wdata, v_swap);
+assign v_be    = v_swbe(q_be, v_swap);
+assign v_wdata = v_swl(q_wdata, v_swap);
 
 // Everything else is answered here: a word two cycles after it is seen, a line
 // as eight words presented on consecutive cycles, answered after the last.
@@ -491,23 +516,23 @@ logic [31:0] line_buf [8];
 localparam int unsigned VIA_HALF = CPU_HZ / VIA_HZ / 2;
 logic [1:0] vw;                                    // 0 idle; 1 to the edge; 2 the half cycle
 logic [7:0] vw_cnt;
-wire  via_wait = is_via & ~c_line;
+wire  via_wait = q_is_via & ~q_line;
 wire  via_go   = vw == 2'd2 && vw_cnt == 8'd0;
-wire  dev_take = c_req & ~to_mem & ~is_vram & ~dev_busy & ~dev_ack & (~via_wait | via_go);
+wire  dev_take = q_req & ~q_to_mem & ~q_is_vram & ~dev_busy & ~dev_ack & (~via_wait | via_go);
 // the word presented to the devices in this cycle
-wire        present = dev_take | (dev_busy & c_line & dev_cnt <= 4'd7);
+wire        present = dev_take | (dev_busy & q_line & dev_cnt <= 4'd7);
 wire  [2:0] pres_k  = dev_take ? 3'd0 : dev_cnt[2:0];
-wire [31:2] dev_a   = c_line ? {c_addr[31:5], pres_k} : c_addr;
-wire  [3:0] dev_be  = c_line ? 4'hF : c_be;
-wire [31:0] dev_wd  = c_line ? c_wdata[255 - 32 * pres_k -: 32] : c_wdata[31:0];
+wire [31:2] dev_a   = q_line ? {q_addr[31:5], pres_k} : q_addr;
+wire  [3:0] dev_be  = q_line ? 4'hF : q_be;
+wire [31:0] dev_wd  = q_line ? q_wdata[255 - 32 * pres_k -: 32] : q_wdata[31:0];
 always_ff @(posedge clk) begin
 	p_sel <= present & ~reset;
 	p_k   <= pres_k;
 	p_a   <= dev_a;
 	p_be  <= dev_be;
 	p_wd  <= dev_wd;
-	p_we  <= c_we;
-	p_dev <= {is_ctl, is_cha, is_ban, is_gc, is_hh, is_dbg, is_boot};
+	p_we  <= q_we;
+	p_dev <= {q_is_ctl, q_is_cha, q_is_ban, q_is_gc, q_is_hh, q_is_dbg, q_is_boot};
 end
 
 // ---- the time base, the VIA's clock, the ESCC's and the SCSI controllers', the microsecond, ----
@@ -569,7 +594,7 @@ end
 
 always_ff @(posedge clk) begin
 	case (vw)
-		2'd0: if (c_req & ~to_mem & via_wait & ~dev_busy & ~dev_ack) vw <= 2'd1;
+		2'd0: if (q_req & ~q_to_mem & via_wait & ~dev_busy & ~dev_ack) vw <= 2'd1;
 		2'd1: if (via_tick) begin vw <= 2'd2; vw_cnt <= 8'(VIA_HALF - 1); end
 		default: begin
 			if (vw_cnt != 8'd0) vw_cnt <= vw_cnt - 8'd1;
@@ -815,11 +840,13 @@ always_ff @(posedge clk) begin
 	if (dev_take) begin
 		dev_busy  <= 1'b1;
 		dev_cnt   <= 4'd1;
-		dev_sel_q <= {is_ctl, is_cha, is_ban, is_gc, is_hh, is_dbg, is_boot};
+		dev_sel_q <= {q_is_ctl, q_is_cha, q_is_ban, q_is_gc, q_is_hh, q_is_dbg, q_is_boot};
 	end
 	else if (dev_busy) dev_cnt <= dev_cnt + 4'd1;
-	// a word's answer is out the cycle after p_sel; a line's last word is in line_buf the cycle after that
-	dev_ack  <= (p_sel & ~c_line) | (pq_sel & c_line & pq_k == 3'd7);
+	// the answer is in line_buf the cycle after the devices' (a word's in
+	// line_buf[0]): the CPU takes it from a register, not through the
+	// devices' read mux
+	dev_ack  <= pq_sel & (~q_line | pq_k == 3'd7);
 	if (dev_ack) dev_busy <= 1'b0;
 	pq_sel   <= p_sel;
 	pq_k     <= p_k;
@@ -853,19 +880,19 @@ logic [15:0] bt_div = 16'd0;
 // MACE (F3011000-F30111FF) and its DMA channels 2 and 3 (F3008200, 8300); AWACS (F3014000)
 // and its channel 8 (F3008800); MESH (F3018000) and its channel A (F3008A00) with tr_mesh.
 // Not the interrupt registers: the NanoKernel reads and rewrites them thousands of times a second
-wire         bt_hit = is_gc && (a[16:9] == 8'h88 || a[16:8] == 9'h082 || a[16:8] == 9'h083 ||
-                                a[16:8] == 9'h140 || a[16:8] == 9'h088 ||
-                                (tr_mesh && (a[16:8] == 9'h180 || a[16:8] == 9'h08A)));
+wire         bt_hit = q_is_gc && (qa[16:9] == 8'h88 || qa[16:8] == 9'h082 || qa[16:8] == 9'h083 ||
+                                qa[16:8] == 9'h140 || qa[16:8] == 9'h088 ||
+                                (tr_mesh && (qa[16:8] == 9'h180 || qa[16:8] == 9'h08A)));
 always_ff @(posedge clk) begin
 	if (bt_div == 16'(CPU_HZ / 1_000_000 - 1)) begin
 		bt_div <= 16'd0;
 		bt_us  <= bt_us + 32'd1;
 	end
 	else bt_div <= bt_div + 16'd1;
-	if (dev_take & ~c_line) begin
+	if (dev_take & ~q_line) begin
 		bt_pend <= bt_hit;
-		bt_a    <= a;
-		bt_we   <= c_we;
+		bt_a    <= qa;
+		bt_we   <= q_we;
 		bt_wd   <= c_wdata[31:0];
 		bt_be   <= c_be;
 	end
@@ -878,7 +905,7 @@ wire bt_ev = dev_ack & bt_pend;
 wire   itr_tr = itr_ev & tr_mesh;
 assign tr_ev  = sd_tr_ev | bt_ev | dfin | adb_tr_ev | itr_tr | itr8_ev;
 assign tr_rec = sd_tr_ev ? sd_tr_rec :
-                bt_ev    ? {128'd0, bt_we ? bt_wd : dev_rdata, bt_a, bt_us, 19'd0, bt_we, bt_be, 8'd4} :
+                bt_ev    ? {128'd0, bt_we ? bt_wd : line_buf[0], bt_a, bt_us, 19'd0, bt_we, bt_be, 8'd4} :
                 dfin     ? {64'd0, dfin_info, bt_us, 16'd0, 4'd0, dfin_ch,
                             (dfin_type == 2'd0) ? 8'd5 : (dfin_type == 2'd1) ? 8'd8 : 8'd9} :
                 itr_tr   ? {192'd0, bt_us, 16'd0, itr_st, 8'd10} :
@@ -890,6 +917,6 @@ assign c_rdata = v_ack    ? v_swl(v_rdata, v_swap) :
                  ~dev_ack ? m_rdata :
                  c_line   ? {line_buf[0], line_buf[1], line_buf[2], line_buf[3],
                              line_buf[4], line_buf[5], line_buf[6], line_buf[7]} :
-                            {224'h0, dev_rdata};
+                            {224'h0, line_buf[0]};
 
 endmodule

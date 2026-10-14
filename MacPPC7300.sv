@@ -56,6 +56,7 @@ module emu
 );
 
 localparam int CPU_MHZ = 70;            // 60 and 65 also work with the PLL (VCO 1200, 1300 MHz); 70 since 2026-10-09
+localparam int L2_KB = 128;             // 0: no L2 cache (its OSD option then does nothing; saves about 800 ALMs)
 localparam int TRACE = 0;               // 1: the DDR3 trace (syn\mister.py trace), for debugging builds
 localparam int SOUND_IN_DMA = 0;        // 1: DMA channel 9 (sound in, which records silence) a real channel
 localparam int PERF = 0;                // 1: the CPU's performance counters, into the trace (syn\perf.py; needs TRACE)
@@ -601,7 +602,7 @@ wire   [7:0] mac_r, mac_g, mac_b;
 
 assign DDRAM_CLK = clk_mem;
 
-MacPPC7300_system #(.CPU_HZ(CPU_MHZ * 1000000), .TB_HZ(12500000), .SDRAM_MB(128),
+MacPPC7300_system #(.CPU_HZ(CPU_MHZ * 1000000), .L2_KB(L2_KB), .TB_HZ(12500000), .SDRAM_MB(128),
                     .TRACE(TRACE), .SOUND_IN_DMA(SOUND_IN_DMA), .PERF(PERF), .SND_TRACE(SND_TRACE)) system
 (
 	.clk(clk_cpu),
