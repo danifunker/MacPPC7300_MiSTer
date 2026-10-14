@@ -74,12 +74,11 @@ logic [255:0] s_wdata;
 logic [N-1:0]   valid;
 logic [21:5]    tag  [N];
 logic [31:0]    mask [N];
-(* ramstyle = "MLAB, no_rw_check" *) logic [255:0] data [N];
+logic [255:0]   data [N];                   // (Quartus makes registers of so few entries with byte enables)
 logic [NB-1:0]  head, tail;                 // drained from the head, allocated at the tail
 logic [NB:0]    count;
 logic           d_v;                        // the head entry is being drained (no more merging into it)
-logic           d_sent;                     // ... and offered to the crossing (its data read)
-logic [255:0]   d_data;
+logic           d_sent;                     // ... and offered to the crossing
 
 // the staged store's place in its line, as a byte mask over the line
 wire [2:0]  w_k   = s_addr[4:2];
@@ -126,7 +125,6 @@ always_ff @(posedge clk) begin
 	// the data: bytes of the store into its entry
 	for (int j = 0; j < 32; j++)
 		if (w_en & w_mask[j]) data[w_idx][8 * j +: 8] <= w_data[8 * j +: 8];
-	d_data <= data[head];
 end
 
 always_ff @(posedge clk) begin
@@ -169,7 +167,7 @@ always_ff @(posedge clk) begin
 	end
 	// the drain: the head entry, read out and offered until the crossing takes it
 	if (~d_v & (count != '0) & ~r_wait & ~ld_go) d_v <= 1'b1;
-	if (d_v & ~d_sent) begin                  // d_data read at this edge: offer next
+	if (d_v & ~d_sent) begin                  // offer it (the head entry holds still while it is out)
 		d_sent   <= 1'b1;
 		b_req    <= 1'b1;
 		b_we     <= 1'b1;
@@ -201,7 +199,7 @@ always_ff @(posedge clk) begin
 	end
 end
 assign a_ack   = (take & a_we) | ld_ack;      // a store answered as it is taken
-assign b_wdata = d_data;
+assign b_wdata = data[head];                  // (the entries are registers: a mux, not a copy)
 
 logic [31:0] n_st, n_dr, n_ld, n_wait;
 always_ff @(posedge clk) begin

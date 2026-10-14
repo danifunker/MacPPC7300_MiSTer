@@ -95,10 +95,81 @@ hour on misterubuntu). Lasting margin needs the design itself to move,
 which is the work `addr-stage` found too expensive for 110 MHz; at 100
 MHz a smaller step would do.
 
+## The combiner at 100 MHz, continued
+
+Every fit with the combiner failed at 100 MHz (nine of them, −5.6 to −7.1
+ns, black or a picture or a Finder error), while the plain core booted
+from three fits of three (−5.60, −6.07, −6.13) and so did the combiner
+bypassed (the crossing's byte enables and the video's masked beats kept,
+−6.01). Bisecting the combiner's features (no read line, no merging, the
+store answered only after its drain, single-beat DDR3 writes, the PLL's
+two 100 MHz outputs kept apart by a phase shift) changed nothing: all
+black. The crossings' data paths measure 3–7 ns against a budget of 20.
+
+**What the trace showed.** A build with the DDR3 trace and the combiner's
+counts (kind 15, `syn/vramstat.py`): at 90 MHz the counts run (2.6 M
+stores, 1.6 M drains, 68 k loads for the boot); at 100 MHz the boot got
+through the chime and the Ethernet set-up and then, right after the ADB
+probe at 12.9 s, made no more device access and never a store to the
+screen — a port request nobody answered. Every capture also shows a
+first boot attempt stalling in the chime's third DMA chunk until the ROM
+download's reset 3 s later; that one is normal.
+
+**The port registered for the devices (5e56418).** The worst paths of the
+100 MHz fits with the combiner ran from the CPU port's I/D choice and the
+caches' state and address registers through the machine's decode into
+the devices' take and the request's 300-odd registers (−7.1 ns, `p_k`,
+`p_dev`, `dev_take`). The machine now decides the devices' and the VRAM's
+requests from a registered copy of the port (`q_*`, standing for the
+request still up: the port's request was not answered the cycle before);
+the memory path keeps the live decode. The CPU's reset also comes from a
+register. The combiner answers a store in the cycle it takes it, so a
+store still costs the port two cycles. Three fits at 100 MHz: −5.58,
+−6.15, −6.40, the machine's families gone from the worst lists. The board
+at 90 MHz ran Speedometer clean (CPU 4.851, Mix 15.39, FPU 6.32, Color
+2.355: the port's extra cycle, before the same-cycle answer, cost the
+Color tests 2.5 %). The −5.58 fit at 100 MHz got to "Welcome to Mac OS"
+and a bus error.
+
+**It is not the slow corner.** The fast-corner slacks of the fits that
+fail (+0.6 to +0.9 ns at 0 °C fast silicon) are better than those of the
+plain fits that boot (+0.23 to +0.38). Whatever fails is not the timed
+logic as the models see it. The machine bench's DDR3 model never asserted
+BUSY unless `--stall` was given, and the combiner's checks had run
+without it; with `--stall 30` (bus and DDR3 wait states) the boot passes,
+at 90/100 and at 100/100 MHz.
+
+**It is the area.** Three builds told the explanations apart: the
+combiner with the memory clock at 90 MHz (the equal clocks) is black; the
+plain core with a thousand ALMs and two thousand registers of dummy XOR
+logic kept through the LED (−6.14 ns, 91 %) is black; **the combiner with
+two entries (−5.80 ns, 88 %) boots to the desktop in 35 s and runs
+Speedometer**: CPU 5.391, Dhrystones 5.662, FPU 6.98–7.36, Color 2.486
+and 2.555 in two runs (the 8-bit test 4.01–4.22 s, the 16-bit 5.50–5.52
+s) against 1.920 without it at 100 MHz. The fits that boot at 100 MHz
+use 36.4–37.3 k ALMs; the ones that fail 37.2–38.0 k; the overlap is the
+fit lottery, and every few hundred ALMs shift the odds. The entries are
+now two by default (3e52ed9 and after); the drain reads them through a
+mux instead of a copy.
+
+Where the ALMs go (the two-entry fit, 36,945): the framework's scaler,
+audio filters, OSDs, HDMI PLL and video output about 7,000, untouchable;
+the CPU 15,400 (its own forwarding and control 6,270, the FPU 4,000, the
+data cache 1,300, the integer unit 1,140 of which the divider 590, the
+MMU 1,070, the instruction cache 660); the L2 700; the machine 10,200:
+Grand Central 4,740 (the five DMA channels 2,030, MACE 420, ESCC 390,
+SWIM 300, MESH 300), the SCSI disks 2,020, the ADB devices 780, the
+video 850, Cuda 540, the combiner 560, the machine's own decode and
+ports 1,630.
+
 ## Next
 
-- The combiner's effect on the Color tests and on the Finder, on the
-  board, from a fit that boots (90 MHz, and the best 100 MHz seed).
+- Area: a few hundred ALMs decide the 100 MHz lottery. Candidates not
+  in the framework: the DMA channels' line buffers, the SCSI disk model,
+  the ADB devices; the combiner's read line (256 registers) if the
+  screen is seldom read.
+- A fit with more placement effort (PLACEMENT_EFFORT_MULTIPLIER 3,
+  ROUTER_TIMING_OPTIMIZATION_LEVEL MAXIMUM) for the same design.
 - A 64 KB instruction cache (`IC_IDXW = 9`: 56 M10Ks more, the index
   already from a translated bit) for the 68k code's fetch misses: the
   ROM boot's fetch waits 3.6 → 2.6 %; the idle loop is the real measure.
