@@ -78,6 +78,10 @@ decided unevenly there leaves the entry count wrong and the first screen
 store waiting forever. Hence the register stage in front of the
 compares; the combiner's paths then leave the worst list.
 
+**On the board (90 MHz, −4.89 ns, the L2 off):** Color average 1.861 →
+2.415 (+30 %): the 8-bit test 5.34 → 4.41 s, the 16-bit 7.81 → 5.60 s;
+CPU 4.843, Mix 15.45, FPU 6.33, unchanged; a clean run and shutdown.
+
 ## 100 MHz is a lottery
 
 Three fits of the same design at 100 MHz: −5.60 (boots, runs
