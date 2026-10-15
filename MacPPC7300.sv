@@ -119,8 +119,8 @@ localparam CONF_STR = {
 	// (menu mask: bit 0 a 64 MB board or larger, bit 1 a 128 MB board); status[3:1] was the
 	// list before 2026-10-15
 	"H0O[7:5],RAM (on reset),28 MB,6 MB,16 MB;",
-	"h0H1O[7:5],RAM (on reset),28 MB,6 MB,16 MB,48 MB,60 MB;",
-	"h1O[7:5],RAM (on reset),28 MB,6 MB,16 MB,48 MB,60 MB,96 MB,120 MB,124 MB;",
+	"h0H1O[7:5],RAM (on reset),28 MB,6 MB,16 MB,60 MB;",
+	"h1O[7:5],RAM (on reset),28 MB,6 MB,16 MB,60 MB,124 MB;",
 	"O[4],L2 cache (on reset),On,Off;",
 	// (status[16:15] was the list before 2026-10-15, three monitors)
 	"O[32:30],Monitor (on reset),16-inch 832x624,13-inch 640x480,12-inch 512x384,17-inch Multiscan,21-inch 1152x870,20-inch Multiscan;",
@@ -309,14 +309,11 @@ wire [7:0] ram_max = sdram_mod == 2'd3 ? 8'd124 : sdram_mod == 2'd2 ? 8'd60 : 8'
 reg  [7:0] ram_sel;
 always @(*) begin
 	case (status[7:5])
+		3'd0:    ram_sel = 8'd28;
 		3'd1:    ram_sel = 8'd6;
 		3'd2:    ram_sel = 8'd16;
-		3'd3:    ram_sel = 8'd48;
-		3'd4:    ram_sel = 8'd60;
-		3'd5:    ram_sel = 8'd96;
-		3'd6:    ram_sel = 8'd120;
-		3'd7:    ram_sel = 8'd124;
-		default: ram_sel = 8'd28;
+		3'd3:    ram_sel = 8'd60;
+		default: ram_sel = 8'd124;              // (5-7: 96, 120, 124 MB in the list before)
 	endcase
 end
 always @(posedge clk_mem) ram_opt <= ram_sel > ram_max ? ram_max : ram_sel;

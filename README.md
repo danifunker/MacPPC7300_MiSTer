@@ -223,9 +223,9 @@ not by drift.
   the ROM sat at 124 MB and the controller addressed the 64 MB chip's 1024
   columns, which a 32 MB chip does not have). The ROM takes the module's top
   4 MB; the installed RAM is a core option, the sizes that fit below it:
-  6, 16 or 28 MB on a 32 MB module, also 48 or 60 MB on a 64 MB one, also
-  96, 120 or 124 MB on a 128 MB one (the user's choice, 2026-10-15: 6, 16,
-  the largest and each module's most). The default is 28 MB, which every
+  6, 16 or 28 MB on a 32 MB module, also 60 MB on a 64 MB one, also 124 MB
+  on a 128 MB one (the user's choice, 2026-10-15: 6, 16 and each module's
+  most; 28 MB listed first, as the default). The default is 28 MB, which every
   module holds (the user's choice; BootX cannot start Linux at 16 MB,
   "BootX Extension: unimplemented trap", the builds before this one too,
   and the user's Debian with its 11 MB initrd needs more than 28). A size

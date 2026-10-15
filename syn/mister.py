@@ -86,7 +86,7 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 CORE = "/media/fat/_Unstable/MacPPC7300.rbf"
-RAM_OPTION = {28: 0, 6: 1, 16: 2, 48: 3, 60: 4, 96: 5, 120: 6, 124: 7}   # MacPPC7300.sv: O[7:5]
+RAM_OPTION = {28: 0, 6: 1, 16: 2, 60: 3, 124: 4}                         # MacPPC7300.sv: O[7:5]
 MONITOR_OPTION = {16: 0, 13: 1, 12: 2, 17: 3, 21: 4, 20: 5}              # MacPPC7300.sv: O[32:30]
 
 # a reader of the UART left from an earlier command would take part of what
