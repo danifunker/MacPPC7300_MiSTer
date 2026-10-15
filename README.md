@@ -225,11 +225,12 @@ not by drift.
   4 MB; the installed RAM is a core option, the sizes that fit below it:
   6, 16 or 28 MB on a 32 MB module, also 48 or 60 MB on a 64 MB one, also
   96, 120 or 124 MB on a 128 MB one (the user's choice, 2026-10-15: 6, 16,
-  the largest and each module's most). The default is the module's most
-  (28, 60 or 124 MB): BootX cannot start Linux at 16 MB ("BootX Extension:
-  unimplemented trap", the builds before this one too). A size the module
-  cannot hold (a setting from a larger one) gives the module's most. 6 MB is
-  the Pippin's.
+  the largest and each module's most). The default is 28 MB, which every
+  module holds (the user's choice; BootX cannot start Linux at 16 MB,
+  "BootX Extension: unimplemented trap", the builds before this one too,
+  and the user's Debian with its 11 MB initrd needs more than 28). A size
+  the module cannot hold (a setting from a larger one) gives the module's
+  most. 6 MB is the Pippin's.
   The OSD's memory-test boot is gone (2026-10-08, the user);
   `MacPPC7300_bootrom` stays for the bench. The caches fill their lines from the SDRAM, so the cache
   line-fill bus is designed for that controller. 128 MB of RAM would need the

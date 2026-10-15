@@ -113,12 +113,12 @@ localparam CONF_STR = {
 	"S6,DSKIMGIMA,Insert floppy disk;",
 	"SC2,NVR,Mount NVRAM;",
 	"-;",
-	// the RAM sizes the SDRAM board holds besides the ROM, its largest the default (menu
-	// mask: bit 0 a 64 MB board or larger, bit 1 a 128 MB board); status[3:1] was the
+	// the RAM sizes the SDRAM board holds besides the ROM, 28 MB (any board's) the default
+	// (menu mask: bit 0 a 64 MB board or larger, bit 1 a 128 MB board); status[3:1] was the
 	// list before 2026-10-15
 	"H0O[7:5],RAM (on reset),28 MB,6 MB,16 MB;",
-	"h0H1O[7:5],RAM (on reset),60 MB,6 MB,16 MB,28 MB,48 MB;",
-	"h1O[7:5],RAM (on reset),124 MB,6 MB,16 MB,28 MB,48 MB,60 MB,96 MB,120 MB;",
+	"h0H1O[7:5],RAM (on reset),28 MB,6 MB,16 MB,48 MB,60 MB;",
+	"h1O[7:5],RAM (on reset),28 MB,6 MB,16 MB,48 MB,60 MB,96 MB,120 MB,124 MB;",
 	"O[4],L2 cache (on reset),On,Off;",
 	"O[16:15],Monitor (on reset),16-inch 832x624,13-inch 640x480,12-inch 512x384;",
 	"-;",
@@ -298,9 +298,9 @@ end
 
 ///////////////////////   OPTIONS AND RESET (memory clock)   ///////////////////////////////
 
-// the OSD's RAM size, taken at the next reset (ram_mb): by default the board's largest
-// (BootX cannot start Linux at 16 MB); a size the board cannot hold beside the ROM (a
-// setting from a larger board) is the board's largest too
+// the OSD's RAM size, taken at the next reset (ram_mb): by default 28 MB, which every
+// board holds (the user's choice, 2026-10-15); a size the board cannot hold beside the
+// ROM (a setting from a larger board) is the board's largest
 reg  [7:0] ram_opt;
 wire [7:0] ram_max = sdram_mod == 2'd3 ? 8'd124 : sdram_mod == 2'd2 ? 8'd60 : 8'd28;
 reg  [7:0] ram_sel;
@@ -308,12 +308,12 @@ always @(*) begin
 	case (status[7:5])
 		3'd1:    ram_sel = 8'd6;
 		3'd2:    ram_sel = 8'd16;
-		3'd3:    ram_sel = 8'd28;
-		3'd4:    ram_sel = 8'd48;
-		3'd5:    ram_sel = 8'd60;
-		3'd6:    ram_sel = 8'd96;
-		3'd7:    ram_sel = 8'd120;
-		default: ram_sel = ram_max;
+		3'd3:    ram_sel = 8'd48;
+		3'd4:    ram_sel = 8'd60;
+		3'd5:    ram_sel = 8'd96;
+		3'd6:    ram_sel = 8'd120;
+		3'd7:    ram_sel = 8'd124;
+		default: ram_sel = 8'd28;
 	endcase
 end
 always @(posedge clk_mem) ram_opt <= ram_sel > ram_max ? ram_max : ram_sel;
