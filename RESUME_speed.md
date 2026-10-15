@@ -26,6 +26,16 @@ then dual issue or the core's deep paths. The sessions of 10-11 to 10-14
 ran from macOS with Quartus on a Linux host; the environment below is the
 Windows one.
 
+**2026-10-15, on master:** that work had broken Linux (Debian died at its
+first user process at any clock; Mac OS was fine). Fixed: the MMU's
+instruction side lost the cancel of a walk started in a redirect's cycle
+(the return stack sends wrong-path fetches into the vectors' page 0);
+`docs/DSPPC604_plan.md` has the account, `progs.py vecwalktest` the
+regression, the plan's decisions the "linux" row. Debian boots to its login
+prompt at 70 and at 100 MHz (`CPU_MHZ = 100` now selects the PLL's 100 MHz).
+Also found: Linux's isync on every exception return steps the fold epoch,
+so the BTB is swept every sixteen exceptions (a cost for the speed work).
+
 
 **Merged 2026-10-10:** the tree also carries the AT CPU work (branch `speed-at`: the fetch FIFO, one cached access a cycle in MEM, a two-way 128-entry BTB with an eight-entry return stack, an ordered ALU completion queue). Its log is `docs/speed_AT_log.md`. On the board at 55 MHz with `pm761_speedo.hda` (single runs) Speedometer's CPU score is 2.301 against the original's 1.886; Dhrystones, Puzzle, Int. Matrix, Matrix Mult. and Fast Fourier are slower. It does not close 70 MHz (about 60 MHz).
 

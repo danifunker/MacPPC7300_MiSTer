@@ -17,6 +17,8 @@
                                                  (run with --irq-every and --tb-run)
     python progs.py irqwalktest OUT [LOOPS]      the same with a page-table walk every loop
     python progs.py irqwalkfaulttest OUT [LOOPS] interrupts while walks end in page faults
+    python progs.py vecwalktest OUT              a fetch's walk into the page of the vector a DSI
+                                                 redirects to, started in that cycle (lockstep)
     python progs.py memtest OUT.sv               the machine's memory-test boot ROM, as RTL
                                                  (rtl/machine/MacPPC7300_bootrom.sv)
     python progs.py specfetchrom OUT.rom         machine lockstep: discarded I-fetch before an MMIO load
@@ -1265,6 +1267,64 @@ def irqtest(out, loops, translated=False, faulting=False, overlap=False):
     print("%d instructions, %d loops -> %s" % (len(p.words), loops, out))
 
 
+def vecwalktest(out, tries=10):
+    """A fetch's page-table walk that starts in the cycle an exception
+    redirects to its vector, in the vector's own page, must be cancelled
+    (2026-10-15: it was not, and the vector's fetch took the walk's "no
+    page", an ISI at 0300 with the interrupted context's r1 still live; Debian
+    died at its first user process). Translation on, no BAT: a blr learned as
+    a return (its first target sequential, so no ITT) is reached again
+    behind a load whose page has no PTE, with the return stack's top the DSI
+    handler's bl at 0300: the fetch goes to page 0 and wants the walker while
+    the load's walk runs, and gets it as that walk ends in the DSI. Each try
+    has its own blr, pages and distance (0 to 4 nops) from the load. Run in
+    lockstep: the core must take the DSI as dingusppc does."""
+    p = Program()
+    SDR1_V, LIST = 0x00100000, 0x00FE0000
+    SPRG2, SPRG3 = 274, 275
+    # the DSI handler, in real mode: validates the next PTE of the list
+    # (the faults come in a known order), from a subroutine called with bl
+    dsi = assemble([mtspr(SPRG0, 29), mtspr(SPRG1, 30), mtspr(SPRG2, 31), mfspr(LR, 29), mtspr(SPRG3, 29),
+                    0x48000005,                               # bl the next instruction
+                    D(15, 29, 0, LIST >> 16), D(32, 30, 29, 0), D(32, 31, 30, 0), D(32, 29, 30, 4),
+                    D(36, 29, 31, 0), D(14, 30, 30, 8), D(15, 29, 0, LIST >> 16), D(36, 30, 29, 0),
+                    X(0, 0, 0, 598),                          # sync
+                    mfspr(SPRG3, 29), mtspr(LR, 29), mfspr(SPRG0, 29), mfspr(SPRG1, 30), mfspr(SPRG2, 31),
+                    RFI], 0x300)
+    for i, w in enumerate(dsi):
+        p.data[0x300 + 4 * i] = w
+
+    pt = PageTable(p, SDR1_V, {0: 0x10})
+    pt.map(CODE_BASE, CODE_BASE, 2, r_final=1)
+    pend = []
+    for j in range(tries):
+        for ea, v in ((0x00200000 + 0x1000 * j, 0x100 + j), (0x00280000 + 0x1000 * j, 0x200 + j)):
+            p.data[ea] = v
+            a1 = pt.map(ea, ea, 2, r_final=1)
+            pend.append((a1 - 4, p.data[a1 - 4]))
+            p.data[a1 - 4] &= 0x7FFFFFFF                          # not valid until the handler says so
+    p.data[LIST] = LIST + 8
+    for k, (a0, w0) in enumerate(pend):
+        p.data[LIST + 8 + 8 * k], p.data[LIST + 12 + 8 * k] = a0, w0
+        p.expect[a0] = w0
+    p.expect.update(pt.ptes)
+
+    items = caches_on() + set_msr(0, 7) + li32(7, SDR1_V) + [mtspr(SDR1, 7)] + li32(7, 0x10) + [mtsr(0, 7)]
+    items += set_msr(MSR_IR | MSR_DR, 7) + li32(21, 0)
+    for j in range(tries):
+        items += [D(14, 20, 0, 0)] + li32(16, 0x00200000 + 0x1000 * j) + li32(17, 0x00280000 + 0x1000 * j)
+        items += [("la", 0, "site%d" % j, 4), mtspr(LR, 0), ("b", "site%d" % j)]
+        items += [("label", "load%d" % j), D(32, 5, 16, 0), D(32, 6, 17, 0)] + [NOP] * (j % 5)
+        items += [("label", "site%d" % j), 0x4E800020, cmpwi(20, 0), D(14, 20, 20, 1), ("bc", 12, 2, "load%d" % j),
+                  X(21, 21, 5, 266), X(21, 21, 6, 266)]           # add r21,r21,r5; add r21,r21,r6
+    items += set_msr(0, 7) + [D(36, 21, 0, 0x7000), B_SELF]      # stw r21 at 7000, untranslated
+    p.words = assemble(items, CODE_BASE)
+    assert len(p.words) < 1024, "the code is one page"
+    p.expect[0x7000] = sum(0x300 + 2 * j for j in range(tries))
+    p.write(out)
+    print("%d instructions, %d tries -> %s" % (len(p.words), tries, out))
+
+
 # ---- random floating-point programs, checked against fpmodel.py ------------------
 SCRATCH = 0x00500000
 
@@ -1806,18 +1866,24 @@ def cmpwi(ra, imm, crf=0):
 
 
 def assemble(items, base):
-    """items: words, ("label", name), ("b", name) or ("bc", BO, BI, name).
+    """items: words, ("label", name), ("b", name), ("bc", BO, BI, name) or
+    ("la", rD, name, offset) (lis, ori: the label's address plus offset).
     Returns the words for an image starting at byte offset base."""
     labels, pc = {}, base
     for it in items:
         if isinstance(it, tuple) and it[0] == "label":
             labels[it[1]] = pc
         else:
-            pc += 4
+            pc += 8 if isinstance(it, tuple) and it[0] == "la" else 4
     out, pc = [], base
     for it in items:
         if isinstance(it, tuple):
             if it[0] == "label":
+                continue
+            if it[0] == "la":
+                v = labels[it[2]] + it[3]
+                out += [D(15, it[1], 0, v >> 16), D(24, it[1], it[1], v)]
+                pc += 8
                 continue
             if it[0] == "b":
                 out.append((18 << 26) | ((labels[it[1]] - pc) & 0x03FFFFFC))
@@ -1975,6 +2041,8 @@ if __name__ == "__main__":
         irqtest(a[1], int(a[2]) if len(a) > 2 else 3000, translated=True, faulting=True)
     elif len(a) >= 2 and a[0] == "acktest":
         acktest(a[1])
+    elif len(a) >= 2 and a[0] == "vecwalktest":
+        vecwalktest(a[1])
     elif len(a) >= 2 and a[0] == "irqoverlaptest":
         irqtest(a[1], int(a[2]) if len(a) > 2 else 3000, overlap=True)
     elif len(a) >= 3 and a[0] == "fprandom":

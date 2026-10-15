@@ -673,11 +673,38 @@ has been obtained.
 
 After 70 MHz closure and the architectural performance target, try higher
 frequencies supported by the generated PLL and close the entire machine at
-each setting. `MacPPC7300.sv` currently maps CPU_MHZ only to 60, 70 or a
-default 65 MHz PLL frequency: changing the integer to 75 or 80 alone would
+each setting. `MacPPC7300.sv` currently maps CPU_MHZ only to 60, 70, 100
+(since 2026-10-15, for the overclocked test builds) or a default 65 MHz PLL
+frequency: changing the integer to 75 or 80 alone would
 silently select 65 MHz while CPU_HZ says otherwise. Extend the PLL selection
 and verify its actual output and CPU_HZ together, retain the 20/100 MHz
 outputs and CDC constraints, then repeat boot/DMA/Speedometer checks.
+
+**Linux's regression, found 2026-10-15.** From e30309d (the AT work) on,
+Debian died at its first user process ("Non-recoverable exception at PC=0",
+or an exception storm and a hang) at any clock; Mac OS was unaffected. An
+exception trace on the board (a debug build recording every exception and
+rfi into the DDR3 ring, frozen when Linux reaches `nonrecoverable_exception`)
+showed a user DSI followed 164 cycles later by an ISI at 0300 itself, in real
+mode, SRR1 "no page": the ISI's prologue then saw MSR[PR] clear and built
+its frame on the user's stack. The cause was in the MMU's instruction side:
+a walk that starts in the cycle of a redirect lost its cancel (I_IDLE to
+I_WALK cleared `i_cancelled`; the data side already registered its cancel
+there). The return stack makes such walks: the vectors' `bl` into
+`transfer_to_handler` and `hash_page` are never returned from, so a user
+`blr` can be predicted into page 0. Its fetch waits for the walker while a
+load's walk runs; that walk ends in the DSI, the fetch's walk starts in the
+same cycle, and the DSI's vector, in page 0 too, matched the walk's page and
+took its "no page". Fixed: the walk starts cancelled when its first cycle
+redirects. `progs.py vecwalktest` (in `run_core.py`, lockstep) builds the
+case without Linux and fails on the old MMU at every wait state (an endless
+exception storm, as on the board). Fixed on the way, older (M4): an
+interrupt taken at an `sc` saved the address after it in SRR0, so the system
+call was lost; found when the CPU bench began forcing the core's interrupts
+into the reference in CPU runs too, as the machine bench did. Also seen on the way: every isync steps
+the fold epoch, so Linux, with one on each exception return, sweeps the
+whole BTB (1,024 cycles without predictions or learning) every sixteen
+exceptions; a cost, not a fault, left for the speed work.
 
 ## Rules that keep the pipeline from growing special cases
 

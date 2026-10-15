@@ -55,7 +55,7 @@ module emu
 	`include "sys/emu_ports.vh"
 );
 
-localparam int CPU_MHZ = 70;            // 60 and 65 also work with the PLL (VCO 1200, 1300 MHz); 70 since 2026-10-09
+localparam int CPU_MHZ = 70;            // 60 and 65 also work with the PLL (VCO 1200, 1300 MHz); 70 since 2026-10-09; 100 the overclocked test builds
 localparam int L2_KB = 128;             // 0: no L2 cache (its OSD option then does nothing; saves about 800 ALMs)
 localparam int TRACE = 0;               // 1: the DDR3 trace (syn\mister.py trace), for debugging builds
 localparam int SOUND_IN_DMA = 0;        // 1: DMA channel 9 (sound in, which records silence) a real channel
@@ -161,7 +161,8 @@ localparam [31:0] BUILD = {8'h20, BD[43:40], BD[35:32], BD[27:24], BD[19:16], BD
 ///////////////////////   CLOCKS   ///////////////////////////////
 
 wire clk_vid, clk_cpu, clk_mem, pll_locked;
-pll #(.CPU_FREQ(CPU_MHZ == 60 ? "60.000000 MHz" : CPU_MHZ == 70 ? "70.000000 MHz" : "65.000000 MHz")) pll
+pll #(.CPU_FREQ(CPU_MHZ == 60 ? "60.000000 MHz" : CPU_MHZ == 70 ? "70.000000 MHz" :
+               CPU_MHZ == 100 ? "100.000000 MHz" : "65.000000 MHz")) pll
 (
 	.refclk(CLK_50M),
 	.rst(0),

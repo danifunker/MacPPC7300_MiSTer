@@ -310,6 +310,8 @@ void usage() {
 	std::printf(
 #ifdef MACPPC7300_MACHINE
 		"usage: machine_tb --machine --rom FILE [options]\n"
+		"  --prog FILE      a program file (as core_tb's: R, M, E records) in RAM, the\n"
+		"                   ROM's reset vector a branch to its reset address\n"
 		"  --ram MB         installed RAM (default 16)\n"
 		"  --no-l2          the L2 cache off (MacPPC7300_l2; on by default)\n"
 		"  --cpu-mhz F      the CPU's clock (default 70)\n"
@@ -397,6 +399,10 @@ struct DevQueue {
 	// reference, which has no cache, reads them again and again
 	std::map<uint32_t, std::vector<uint32_t>> cached;
 	std::string error;             // the first disagreement, if any
+	// the reference's device stores whose access the core has not made yet:
+	// a posted store retires before it reaches the port
+	struct RefWrite { uint32_t addr; unsigned size; uint32_t value; };
+	std::deque<RefWrite> pend;
 	FILE* log = nullptr;
 	uint64_t icount = 0;           // instructions before the one being stepped
 	uint32_t pc = 0;
@@ -512,9 +518,29 @@ uint32_t lane_be(uint32_t addr, unsigned size) {
 	return ((size == 4 ? 0xFu : size == 2 ? 0x3u : 0x1u) << (4 - (addr & 3) - size)) & 0xF;
 }
 
+// the reference's posted stores matched with the core's accesses as they come, in order
+void match_pending(DevQueue& d) {
+	while (!d.pend.empty()) {
+		d.drop_writebacks();
+		if (d.q.empty()) return;
+		const DevAccess& a = d.q.front();
+		const DevQueue::RefWrite& r = d.pend.front();
+		uint32_t got = lane_value(a.wdata, r.addr, r.size);
+		if ((!a.we || a.line || a.addr != (r.addr & ~3u) || a.be != lane_be(r.addr, r.size) || got != r.value) && d.error.empty()) {
+			char buf[256];
+			std::snprintf(buf, sizeof buf, "the reference wrote %u bytes %X at %08X; the core's next access %s %08X be %X data %08X",
+				r.size, r.value, r.addr, a.we ? "wrote" : "read", a.addr, a.be, a.wdata);
+			d.error = buf;
+		}
+		d.q.pop_front();
+		d.pend.pop_front();
+	}
+}
+
 uint32_t dev_read(void* ctx, uint32_t addr, unsigned size) {
 	DevQueue& d = *static_cast<DevQueue*>(ctx);
 	char buf[256];
+	match_pending(d);
 	d.drop_writebacks();
 	uint32_t line_addr = addr & ~31u;
 	bool front_line = !d.q.empty() && d.q.front().line && d.q.front().addr == line_addr;
@@ -563,6 +589,7 @@ void dev_write(void* ctx, uint32_t addr, unsigned size, uint32_t value) {
 	DevQueue& d = *static_cast<DevQueue*>(ctx);
 	char buf[256];
 	d.writes++;
+	match_pending(d);
 	d.drop_writebacks();
 	uint32_t line_addr = addr & ~31u;
 	bool front_line = !d.q.empty() && d.q.front().line && !d.q.front().we && d.q.front().addr == line_addr;
@@ -590,11 +617,16 @@ void dev_write(void* ctx, uint32_t addr, unsigned size, uint32_t value) {
 		}
 	}
 	if (d.log) std::fprintf(d.log, "A %llu %08X W %u %08X %0*X\n", (unsigned long long)d.icount, d.pc, size, addr, size * 2, value);
-	if (d.q.empty()) {
-		if (d.error.empty()) {
-			std::snprintf(buf, sizeof buf, "the reference wrote %u bytes %X at %08X; the core made no device access", size, value, addr);
-			d.error = buf;
+	if (d.q.empty() || !d.pend.empty()) {
+		// posted: matched when the core's access reaches the port
+		auto cl = d.cached.find(line_addr);
+		if (cl != d.cached.end()) {
+			uint32_t& w = cl->second[(addr >> 2) & 7];
+			unsigned shift = 32 - 8 * ((addr & 3) + size);
+			uint32_t mask = (size == 4 ? 0xFFFFFFFFu : ((1u << (8 * size)) - 1)) << shift;
+			w = (w & ~mask) | ((value << shift) & mask);
 		}
+		d.pend.push_back({addr, size, value});
 		return;
 	}
 	DevAccess a = d.q.front();
@@ -719,7 +751,7 @@ int main(int argc, char** argv) {
 		else { usage(); return a == "--help" ? 0 : 2; }
 	}
 #ifdef MACPPC7300_MACHINE
-	if (!opt.machine || opt.rom.empty() == !opt.memtest || !opt.prog.empty()) { usage(); return 2; }
+	if (!opt.machine || opt.rom.empty() == !opt.memtest || (!opt.prog.empty() && opt.memtest)) { usage(); return 2; }
 	if (opt.memtest && opt.lockstep) {
 		std::fprintf(stderr, "the memory test runs without the reference (it has no copy of the boot program)\n");
 		return 2;
@@ -758,6 +790,32 @@ int main(int argc, char** argv) {
 		std::memcpy(mem.data() + ROM_SDRAM, rom.data(), ROM_SIZE);
 	}
 	reset_pc = 0xFFF00100;
+	// --prog: a program file (as the core bench's) in RAM, the ROM's reset
+	// vector a branch to its reset address; the RAM is flat at 0 until the
+	// ROM would have placed its banks, so its addresses are SDRAM offsets
+	if (!opt.prog.empty()) {
+		std::ifstream fh(opt.prog);
+		if (!fh) { std::fprintf(stderr, "cannot open %s\n", opt.prog.c_str()); return 2; }
+		std::string line;
+		uint32_t start = 0;
+		while (std::getline(fh, line)) {
+			std::istringstream ss(line);
+			std::string kind;
+			ss >> kind >> std::hex;
+			if (kind == "R") ss >> start;
+			else if (kind == "E") ss >> end_pc;
+			else if (kind == "M") {
+				uint32_t a, w;
+				ss >> a >> w;
+				if (a + 4 <= RAM_SIZE) wr32(mem, a, w, 0xF);
+			}
+		}
+		uint32_t ba = 0x48000002u | (start & 0x03FFFFFCu);
+		for (uint32_t o : {0x300100u, ROM_SDRAM + 0x300100u}) {
+			uint8_t* p = (o >= ROM_SDRAM) ? mem.data() + o : rom.data() + o;
+			p[0] = ba >> 24; p[1] = ba >> 16; p[2] = ba >> 8; p[3] = ba;
+		}
+	}
 	std::vector<uint8_t> nvimg;
 	if (!opt.nvram.empty()) {
 		std::ifstream fh(opt.nvram, std::ios::binary);
@@ -838,6 +896,7 @@ int main(int argc, char** argv) {
 			std::fprintf(stderr, "reference model: cannot map the ROM and devices\n");
 			return 2;
 		}
+		if (!opt.prog.empty()) std::memcpy(ref_ram(), mem.data(), RAM_SIZE);
 #else
 		std::memcpy(ref_ram(), mem.data(), RAM_SIZE);
 #endif
@@ -1294,7 +1353,10 @@ int main(int argc, char** argv) {
 					// calls dev_read only for data. A discarded I-cache fetch
 					// must not block a later architectural device access.
 					if (a.instruction) devq.instruction_reads++;
-					else devq.q.push_back(a);
+					else {
+						devq.q.push_back(a);
+						match_pending(devq);
+					}
 				}
 				else if (devq.log && retired >= opt.dev_log_from) {
 					// (the pc is the last instruction retired, not the access's own)
@@ -1684,7 +1746,6 @@ int main(int argc, char** argv) {
 				if (opt.lockstep) {
 					ref_state_t before{}, s{};
 					ref_get_state(&before);
-#ifdef MACPPC7300_MACHINE
 					// an interrupt the core took before this instruction: the
 					// decrementer's and the external vector are reached no other way
 					if (before.pc != pc && ((pc & 0xFFF00000u) == 0 || (pc & 0xFFF00000u) == 0xFFF00000u) &&
@@ -1693,6 +1754,7 @@ int main(int argc, char** argv) {
 						if (before.msr & 4u) ref_set_spr(27, ref_get_spr(27) | 4u);     // PM into SRR1, as below
 						ref_get_state(&before);
 					}
+#ifdef MACPPC7300_MACHINE
 					// mtspr or mfspr of an SPR the real 604 does not have: a program
 					// exception (illegal) on the chip and in the core, while dingusppc
 					// accepts the 604e's (MMCR1, PMC3, PMC4: the NanoKernel probes
@@ -1785,6 +1847,10 @@ int main(int argc, char** argv) {
 						devq.icount = retired - 1;
 						devq.pc = before.pc;
 #endif
+						// the instruction's physical address, translated (as data) in
+						// its own mode, before the exception changes MSR
+						uint32_t insn_pa = before.pc;
+						if ((before.msr & 0x20) && ref_translate_dbg(before.pc, &insn_pa) != 0) insn_pa = before.pc;
 						int vec = ref_step();
 						if (vec <= 0) break;
 						// two places where dingusppc sets SRR1 bits it should not
@@ -1795,11 +1861,10 @@ int main(int argc, char** argv) {
 						// (ppc_exception_handler). Mac OS runs with PM set.
 						if (before.msr & 4u) ref_set_spr(27, ref_get_spr(27) | 4u);
 						// dingusppc clears CR0 before stwcx.'s store, so a DSI there
-						// leaves CR0 changed; a 604 leaves it alone (the programs keep
-						// the code where its address is its physical address)
+						// leaves CR0 changed; a 604 leaves it alone
 						if (vec == 0x300) {
 							const uint8_t* rm = ref_ram();
-							uint32_t a = ref_get_spr(26) & RAM_MASK & ~3u;
+							uint32_t a = insn_pa & RAM_MASK & ~3u;
 							if (a + 4 <= RAM_SIZE) {
 								uint32_t w = (uint32_t)rm[a] << 24 | (uint32_t)rm[a + 1] << 16 | (uint32_t)rm[a + 2] << 8 | rm[a + 3];
 								if ((w >> 26) == 31 && ((w >> 1) & 0x3FF) == 150) {

@@ -770,7 +770,9 @@ always_ff @(posedge clk) begin
 			end
 			else if (~ixl.ok & w_start_i) begin
 				i_state <= I_WALK;
-				i_cancelled <= 1'b0;
+				// a redirect in its first cycle cancels it too: an exception's
+				// vector in the same page must not take its result
+				i_cancelled <= i_cancel;
 			end
 		end
 		I_WALK: if (w_done) begin

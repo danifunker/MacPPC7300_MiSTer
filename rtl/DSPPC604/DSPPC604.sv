@@ -2433,7 +2433,7 @@ always_ff @(posedge clk) begin
 
 	// exception entry
 	if (ex_leave & ex_exc) begin
-		srr0 <= x_sc ? ex_pc4 : ex_pc;
+		srr0 <= (x_sc & ~x_pre) ? ex_pc4 : ex_pc;   // an interrupt taken at sc returns to the sc
 		srr1 <= (msr & SRR1_MASK) | exc_info;
 		msr  <= msr_exc;
 		if ((x_align | x_ecx) & ~x_pre) begin
@@ -3062,7 +3062,7 @@ assign pf_ev[27] = if_req & ~if_gnt;                                // cycles th
 // exceptions as they are taken: their vector and the address saved
 wire        dbg_exc  = (ex_leave & ex_exc) | mem_fault;
 wire [11:0] dbg_vec  = redir_pc[11:0];
-wire [31:0] dbg_srr0 = mem_fault ? mem_pc : (x_sc ? ex_pc4 : ex_pc);
+wire [31:0] dbg_srr0 = mem_fault ? mem_pc : ((x_sc & ~x_pre) ? ex_pc4 : ex_pc);
 
 generate
 if (PERF != 0) begin : g_perf

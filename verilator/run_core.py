@@ -185,6 +185,8 @@ def main():
          ["--irq-every", "127", "--stall", "70", "--seed", "17", "--profile", "--max-cycles", "2000000"]),
         ("late fault after cancelled walk", ["irqwalkfaulttest", "1000"],
          ["--irq-every", "97", "--stall", "90", "--seed", "11", "--profile", "--max-cycles", "2000000"]),
+        ("a walk into the vector's page as a DSI redirects", ["vecwalktest"], ["--lockstep", "--max-cycles", "200000"]),
+        ("the same, with wait states", ["vecwalktest"], ["--lockstep", "--stall", "40", "--seed", "3", "--max-cycles", "400000"]),
     ):
         prog = os.path.join(progs, "exc.prog")
         r = run([sys.executable, os.path.join(HERE, "progs.py"), gen[0], prog] + gen[1:])
