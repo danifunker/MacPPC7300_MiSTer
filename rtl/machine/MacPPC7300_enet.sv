@@ -20,6 +20,12 @@
 //  MACE's side (the CPU's clock): a frame buffer each way (2 KB, 64-bit
 //  words, byte 0 in bits 7-0), and toggles: tx_go (a frame of tx_len bytes
 //  to send), tx_done; rx_avail (a frame of rx_len bytes waits), rx_done.
+//  The bridge restarts (a new epoch) with the machine's reset, and MACE
+//  keeps its toggles across resets: a frame offered before the restart and
+//  not yet taken stays offered (MACE takes it when it runs again), and its
+//  answer is not counted as a slot of the new rings (2026-10-15: forgetting
+//  the offer left the next one unseen, the receive side stuck after a shut
+//  down and the power key until the core was loaded again).
 //
 //============================================================================
 
@@ -115,7 +121,8 @@ e_t          es;
 logic [7:0]  epoch = 8'd0;
 logic [2:0]  ik;                        // the start's writes
 logic [31:0] tx_wr, tx_rd, rx_wr, rx_rd;
-logic        rx_pend;                   // a frame is in rxb, not yet taken
+logic        rx_pend = 1'b0;            // a frame is in rxb, not yet taken
+logic        rx_stale = 1'b0;           // ... offered before the last restart: its answer takes no slot
 logic [15:0] poll;
 logic [7:0]  nb, kb;                    // beats in a transfer, beats done
 logic [10:0] len;
@@ -152,7 +159,7 @@ always_ff @(posedge clk_h) begin
 			epoch <= epoch + 8'd1;
 			ik    <= 3'd0;
 			tx_wr <= '0; tx_rd <= '0; rx_wr <= '0; rx_rd <= '0;
-			rx_pend <= 1'b0;
+			rx_stale <= rx_pend;                        // still offered: MACE will answer it
 			es    <= E_INIT;
 		end
 		// the counters, then the magic
@@ -168,9 +175,12 @@ always_ff @(posedge clk_h) begin
 		E_IDLE: if (!ddr_we && !ddr_rd) begin
 			if (rx_ack) begin                           // the frame taken: the slot back to the Main
 				rd_seen <= rd_s[2];
-				rx_rd   <= rx_rd + 32'd1;
 				rx_pend <= 1'b0;
-				put(W0 + 29'd4, {32'd0, rx_rd + 32'd1});
+				if (rx_stale) rx_stale <= 1'b0;         // (from before the restart: no slot)
+				else begin
+					rx_rd <= rx_rd + 32'd1;
+					put(W0 + 29'd4, {32'd0, rx_rd + 32'd1});
+				end
 			end
 			else if (tx_pend && tx_used < 32'd8) begin  // a frame into the ring: its length, its words
 				len <= h_txlen;
@@ -260,7 +270,7 @@ always_ff @(posedge clk_h) begin
 		h_macok <= 1'b0;
 		poll    <= 16'd0;
 		go_seen <= go_s[2];
-		rd_seen <= rd_s[2];
+		if (rx_ack) begin rd_seen <= rd_s[2]; rx_pend <= 1'b0; end   // an offer answered meanwhile
 	end
 end
 

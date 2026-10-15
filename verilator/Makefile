@@ -9,6 +9,7 @@
 #   make sdram      build $(BUILD)/sdram/sdram_tb   the SDRAM controller against a model of the board
 #   make cuda       build $(BUILD)/cuda/cuda_tb   Cuda (the 68HC05 and its firmware) alone
 #   make escc       build $(BUILD)/escc/escc_tb   the ESCC alone (its bit rates, MIDI, CTS, RTS)
+#   make enet       build $(BUILD)/enet/enet_tb   the Ethernet bridge alone (its rings, restarts)
 #   make lint       Verilator lint only
 #   make clean
 #
@@ -151,6 +152,17 @@ $(BUILD)/escc/escc_tb: $(MACH)/MacPPC7300_escc.sv $(HERE)escc_main.cpp $(HERE)Ma
 		> $(BUILD)/escc/build.log 2>&1 || (cat $(BUILD)/escc/build.log; false)
 	@grep -E '^%Warning' $(BUILD)/escc/build.log || true
 
+# the Ethernet bridge alone: its rings against the Main's ring_poll, MACE's toggles across restarts
+enet: $(BUILD)/enet/enet_tb
+
+$(BUILD)/enet/enet_tb: $(MACH)/MacPPC7300_enet.sv $(HERE)enet_main.cpp $(HERE)Makefile
+	@mkdir -p $(BUILD)/enet
+	@$(VERILATOR) $(VFLAGS) --top-module MacPPC7300_enet --prefix Venet_tb -Mdir $(BUILD)/enet -o enet_tb \
+		-CFLAGS "-O2 -std=c++17" \
+		$(MACH)/MacPPC7300_enet.sv $(HERE)enet_main.cpp \
+		> $(BUILD)/enet/build.log 2>&1 || (cat $(BUILD)/enet/build.log; false)
+	@grep -E '^%Warning' $(BUILD)/enet/build.log || true
+
 vramwc: $(BUILD)/vramwc/vramwc_tb
 
 $(BUILD)/vramwc/vramwc_tb: $(MACH)/MacPPC7300_vramwc.sv $(HERE)vramwc_main.cpp $(HERE)Makefile
@@ -186,4 +198,4 @@ lint:
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all core machine gui sdram cdc cuda scsi escc lint clean
+.PHONY: all core machine gui sdram cdc cuda scsi escc enet lint clean
