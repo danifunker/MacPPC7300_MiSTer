@@ -1,143 +1,81 @@
-# Resume prompt: speed: the cycle account is measured and ranked; now the cuts to the CPU and FPU
+# Resume prompt: speed: close timing at 70 MHz, then finish the FPU's pipeline
 
-(Rewritten 2026-10-10 after the sound session (builds 49-53; the sound's
-record is `docs/MacPPC7300_sound.md`) for a Claude Fable session. It is
-the only resume prompt: everything it needs is here or in the files it
-names; the board's tools, the Main, the rules and the environment are at
-the end.)
+(Rewritten 2026-10-15 at the end of the machine session that made the
+seventh release, for a CPU session. It is the only resume prompt:
+everything it needs is here or in the files it names. The prompt it
+replaces, for the cycle-accounting work of 2026-10-10, is in git's history;
+that work went on through 2026-10-14 on `fpu-pipe`, since merged.)
 
 Paste everything below the line into a new session started in `C:\Temp\mistercore\PPC_Mac`.
 
-**State on 2026-10-14 (branch `fpu-pipe`, pushed to origin):** the work
-below was done and went further; this prompt's "Where things stand" is
-2026-10-10's. The record is `docs/speed_results_20261010.md`,
-`..._20261011.md`, `..._20261012.md`, `docs/speed_results_20261013.md` and
-`docs/speed_profile_20261013.md`, and the plan's Speed table (its last row
-and the "speed" decisions). In short: the FPU pipelined, MEM's second
-slot, the BTB and the ITT, branch folding, posted stores, the frame
-buffer's write combiner, the port's registered copy, a 64 KB instruction
-cache; the CPU closes 60 MHz and runs 70 to 100 MHz on the board as an
-overclock, 100 MHz from about half the fits (the 100 MHz test build is
-`releases/MacPPC7300_20261014_100MHz.rbf`: CPU 5.44, Mix 17.4, Color
-2.56, FPU 7.10). 110 MHz needs a deeper pipeline (not pursued). Open: the
-L2 on by default (free: +8 % Color, the idle loop's CPI -25 %), Ethernet
-and the floppy as build options if 100 MHz is to boot from every fit,
-then dual issue or the core's deep paths. The sessions of 10-11 to 10-14
-ran from macOS with Quartus on a Linux host; the environment below is the
-Windows one.
-
-**2026-10-15, on master:** that work had broken Linux (Debian died at its
-first user process at any clock; Mac OS was fine). Fixed: the MMU's
-instruction side lost the cancel of a walk started in a redirect's cycle
-(the return stack sends wrong-path fetches into the vectors' page 0);
-`docs/DSPPC604_plan.md` has the account, `progs.py vecwalktest` the
-regression, the plan's decisions the "linux" row. Debian boots to its login
-prompt at 70 and at 100 MHz (`CPU_MHZ = 100` now selects the PLL's 100 MHz).
-Also found: Linux's isync on every exception return steps the fold epoch,
-so the BTB is swept every sixteen exceptions (a cost for the speed work).
-
-
-**Merged 2026-10-10:** the tree also carries the AT CPU work (branch `speed-at`: the fetch FIFO, one cached access a cycle in MEM, a two-way 128-entry BTB with an eight-entry return stack, an ordered ALU completion queue). Its log is `docs/speed_AT_log.md`. On the board at 55 MHz with `pm761_speedo.hda` (single runs) Speedometer's CPU score is 2.301 against the original's 1.886; Dhrystones, Puzzle, Int. Matrix, Matrix Mult. and Fast Fourier are slower. It does not close 70 MHz (about 60 MHz).
-
 ---
 
-I'm building a MiSTer FPGA core (DE10-Nano, Cyclone V) with my own PowerPC CPU, `DSPPC604` (`rtl/DSPPC604/`), inside a Power Macintosh 7300/7600 machine (`rtl/machine/`). It works: Mac OS 7.6.1 to 9.1 and Debian 7.11 boot on the board. The core is MacPPC7300; the sixth release is build 54 (`releases/MacPPC7300_20261011.rbf`, the Main c641b24f). The CPU runs at 70 MHz with a 128 KB L2 (OSD "L2 cache (on reset)", default on). I want it **faster, measured**, and I have found where the speed is:
+I'm building a MiSTer FPGA core (DE10-Nano, Cyclone V) with my own PowerPC CPU, `DSPPC604` (`rtl/DSPPC604/`), inside a Power Macintosh 7300/7600 machine (`rtl/machine/`). It works: Mac OS 7.6.1 to 9.1 and Debian 7.11 boot on the board. The seventh release is `releases/MacPPC7300_20261015.rbf` (master 7941709): the CPU runs at 70 MHz, or 100 MHz as an overclock (OSD "CPU speed (on reset)"), with a 128 KB L2. Two things are left of the speed work, in this order:
 
-**My real 7300/120 (a 604 at 120 MHz, 40 MHz bus) is 3.0-4.0x this core on Speedometer's integer tests, 3.0-4.5x on the FPU's, 2.2-2.5x on Color; the clock is 1.71x of ours, the rest is cycles per instruction** (the reference row and the ratios are in `docs/MacPPC7300_plan.md`'s Speed table). The account is measured, not guessed: the performance counters of builds 47 and 48 (`DSPPC604_perf`, `PERF = 1`, read through the trace; `syn\perf.py`) classed every cycle of a whole Speedometer run on the board, and `docs/MacPPC7300_plan.md`, "Where the cycles go", has the table per test and the cuts ranked by the cycles they give back. That is the work item of this session: **build the cuts, in that order, each measured on the board.**
+1. **Close setup timing on the CPU clock at 70 MHz** in Quartus 17.0's slow 1100 mV 100 C model (the only model this project times). The release misses by **2.47 ns** (Fmax 59.7 MHz; 8,794 failing launch/latch pairs, 6,389 of them within 0.5 ns, only 15 worse than 2 ns). Every build since 70 MHz has carried about this much (-1.8 to -2.9 ns) and run fine on the board at room temperature; I want it closed for real. The memory and video clocks already close.
+2. **Finish the FPU's pipeline.** `docs/fpu_pipe_plan.md` step 1 (the unit's latencies: fadd and fmul 5 cycles, fmadd 6, fdiv 18, the dividers) is done; **step 2, the overlap, was never built**: EX still holds every FP instruction until the FPU answers, so independent FP operations never overlap as on a real 604 (three cycles, pipelined). Build the overlap there described, in its order: (1) a second, independent FP operation accepted behind the first and committed in order through the completion queue; then (2) cacheable loads behind a pending FP operation; (3) branches behind it.
 
-1. **MEM's granted cycle** (11-25 of 100 cycles in the integer tests, 12-16 in the FPU's): every load and store holds EX a cycle because MEM takes two and the next operation cannot enter it until the answer. MEM as two stages (the request's, the answer's) would take an access a cycle, as the cache already grants a read hit behind another; the forwarding gets one more source, `ex_stall` one more case, a store's data is held across the second stage. **This changes how a hazard is handled: rule 2 of `docs/DSPPC604_plan.md` says ask me first.** So the session's first act is to put that question to me with the design and its cost (the plan's "Where the cycles go" has the outline), and build it on my yes; if I'm not there, build what needs no go-ahead first (3 and 4) and ask when I'm back. Worth about 0.15-0.3 cycles an instruction on the integer tests; load-use (2.5-9) goes with it, not separately.
-2. **The FPU** (18-27 of 100 cycles in its tests, 19 in Whetstones): 7-8 cycles one at a time against the 604's 3 pipelined. In scope, I want it faster too: the latency list in `docs/DSPPC604_plan.md` M2 (the add path's alignment in the request cycle, S_SHIFT into S_NORM, a radix-8 divider, then overlap of independent operations) by Speedometer's Math and FPU numbers; the overlap decision is yours from those numbers. Inside the unit, behind its handshake: no go-ahead needed.
-3. **Redirects** (3-9 in the integer tests, 18 in the Finder's idle loop whose branches mispredict 58 %): a return-address stack for `blr`, and a branch target buffer of 512 or 1,024 entries in M10K (128 today in registers; M5's notes record the RAM form once tried and why it mispredicted the entry it had just written). A better predictor that leaves the handshakes alone: no go-ahead needed.
-4. **The divider** (53 of 100 cycles in Whetstones, up to 8 in the integer tests that divide): 35 cycles against the 604's 20; a radix-4 divider (18 cycles) inside the unit.
-5. **Not this session's** unless it is quick: the Color tests (48-72 of 100 cycles the data cache in an uncached frame-buffer store, 38-43 % of them doubles: a posted write for uncached stores and a 64-bit path for a double), the fetch (small in the tests).
+**Rule 2 of `docs/DSPPC604_plan.md` (a change to how a hazard is handled or how state is committed needs my go-ahead, with the rule-free alternative's cost):** my asking for (2) is the go-ahead for overlap (1), FP behind FP inside the completion queue. Overlap (2) and (3) change the memory unit's and the branch's hazards: put each to me with its design and what (1) measured first. For the timing: cuts that leave the pipeline's behaviour alone (logic restructured inside a stage, duplicates, a carry-free sum-and-compare, a register where the cycle has room) need no go-ahead; a cut that moves a decision a cycle later (a redirect, a CR update, the effective address before translation) does: list them with their cost in cycles per instruction, measured, and ask. I'm often around.
 
-Then: **the pipeline rules hold** (`docs/DSPPC604_plan.md`, "Rules that keep the pipeline from growing special cases"): a cut that changes how a hazard is handled or how state is committed needs my go-ahead, with the rule-free alternative's cost; cuts inside a unit, or a better predictor that leaves the handshakes alone, do not. **Every step measured on the board** with Speedometer 4.02 under the fixed conditions (`syn\speedo_run.py`, below) and, for the account after a cut, a `PERF = 1`, `TRACE = 1` build and `syn\perf.py` (the counters cost 2,000 ALMs: a release build keeps `PERF = 0`). **A release** of a proven faster build (`releases/`, its README, the Main it was tested with): ask me first.
+**The FPU work must not undo the timing work:** after (1) closes 70 MHz, every FPU step keeps it closed (or the step's cost is put to me).
 
-**This is a CPU session.** My usual rule is that a machine session never changes the CPU; this one may change `rtl/DSPPC604/`, behind the gates below and rule 2 above.
-
-**Work independently otherwise.** Decide what the documents leave open, record each decision in `docs/MacPPC7300_plan.md`'s decisions table ("decided by the session, DATE", with the reason) and in the commit message. I am often around and may answer, but don't wait for me. Before your context runs short, rewrite this prompt for the next session and commit it.
+**This is a CPU session:** it may change `rtl/DSPPC604/`, and for the timing also the machine's paths into the CPU's clock (Grand Central's read mux, the L2: see below). Work independently otherwise: decide what the documents leave open, record each decision in `docs/MacPPC7300_plan.md`'s decisions table ("decided by the session, DATE", with the reason), the CPU's in `docs/DSPPC604_plan.md` and `docs/fpu_pipe_plan.md`, and in the commit message. Commit each verified step. A release: ask me first. Before your context runs short, rewrite this prompt for the next session and commit it.
 
 ## Read first (the source of truth; it overrides anything remembered)
 
-- `docs/MacPPC7300_plan.md`: the **Speed** section (every build's timing, area, boot time and Speedometer numbers, builds 28 to 46, and how a run is made), the decisions table (the last rows: "speed" 2026-10-10, the FPU cuts).
-- `docs/DSPPC604_plan.md`: the rules, "Pipeline shape", M3/M4 (the pipeline), M5 (the caches, the MMU), M2's last paragraphs (the FPU as it now stands and what was tried), "Cost and speed".
-- `README.md`: the build table (through build 46), "How fast will it be".
-- The last sections here: the board's tools, the Main, the rules and the environment (mister.py, the Remote, Quartus, WSL). They all apply.
+- `docs/DSPPC604_plan.md`: the rules ("Rules that keep the pipeline from growing special cases"), "Pipeline shape", M2 (the FPU), M3/M4 (the pipeline, the completion queue), M5 (caches, MMU), the timing passes.
+- `docs/fpu_pipe_plan.md`: step 1's account, step 2's design (the three overlaps, why Speedometer gains little from them), the timing notes (the effective-address family and the two ways to cut it).
+- `docs/speed_results_20261010.md` to `..._20261012.md`, `docs/speed_profile_20261013.md`: what the speed work built and measured (MEM's second slot, the BTB/ITT, branch folding, the 64 KB I-cache, the 100 MHz fits); `docs/speed_AT_log.md` (the completion queue).
+- `docs/MacPPC7300_plan.md`: the Speed section and the decisions table's last rows ("CPU speed": how the switchable PLL works and was measured; "linux", "network", "keyboard", "scsi": the 100 MHz staging done in the machine).
+- `README.md`: "CPU clock", the build table.
 
-## Where things stand (2026-10-10)
+## Where things stand (2026-10-15)
 
-- **Committed, a1ae377 and after (builds 47, 48): the cycle accounting.**
-  `DSPPC604_perf` behind `PERF` (28 counters: every cycle classed, the
-  events counted), into the DDR3 trace every 2^23 cycles with `TRACE = 1`
-  (kind 12, five records), `syn\perf.py` for the account per 120 ms
-  interval (`--file` a capture of `mister.py trace-capture`/`trace-fetch`,
-  `--csv`, `--sum A B`), `speedo_run.py --shots` for which test is on; the
-  benches print it (`core_main.cpp`, `print_perf`). Measured on the board:
-  the plan's "Where the cycles go" (the table per phase, the ranked cuts).
-  The user's real 7300/120 ran the same Speedometer: 3.0-4.5x on the CPU and
-  FPU tests, the clock 1.71x of ours. A release build keeps `PERF = 0`.
-  The whole run's capture: `Scratch\speedo_b48\` (`perf.csv`, the
-  screenshots); the first 48 s of a capture are the previous run's ring.
-- **The sound session (10-10, builds 49-54) is done and recorded in `docs/MacPPC7300_sound.md`:** the codec's rate table was right all along (code 2 = 22,050 Hz; a hung MT32-pi's clicks had made every sound seem low; build 52, with 44,100, was released and withdrawn the same day, an octave high), a fallback black 640 x 480 while the Mac's video is off, build 54 (dated 2026-10-11) the sixth release; Altair's startup buzz parked as the app's race (not the core's). Nothing of it touches the CPU. Its diagnostic bitstreams: b50 (`Scratch\qbuild13`: TRACE and SND_TRACE), b53 (`qbuild16`: the tree with `TRACE = 1`, code 2 at 44,100).
-- **The counters' bitstreams:** b47 (`Scratch\qbuild10`), b48 (`qbuild11`, the measured one; its rate table old, irrelevant to the counters) in `Scratch\build1\`. A new `PERF = 1`, `TRACE = 1` build from the current tree is the one to measure a cut with.
-- **Committed, 3514027 (builds 44, 45):** the FPU's results that need no arithmetic are found a cycle after the request, from its operand registers, and the operands' classes (`fp_cls_t`, `cls_a/b/c`) come from the core beside the operands (`fp_classify`, `fp_classify_single` for an lfs result still a single). Build 42's 400 worst paths were that one path; build 45 is -1.350 ns at 70 MHz asked (from -2.404), 35,725 ALMs, no FPU path among the 400 worst; the limit is now the fetch address into the I-cache's way RAMs and PLRU, and the D-cache's tag RAM into the I-cache. Speedometer as build 38.
-- **Committed, e69c10e (build 46):** S_LZC skipped when the leading-zero count is known: `fmul` 6 cycles, `fdiv` 33, `fdivs`/`fres` 19, `frsp`/`fctiw` 7, a sum with a pinned addend or a dominant product 7, an addend-dominant sum still 8. Build 46: 35,238 ALMs, -2.249 ns with seed 1 and -3.356 with seed 2 (both fits: the fetch address into the I-cache's RAMs, no FPU path among the 400 worst; three fits of a near-identical CPU at -1.35, -2.25 and -3.36 ns say that family's placement swings 2 ns). Speedometer: Math 108.111 (106.797), FPU 3.600 (3.566), the rest unchanged.
-- **Tried and reverted:** the addend-dominant sum's count taken as nominal and corrected in S_NORM (every vector passed; S_NORM then did not fit the cycle: the unit alone 65.8 MHz). Two designs that could still take that cycle are in `docs/DSPPC604_plan.md` (M2's last paragraph). The rest of the FPU latency list (the add path's alignment in the request cycle, a radix-8 divider, S_SHIFT into S_NORM, FP overlap) is worth a few per cent on three FPU tests: **deferred behind the cycles-per-instruction work.**
-- **Bitstreams:** `Scratch\build1\MacPPC7300_bN.rbf`, b28 (the third release) to b46 (b33, b33a, b34 carry build 33's cache bug; b35 never built; b37 abandoned). Quartus scratch copies: `Scratch\qbuild6` (44), `qbuild7` (45), `qbuild8` (46, seed 1), `qbuild9` (46, seed 2), `qbuild5` (42/43). TimeQuest: `worstNN.tcl` in each (400 worst paths by family through `syn\sta_families.py worst_bNN.txt`, the six slowest cell by cell in `worst_bNN_paths.txt`). `syn\check.py fpu` synthesises the FPU alone (3,443 ALMs, 74.6 MHz at build 46); it uses physical synthesis with register retiming, so a stage that no longer fits shows up as retimed registers (`_NEW_REG`, `_RTM`) dragging its neighbours down: read the cell-by-cell path.
-- **The bug of build 33, worth remembering:** every simulation gate was green and the board bombed within minutes (Mac OS 7.6.1 "error type 10" in the Finder, 9.1 stuck at the grey screen): the D-cache's S_IDLE took a request it had not granted when a snoop to the pending write's set and a CPU request to another set met in one cycle. The lockstep's disk-less boot has almost no DMA; the board's disk DMA finds such a race at once. The snoop storm in `run_core.py` fails on that cache within a few thousand instructions on every seed. **Any change to a cache's or the machine's arbitration must run `run_core.py` (the storm is in it) and then the board with a disk.**
-- **The board, as left on 2026-10-10:** build 54 (the sixth release) in `_Unstable/MacPPC7300.rbf`, the Main c641b24f (`MiSTer.9e88154e`, `MiSTer.a2546ea7`, `MiSTer.official` kept on the card); `games/MacPPC7300/`, `config/MacPPC7300.*`, `screenshots/MacPPC7300/`; the machine off, slot 0 `os761mb.hda` (Mac OS 7.6.1 with Altair; a 12 MB RAM disk left set in its Memory control panel, a copy of the app on it: switch the RAM disk off there if the memory matters), slot 4 the Open Transport CD, slot 1 empty, 120 MB, eth0, the L2 on, the config's `--trace-mesh` bit set (harmless without `TRACE`). For a Speedometer run put `os761ot.hda` on slot 0 first (`mister.py mount 0 games/MacPPC7300/os761ot.hda`: a config file read at the core's next start, so it can be set while another core runs) and Debian back after (`mount 0 games/MacPPC7300/linux_debian711.hda`). The user shares the board: ask before taking it if they may be using it.
-- **Open from build 38's test:** the first time 7.6.1's Finder opened `os753.hda` on ID 1 it stopped with a bus error; not seen again. If it comes back, suspect a race in the disks' DMA first and give `run_scsi.py` a disk on ID 1.
-- **Sound:** done; `docs/MacPPC7300_sound.md` has the record, the tools and what is open (Altair's startup buzz, the app's race; the rate table's other codes unmeasured). Not this session's.
-- **The user's request for later:** an OSD "Power" button that presses the ADB power key.
-- **The SCSI disks' writes go through the Main's Mac-family write cache** (`support/mac/mac_disk.cpp` in `..\Main_MiSTer`): the Disk numbers are with it.
-- **The disk image:** Speedometer 4.02 is at the root of `os761ot.hda`; `games/MacPPC7300/os761ot_backup.zip` (67 MB, zip64) is its backup: unzip it over the image on a PC if a CPU change ever corrupts the volume.
-
-## Speedometer runs
-
-`python syn\speedo_run.py OUTDIR RBF [--l2 off]` (with `syn\pointer.json`; `syn\boottime.py` photographs a boot alone) does a whole run from an **off** machine in 7 minutes: refuses to load unless the screen is dark, `put-core`, `cfg --ram 120 --eth`, `load`, times the Finder's menu bar (85 s), closes the Finder's windows, "Mac" Command-O, "Spee" Command-O, clicks the splash, clicks "Not Yet", Command-A, Command-D "Mac" Return, Return at the Graf notice, 100 s, photographs the results (`results.png`), Command-Q, clicks "No", the power key. Clicks find the arrow pointer in a screenshot and correct; never trust an open-loop move for a button.
-
-Read the numbers off `results.png` and type them into the Speed table: CPU, Graphics, Disk, Math, PR; the Benchmark Mix (KWhetstones/s, Dhrystones/s, Towers, Quick Sort, Bubble Sort, Queens, Puzzle, Permutations, Int. Matrix, Sieve, average); Color (8-bit, 16-bit, average); FPU (KWhetstones/s, Matrix Mult., Fast Fourier, average). KWhetstones/s swings 15 % between runs (a timed test); the rest repeat within 1-2 %. The Graf Test is skipped ("this machine does not support monochrome graphics"), so PR is never given.
-
-**Never reload the core while an OS has its volume mounted** (it corrupts the image). Shut Mac OS down with the power key (Menu) then Return; the screen goes dark (a screenshot fails: `no new screenshot appeared`); only then load. Debian at its login prompt: Ctrl+Option+Delete reboots it cleanly; the screen does not go dark on a reset, so load the core when the ROM's grey screen shows, before Mac OS mounts anything.
-
-## What the timing says now (builds 45 and 46, slow 100 C, 70 MHz asked: 14.29 ns)
-
-Build 45: -1.350 ns; 210 of the 400 worst paths from the D-cache's tag RAM into the I-cache's PLRU address, then CPU paths into RAMs (-1.07). Build 46 (the same except inside the FPU): -2.249 ns; all 400 the fetch address: the MMU's `i_page_q` and the SPRG bypass into the I-cache's way RAMs and PLRU address. The fitter swings families by up to 1.7 ns between fits at 85 % utilisation; the board at room temperature has run -2.56 at 70 MHz through everything. A clock beyond 70 wants that fetch-address family cut first; it is the same logic the cycles-per-instruction work will touch (the fetch), so take the two together.
+- **The PLL is reconfigurable** (`rtl/pll/pll_0002.v`, Quartus's own generation: a 700 MHz VCO, the CPU's counter C1 dividing by 10, the memory clock's C2 by 7). `MacPPC7300.sv` keeps `CPU_MHZ = 70`: **the build is timed at 70**, and the OSD's 100 MHz rewrites C1 to 7 through `sys/pll_cfg` under reset. Never set `CPU_MHZ = 100`: Quartus then merges C1 with C2 (both by 7) and the rewrite would move the memory clock too. To see a placement at 100 MHz: `quartus_sta.exe -t <repo>\syn\sta_at100.tcl` in the build's directory (the release: -6.76 ns at 100; builds fitted at 100 had about -5.9).
+- **The CPU clock's name** in a timing report: `emu|pll|pll_inst|altera_pll_i|cyclonev_pll|counter[1].output_counter|divclk` (older builds: `general[1].gpll~PLL_OUTPUT_COUNTER`). `syn\sta_cpupaths.tcl` writes every failing pair (slack, from, to, logic levels) to `cpupaths.txt` in the build's directory (3 minutes); group them by endpoint and source module in Python.
+- **The release's failing paths at 70 MHz, by endpoint (worst slack, pairs, source):**
+  - The D-cache's `state.S_IDLE` and the memory unit's `state`/`S_RSP0` from `mem_result` (12 levels, -2.47, -1.75): MEM's result forwarded into the effective address, then the cache's and memory unit's decision in the same cycle. `fpu_pipe_plan.md`'s timing notes: this family needs the effective address registered before translation (a cycle on every load: rule 2) or a carry-free sum-and-compare for the page match (rule-free).
+  - `pc_f`, the return stack (`ras_scount`, `ras_spec_write`), the ITT (`itt_spec_h`), `if2_valid`, the MMU's `i_info_q`, `dsisr` from `wb_result` (8-9 levels, -2.31 to -1.58): write-back's forwarding into branch resolution and the redirect.
+  - `cr[*]` from `fa_mem` (11-12 levels, -2.15 to -1.66): a forwarded operand through the ALU into CR0/CR fields.
+  - The D-cache's `wr_data_wd` from its tag RAM (-1.69), the I-cache's `r_addr` into the fetch stage's RAM (-1.57).
+  - In another fit of the same design (the morning's 70 MHz build, `Scratch\q70mon\cpupaths.txt`), the worst were the flush/kill cone instead: `if2_kill`, `if2_itt_idx[9]`, `pc_f`, `pred_hold` from `msr`, `fpscr`, `mem_valid`, `wb_valid`, `resv_valid`, `ex_dec.sys/spr`, the FPU's `fin_set` (9-11 levels, -2.85); `ex_dec.spr/sys` into `mem_result` (-2.2); the I-cache's tag into the fetch RAM (-2.4); then the MMU, the memory unit, the D-cache, the BTB/ITT RAMs at -1.9 to -1.1. **The fitter swings these families by 0.5-1 ns between fits: cut all of them, not the one a fit happens to put first,** and judge a cut over two seeds.
+  - **Machine paths in the CPU clock:** Grand Central's read mux into the machine's line buffer (1,014 pairs, -1.13: device reads want one more clock, which costs nothing measurable), the L2's word RAMs (-0.87). Yours to cut too.
+- **On the board at 70 MHz (the release, Mac OS 7.6.1, RAM 28 MB, the 16-inch monitor, L2 on, eth0):** Speedometer 4.02: CPU 3.816, Disk 1.691, Math 257.2, the Benchmark Mix 14.71, Color 2.160 (8-bit 2.201, 16-bit 2.120), FPU 5.404 (KWhetstones 31,022, Matrix Mult. 0.119 s, Fast Fourier 0.067 s). At 100 MHz: CPU 5.480, Math 369.5, Mix 21.26, Color 2.810, FPU 7.802. The real 7300/120: CPU 7.800, Mix 28.058, FPU 14.329 (`docs/real_7300_speedometer.png`); its MacBench 4: `docs/real_7300_macbench4.png`, `docs/MacBench4_Real_hardware_reference.mar`.
+- **Speedometer's FP tests are 68k code under Mac OS's emulator** (SANE): one FP operation between loads and stores, so overlap gains little there (`fpu_pipe_plan.md`, "Whether it pays"). **Measure the FPU's pipeline on native code:** the core bench's microbenchmarks (`fpbench.py` and `divbench.py` were scratch files of the FPU session: rebuild them as `progs.py` programs: dependent and independent fadd/fmul/fmadd chains, lfd-lfd-fmadd loops), and MacBench 4's floating-point test on the board (`games/MacPPC7300/CD3/MacBench 4 CD.toast`, "Mount CD-ROM"; MacBench 5 is there too).
+- **Open on the CPU (smaller):** Linux's `isync` on every exception return steps the fold epoch, so the BTB is swept every sixteen exceptions (a speed cost under Linux; the plan's "linux" decision row). Take it if it is quick.
+- **The bug of build 33, worth remembering:** every simulation gate was green and the board bombed within minutes: the D-cache took a request it had not granted when a snoop and a request met. **Any change to a cache's or the machine's arbitration runs `run_core.py` (its snoop storm) and then the board with a disk.**
 
 ## The gates for every change
 
-- `make -s lint` in `verilator\`.
-- The CPU suites: `python verilator\run_core.py` (15 minutes; record the golden programs' cycle counts: 1.85/1.89/2.04 integer, 3.46/3.53 FP, 1.87 and 3.70 on the 7300's) and `python verilator\run.py` (and `run.py --csv ppctest\runs\results_604_7300_of_run1.csv`, the 7300's vectors).
-- `python verilator\run_cuda.py`, `python verilator\run_scsi.py` for machine changes.
-- `python verilator\run_machine.py --max-instr 300000000 --progress 50000000` (12 minutes): the 7300's ROM in lockstep with dingusppc into Mac OS. **Open Firmware waits about 150 M instructions for the chime's DMA (pc FF808764: not stuck); Mac OS starts near 200 M (300 M: 1.57 cycles an instruction, identical).** With memory-path changes also `--no-lockstep --ram 120 --max-instr 3000000 --dev-log FILE`: the writes to F80001C0-F80004F0 must put the banks at 0, 64, 96 and 112 MB.
-- **One WSL job at a time**: two benches at once in WSL hung `run_core.py` for 25 minutes twice. From PowerShell, never end a bench's pipeline with `Select-Object -First N`: it stops the bench once it has its lines.
-- A Quartus build (25 minutes, a `Scratch\qbuild*` copy; keep bitstreams as `Scratch\build1\MacPPC7300_bN.rbf`, numbering on from 52) and its timing report (`quartus_sta.exe -t worstNN.tcl` in the build directory, then `syn\sta_families.py`).
-- The board: Mac OS 7.6.1 to the Finder and Speedometer under the fixed conditions (`os761ot.hda`, RAM 120 MB, the 16-inch monitor, 256 colours, Ethernet eth0, nothing else mounted); Mac OS 9.1, a floppy and the CD now and then.
-- Commit at each verified step (explicit paths, the message from a file, `MacPPC7300.qsf` only through a patch of your own lines). When a faster build is proven, it is a candidate for `releases/` (ask me first).
+- `make -s lint` in `verilator\` (Verilator `-Wall` clean).
+- The CPU suites: `python verilator\run_core.py` (15 minutes; record the golden programs' cycle counts: the CPI is the cost of any added stage) and `python verilator\run.py` (the 604's vectors; also `--csv ppctest\runs\results_604_7300_of_run1.csv`).
+- `python verilator\run_machine.py --max-instr 300000000 --progress 50000000` (12 minutes): the 7300's ROM in lockstep with dingusppc into Mac OS (Open Firmware waits about 150 M instructions for the chime's DMA: not stuck).
+- `python verilator\run_cuda.py`, `run_scsi.py`, `run_enet.py` for machine changes.
+- **One WSL job at a time** (two Verilator builds race on /tmp). From PowerShell, never end a bench's pipeline with `Select-Object -First N`.
+- A Quartus build (25 minutes) in a `Scratch\` copy: `MacPPC7300.qpf/.qsf/.sdc/.srf`, `MacPPC7300.sv`, `files.qip`, `rtl\`, `sys\`; `C:\intelFPGA_lite\17.0\quartus\bin64\quartus_sh.exe --flow compile MacPPC7300` in the background; delete a killed build's `db` and `incremental_db` before the next. Two compiles side by side are fine: never leave Quartus idle. Then `syn\sta_cpupaths.tcl` (and `syn\sta_at100.tcl`).
+- The board: Mac OS 7.6.1 and Speedometer's whole run at 70 and at 100 MHz; 9.1 to the Finder now and then; Debian (below) for anything near exceptions, the MMU or interrupts; MacBench 4 for the FPU.
 
-## Other open work (the machine; not this session's unless it is quick)
+## The board (the user's, shared: ask before taking it)
 
-The scaler fault fix (`ALLOW_POWER_UP_DONT_CARE OFF`) unproven; the CD changer parked; the double chime with the NVRAM; milestone P's proof; 16-bit DirectColor; the 9.1 pointer missing from screenshots; floppy writing; on the board still unseen: the OSD itself (screenshots leave it out), Mac OS 8.6, millions of colours, 720K floppies, RAM 96/48/24/6 MB in "About This Computer". The plan's milestones and decisions table hold the details.
-
-## The board's tools
-
-`python syn\mister.py ...` (usage at the top of the file): `put-core RBF`, `load`, `menu`, `cfg [--ram MB] [--monitor 16|13|12] [--joy ...] [--ptr] [--eth] [--net eth0|eth1|wlan0|tap0] [--l2 on|off]`, `mount 0|1|2|4 PATH`, `umount N`, `shot OUT.png`, `keys TEXT`, `mouse DX DY [STEPS]`, `click`, `ws STEP ...` (`kbdRaw:N`, `kbdRawDown/Up:N`, `mouseMove:dx,dy`, `mouseBtn:left|left_down|left_up`, `sleep:S`, `text:...`), `osd-mount N NAME ...` (blind: N items down from the first menu item; a name it does not find leaves the OSD open holding the keyboard and mouse: Escape twice), `uart [S] [--baud N]`, `type LINE`, `trace [--last N]`, `trace-capture S`, `trace-fetch OUT`, `trace --file OUT`, `run CMD`. From Git Bash set `MSYS_NO_PATHCONV=1` before text with `/`. Mac OS: the Menu key is the power key (`ws kbdRaw:127 sleep:3 kbdRaw:28` shuts down), Alt is Command. A floppy is not remembered across loads. `cat /tmp/CORENAME` on the MiSTer says which core runs.
-
-## The Main
-
-The branch `Mac-ppc-enhancements` in `..\Main_MiSTer` (squashed by the user into e9eb5fe): the core in the Mac SCSI family, Ethernet, the rename. Installed on the board as `/media/fat/MiSTer`: md5 c641b24fec57a34de4b1b10b800a1639, the same as `releases/MiSTer` (built in WSL with `/opt/gcc-arm-10.2-2020.11-x86_64-arm-none-linux-gnueabihf/bin` on PATH: rsync the branch to `~/.cache/macppc7300/main_ppcenh`, `rm -rf bin`, `make -j8`; Ubuntu's `arm-linux-gnueabihf-gcc` makes a binary that does not link). Kept on the card: `MiSTer.9e88154e`, `MiSTer.a2546ea7`, `MiSTer.official` (eb1799eb). Ask me before installing any other Main binary.
+- **misterkvms-cli** (`C:\Temp\mistercore\misterkvms\target\release\misterkvms-cli.exe`, run from that folder) is how to see and drive it: `screenshot OUT.png` (the capture card; `--native` gives the framework's own picture at the core's size), `key COMBO`, `type TEXT`, `mouse move|click|down|up`, `wait-for-change [--until-still 2s] [--timeout 60s]`, `record 30s OUT.wav|.mp4`. **Chain steps into one command; wait on the screen rather than sleeping; look at a screenshot only where a decision depends on it.**
+- `python syn\kvms.py`: `load RBF` (copies to `_Unstable/MacPPC7300_test.rbf` and loads it through the OSD), `click|dclick|move X Y` (finds the Mac's arrow and corrects), `finder`, `off`, `keys`, `shot`. **Cores load through the OSD only** (never `/api/launch`, `mister.py load` or misterkvms's `load-core`).
+- `python syn\speedo_kvms.py OUTDIR LABEL`: a whole Speedometer run from a starting Mac (power key or load first), results in `OUTDIR\results.png`, the machine left off. Disk `os761ot.hda` on SCSI 0 (Speedometer at its root).
+- **Never reload the core while an OS has a volume mounted.** Mac OS: the power key (PC Menu key, `key app`) then Return; it is off when the capture shows no signal (`kvms.py off`). Debian: switch to tty1 (`key ctrl+win+f1 --hold 300`), `key ctrl+win+delete --hold 300`, wait for "Restarting system" on the serial console, then the OSD's "Reset and close OSD" (two Ups from the top) or load a core. Debian needs RAM 124 MB (28 MB stops 0.5 s into the kernel).
+- **OSD options live in the Main's memory until "Save settings"** (System page): loading another build reads `config/MacPPC7300.CFG` again. Change settings only in the OSD (never edit or copy .CFG files). "On reset" options (RAM, CPU speed, monitor) take effect at the OSD's Reset or the power key after a Shut Down.
+- SSH (`~/.ssh/mister_only`, root@192.168.99.143) only for files, the serial console and devmem: `syn\uartts.py` (on the board: the console with wall-clock times; one reader at a time), `python syn\mister.py net 10` (the Ethernet rings: frames sent and taken), `mister.py trace` with a `TRACE = 1` build.
+- **As left on 2026-10-15:** the release build running as `_Unstable/MacPPC7300_test.rbf` with Debian at its login screen at 70 MHz; slot 0 `linux_debian711.hda`, slot 1 `toolbox.hda`, slot 4 the Mac OS 9.1 CD; RAM 124 MB set for that session only (the saved setting is 28 MB). The disk images are backed up in `games/MacPPC7300/backup_20261015/`.
 
 ## Rules
 
-- **Never push** (this repository or `..\Main_MiSTer`) or add a remote. **Never change anything under `sys/`** (not even another core's fix: describe it and let me decide). Don't modify `ppctest\`, the dingusppc or MAME trees, or the Quadra repository (`..\MacQuadra800_MiSTer`, read only).
-- SystemVerilog both Verilator 5.020 and Quartus 17.0 accept; Verilator `-Wall` clean. Quartus 17 refuses: a second read expression on a memory, two write statements on one RAM, byte-enabled writes to a wide array, a variable part-select of a two-dimensional array, `genvar` inside the `for`, a generate loop without `generate`, RAM style attributes, a three-input add or subtract as one expression, a RAM written from registers with a combinational read; an implicit `.name` port connection needs the same type. Declare before use. CPU modules are `DSPPC604_*`; machine modules are `MacPPC7300_*` under `rtl/machine/`.
-- Edit files with the editor tools, not scripts, `sed` or heredocs (generated files and copies are the exception). New code gets short comments. Update `docs/MacPPC7300_stubs.md` in the same commit as any stub change.
-- Commit with explicit paths (never `git add -A`), the message from a file (`git commit -F`), ending with the co-author line the harness gives. `Scratch\` is git-ignored.
-- Never type passwords or other credentials into anything on the board (I type them). Real hardware outranks every emulator; dingusppc first among them, then MAME, Linux's and NetBSD's drivers, the chips' manuals. rb-cli (`C:\Users\spam\AppData\Local\Programs\Rusty Backup\bin\rb-cli.exe`) handles Mac archives and HFS images (`archive extract`, `expand --to-hfv`, `ls`, `put`): use it before anything else.
+- **Never push** or add a remote (this repository or `..\Main_MiSTer`). **Never change anything under `sys/`.** Don't modify `ppctest\`, the dingusppc or MAME trees, or `..\MacQuadra800_MiSTer` (read only). Never name the earlier speed work's contributor anywhere.
+- SystemVerilog that both Verilator 5.020 and Quartus 17.0 accept (`rtl/pll*.v` are plain Verilog: no `int` or `bit`). Quartus 17 refuses: a second read expression on a memory, two write statements on one RAM, byte-enabled writes to a wide array, a variable part-select of a two-dimensional array, `genvar` inside the `for`, a generate loop without `generate`, RAM style attributes, a three-input add or subtract as one expression, a RAM written from registers with a combinational read. Declare before use. CPU modules are `DSPPC604_*`, machine modules `MacPPC7300_*`.
+- Edit files with the editor tools, not scripts, `sed` or heredocs (generated files and copies are the exception). New code: comments short, a line where something is not obvious.
+- Commit with explicit paths (never `git add -A`), ending with the co-author line the harness gives. `Scratch\` is git-ignored.
+- Never type passwords or other credentials on the board (I type them). Real hardware outranks every emulator; dingusppc first among them.
 
 ## Environment
 
-- Windows 11. Verilator 5.020, g++, make in WSL (Ubuntu 24.04); run WSL commands from PowerShell as `wsl --cd <windows dir> -- <command>` (Git Bash mangles the paths), anything with `$`, quotes or pipes from a script file. One Verilator build at a time. Python 3.9 on Windows (`websockets`, PIL, `capstone`).
-- Quartus Lite 17.0: copy `MacPPC7300.qpf/.qsf/.sdc/.srf`, `MacPPC7300.sv`, `build_id.v`, `files.qip`, `rtl\`, `sys\` into a `Scratch\qbuild*` copy and run `C:\intelFPGA_lite\17.0\quartus\bin64\quartus_sh.exe --flow compile MacPPC7300` there in the background (about 25 minutes; `rm -rf` the copy's `rtl` from Git Bash, PowerShell's Remove-Item is refused there). Two compiles side by side are fine (40 minutes each).
-- The MiSTer: 192.168.99.143 (`syn\mister_host`), the Remote on 8182, key-based SSH as root (`~/.ssh/mister_only`). Images: `\\daninas.local\Software\BlueSCSI Images\PowerPC Images`, Mac software under `\\daninas.local\Software\Old Mac Stuff`.
-- References: dingusppc (`C:\Temp\mistercore\dingusppc`), MAME (`..\mame\src\mame\apple`), the Quadra 800 core (`..\MacQuadra800_MiSTer`, read only), the Mac LC core (`..\MacLC_MiSTer`).
+- Windows 11. Verilator 5.020, g++, make in WSL (Ubuntu 24.04): run WSL from PowerShell (`wsl bash <script in /mnt/c/...>`; Git Bash mangles paths), with `TMPDIR` set to `~/.cache/macppc7300/verilator-tmp`. Python 3.9 on Windows (PIL, numpy). `llvm-objdump-18 --triple=powerpc` in WSL disassembles PowerPC (wrap raw code with `llvm-objcopy-18 -I binary -O elf32-powerpc`).
+- Quartus Lite 17.0 (`C:\intelFPGA_lite\17.0\quartus\bin64\`): `quartus_sh`, `quartus_sta`, `qmegawiz` (regenerates IP from a `pll.v`'s wizard settings).
+- rb-cli (`C:\Users\spam\AppData\Local\Programs\Rusty Backup\bin\rb-cli.exe`): HFS images (`ls`, `get`, `put`, `locate`; `MSYS_NO_PATHCONV=1` in Git Bash, Windows paths for images). Local copies of some images in `Scratch\disks\`.
+- References: dingusppc (`C:\Temp\mistercore\dingusppc`), MAME (`..\mame`), the Quadra 800 core (`..\MacQuadra800_MiSTer`, read only).
