@@ -293,12 +293,19 @@ wire [7:0] joy_t  = jr[47:40];        // right stick Y: the throttle
 wire [7:0] joy_b  = jr[11:4];         // buttons 1-8
 
 // the stick as a pointer: rate control past a dead zone, up to 13 counts a report
-// (registered with the pad's directions: at 100 MHz the mouse's report did not fit behind it)
+// (registered with the pad's directions, the size and sign a clock before the rest: at
+// 100 MHz the mouse's report did not fit behind it, nor the rate behind the stick)
 wire       stick_c = j_ptr && (j_mode == 3'd0 || (m_gp && pad_hid == 8'h02));
 wire [7:0] pt_x  = m_gp ? an_x : joy_x;
 wire [7:0] pt_y  = m_gp ? an_y : joy_y;
-wire [7:0] pt_xa = pt_x[7] ? -pt_x : pt_x;
-wire [7:0] pt_ya = pt_y[7] ? -pt_y : pt_y;
+logic [7:0] pt_xa, pt_ya;
+logic       pt_xn, pt_yn;
+always_ff @(posedge clk) begin
+	pt_xa <= pt_x[7] ? -pt_x : pt_x;
+	pt_ya <= pt_y[7] ? -pt_y : pt_y;
+	pt_xn <= pt_x[7];
+	pt_yn <= pt_y[7];
+end
 wire       pt_xo_c = pt_xa > 8'd24, pt_yo_c = pt_ya > 8'd24;
 wire [7:0] pt_xs = pt_xa - 8'd24, pt_ys = pt_ya - 8'd24;
 wire [6:0] pt_xm = pt_xo_c ? {2'b00, pt_xs[7:3]} : 7'd0;
@@ -310,8 +317,8 @@ always_ff @(posedge clk) begin
 	mouse_stick <= stick_c;
 	pt_xo  <= pt_xo_c;
 	pt_yo  <= pt_yo_c;
-	ptr_dx <= pt_x[7] ? -pt_xm : pt_xm;
-	ptr_dy <= pt_y[7] ? -pt_ym : pt_ym;
+	ptr_dx <= pt_xn ? -pt_xm : pt_xm;
+	ptr_dy <= pt_yn ? -pt_ym : pt_ym;
 	p_dir  <= stick_c ? {jd_u, jd_r, jd_d, jd_l} :
 	          {$signed(joy_y) < -8'sd63, $signed(joy_x) > 8'sd63, $signed(joy_y) > 8'sd63, $signed(joy_x) < -8'sd63};
 end
@@ -509,16 +516,25 @@ wire       pad_acc = (m_gp && (l_hid == 8'h02 || l_hid == 8'h34)) || (m_sw && l_
 wire [15:0] kbd_reg2 = {1'b1, ~dn_del, ~caps_on, 1'b1, ~dn_ctrl, ~dn_shift, ~dn_opt, ~dn_cmd,
                         ~dn_clear, ~dn_f14, 3'b111, kbd_led};
 
-// a key event from PS/2: {up, code}, or none
+// a key event from PS/2: {up, code}, or none; a clock behind the event (at 100 MHz the
+// code's table and the queue's write did not fit in one clock)
+logic [6:0]  k_code_r;
+logic [9:0]  kd_s3;
+logic        key_ev_r;
+always_ff @(posedge clk) begin
+	k_code_r <= adb_code(kd_s2[8:0]);
+	kd_s3    <= kd_s2;
+	key_ev_r <= key_ev;
+end
 logic [6:0]  k_code;
 logic        k_up, k_push;
 always_comb begin
-	k_code = adb_code(kd_s2[8:0]);
-	k_up   = ~kd_s2[9];
+	k_code = k_code_r;
+	k_up   = ~kd_s3[9];
 	// the power key (7F): the PC keyboard's Menu key or its ACPI Power key
-	k_push = key_ev && (k_code != 7'h7F || kd_s2[8:0] == 9'h12F || kd_s2[8:0] == 9'h137);
+	k_push = key_ev_r && (k_code != 7'h7F || kd_s3[8:0] == 9'h12F || kd_s3[8:0] == 9'h137);
 	if (k_code == 7'h39) begin                       // Caps Lock: a press toggles it
-		k_push = key_ev && kd_s2[9];
+		k_push = key_ev_r && kd_s3[9];
 		k_up   = caps_on;
 	end
 end

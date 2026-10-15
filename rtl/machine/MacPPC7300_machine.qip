@@ -14,6 +14,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) M
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) MacPPC7300_trace.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) MacPPC7300_nvsave.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) MacPPC7300_mesh.sv]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) MacPPC7300_scsibus.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) MacPPC7300_cdaudio.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) MacPPC7300_scsidisk.sv]
 set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) MacPPC7300_sc53c94.sv]

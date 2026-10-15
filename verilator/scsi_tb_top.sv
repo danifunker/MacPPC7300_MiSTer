@@ -118,17 +118,16 @@ logic       mesh_rst, mesh_bsy, mesh_sel, mesh_atn, mesh_ack, mesh_req, mesh_msg
 logic [7:0] mesh_db;
 logic       t_bsy, t_req, t_msg, t_cd, t_io;
 logic [7:0] t_db;
-wire        scsi_rst = mesh_rst;
-wire        scsi_bsy = mesh_bsy | t_bsy;
-wire        scsi_sel = mesh_sel;
-wire        scsi_atn = mesh_atn;
-wire        scsi_ack = mesh_ack;
-wire        scsi_req = mesh_req | t_req;
-wire        scsi_msg = mesh_msg | t_msg;
-wire        scsi_cd  = mesh_cd  | t_cd;
-wire        scsi_io  = mesh_io  | t_io;
-wire [7:0]  scsi_db  = mesh_db  | t_db;
+logic       scsi_rst, scsi_bsy, scsi_sel, scsi_atn, scsi_ack, scsi_req, scsi_msg, scsi_cd, scsi_io;
+logic [7:0] scsi_db;
+logic       b_rst, b_bsy, b_sel, b_atn, b_ack;
+logic [7:0] b_db;
+MacPPC7300_scsibus scsibus (.clk, .mesh_rst, .mesh_bsy, .mesh_sel, .mesh_atn, .mesh_ack, .mesh_req, .mesh_msg,
+	.mesh_cd, .mesh_io, .mesh_db, .t_bsy, .t_req, .t_msg, .t_cd, .t_io, .t_db,
+	.scsi_rst, .scsi_bsy, .scsi_sel, .scsi_atn, .scsi_ack, .scsi_req, .scsi_msg, .scsi_cd, .scsi_io, .scsi_db,
+	.b_rst, .b_bsy, .b_sel, .b_atn, .b_ack, .b_db);
 
+// (the bus as MESH sees it)
 assign bus_bsy = scsi_bsy;
 assign bus_sel = scsi_sel;
 assign bus_req = scsi_req;
@@ -169,7 +168,7 @@ MacPPC7300_fdblk fdblk (
 MacPPC7300_scsidisk #(.CLK_HZ(CPU_HZ)) disks (
 	.clk, .reset,
 	.t_bsy, .t_req, .t_msg, .t_cd, .t_io, .t_db,
-	.b_rst(scsi_rst), .b_bsy(scsi_bsy), .b_sel(scsi_sel), .b_atn(scsi_atn), .b_ack(scsi_ack), .b_db(scsi_db),
+	.b_rst, .b_bsy, .b_sel, .b_atn, .b_ack, .b_db,
 	.clk_h, .img_mounted, .img_size, .img_readonly(1'b0),
 	.sd_lba, .sd_rd, .sd_wr, .sd_blk_cnt, .sd_ack, .sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr,
 	.busy(), .cd_left, .cd_right, .tr_ev(), .tr_rec()

@@ -277,7 +277,7 @@ end
 // ---- the target -----------------------------------------------------------------------------------
 typedef enum logic [5:0] {
 	T_IDLE, T_SELECTED, T_PHASE, T_REQ, T_ACK, T_UNACK,
-	T_MSGOUT_DONE, T_CMD_DONE, T_EXEC, T_RD_START, T_RD_WAIT, T_RD_BYTE, T_RD_NEXT,
+	T_MSGOUT_DONE, T_CMD_DONE, T_DECODE, T_DECODE2, T_EXEC, T_RD_START, T_RD_WAIT, T_RD_BYTE, T_RD_NEXT,
 	T_WR_BYTE, T_WR_BLOCK, T_WR_FLUSH, T_DATA_IN, T_DATA_OUT, T_DOUT_BYTE, T_MSEL,
 	T_FWD_CP, T_FWD_W, T_TBO, T_TBO_B, T_TBO_W, T_TB_CP, T_TB_W, T_TB_DEC,
 	T_PEEKW, T_PEEK, T_PROBE, T_PROBE_D, T_STATUS, T_MSGIN, T_MSGX, T_MSGX_N, T_FREE
@@ -497,7 +497,27 @@ wire [31:0] rd_n4   = is_cd ? {rd_n[29:0], 2'b00} : rd_n;
 // (a 6-byte command's fields for group 0, the CD's blocks four of the slot's)
 wire [31:0] rg_first = (op[7:5] == 3'd0) ? lba6 : lba10;
 wire [31:0] rg_n     = (op[7:5] == 3'd0) ? cnt6 : (op == 8'hA8) ? cnt12 : cnt10;
-wire        rg_ok    = in_range(is_cd ? {rg_first[29:0], 2'b00} : rg_first, is_cd ? {rg_n[29:0], 2'b00} : rg_n, m_blocks[cur]);
+// ... registered in T_DECODE and T_DECODE2, the clocks before T_EXEC (the command is whole by
+// then): at 100 MHz the opcode's compares, a count, its test for zero and the range check did
+// not fit in the clock that chose the next state (the range check takes both)
+logic        rg_ok_q, rd_nz_q, rd_n4nz_q, wr_nz_q, lun_bad_q;
+logic [31:0] rd_l_q, rd_n_q, rd_l4_q, rd_n4_q, wr_l_q, wr_n_q, rgf_q, rgn_q, rgs_q;
+always_ff @(posedge clk) begin
+	rgf_q     <= is_cd ? {rg_first[29:0], 2'b00} : rg_first;
+	rgn_q     <= is_cd ? {rg_n[29:0], 2'b00} : rg_n;
+	rgs_q     <= m_blocks[cur];
+	rg_ok_q   <= in_range(rgf_q, rgn_q, rgs_q);
+	rd_l_q    <= rd_l;
+	rd_n_q    <= rd_n;
+	rd_l4_q   <= rd_l4;
+	rd_n4_q   <= rd_n4;
+	rd_nz_q   <= rd_n != 32'd0;
+	rd_n4nz_q <= rd_n4 != 32'd0;
+	wr_l_q    <= (op == 8'h0A) ? lba6 : lba10;
+	wr_n_q    <= (op == 8'h0A) ? cnt6 : cnt10;
+	wr_nz_q   <= ((op == 8'h0A) ? cnt6 : cnt10) != 32'd0;
+	lun_bad_q <= (lun_id ? lun : cdb[1][7:5]) != 3'd0;
+end
 // the Toolbox: on ID 0 file sharing (slot 3), on ID 3 the CD changer (slot 5)
 wire        tb_fs   = cur == 2'd0 && m_tb && op >= 8'hD0 && op <= 8'hD5;
 wire        tb_cdc  = is_cd && m_cdc && (op == 8'hD7 || op == 8'hD8 || op == 8'hDA);
@@ -526,6 +546,69 @@ endfunction
 function automatic logic in_range(input logic [31:0] first, input logic [31:0] n, input logic [31:0] size);
 	in_range = (first < size) && (n <= size - first);
 endfunction
+
+// ... and, registered with them, the branches before the opcode's own, and a data out's
+// start, length and keeping
+logic        tb_fs_q, tb_cdc_q, tb_d9_q, tb_d6_q, p31_q, nomedia_q, cdao_q;
+logic        do_go_c, do_keep_c, do_go_q, do_keep_q;
+logic [15:0] do_n_c, do_n_q;
+// the CD's answers from the Main's response window: where, and how many bytes
+logic [31:0] win_c, win_q;
+logic [9:0]  win_n_c, win_n_q;
+always_comb begin
+	win_c   = WIN_RESP | {8'h00, op, 16'h0000};
+	win_n_c = 10'd0;
+	case (op)
+		8'h12: win_n_c = clamp(10'd54, alloc6);
+		8'h1A: begin
+			win_c   = win_c | {16'd0, cdb[2], 8'd0};
+			win_n_c = clamp((pg == 6'h30) ? 10'd36 : (pg == 6'h0E) ? 10'd28 : (pg == 6'h2A) ? 10'd38 : 10'd12, alloc6);
+		end
+		8'h43: begin win_c = win_c | {16'd0, cdb[9], cdb[6]}; win_n_c = clamp(10'd512, alloc10); end
+		8'hC1: begin
+			win_c   = win_c | {16'd0, cdb[9], cdb[5]};
+			win_n_c = cdb[9][7] ? clamp(10'd400, {alloc10[15:2], 2'b00}) : clamp(10'd4, alloc10);
+		end
+		8'hC2: win_n_c = 10'd9;
+		8'hCC: begin win_c = win_c | {16'd0, cdb[3], 8'd0}; win_n_c = 10'd6; end
+		8'h42: begin win_c = win_c | {16'd0, cdb[3], cdb[6]}; win_n_c = clamp(10'd64, alloc10); end
+		default: ;
+	endcase
+end
+always_comb begin
+	do_go_c   = 1'b0;
+	do_n_c    = alloc6;
+	do_keep_c = 1'b0;
+	if (is_cd) case (op)
+		8'h15: begin do_go_c = cdb[4] != 8'd0; do_keep_c = cdb[4] >= 8'd4; end   // MODE SELECT: judged below
+		8'hCE: begin do_go_c = cdb[8] != 8'd0; do_n_c = {8'd0, cdb[8]}; end      // AUDIO CONTROL: dropped
+		default: ;
+	endcase
+	else case (op)
+		8'h04: begin do_go_c = cdb[1][4]; do_n_c = 16'd4; end
+		8'h1D: begin do_go_c = {cdb[3], cdb[4]} != 16'd0; do_n_c = {cdb[3], cdb[4]}; end
+		8'h15: do_go_c = cdb[4] != 8'd0;
+		8'h3B: begin
+			do_go_c = {cdb[6], cdb[7], cdb[8]} != 24'd0;
+			do_n_c  = (cdb[6] != 8'd0) ? 16'hFFFF : {cdb[7], cdb[8]};
+		end
+		default: ;
+	endcase
+end
+always_ff @(posedge clk) begin
+	tb_fs_q   <= tb_fs;
+	tb_cdc_q  <= tb_cdc;
+	tb_d9_q   <= cur == 2'd0 && m_tb && op == 8'hD9;
+	tb_d6_q   <= cur == 2'd0 && m_tb && op == 8'hD6;
+	p31_q     <= op == 8'h1A && pg == 6'h31 && ((cur == 2'd0 && m_tb) || (is_cd && m_cdc));
+	nomedia_q <= !cd_disc && cd_needs_media(op);
+	cdao_q    <= cd_audio_only && (op == 8'h08 || op == 8'h28 || op == 8'hA8);
+	do_go_q   <= do_go_c;
+	do_n_q    <= do_n_c;
+	do_keep_q <= do_keep_c;
+	win_q     <= win_c;
+	win_n_q   <= win_n_c;
+end
 
 task automatic check(input logic [3:0] key, input logic [7:0] asc);
 	status         <= 8'h02;
@@ -710,10 +793,12 @@ always_ff @(posedge clk) begin
 			cdb[cdb_n[3:0]] <= ib;
 			if (cdb_n == 5'd0) cdb_len <= grp_len(ib);
 			cdb_n <= cdb_n + 5'd1;
-			if (cdb_n != 5'd0 && cdb_n + 5'd1 == cdb_len) ts <= T_EXEC;
-			else if (cdb_n == 5'd0 && grp_len(ib) == 5'd1) ts <= T_EXEC;
+			if (cdb_n != 5'd0 && cdb_n + 5'd1 == cdb_len) ts <= T_DECODE;
+			else if (cdb_n == 5'd0 && grp_len(ib) == 5'd1) ts <= T_DECODE;
 			else ts <= T_PHASE;
 		end
+		T_DECODE:  ts <= T_DECODE2;
+		T_DECODE2: ts <= T_EXEC;
 		T_EXEC: begin
 			status <= 8'h00;
 			if (op != 8'h03) begin              // the sense is the previous command's
@@ -721,7 +806,7 @@ always_ff @(posedge clk) begin
 				sense_asc[cur] <= 8'h00;
 			end
 			ts <= T_STATUS;                     // unless a data phase comes first
-			if ((lun_id ? lun : cdb[1][7:5]) != 3'd0) begin   // only logical unit 0 is there
+			if (lun_bad_q) begin                // only logical unit 0 is there
 				if (op == 8'h12) respond(R_NOLUN, clamp(10'd36, alloc6));
 				else if (op == 8'h03) begin
 					sense_key[cur] <= 4'h5;
@@ -730,8 +815,8 @@ always_ff @(posedge clk) begin
 				end
 				else check(4'h5, 8'h25);
 			end
-			else if (tb_fs || tb_cdc) begin     // the Toolbox: a round trip through the Main
-				tb_slot <= tb_cdc ? 3'd5 : 3'd3;
+			else if (tb_fs_q || tb_cdc_q) begin // the Toolbox: a round trip through the Main
+				tb_slot <= tb_cdc_q ? 3'd5 : 3'd3;
 				tbo_p   <= '0;
 				if (op == 8'hD3 || op == 8'hD4) begin tb_dir <= 2'd1; tbo_left <= tb_send; ts <= T_TBO; end
 				else begin
@@ -740,30 +825,28 @@ always_ff @(posedge clk) begin
 					ts <= T_TB_CP;
 				end
 			end
-			else if (cur == 2'd0 && m_tb && op == 8'hD9)
+			else if (tb_d9_q)
 				respond(R_DEV, (cdb[8] == 8'd0 || cdb[8] > 8'd8) ? 10'd8 : {2'b00, cdb[8]});
-			else if (cur == 2'd0 && m_tb && op == 8'hD6) begin
+			else if (tb_d6_q) begin
 				if (cdb[1] != 8'd0) respond(R_DBG, 10'd1);
 				else tb_dbg <= cdb[2] != 8'd0;
 			end
-			else if (op == 8'h1A && pg == 6'h31 && ((cur == 2'd0 && m_tb) || (is_cd && m_cdc)))
+			else if (p31_q)
 				respond(R_P31, clamp(10'd56, alloc6));
 			else if (is_cd) begin
-				if (!cd_disc && cd_needs_media(op)) check(4'h2, 8'hB0);   // AppleCD's no-disc answer
-				else if (cd_audio_only && (op == 8'h08 || op == 8'h28 || op == 8'hA8)) check(4'h5, 8'h64);
+				if (nomedia_q) check(4'h2, 8'hB0);             // AppleCD's no-disc answer
+				else if (cdao_q) check(4'h5, 8'h64);
 				else case (op)
 					8'h00, 8'h2B, 8'hBB: ;              // TEST UNIT READY, SEEK, SET CD SPEED: GOOD
 					8'h03: respond(R_SENSE, clamp(10'd18, alloc6));
-					8'h12: fetch(WIN_RESP | 32'h0012_0000, clamp(10'd54, alloc6));
-					8'h1A: fetch(WIN_RESP | 32'h001A_0000 | {16'd0, cdb[2], 8'd0},
-					             clamp((pg == 6'h30) ? 10'd36 : (pg == 6'h0E) ? 10'd28 : (pg == 6'h2A) ? 10'd38 : 10'd12, alloc6));
-					8'h15: if (cdb[4] != 8'd0) data_out(alloc6, cdb[4] >= 8'd4);   // MODE SELECT: judged below
+					8'h12, 8'h1A, 8'h43, 8'hC1, 8'hC2, 8'hCC, 8'h42: fetch(win_q, win_n_q);
+					8'h15: if (do_go_q) data_out(do_n_q, do_keep_q);   // MODE SELECT: judged below
 					8'h25: respond(R_CAP, 10'd8);
 					8'h08, 8'h28, 8'hA8: begin
-						if (!rg_ok) check(4'h5, 8'h21);
-						else if (rd_n4 != 32'd0) begin
+						if (!rg_ok_q) check(4'h5, 8'h21);
+						else if (rd_n4nz_q) begin
 							a_stop_ev <= 1'b1;                                  // a data read stops the audio
-							read_blocks(3'd4, rd_l4, rd_n4, 10'd512);
+							read_blocks(3'd4, rd_l4_q, rd_n4_q, 10'd512);
 						end
 					end
 					8'h1B, 8'hC0: begin                 // START STOP UNIT (LoEj, not Start), Apple's EJECT
@@ -779,14 +862,8 @@ always_ff @(posedge clk) begin
 						end
 					end
 					8'h1E: cd_prevent <= cdb[4][0];
-					8'h43: fetch(WIN_RESP | 32'h0043_0000 | {16'd0, cdb[9], cdb[6]}, clamp(10'd512, alloc10));
-					8'hC1: fetch(WIN_RESP | 32'h00C1_0000 | {16'd0, cdb[9], cdb[5]},
-					             cdb[9][7] ? clamp(10'd400, {alloc10[15:2], 2'b00}) : clamp(10'd4, alloc10));
-					8'hC2: fetch(WIN_RESP | 32'h00C2_0000, 10'd9);
-					8'hCC: fetch(WIN_RESP | 32'h00CC_0000 | {16'd0, cdb[3], 8'd0}, 10'd6);
-					8'h42: fetch(WIN_RESP | 32'h0042_0000 | {16'd0, cdb[3], cdb[6]}, clamp(10'd64, alloc10));
 					8'h44: if (cdb[1][1]) check(4'h5, 8'h24); else respond(R_HDR, clamp(10'd16, alloc10));
-					8'hCE: if (cdb[8] != 8'd0) data_out({8'd0, cdb[8]}, 1'b0);   // AUDIO CONTROL: dropped
+					8'hCE: if (do_go_q) data_out(do_n_q, 1'b0);        // AUDIO CONTROL: dropped
 					8'hC8, 8'hC9, 8'hCA, 8'hCB, 8'hCD, 8'h45, 8'h47, 8'h48, 8'h4B, 8'h4E, 8'hA5, 8'h01, 8'h0B:
 						forward(op, 1'b1, T_STATUS);    // the transport: the Main's playhead
 					default: check(4'h5, 8'h20);
@@ -796,26 +873,22 @@ always_ff @(posedge clk) begin
 				ridx <= 10'd0;
 				case (op)
 					8'h00, 8'h01, 8'h0B, 8'h16, 8'h17, 8'h1B, 8'h1E, 8'h2B, 8'h2F, 8'h35: ;   // GOOD
-					8'h04: if (cdb[1][4]) data_out(16'd4, 1'b0);
-					8'h1D: if ({cdb[3], cdb[4]} != 16'd0) data_out({cdb[3], cdb[4]}, 1'b0);
-					8'h15: if (cdb[4] != 8'd0) data_out(alloc6, 1'b0);
-					8'h3B: if ({cdb[6], cdb[7], cdb[8]} != 24'd0)
-						data_out((cdb[6] != 8'd0) ? 16'hFFFF : {cdb[7], cdb[8]}, 1'b0);
+					8'h04, 8'h1D, 8'h15, 8'h3B: if (do_go_q) data_out(do_n_q, 1'b0);
 					8'h03: respond(R_SENSE, clamp(10'd18, alloc6));
 					8'h12: respond(R_INQ,   clamp(10'd36, alloc6));
 					8'h1A: respond(R_MODE,  clamp(mode_len, alloc6));
 					8'h25: respond(R_CAP,   10'd8);
 					8'h3C: respond(R_BUF,   clamp(10'd4, {cdb[7], cdb[8]}));
 					8'h08, 8'h28: begin
-						if (!rg_ok) check(4'h5, 8'h21);
-						else if (rd_n != 32'd0) read_blocks({1'b0, cur}, rd_l, rd_n, 10'd512);
+						if (!rg_ok_q) check(4'h5, 8'h21);
+						else if (rd_nz_q) read_blocks({1'b0, cur}, rd_l_q, rd_n_q, 10'd512);
 					end
 					8'h0A, 8'h2A: begin
-						lba         <= (op == 8'h0A) ? lba6 : lba10;
-						blocks_left <= (op == 8'h0A) ? cnt6 : cnt10;
+						lba         <= wr_l_q;
+						blocks_left <= wr_n_q;
 						if (m_ro[cur]) check(4'h7, 8'h27);
-						else if (!rg_ok) check(4'h5, 8'h21);
-						else if (((op == 8'h0A) ? cnt6 : cnt10) != 32'd0) begin
+						else if (!rg_ok_q) check(4'h5, 8'h21);
+						else if (wr_nz_q) begin
 							half   <= 1'b0;
 							bidx   <= 9'd0;
 							wr_out <= 2'd0;

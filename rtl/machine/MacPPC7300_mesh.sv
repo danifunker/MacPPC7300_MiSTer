@@ -177,13 +177,28 @@ wire  [16:0] xc = {xc_hi, xfer_count};      // bytes still to move
 
 assign irq = |(int_stat & int_mask[2:0]);
 
-// DMA with DBDMA channel A
-wire dma_in  = (sq == SQ_XFER || sq == SQ_ACK_WAIT || sq == SQ_DRAIN) & dma & (ph == 3'b001);
-wire dma_out = (sq == SQ_XFER || sq == SQ_OUT_ACK || sq == SQ_ACK_WAIT) & dma & (ph == 3'b000);
+// DMA with DBDMA channel A (registered: at 100 MHz the channel's take and its line buffer's
+// write did not fit behind them; a transfer starts a clock later, and a new phase's first
+// byte comes microseconds after the phase, so no byte of it is offered)
+logic dma_in, dma_out;
+always_ff @(posedge clk) begin
+	dma_in  <= (sq == SQ_XFER || sq == SQ_ACK_WAIT || sq == SQ_DRAIN) & dma & (ph == 3'b001);
+	dma_out <= (sq == SQ_XFER || sq == SQ_OUT_ACK || sq == SQ_ACK_WAIT) & dma & (ph == 3'b000);
+end
 assign di_valid = dma_in & ~f_empty;
 assign di_data  = f_head;
 assign di_flush = dma_in & f_empty & (xc == 17'd0);
-assign do_ready = dma_out & ~f_full & (17'(f_cnt) < xc);
+// a DMA byte goes into the FIFO a clock after the channel puts it (at 100 MHz the byte,
+// chosen from the channel's line by its address, did not fit before the FIFO's write);
+// meanwhile it counts as in the FIFO
+logic       dput;
+logic [7:0] dbyte;
+always_ff @(posedge clk) begin
+	dput  <= do_put & ~reset;
+	dbyte <= do_data;
+end
+wire  [4:0] f_cnt_d = f_cnt + {4'd0, dput};
+assign do_ready = dma_out & ~f_cnt_d[4] & (17'(f_cnt_d) < xc);
 
 // what a read returns
 always_comb begin
@@ -205,11 +220,21 @@ always_comb begin
 	endcase
 end
 
-wire       wr  = sel & we;
-wire       cmd = wr & (rn == 4'h3);
-wire [3:0] op  = wdata[3:0];
-wire [5:0] chg_lo = wdata[5:0] ^ bstat_lo;
-wire [2:0] chg_hi = wdata[7:5] ^ bstat_hi;
+// a write takes effect a clock after the access (at 100 MHz Grand Central's decode, the
+// command's and the sequencer's did not fit in one clock; the CPU's accesses are further
+// apart); a read answers at once
+logic       wr;
+logic [3:0] wrn;
+logic [7:0] wd;
+always_ff @(posedge clk) begin
+	wr  <= sel & we & ~reset;
+	wrn <= rn;
+	wd  <= wdata;
+end
+wire       cmd = wr & (wrn == 4'h3);
+wire [3:0] op  = wd[3:0];
+wire [5:0] chg_lo = wd[5:0] ^ bstat_lo;
+wire [2:0] chg_hi = wd[7:5] ^ bstat_hi;
 
 // the interrupt bits: set by the sequencer and by commands, cleared by a
 // write of the interrupt register and by every command's start (command done)
@@ -221,7 +246,7 @@ always_comb begin
 	if (sq == SQ_ARB_END || sq == SQ_SEL_DONE || done_now) int_set = int_set | 3'b001;
 	if (sq == SQ_SEL_END) int_set = int_set | 3'b011;
 	if (mm_now) int_set = int_set | 3'b010;
-	if (wr & rn == 4'hA) int_clr = int_clr | wdata[2:0];
+	if (wr & wrn == 4'hA) int_clr = int_clr | wd[2:0];
 	if (cmd) begin
 		int_clr = int_clr | 3'b001;
 		if (op == 4'hE) begin int_clr = 3'b111; int_set = 3'b001; end
@@ -230,11 +255,11 @@ end
 
 // the FIFO's movers this clock: the bus side, and the CPU's or DMA's side
 logic       bus_push, bus_pop;
-wire        cpu_push = wr & (rn == 4'h2);
+wire        cpu_push = wr & (wrn == 4'h2);
 wire        cpu_pop  = sel & ~we & (rn == 4'h2) & ~f_empty;
-wire        host_push = (cpu_push | do_put) & ~bus_push;
+wire        host_push = (cpu_push | dput) & ~bus_push;
 wire        host_pop  = (cpu_pop | di_take) & ~bus_pop;
-wire [7:0]  host_byte = do_put ? do_data : wdata;
+wire [7:0]  host_byte = dput ? dbyte : wd;
 
 always_comb begin
 	done_now = 1'b0;
@@ -374,29 +399,29 @@ always_ff @(posedge clk) begin
 
 	// ---- register writes ----------------------------------------------------------------
 	if (wr) begin
-		case (rn)
-			4'h0: xfer_count[7:0]  <= wdata;
-			4'h1: xfer_count[15:8] <= wdata;
+		case (wrn)
+			4'h0: xfer_count[7:0]  <= wd;
+			4'h1: xfer_count[15:8] <= wd;
 			4'h4: begin                     // the lines whose bit changed follow it
-				ln_lo    <= (ln_lo & ~chg_lo) | (wdata[5:0] & chg_lo);
-				bstat_lo <= wdata[5:0];
+				ln_lo    <= (ln_lo & ~chg_lo) | (wd[5:0] & chg_lo);
+				bstat_lo <= wd[5:0];
 			end
 			4'h5: begin
-				ln_hi    <= (ln_hi & ~chg_hi) | (wdata[7:5] & chg_hi);
-				bstat_hi <= wdata[7:5];
+				ln_hi    <= (ln_hi & ~chg_hi) | (wd[7:5] & chg_hi);
+				bstat_hi <= wd[7:5];
 			end
-			4'h9: int_mask    <= wdata;
-			4'hC: dst_id      <= wdata;
-			4'hD: sync_params <= wdata;
-			4'hF: sel_to      <= wdata;
+			4'h9: int_mask    <= wd;
+			4'hC: dst_id      <= wd;
+			4'hD: sync_params <= wd;
+			4'hF: sel_to      <= wd;
 			default: ;
 		endcase
 	end
 
 	// ---- a command (mesh.cpp perform_command) ------------------------------------------
 	if (cmd) begin
-		cur_cmd <= wdata;
-		dma     <= wdata[7];
+		cur_cmd <= wd;
+		dma     <= wd[7];
 		case (op)
 			4'h1: begin                     // arbitrate
 				exception <= exception & 3'b100;
@@ -409,7 +434,7 @@ always_ff @(posedge clk) begin
 				exception <= exception & 3'b001;
 				db_out    <= 8'h80 | (8'h01 << dst_id[2:0]);
 				db_oe     <= 1'b1;
-				ln_lo[3]  <= wdata[5];
+				ln_lo[3]  <= wd[5];
 				units     <= sel_to - 8'd1;
 				dly       <= 18'(D_10MS);
 				sq        <= SQ_SEL;
@@ -424,7 +449,7 @@ always_ff @(posedge clk) begin
 					default: ph <= 3'b111;      // message in
 				endcase
 				xc_hi    <= (op == 4'h5 || op == 4'h6) && xfer_count == 16'h0;
-				ln_lo[3] <= wdata[5];
+				ln_lo[3] <= wd[5];
 				ln_lo[4] <= 1'b0;           // a message in's ACK let go
 				db_oe    <= 1'b0;
 				sq <= SQ_XFER;
