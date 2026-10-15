@@ -21,7 +21,7 @@ to the card and the core's UART.
                                                  games/MacPPC7300/MacPPC7300.nvr) if there is none, mounted
                                                  on block slot 2 (config/MacPPC7300.s2): the core loads
                                                  it at its start and keeps the NVRAM in it
-    python syn\\mister.py cfg [--ram MB] [--monitor 16|13|12]
+    python syn\\mister.py cfg [--ram MB] [--monitor 16|13|12|17|21|20]
                               [--joy none|mousestick|firebird|gamepad|sidewinder] [--ptr]
                               [--eth] [--net eth0|eth1|wlan0|tap0] [--trace-mesh] [--l2 on|off]
                                                  writes config/MacPPC7300.CFG (--eth or --net: Ethernet
@@ -86,7 +86,8 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 CORE = "/media/fat/_Unstable/MacPPC7300.rbf"
-RAM_OPTION = {16: 0, 24: 1, 48: 2, 64: 3, 96: 4, 6: 5, 120: 6}      # MacPPC7300.sv: O[3:1]
+RAM_OPTION = {28: 0, 6: 1, 16: 2, 48: 3, 60: 4, 96: 5, 120: 6, 124: 7}   # MacPPC7300.sv: O[7:5]
+MONITOR_OPTION = {16: 0, 13: 1, 12: 2, 17: 3, 21: 4, 20: 5}              # MacPPC7300.sv: O[32:30]
 
 # a reader of the UART left from an earlier command would take part of what
 # comes in: stop any before starting another
@@ -218,7 +219,7 @@ def main():
     if cmd == "umount":
         return ssh("rm -f /media/fat/config/MacPPC7300.s%d" % int(a[1]))
     if cmd == "cfg":
-        ram, monitor = 16, 16
+        ram, monitor = 28, 16
         joys = ["none", "mousestick", "firebird", "gamepad", "sidewinder"]   # MacPPC7300.sv: O[13:11]
         joy = a[a.index("--joy") + 1] if "--joy" in a else "none"
         if joy not in joys:
@@ -228,9 +229,9 @@ def main():
                 ram = int(a[i + 1])
             if a[i] == "--monitor":
                 monitor = int(a[i + 1])
-        if ram not in RAM_OPTION or monitor not in (16, 13, 12):
-            sys.exit("--ram one of %s, --monitor 16, 13 or 12 (the memory-test boot and the debug "
-                     "readout are gone)" % sorted(RAM_OPTION))
+        if ram not in RAM_OPTION or monitor not in MONITOR_OPTION:
+            sys.exit("--ram one of %s (the board's own list caps it), --monitor one of %s"
+                     % (sorted(RAM_OPTION), sorted(MONITOR_OPTION)))
         nets = ["eth0", "eth1", "wlan0", "tap0"]                                # MacPPC7300.sv: O[19:17], 0 off
         net = a[a.index("--net") + 1] if "--net" in a else "eth0"
         if net not in nets:
@@ -239,10 +240,10 @@ def main():
         l2 = a[a.index("--l2") + 1] if "--l2" in a else "on"                   # MacPPC7300.sv: O[4], 1 off
         if l2 not in ("on", "off"):
             sys.exit("--l2 on or off")
-        status = ((RAM_OPTION[ram] << 1) | ((l2 == "off") << 4) | (joys.index(joy) << 11)
-                  | (("--ptr" in a) << 14) | ({16: 0, 13: 1, 12: 2}[monitor] << 15)
-                  | (eth << 17) | (("--trace-mesh" in a) << 29))
-        data = "".join("\\x%02x" % ((status >> (8 * i)) & 0xFF) for i in range(4)) + "\\x00" * 12
+        status = ((RAM_OPTION[ram] << 5) | ((l2 == "off") << 4) | (joys.index(joy) << 11)
+                  | (("--ptr" in a) << 14) | (eth << 17) | (("--trace-mesh" in a) << 29)
+                  | (MONITOR_OPTION[monitor] << 30))
+        data = "".join("\\x%02x" % ((status >> (8 * i)) & 0xFF) for i in range(16))
         return ssh("printf '%s' > /media/fat/config/MacPPC7300.CFG && xxd /media/fat/config/MacPPC7300.CFG" % data)
     if cmd == "load":
         api("POST", "/api/launch", {"path": CORE[len("/media/fat/"):]})

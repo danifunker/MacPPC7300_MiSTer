@@ -2,7 +2,7 @@
 """The whole machine in a window, to watch it run.
 
     python verilator\\run_gui.py [--rom FILE | --rom7600] [--nvram FILE] [--ram MB]
-                                 [--monitor 16|13] [--pause]
+                                 [--monitor 16|13|12|17|21|20] [--pause]
 
 Builds macppc7300_gui (gui_main.cpp, `make gui`) and starts it: the Control
 window (run, reset, the frame counter with the machine's frames a second,

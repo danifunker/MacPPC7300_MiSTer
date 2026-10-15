@@ -121,7 +121,7 @@ struct Options {
 	std::vector<std::string> serial_in;   // lines typed at the modem port, one at each prompt
 	std::string serial_log;        // what the machine sent on the modem port
 	bool serial_stop = false;      // stop at the prompt after the last line (or the first prompt)
-	unsigned monitor = 13;         // 13: Apple's 13-inch RGB (dingusppc's default); 16: the 16-inch
+	unsigned monitor = 13;         // 13: Apple's 13-inch RGB (dingusppc's default); 16, 12, 17, 21: the OSD's others
 	uint64_t frame_at = 0;         // after this many instructions, write the next whole frame
 	uint64_t frame_every = 0;      // ... and again every this many (0: once)
 	std::string frame_out;         // ... to this file (PNG if it ends in .png, else PPM)
@@ -334,8 +334,10 @@ void usage() {
 		"                   (\"> \"); repeat for more lines\n"
 		"  --serial-log FILE  write what the machine sends on the modem port\n"
 		"  --serial-stop    end the run at the prompt after the last line typed\n"
-		"  --monitor 13|16  the monitor's sense code: Apple's 13-inch (640 x 480, the default,\n"
-		"                   dingusppc's) or 16-inch RGB (832 x 624)\n"
+		"  --monitor 13|16|12|17|21|20  the monitor's sense code: Apple's 13-inch (640 x 480,\n"
+		"                   the default, dingusppc's), 16-inch (832 x 624) or 12-inch RGB (512 x\n"
+		"                   384), the 17-inch Multiscan (to 1024 x 768), the 21-inch (1152 x 870)\n"
+		"                   or the 20-inch Multiscan (to 1280 x 1024)\n"
 		"  --frame-at N --frame-out FILE   after N instructions, write the next whole\n"
 		"                   frame of the Control video's picture (PNG if FILE ends in .png,\n"
 		"                   else PPM)\n"
@@ -760,6 +762,8 @@ int main(int argc, char** argv) {
 		return 2;
 	}
 	if (opt.module_mb != 32 && opt.module_mb != 64 && opt.module_mb != 128) { usage(); return 2; }
+	if (opt.monitor != 13 && opt.monitor != 16 && opt.monitor != 12 && opt.monitor != 17 && opt.monitor != 21
+	    && opt.monitor != 20) { usage(); return 2; }
 	SDRAM_SIZE = opt.module_mb << 20;
 	ROM_SDRAM  = SDRAM_SIZE - ROM_SIZE;
 	if (opt.ram_mb < 1 || (opt.ram_mb << 20) > ROM_SDRAM) {
@@ -1035,8 +1039,11 @@ int main(int argc, char** argv) {
 		dut->nv_ld_data = nv_ld >= 0 ? nvimg[nv_ld] : 0;
 		dut->b_ack = mm.ack;
 		for (int i = 0; i < 8; i++) dut->b_rdata[i] = mm.rdata[i];
-		dut->mon_std = opt.monitor == 16 ? 7 : 6;
-		dut->mon_ext = opt.monitor == 16 ? 0x2D : 0x2B;
+		// the sense codes as dingusppc's MacRGB16in, MacRGB12in, Multiscan17in, MacColor21in,
+		// Multiscan20in, else HiRes12-14in
+		dut->mon_std = opt.monitor == 16 ? 7 : opt.monitor == 12 ? 2 : opt.monitor == 21 ? 0 : 6;
+		dut->mon_ext = opt.monitor == 16 ? 0x2D : opt.monitor == 12 ? 0x21 : opt.monitor == 17 ? 0x0B
+		             : opt.monitor == 21 ? 0x00 : opt.monitor == 20 ? 0x23 : 0x2B;
 		dut->clock_ok = opt.clock_secs != 0;
 		dut->clock_secs = opt.clock_secs;
 		dut->ddr_busy = ddr.busy;

@@ -14,7 +14,7 @@
 // the VRAM, the NVRAM image loaded during reset. No lockstep: this is for
 // watching; machine_tb (run_machine.py) is the bench that checks.
 //
-//   macppc7300_gui --rom FILE [--nvram FILE] [--ram MB] [--monitor 16|13]
+//   macppc7300_gui --rom FILE [--nvram FILE] [--ram MB] [--monitor 16|13|12|17|21|20]
 //              [--cpu-mhz F] [--mem-mhz F] [--pause]
 //
 // Built by `make gui` (verilator/Makefile); run_gui.py builds and starts it
@@ -58,6 +58,18 @@ struct Options {
 	double cpu_mhz = 70.0, mem_mhz = 100.0;
 	bool pause = false;
 };
+
+// the OSD's monitors (MacPPC7300.sv): sense codes, the largest picture, the refresh rate
+struct Monitor { unsigned inch, std, ext; int w, h; double hz; };
+const Monitor MONITORS[] = {
+	{16, 7, 0x2D,  832, 624, 74.55}, {13, 6, 0x2B, 640, 480, 66.67}, {12, 2, 0x21, 512, 384, 60.15},
+	{17, 6, 0x0B, 1024, 768, 75.00}, {21, 0, 0x00, 1152, 870, 75.06}, {20, 6, 0x23, 1280, 1024, 75.00}};
+
+const Monitor* find_monitor(unsigned inch) {
+	for (const Monitor& m : MONITORS)
+		if (m.inch == inch) return &m;
+	return nullptr;
+}
 
 uint32_t rd32(const std::vector<uint8_t>& m, uint32_t a) {
 	a &= SDRAM_SIZE - 1;
@@ -159,12 +171,14 @@ int main(int argc, char** argv) {
 		else if (a == "--mem-mhz") opt.mem_mhz = std::atof(next().c_str());
 		else if (a == "--pause") opt.pause = true;
 		else {
-			std::printf("usage: macppc7300_gui --rom FILE [--nvram FILE] [--ram MB] [--monitor 16|13]\n"
+			std::printf("usage: macppc7300_gui --rom FILE [--nvram FILE] [--ram MB] [--monitor 16|13|12|17|21|20]\n"
 			            "                  [--cpu-mhz F] [--mem-mhz F] [--pause]\n");
 			return a == "--help" ? 0 : 2;
 		}
 	}
 	if (opt.rom.empty()) { std::fprintf(stderr, "--rom is needed\n"); return 2; }
+	const Monitor* mon = find_monitor(opt.monitor);
+	if (!mon) { std::fprintf(stderr, "--monitor 16, 13, 12, 17, 21 or 20\n"); return 2; }
 
 	std::vector<uint8_t> mem(SDRAM_SIZE, 0);
 	{
@@ -185,7 +199,7 @@ int main(int argc, char** argv) {
 	ctx->commandArgs(argc, argv);
 	auto dut = std::make_unique<Top>(ctx.get());
 
-	int vw = opt.monitor == 13 ? 640 : 832, vh = opt.monitor == 13 ? 480 : 624;
+	int vw = mon->w, vh = mon->h;
 	SimVideo video(vw, vh, 0);
 	DebugConsole console;
 	if (video.Initialise("MacPPC7300") == 1) return 1;
@@ -205,9 +219,8 @@ int main(int argc, char** argv) {
 	// the CPU cycles between the last two (its refresh rate)
 	uint64_t frames = 0, vs_cycle = 0, frame_cycles = 0;
 	bool vs_q = false;
-	// the monitor's refresh rate until the machine has scanned out two frames:
-	// the 16-inch's 832 x 624 at 74.55 Hz, the 13-inch's 640 x 480 at 66.67
-	const double nominal_hz = opt.monitor == 13 ? 66.67 : 74.55;
+	// the monitor's refresh rate until the machine has scanned out two frames
+	const double nominal_hz = mon->hz;
 	// the speed, measured every half second
 	auto t_last = std::chrono::steady_clock::now();
 	uint64_t c_last = 0, r_last = 0;
@@ -230,8 +243,8 @@ int main(int argc, char** argv) {
 		dut->nv_ld_data = nv_ld >= 0 ? nvimg[nv_ld] : 0;
 		dut->b_ack = mm.ack;
 		for (int i = 0; i < 8; i++) dut->b_rdata[i] = mm.rdata[i];
-		dut->mon_std = opt.monitor == 13 ? 6 : 7;
-		dut->mon_ext = opt.monitor == 13 ? 0x2B : 0x2D;
+		dut->mon_std = mon->std;
+		dut->mon_ext = mon->ext;
 		dut->ddr_busy = 0;
 		dut->ddr_dout_ready = ddr.ready;
 		dut->ddr_dout = ddr.dout;
@@ -345,8 +358,8 @@ int main(int argc, char** argv) {
 		c_last = r_last = 0;
 		t_last = std::chrono::steady_clock::now();
 		cpu_held = true;
-		console.AddLog("machine reset (%s, %u MB, %s monitor%s)", opt.rom.c_str(), opt.ram_mb,
-		               opt.monitor == 13 ? "13-inch" : "16-inch", nvimg.empty() ? "" : ", NVRAM image");
+		console.AddLog("machine reset (%s, %u MB, %u-inch monitor%s)", opt.rom.c_str(), opt.ram_mb,
+		               mon->inch, nvimg.empty() ? "" : ", NVRAM image");
 	};
 	reset_machine();
 

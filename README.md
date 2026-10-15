@@ -42,7 +42,7 @@ the OSD chooses, a debug readout of rows of squares.
 | Sound | AWACS (`rtl/machine/MacPPC7300_awacs.sv`) and its DMA channels 8 and 9: the startup chime plays from the ROM by DMA, bit-exact in simulation (`--wav`), to the MiSTer's audio outputs. On the board the chime and Mac OS's sounds are right by the user's ear (the rate table is Screamer's as dingusppc and Linux have it; a day was lost to a hung MT32-pi's clicks that made every sound seem low: `docs/MacPPC7300_sound.md`) |
 | Serial, Ethernet, NMI, clock | the ESCC's interrupts (both channels); MACE (`MacPPC7300_mace.sv`) with its cable unplugged (frames sent by DMA end in loss of carrier); Cuda's NMI on Grand Central's source 14 (Command-Menu: MacsBug, or the ROM's debugger); Cuda's clock set from the MiSTer's RTC |
 | Floppy controller | the SWIM3 (`rtl/machine/MacPPC7300_swim3.sv`) as dingusppc models it, with an empty Superdrive: the ROM's .Sony driver finds the chip and installs, which Mac OS 7.6.1's System requires (it dereferences the driver's variables while loading: with the chip stubbed to read 0 that was the "bus error" at the welcome screen). Floppy disks (2026-10-08, build 21): an image (raw or DiskCopy 4.2; 400K, 800K, 720K, 1440K) from the OSD's "Insert floppy disk" (hps_io slot 6, `MacPPC7300_fdblk.sv`) read at the level of its sectors as dingusppc's SWIM3 reads one, into memory by DMA channel 1; read only (disks show as locked). `run_scsi.py` test 13 reads a 1440K DiskCopy image and an 800K raw one |
-| Video | the Control video controller (registers, Swatch's timing), RaDACal (colour table, hardware cursor), the Athens clock chip on Cuda's I2C, the 4 MB VRAM in the HPS's DDR3, the scan-out through the framework's scaler; the monitor an OSD choice (Apple's 16-inch, 832 x 624, or 13-inch, 640 x 480). In simulation the ROM runs in lockstep through Mac OS's video driver, every video access as dingusppc's, and the frames match dingusppc's pixel for pixel at both sizes; on the board Mac OS's screen (milestone V, 2026-10-07) |
+| Video | the Control video controller (registers, Swatch's timing), RaDACal (colour table, hardware cursor), the Athens clock chip on Cuda's I2C, the 4 MB VRAM in the HPS's DDR3, the scan-out through the framework's scaler; the monitor an OSD choice (Apple's 16-inch, 832 x 624, 13-inch, 640 x 480, 12-inch, 512 x 384, the 17-inch Multiscan, up to 1024 x 768, the 21-inch, 1152 x 870, or the 20-inch Multiscan, up to 1152 x 870: Mac OS 7.6.1 lists its 1280 x 960 and 1280 x 1024 too but stays in the mode it had). In simulation the ROM runs in lockstep through Mac OS's video driver, every video access as dingusppc's, and the frames match dingusppc's pixel for pixel at both sizes; on the board Mac OS's screen (milestone V, 2026-10-07) |
 | Keyboard and mouse | an ADB keyboard and mouse on Cuda's line (`rtl/machine/MacPPC7300_adb.sv`), from the MiSTer's keyboard and mouse: Cuda's own firmware talks to them in `run_cuda.py` (registers 0, 2 and 3, a key, a mouse move, an address and handler change, SendReset); on the board the pointer follows the mouse over Mac OS's screen and Open Firmware takes typed lines from the keyboard (milestone K, 2026-10-07). Keys now and then lost or changed into others were the keyboard's clock crossing of hps_io's key code (fixed 2026-10-08, build 15) |
 | Game controllers | the Quadra 800 core's ADB controllers from the MiSTer's joystick 0 (OSD "ADB controller (on reset)", "Stick moves pointer"): Gravis MouseStick II, Firebird, Mac GamePad, SideWinder 3D Pro, with ADB's address collisions; Cuda's firmware takes their answers in `run_cuda.py`; on the board Mac OS 7.6.1 separates a GamePad from the keyboard and a MouseStick from the mouse (2026-10-08, build 7); the controllers themselves are the user's to try |
 | Serial MIDI, MT32-pi, PPP, printer | as the Quadra 800 core: the modem port's TRxC clock a MIDI interface's (31,250 bit/s), the UART's MIDI mode, the MT32-pi on the user port (its OSD page, popups, LCD, audio), CTS and RTS for PPP and the Main's printer daemon; `run_escc.py` measures the rates (2026-10-08, build 8); the devices are the user's and the Discord testers' to try |
@@ -423,10 +423,12 @@ minutes in.
 
 The Control video: the bench models the VRAM's DDR3 port and writes the
 picture's next whole frame after N instructions as a PPM (PNG if the name
-ends in .png; `--frame-every N` again every N instructions); `--monitor 16`
-makes the sense lines report Apple's 16-inch RGB (832 x 624) instead of
-the 13-inch (640 x 480, dingusppc's default). `machref --frame-at N
---frame-out FILE [--set mon_id=MacRGB16in]` writes dingusppc's frame to
+ends in .png; `--frame-every N` again every N instructions); `--monitor
+16|12|17|21|20` makes the sense lines report the OSD's other monitors
+instead of the 13-inch (640 x 480, dingusppc's default). `machref
+--frame-at N --frame-out FILE [--set mon_id=MacRGB16in]` (MacRGB12in,
+Multiscan17in, MacColor21in, Multiscan20in for the others) writes
+dingusppc's frame to
 compare (Mac OS draws its screen at about 131 million instructions in
 dingusppc, 3.5 million earlier here).
 
@@ -459,9 +461,12 @@ python syn\mister.py type "1 2 + ." "words"
 ```
 
 The OSD's Picture option chooses Mac OS's screen or the debug readout,
-its Monitor option the 16-inch or 13-inch RGB (a change resets the
-machine); `python syn\mister.py cfg --picture mac|debug --monitor 16|13`
-sets them, `shot` takes a screenshot through the framework.
+its Monitor option Apple's 16-inch, 13-inch or 12-inch RGB, the 17-inch
+Multiscan (up to 1024 x 768), the 21-inch (1152 x 870) or the 20-inch
+Multiscan (up to 1152 x 870) (a change resets the machine; a Multiscan's
+resolutions are chosen in Mac OS's Monitors control panel, without one);
+`python syn\mister.py cfg --monitor 16|13|12|17|21|20` writes it, `shot`
+takes a screenshot through the framework.
 
 The board is controlled through the MiSTer Remote (mrext, port 8182), as
 the other cores' tooling does (`tools\misterdeploy`): `load` and `menu`

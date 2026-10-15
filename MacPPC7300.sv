@@ -28,7 +28,9 @@
 //
 //  The picture (OSD) is the Mac's, Control's scan-out at the mode Mac OS set
 //  (the monitor the sense lines report is an OSD choice: Apple's 16-inch RGB,
-//  832 x 624, or the 13-inch, 640 x 480; it takes effect at the next reset),
+//  832 x 624, the 13-inch, 640 x 480, the 12-inch, 512 x 384, the 17-inch
+//  Multiple Scan, up to 1024 x 768, the 21-inch, 1152 x 870, or the 20-inch
+//  Multiple Scan, up to 1152 x 870; it takes effect at the next reset),
 //  or the debug readout's rows of squares.
 //
 //  The machine is held in reset while RESET, the OSD's reset or the button is
@@ -120,7 +122,8 @@ localparam CONF_STR = {
 	"h0H1O[7:5],RAM (on reset),28 MB,6 MB,16 MB,48 MB,60 MB;",
 	"h1O[7:5],RAM (on reset),28 MB,6 MB,16 MB,48 MB,60 MB,96 MB,120 MB,124 MB;",
 	"O[4],L2 cache (on reset),On,Off;",
-	"O[16:15],Monitor (on reset),16-inch 832x624,13-inch 640x480,12-inch 512x384;",
+	// (status[16:15] was the list before 2026-10-15, three monitors)
+	"O[32:30],Monitor (on reset),16-inch 832x624,13-inch 640x480,12-inch 512x384,17-inch Multiscan,21-inch 1152x870,20-inch Multiscan;",
 	"-;",
 	"O[13:11],ADB controller (on reset),None,Gravis MouseStick II,Gravis Firebird,Gravis GamePad,SideWinder 3D Pro;",
 	"O[14],Stick moves pointer,No,Yes;",
@@ -426,9 +429,23 @@ reg  [2:0] reset_in;
 always @(posedge clk_mem) reset_in <= {reset_in[1:0], RESET | status[0] | buttons[1] | wake_m[1]};
 
 // the monitor's AppleSense codes (dingusppc's displayid.cpp): the 16-inch RGB
-// (7, 2D), the 13-inch (6, 2B) or the 12-inch (2, 21)
-wire [2:0] mon_std = (status[16:15] == 2'd1) ? 3'd6  : (status[16:15] == 2'd2) ? 3'd2  : 3'd7;
-wire [5:0] mon_ext = (status[16:15] == 2'd1) ? 6'h2B : (status[16:15] == 2'd2) ? 6'h21 : 6'h2D;
+// (7, 2D), the 13-inch (6, 2B), the 12-inch (2, 21), the 17-inch Multiple Scan
+// (6, 0B: 640 x 480 to 1024 x 768, chosen in the Monitors control panel), the
+// 21-inch RGB (0, 00: 1152 x 870, a 100 MHz dot clock) or the 20-inch Multiple
+// Scan (6, 23: 640 x 480 to 1152 x 870; Mac OS 7.6.1 lists 1280 x 960 and 1280 x
+// 1024 too but stays in the mode it had)
+reg  [2:0] mon_std;
+reg  [5:0] mon_ext;
+always @(*) begin
+	case (status[32:30])
+		3'd1:    {mon_std, mon_ext} = {3'd6, 6'h2B};
+		3'd2:    {mon_std, mon_ext} = {3'd2, 6'h21};
+		3'd3:    {mon_std, mon_ext} = {3'd6, 6'h0B};
+		3'd4:    {mon_std, mon_ext} = {3'd0, 6'h00};
+		3'd5:    {mon_std, mon_ext} = {3'd6, 6'h23};
+		default: {mon_std, mon_ext} = {3'd7, 6'h2D};
+	endcase
+end
 
 reg cpu_reset_m = 1;
 always @(posedge clk_mem)
