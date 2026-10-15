@@ -142,7 +142,7 @@ MacPPC7300_gc #(.SCSI_HZ(SCSI_HZ)) gc (
 	.clk, .reset, .via_tick(1'b0), .rtxc_tick(1'b0), .scsi_tick, .us_tick, .snd_tick,
 	.sel, .we, .addr, .be, .wdata, .rdata, .irq,
 	.cuda_treq(1'b1), .cuda_cb1(1'b1), .cb2(1'b1), .via_tip(), .via_byteack(), .via_cb2_oe(), .via_cb2_out(),
-	.modem_txd(), .modem_rxd(1'b1), .modem_cts(1'b0), .modem_rts(),
+	.modem_txd(), .modem_rxd(1'b1), .modem_cts(1'b0), .modem_rts(), .modem_midi(),
 	.net_link, .net_tx_we, .net_tx_wa, .net_tx_wd, .net_tx_go, .net_tx_len, .net_tx_done,
 	.net_rx_ra, .net_rx_q, .net_rx_avail, .net_rx_len, .net_rx_done, .net_mac(48'd0),
 	.net_mac_ok(1'b0), .nv_ld_we(1'b0), .nv_ld_re(1'b0), .nv_ld_addr(13'h0), .nv_ld_data(8'h0),

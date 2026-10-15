@@ -30,7 +30,7 @@ the OSD chooses, a debug readout of rows of squares.
 | Machine: the 7600's address map and device stubs | `rtl/machine/`: Hammerhead, Bandit and Chaos configuration space, Grand Central (interrupt and DMA registers, VIA with timers, NVRAM, board register) and its devices, each built as the chip behaves where Mac OS needs it (below) and otherwise answering as dingusppc's devices do; [docs/MacPPC7300_stubs.md](docs/MacPPC7300_stubs.md) lists every stub and what it leaves out |
 | The ROM in simulation | the 7300's (the reference) and the 7600's each run from the reset vector in lockstep with dingusppc, Cuda answering, for 60 million instructions with no difference (2026-10-07): through Open Firmware (which waits for Cuda at 18.3 million and gets its answer), the NanoKernel's start-up and into Mac OS's 68k emulator, running in user mode from 28 million on. Before Cuda existed, 150 million instructions to Open Firmware's endless poll for it |
 | Memory-test boot program | selectable in place of the ROM; passes in the bench over 1 and 6 MB and finds an injected fault |
-| SDRAM controller | `rtl/machine/MacPPC7300_sdram.sv`, adapted from Sorgelig's; passes its bench against a model of the 128 MB board that checks every command and timing |
+| SDRAM controller | `rtl/machine/MacPPC7300_sdram.sv`, adapted from Sorgelig's; passes its bench against models of the 128, 64 and 32 MB boards that check every command and timing |
 | First bitstream | `MacPPC7300.sv`: CPU at 65 MHz, SDRAM at 100 MHz, ROM upload, OSD options, debug readout on screen and UART; on the board the memory test passes at every RAM size (6-96 MB) |
 | The 7600's ROM on the board | runs exactly as in simulation: the same 26,771 device writes, the last after the same 18.27 million instructions, then the same wait for Cuda (before Cuda was built) |
 | Cuda (ADB, power, reset, clock, PRAM) | the real chip: a 68HC05 (`rtl/machine/MacPPC7300_hc05.sv`, checked instruction by instruction against MAME's 6805 core) running Apple's firmware 341S0060 (Cuda 2.40), behind Grand Central's VIA with a real shift register; it holds the CPU in reset until its firmware powers the machine up. The firmware is the 7300's own: read out of its chip through the VIA (`cudadump/`, 2026-10-07), byte for byte MAME's dump. In simulation the ROM's Cuda traffic goes through and the ROM runs on through the NanoKernel into Mac OS (the CPU bug the lockstep found at 24.4 million instructions is fixed: the plan's M6 section). On the board (2026-10-07) Cuda releases the CPU 1,284 ms after the machine's reset and both ROMs run through Open Firmware into Mac OS. On its ADB line the keyboard and the mouse, on its I2C lines Athens |
@@ -218,12 +218,19 @@ not by drift.
 
 **Memory**
 
-- Main memory lives on the MiSTer SDRAM module, the 128 MB one (the board
-  here has it). The machine's installed RAM is a core option: 6, 16, 24, 48,
-  64, 96 or 120 MB (changed 2026-10-06 from 6, 16, 24, 32, 64, 128: the
-  ROM takes the module's top 4 MB, so 124 MB is the most a 128 MB module
-  allows; 6 MB is the Pippin's; 120 added 2026-10-08, the user's choice for
-  the largest). The OSD's memory-test boot is gone (2026-10-08, the user);
+- Main memory lives on the MiSTer SDRAM module: 32, 64 or 128 MB, as the
+  Main reports it (since 2026-10-15; before, only the 128 MB module worked:
+  the ROM sat at 124 MB and the controller addressed the 64 MB chip's 1024
+  columns, which a 32 MB chip does not have). The ROM takes the module's top
+  4 MB; the installed RAM is a core option, the sizes that fit below it:
+  6, 16 or 28 MB on a 32 MB module, also 48 or 60 MB on a 64 MB one, also
+  96, 120 or 124 MB on a 128 MB one (the user's choice, 2026-10-15: 6, 16,
+  the largest and each module's most). The default is the module's most
+  (28, 60 or 124 MB): BootX cannot start Linux at 16 MB ("BootX Extension:
+  unimplemented trap", the builds before this one too). A size the module
+  cannot hold (a setting from a larger one) gives the module's most. 6 MB is
+  the Pippin's.
+  The OSD's memory-test boot is gone (2026-10-08, the user);
   `MacPPC7300_bootrom` stays for the bench. The caches fill their lines from the SDRAM, so the cache
   line-fill bus is designed for that controller. 128 MB of RAM would need the
   ROM elsewhere (the HPS's DDR3 or a second SDRAM board): left out for now.
@@ -357,11 +364,12 @@ Tests the pipeline, and the memory path behind it, seven ways:
 6. The memory port carried across a clock boundary, at several clock
    ratios.
 7. The SDRAM controller (`rtl/machine/MacPPC7300_sdram.sv`) behind the clock
-   crossing, against a behavioural model of the 128 MB board in
-   `verilator/sdram_main.cpp` that holds the data and checks every command
+   crossing, against behavioural models of the 128, 64 and 32 MB boards in
+   `verilator/sdram_main.cpp` that hold the data and check every command
    and timing: the power-up sequence, tRCD, tRP, tRAS, tRC, tWR, tRFC,
    refresh at 7.8 us, bus turnaround; random line and word requests and a
-   ROM upload, every read checked and the whole 128 MB compared at the end.
+   ROM upload into the board's top 4 MB, every read checked and the whole
+   board compared at the end.
 
 `--seeds N` runs more random programs.
 

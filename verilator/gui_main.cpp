@@ -219,6 +219,7 @@ int main(int argc, char** argv) {
 
 	auto drive = [&]() {
 		dut->ram_mb = opt.ram_mb;
+		dut->rom_at = ROM_SDRAM >> 22;
 		dut->boot_memtest = 0;
 		dut->l2_on = 1;
 		dut->reset_pc = 0xFFF00100;

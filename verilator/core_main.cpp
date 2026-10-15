@@ -69,11 +69,11 @@ namespace {
 const uint32_t PVR_604  = 0x00040303;
 
 #ifdef MACPPC7300_MACHINE
-// the machine's SDRAM module, as MacPPC7300_system is built (SDRAM_MB)
-const uint32_t SDRAM_SIZE = 128u << 20;
+// the machine's SDRAM board (--module), the ROM in its top 4 MB (rom_at)
+uint32_t SDRAM_SIZE = 128u << 20;
 const uint32_t ROM_BASE   = 0xFFC00000u;
 const uint32_t ROM_SIZE   = 4u << 20;
-const uint32_t ROM_SDRAM  = SDRAM_SIZE - ROM_SIZE;
+uint32_t ROM_SDRAM  = SDRAM_SIZE - ROM_SIZE;
 uint32_t RAM_SIZE = 16u << 20;               // installed RAM (--ram)
 uint32_t RAM_MASK = 0xFFFFFFFFu;             // the bench's memory is indexed by SDRAM offset
 #else
@@ -104,6 +104,7 @@ struct Options {
 	bool machine = false;
 	std::string rom;
 	unsigned ram_mb = 16;
+	unsigned module_mb = 128;      // the SDRAM board: 32, 64 or 128
 	double cpu_mhz = 70.0, mem_mhz = 100.0;
 	uint64_t max_instr = 0;        // stop after this many instructions (0: no limit)
 	uint64_t progress = 0;         // a line every N instructions
@@ -313,7 +314,8 @@ void usage() {
 		"  --prog FILE      a program file (as core_tb's: R, M, E records) in RAM, the\n"
 		"                   ROM's reset vector a branch to its reset address\n"
 		"  --ram MB         installed RAM (default 16)\n"
-		"  --no-l2          the L2 cache off (MacPPC7300_l2; on by default)\n"
+		"  --module MB      the SDRAM board: 32, 64 or 128 (default), the ROM in its top 4 MB\n"
+		"  --no-l2         the L2 cache off (MacPPC7300_l2; on by default)\n"
 		"  --cpu-mhz F      the CPU's clock (default 70)\n"
 		"  --mem-mhz F      the memory's clock (default 100)\n"
 		"  --max-instr N    stop after N instructions\n"
@@ -697,6 +699,7 @@ int main(int argc, char** argv) {
 		else if (a == "--machine") opt.machine = true;
 		else if (a == "--rom") opt.rom = next();
 		else if (a == "--ram") opt.ram_mb = (unsigned)std::atoi(next().c_str());
+		else if (a == "--module") opt.module_mb = (unsigned)std::atoi(next().c_str());
 		else if (a == "--no-l2") opt.l2 = false;
 		else if (a == "--cpu-mhz") opt.cpu_mhz = std::atof(next().c_str());
 		else if (a == "--mem-mhz") opt.mem_mhz = std::atof(next().c_str());
@@ -756,6 +759,9 @@ int main(int argc, char** argv) {
 		std::fprintf(stderr, "the memory test runs without the reference (it has no copy of the boot program)\n");
 		return 2;
 	}
+	if (opt.module_mb != 32 && opt.module_mb != 64 && opt.module_mb != 128) { usage(); return 2; }
+	SDRAM_SIZE = opt.module_mb << 20;
+	ROM_SDRAM  = SDRAM_SIZE - ROM_SIZE;
 	if (opt.ram_mb < 1 || (opt.ram_mb << 20) > ROM_SDRAM) {
 		std::fprintf(stderr, "--ram must leave the top 4 MB of the %u MB module to the ROM\n", SDRAM_SIZE >> 20);
 		return 2;
@@ -1018,6 +1024,7 @@ int main(int argc, char** argv) {
 		dut->ps2_mouse = ps2_mouse;
 		dut->ps2_key = 0;
 		dut->ram_mb = opt.ram_mb;
+		dut->rom_at = ROM_SDRAM >> 22;
 		dut->boot_memtest = opt.memtest;
 		dut->l2_on = opt.l2;
 		dut->reset_pc = reset_pc;

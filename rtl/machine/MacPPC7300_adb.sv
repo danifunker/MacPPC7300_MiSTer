@@ -293,17 +293,28 @@ wire [7:0] joy_t  = jr[47:40];        // right stick Y: the throttle
 wire [7:0] joy_b  = jr[11:4];         // buttons 1-8
 
 // the stick as a pointer: rate control past a dead zone, up to 13 counts a report
-wire       mouse_stick = j_ptr && (j_mode == 3'd0 || (m_gp && pad_hid == 8'h02));
+// (registered with the pad's directions: at 100 MHz the mouse's report did not fit behind it)
+wire       stick_c = j_ptr && (j_mode == 3'd0 || (m_gp && pad_hid == 8'h02));
 wire [7:0] pt_x  = m_gp ? an_x : joy_x;
 wire [7:0] pt_y  = m_gp ? an_y : joy_y;
 wire [7:0] pt_xa = pt_x[7] ? -pt_x : pt_x;
 wire [7:0] pt_ya = pt_y[7] ? -pt_y : pt_y;
-wire       pt_xo = pt_xa > 8'd24, pt_yo = pt_ya > 8'd24;
+wire       pt_xo_c = pt_xa > 8'd24, pt_yo_c = pt_ya > 8'd24;
 wire [7:0] pt_xs = pt_xa - 8'd24, pt_ys = pt_ya - 8'd24;
-wire [6:0] pt_xm = pt_xo ? {2'b00, pt_xs[7:3]} : 7'd0;
-wire [6:0] pt_ym = pt_yo ? {2'b00, pt_ys[7:3]} : 7'd0;
-wire [6:0] ptr_dx = pt_x[7] ? -pt_xm : pt_xm;
-wire [6:0] ptr_dy = pt_y[7] ? -pt_ym : pt_ym;
+wire [6:0] pt_xm = pt_xo_c ? {2'b00, pt_xs[7:3]} : 7'd0;
+wire [6:0] pt_ym = pt_yo_c ? {2'b00, pt_ys[7:3]} : 7'd0;
+logic       mouse_stick, pt_xo, pt_yo;
+logic [6:0] ptr_dx, ptr_dy;
+logic [3:0] p_dir;
+always_ff @(posedge clk) begin
+	mouse_stick <= stick_c;
+	pt_xo  <= pt_xo_c;
+	pt_yo  <= pt_yo_c;
+	ptr_dx <= pt_x[7] ? -pt_xm : pt_xm;
+	ptr_dy <= pt_y[7] ? -pt_ym : pt_ym;
+	p_dir  <= stick_c ? {jd_u, jd_r, jd_d, jd_l} :
+	          {$signed(joy_y) < -8'sd63, $signed(joy_x) > 8'sd63, $signed(joy_y) > 8'sd63, $signed(joy_x) < -8'sd63};
+end
 
 // joy: change detection on the top seven bits (no service requests for jitter)
 logic [6:0] js_lx, js_ly, js_lt;
@@ -343,12 +354,7 @@ always_comb begin
 end
 
 // pad: the GamePad's directions, the D-pad or the stick past half way (the D-pad alone while
-// the stick drives the pointer)
-wire       p_up = mouse_stick ? jd_u : $signed(joy_y) < -8'sd63;
-wire       p_dn = mouse_stick ? jd_d : $signed(joy_y) >  8'sd63;
-wire       p_lt = mouse_stick ? jd_l : $signed(joy_x) < -8'sd63;
-wire       p_rt = mouse_stick ? jd_r : $signed(joy_x) >  8'sd63;
-wire [3:0] p_dir = {p_up, p_rt, p_dn, p_lt};
+// the stick drives the pointer): p_dir, {up, right, down, left}, above
 logic [6:0] ps_lx, ps_ly, ps_lt, ps_lr;
 logic [7:0] ps_lb;
 logic [3:0] ps_ld;
@@ -414,6 +420,36 @@ wire               mouse_has = smx != 0 || smy != 0 || btn_now != btn_rep;
 wire signed [10:0] ps2_dx  = {{2{md_s2[9]}},  md_s2[9],  md_s2[8:1]};
 wire signed [10:0] ps2_dy  = {{2{md_s2[18]}}, md_s2[18], md_s2[17:10]};
 
+// The reports and whether each device has something to say, from registers a
+// clock behind their inputs (which change a few hundred times a second; a
+// Talk is answered 160 us after its command): at 100 MHz they did not fit
+// in the clock that chose the answer. A Talk records as reported the values
+// it sent, so a change in that clock is reported next time, not lost.
+logic              mouse_has_q, joy_has_q, pad_has_q, btn_now_q;
+logic signed [6:0] mx7_q, my7_q;
+logic signed [10:0] st_dx_q, st_dy_q;
+logic [63:0]       joy_rep_q, pad_rep_q;
+logic [3:0]        joy_n_q, pad_n_q;
+logic [7:0]        jx_q, jy_q, jt_q, jrx_q, jb_q;
+logic [3:0]        pdir_q, pk_sent_q;
+always_ff @(posedge clk) begin
+	mouse_has_q <= mouse_has;
+	btn_now_q   <= btn_now;
+	mx7_q       <= mx7;
+	my7_q       <= my7;
+	st_dx_q     <= st_dx;
+	st_dy_q     <= st_dy;
+	joy_has_q   <= joy_has;
+	joy_rep_q   <= joy_rep;
+	joy_n_q     <= joy_n;
+	pad_has_q   <= pad_has;
+	pad_rep_q   <= pad_rep;
+	pad_n_q     <= pad_n;
+	{jx_q, jy_q, jt_q, jrx_q, jb_q} <= {joy_x, joy_y, joy_t, joy_rx, joy_b};
+	pdir_q      <= p_dir;
+	pk_sent_q   <= pk_sent;
+end
+
 // ---- the line ------------------------------------------------------------------------------
 typedef enum logic [3:0] {
 	S_IDLE, S_SYNC, S_CMD, S_STOP, S_SRQ, S_ACT, S_TLT, S_SEND_L, S_SEND_H,
@@ -433,7 +469,9 @@ logic [3:0]  l_hit;                   // the Listen's devices {pad, joy, mouse, 
 logic [1:0]  l_reg;
 logic        reset_seen;              // the current low has already reset the devices
 
-assign hl = ~host_low;
+// registered: Cuda's port register drove the edges' counters through it in one clock
+// (-0.14 ns at 100 MHz); a clock is nothing to ADB's microseconds
+always_ff @(posedge clk) hl <= ~host_low;
 wire fall = hl_q & ~hl;
 wire rise = ~hl_q & hl;
 
@@ -442,17 +480,24 @@ wire [1:0] c_type = cmd[3:2];
 wire [1:0] c_reg  = cmd[1:0];
 
 // the devices at the command's address
-wire kh = c_addr == kbd_addr;
-wire mh = c_addr == mouse_addr;
-wire jh = joy_on && c_addr == joy_addr;
-wire ph = pad_on && c_addr == pad_addr;
+// (a clock behind cmd, which is whole at least two clocks before S_ACT; at 100 MHz the answer's
+// choice did not fit behind the compares. The keyboard's queue shrinks only in S_ACT, so a
+// clock-old "not empty" holds there; a key queued in that clock waits for the next Talk)
+logic kh, mh, jh, ph, kq_has;
+always_ff @(posedge clk) begin
+	kh     <= c_addr == kbd_addr;
+	mh     <= c_addr == mouse_addr;
+	jh     <= joy_on && c_addr == joy_addr;
+	ph     <= pad_on && c_addr == pad_addr;
+	kq_has <= !kq_empty;
+end
 
 // the command as its last bit comes in, for the service request
 wire [7:0] cmd_full = {cmd[6:0], dur > T_BIT};
 wire       srq_want = (!kq_empty && kbd_srq_en && cmd_full[7:4] != kbd_addr) ||
-                      (mouse_has && mouse_srq_en && cmd_full[7:4] != mouse_addr) ||
-                      (joy_has && joy_srq_en && cmd_full[7:4] != joy_addr) ||
-                      (pad_has && pad_srq_en && cmd_full[7:4] != pad_addr);
+                      (mouse_has_q && mouse_srq_en && cmd_full[7:4] != mouse_addr) ||
+                      (joy_has_q && joy_srq_en && cmd_full[7:4] != joy_addr) ||
+                      (pad_has_q && pad_srq_en && cmd_full[7:4] != pad_addr);
 
 // the handlers a Listen 3 may set
 wire [7:0] l_hid   = lrx[7:0];
@@ -611,7 +656,7 @@ always_ff @(posedge clk) begin
 					tmr <= D_TLT;
 					case (c_reg)
 						// the first device here with something to say
-						2'd0: if (kh && !kq_empty) begin
+						2'd0: if (kh && kq_has) begin
 							// one event an answer (the second byte FF), the power key in
 							// both bytes (7F 7F down, FF FF up). A keyboard may send two;
 							// MacsBug's own polling seems to take only the first, and the
@@ -620,22 +665,23 @@ always_ff @(posedge clk) begin
 							say(4'd2, {kq[kq_rd], (kq[kq_rd][6:0] == 7'h7F) ? kq[kq_rd] : 8'hFF, 48'd0});
 							kq_rd <= kq_rd + 3'd1;
 						end
-						else if (mh && mouse_has) begin
-							say(4'd2, {~btn_now, my7, 1'b1, mx7, 48'd0});
-							mx      <= smx - {{3{mx7[6]}}, mx7};
-							my      <= smy - {{3{my7[6]}}, my7};
-							btn_rep <= btn_now;
+						else if (mh && mouse_has_q) begin
+							// (what was sent taken from the movement there is now)
+							say(4'd2, {~btn_now_q, my7_q, 1'b1, mx7_q, 48'd0});
+							mx      <= sat10(mx_wide + st_dx_q - {{4{mx7_q[6]}}, mx7_q});
+							my      <= sat10(my_wide + st_dy_q - {{4{my7_q[6]}}, my7_q});
+							btn_rep <= btn_now_q;
 						end
-						else if (jh && joy_has) begin
-							say(joy_n, joy_rep);
-							js_lx <= joy_x[7:1]; js_ly <= joy_y[7:1]; js_lt <= joy_t[7:1];
-							js_lb <= joy_b; js_btn <= joy_b[0]; js_force <= 1'b0;
+						else if (jh && joy_has_q) begin
+							say(joy_n_q, joy_rep_q);
+							js_lx <= jx_q[7:1]; js_ly <= jy_q[7:1]; js_lt <= jt_q[7:1];
+							js_lb <= jb_q; js_btn <= jb_q[0]; js_force <= 1'b0;
 						end
-						else if (ph && pad_has) begin
-							say(pad_n, pad_rep);
-							ps_lx <= joy_x[7:1]; ps_ly <= joy_y[7:1]; ps_lt <= joy_t[7:1]; ps_lr <= joy_rx[7:1];
-							ps_lb <= joy_b; ps_ld <= p_dir; ps_force <= 1'b0;
-							if (pad_keys) pk_state <= pk_state ^ pk_sent;
+						else if (ph && pad_has_q) begin
+							say(pad_n_q, pad_rep_q);
+							ps_lx <= jx_q[7:1]; ps_ly <= jy_q[7:1]; ps_lt <= jt_q[7:1]; ps_lr <= jrx_q[7:1];
+							ps_lb <= jb_q; ps_ld <= pdir_q; ps_force <= 1'b0;
+							if (pad_keys) pk_state <= pk_state ^ pk_sent_q;
 						end
 						// the controllers' protocol (the Apple keyboard and mouse have none)
 						2'd1: if (jh && joy_hid == 8'h23)      say(4'd2, {16'h0300, 48'd0});

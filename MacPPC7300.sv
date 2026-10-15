@@ -37,7 +37,8 @@
 //  moment after the RAM size or boot option changes. Then Cuda starts, and
 //  holds the CPU in reset until its firmware has powered the machine up
 //  (about 1.3 s; the debug readout counts from there). The ROM goes into the
-//  top 4 MB of the 128 MB SDRAM board, written byte by byte from the OSD's
+//  top 4 MB of the SDRAM board (32, 64 or 128 MB, as the Main reports it; the
+//  RAM sizes offered are those that fit below), written byte by byte from the OSD's
 //  file upload (index 1, or index 0: a boot.rom in the core's folder is
 //  loaded at start). A boot1.rom there (index 40, loaded before boot.rom)
 //  is an 8 KB image for Grand Central's NVRAM, which reset leaves alone
@@ -112,7 +113,12 @@ localparam CONF_STR = {
 	"S6,DSKIMGIMA,Insert floppy disk;",
 	"SC2,NVR,Mount NVRAM;",
 	"-;",
-	"O[3:1],RAM (on reset),16 MB,24 MB,48 MB,64 MB,96 MB,6 MB,120 MB;",
+	// the RAM sizes the SDRAM board holds besides the ROM, its largest the default (menu
+	// mask: bit 0 a 64 MB board or larger, bit 1 a 128 MB board); status[3:1] was the
+	// list before 2026-10-15
+	"H0O[7:5],RAM (on reset),28 MB,6 MB,16 MB;",
+	"h0H1O[7:5],RAM (on reset),60 MB,6 MB,16 MB,28 MB,48 MB;",
+	"h1O[7:5],RAM (on reset),124 MB,6 MB,16 MB,28 MB,48 MB,60 MB,96 MB,120 MB;",
 	"O[4],L2 cache (on reset),On,Off;",
 	"O[16:15],Monitor (on reset),16-inch 832x624,13-inch 640x480,12-inch 512x384;",
 	"-;",
@@ -192,6 +198,8 @@ wire        ioctl_wr;
 wire [26:0] ioctl_addr;
 wire  [7:0] ioctl_dout;
 wire        ioctl_wait;
+wire [15:0] sdram_sz;                 // the Main's SDRAM board: [15] known, [1:0] 1 32 MB, 2 64 MB, 3 128 MB
+reg   [1:0] sdram_mod = 2'd1;         // the board the ROM went into (an unknown one taken as 32 MB)
 
 // the block devices, as the Mac SCSI family's layout has them: SCSI disks 0
 // and 1 on slots 0 and 1, the NVRAM image on 2, the Toolbox on 3, the CD-ROM
@@ -236,7 +244,8 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(VDNUM), .BLKSZ(2)) hps_io
 	.forced_scandoubler(forced_scandoubler),
 	.buttons(buttons),
 	.status(status),
-	.status_menumask(16'd0),
+	.status_menumask({14'd0, sdram_mod == 2'd3, sdram_mod[1]}),
+	.sdram_sz(sdram_sz),
 	.ps2_key(ps2_key),
 	.ps2_mouse(ps2_mouse),
 	.joystick_0(joystick_0),
@@ -289,27 +298,41 @@ end
 
 ///////////////////////   OPTIONS AND RESET (memory clock)   ///////////////////////////////
 
-reg  [7:0] ram_opt;                         // the OSD's RAM size; taken at the next reset (ram_mb)
-always @(posedge clk_mem) begin
-	case (status[3:1])
-		3'd1:    ram_opt <= 8'd24;
-		3'd2:    ram_opt <= 8'd48;
-		3'd3:    ram_opt <= 8'd64;
-		3'd4:    ram_opt <= 8'd96;
-		3'd5:    ram_opt <= 8'd6;
-		3'd6:    ram_opt <= 8'd120;         // (124 at most: the ROM has the module's top 4 MB)
-		default: ram_opt <= 8'd16;
+// the OSD's RAM size, taken at the next reset (ram_mb): by default the board's largest
+// (BootX cannot start Linux at 16 MB); a size the board cannot hold beside the ROM (a
+// setting from a larger board) is the board's largest too
+reg  [7:0] ram_opt;
+wire [7:0] ram_max = sdram_mod == 2'd3 ? 8'd124 : sdram_mod == 2'd2 ? 8'd60 : 8'd28;
+reg  [7:0] ram_sel;
+always @(*) begin
+	case (status[7:5])
+		3'd1:    ram_sel = 8'd6;
+		3'd2:    ram_sel = 8'd16;
+		3'd3:    ram_sel = 8'd28;
+		3'd4:    ram_sel = 8'd48;
+		3'd5:    ram_sel = 8'd60;
+		3'd6:    ram_sel = 8'd96;
+		3'd7:    ram_sel = 8'd120;
+		default: ram_sel = ram_max;
 	endcase
 end
+always @(posedge clk_mem) ram_opt <= ram_sel > ram_max ? ram_max : ram_sel;
 wire boot_memtest = 1'b0;                   // the memory-test boot (MacPPC7300_bootrom): no menu entry since 2026-10-08
 
-// the ROM upload: index 1 from the OSD, index 0 a boot.rom loaded at start
+// the ROM upload: index 1 from the OSD, index 0 a boot.rom loaded at start; into the
+// board's top 4 MB, the board as the Main reports it when the upload starts (it does
+// so as the core starts, before the boot.rom)
 wire rom_index = ioctl_index[7:0] == 8'd0 || ioctl_index[7:0] == 8'd1;
 wire rom_wr    = ioctl_download & rom_index & ioctl_wr;
 reg  rom_loaded = 0, dl_q = 0, rom_dl = 0;
+wire [4:0] rom_at = {sdram_mod == 2'd3, sdram_mod[1], 3'b111};   // 4 MB units: 7, 15 or 31
 always @(posedge clk_mem) begin
 	dl_q <= ioctl_download;
-	if (ioctl_download & ~dl_q & rom_index) begin rom_dl <= 1; rom_loaded <= 0; end
+	if (ioctl_download & ~dl_q & rom_index) begin
+		rom_dl     <= 1;
+		rom_loaded <= 0;
+		sdram_mod  <= (sdram_sz[15] && sdram_sz[1:0] != 2'd0) ? sdram_sz[1:0] : 2'd1;
+	end
 	if (~ioctl_download & dl_q & rom_dl) begin rom_dl <= 0; rom_loaded <= 1; end
 end
 
@@ -433,6 +456,7 @@ wire [51:0] joy = {status[14], joy_mode, joystick_r_analog_0, joystick_l_analog_
 // into the CPU's clock (the options are quasi-static: they change only with the reset held)
 reg [2:0] cpu_reset_s = 3'b111;
 reg [7:0] ram_mb_c [2];
+reg [4:0] rom_at_c [2];
 reg [1:0] boot_memtest_c;
 reg [8:0] mon_c [2];
 reg [1:0] tr_mesh_c;
@@ -441,6 +465,8 @@ always @(posedge clk_cpu) begin
 	cpu_reset_s    <= {cpu_reset_s[1:0], cpu_reset_m};
 	ram_mb_c[0]    <= ram_mb;
 	ram_mb_c[1]    <= ram_mb_c[0];
+	rom_at_c[0]    <= rom_at;
+	rom_at_c[1]    <= rom_at_c[0];
 	boot_memtest_c <= {boot_memtest_c[0], boot_memtest};
 	mon_c[0]       <= mon_m;
 	mon_c[1]       <= mon_c[0];
@@ -505,7 +531,10 @@ wire modem_cts = UART_CTS;
 assign UART_RTS = modem_rts;
 assign UART_DTR = UART_DSR;
 
-// the MT32-pi on the user port (sys/mt32pi.sv), as the Quadra 800 core has it
+// the MT32-pi on the user port (sys/mt32pi.sv), as the Quadra 800 core has it; it
+// takes the modem port only while the port runs at MIDI's rate (a console at
+// 38,400 baud, Linux's, hung it)
+wire        modem_midi;
 wire [15:0] mt32_i2s_l, mt32_i2s_r;
 wire        mt32_available;
 wire        mt32_mute = mt32_available & status[20];
@@ -524,7 +553,7 @@ mt32pi mt32pi
 	.USER_IN(USER_IN),
 	.USER_OUT(USER_OUT),
 	.reset(cpu_reset_m),
-	.midi_tx(modem_txd | mt32_mute),
+	.midi_tx(modem_txd | mt32_mute | ~modem_midi),
 	.midi_rx(mt32_midi_rx),
 	.mt32_i2s_r(mt32_i2s_r),
 	.mt32_i2s_l(mt32_i2s_l),
@@ -603,7 +632,7 @@ wire   [7:0] mac_r, mac_g, mac_b;
 
 assign DDRAM_CLK = clk_mem;
 
-MacPPC7300_system #(.CPU_HZ(CPU_MHZ * 1000000), .L2_KB(L2_KB), .TB_HZ(12500000), .SDRAM_MB(128),
+MacPPC7300_system #(.CPU_HZ(CPU_MHZ * 1000000), .L2_KB(L2_KB), .TB_HZ(12500000),
                     .TRACE(TRACE), .SOUND_IN_DMA(SOUND_IN_DMA), .PERF(PERF), .SND_TRACE(SND_TRACE)) system
 (
 	.clk(clk_cpu),
@@ -612,6 +641,7 @@ MacPPC7300_system #(.CPU_HZ(CPU_MHZ * 1000000), .L2_KB(L2_KB), .TB_HZ(12500000),
 	.power_wake,
 	.reset_pc(32'hFFF00100),
 	.ram_mb(ram_mb_c[1]),
+	.rom_at(rom_at_c[1]),
 	.boot_memtest(boot_memtest_c[1]),
 	.l2_on(l2_on_c[1]),
 
@@ -620,7 +650,7 @@ MacPPC7300_system #(.CPU_HZ(CPU_MHZ * 1000000), .L2_KB(L2_KB), .TB_HZ(12500000),
 	.b_req, .b_we, .b_line, .b_addr, .b_be, .b_wdata, .b_ack, .b_rdata,
 
 	.cpu_req, .cpu_we, .cpu_line, .cpu_addr, .cpu_be, .cpu_wdata, .cpu_ack, .cpu_rdata, .cpu_irq, .cpu_tb_tick,
-	.modem_txd, .modem_rxd, .modem_cts, .modem_rts, .snd_left, .snd_right,
+	.modem_txd, .modem_rxd, .modem_cts, .modem_rts, .modem_midi, .snd_left, .snd_right,
 	.nv_ld_we, .nv_ld_re, .nv_ld_addr, .nv_ld_data, .nv_ld_rack, .nv_ld_q, .nv_wr_cpu,
 	.mon_std(mon_c[1][8:6]), .mon_ext(mon_c[1][5:0]),
 	.ps2_key, .ps2_mouse, .joy,           // in the memory clock: MacPPC7300_adb synchronises them
@@ -658,7 +688,7 @@ MacPPC7300_sdram #(.CLK_MHZ(100)) sdram
 	.ack(b_ack), .rdata(b_rdata),
 
 	.up_wr(rom_wr),
-	.up_addr(27'h7C00000 + ioctl_addr),      // the top 4 MB of the 128 MB board
+	.up_addr({rom_at, ioctl_addr[21:0]}),    // the board's top 4 MB
 	.up_data(ioctl_dout),
 	.up_busy(sd_up_busy),
 

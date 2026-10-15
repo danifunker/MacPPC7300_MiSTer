@@ -4,10 +4,14 @@
 // written byte by byte, against a behavioural model of the SDRAM board.
 //
 //   sdram_tb [--count N] [--pa PS] [--pb PS] [--upload BYTES] [--seed S] [--show N]
+//            [--module 32|64|128]
 //
-// The model is a MiSTer 128 MB board: two ranks of 4 banks x 8192 rows x
-// 1024 columns x 16 bits, nCS low selecting rank 0 and the board inverting
-// it for rank 1. It runs on the SDRAM's clock (the controller's clock
+// The model is a MiSTer SDRAM board (--module, 128 MB by default): 128 MB is
+// two ranks of 4 banks x 8192 rows x 1024 columns x 16 bits, nCS low
+// selecting rank 0 and the board inverting it for rank 1; 64 MB is one such
+// chip, 32 MB one of 512 columns (A9 ignored, as the AS4C16M16 does); on
+// these nCS high deselects the chip. The upload goes into the board's top
+// 4 MB, where the machine puts the ROM. It runs on the SDRAM's clock (the controller's clock
 // inverted, as SDRAM_CLK is on the board), holds the data, puts read data on
 // the bus CAS latency 2 after the READ, and checks every command against the
 // sequence and timings of an AS4C32M16SB-6 class part (the faster grade the
@@ -41,8 +45,9 @@
 
 namespace {
 
-const uint32_t SIZE = 128u << 20;            // the board
-const uint32_t UP_BASE = SIZE - (4u << 20);  // where the ROM goes
+uint32_t SIZE = 128u << 20;                  // the board
+uint32_t UP_BASE = SIZE - (4u << 20);        // where the ROM goes
+int RANKS = 2, COLS = 1024;
 
 // timings in ns (AS4C32M16SB-6: tRCD = tRP = 18; the -7 grade's 21 ns would
 // need three clocks at 100 MHz where sdram.sv has run two on hardware)
@@ -90,13 +95,14 @@ struct Chip {
 		}
 	}
 	static uint32_t index(int rank, int bank, int row, int col) {
-		return (((uint32_t)rank * 4 + bank) * 8192 + row) * 1024 + col;
+		return (((uint32_t)rank * 4 + bank) * 8192 + row) * COLS + col;
 	}
-	// the controller's documented map: rank off[26], bank off[25:24],
-	// row off[23:11], column off[10:1]
+	// the controller's documented map: rank off[26], column bit 9 off[25],
+	// bank off[24:23], row off[22:10], columns 8-0 off[9:1]
 	static uint32_t offset_of(uint32_t idx) {
-		uint32_t col = idx & 1023, row = (idx >> 10) & 8191, bank = (idx >> 23) & 3, rank = idx >> 25;
-		return rank << 26 | bank << 24 | row << 11 | col << 1;
+		uint32_t col = idx % COLS, rest = idx / COLS;
+		uint32_t row = rest & 8191, bank = (rest >> 13) & 3, rank = rest >> 15;
+		return rank << 26 | (col >> 9) << 25 | bank << 23 | row << 10 | (col & 511) << 1;
 	}
 	bool met(long since, double ns, long now) const { return (now - since) * tck >= ns - 1e-6; }
 
@@ -105,6 +111,7 @@ struct Chip {
 	          bool fpga_drives, uint16_t fpga_dq, bool& drive, uint16_t& dq) {
 		int r = ncs ? 1 : 0;                      // the board inverts nCS for rank 1
 		int cmd = (nras << 2) | (ncas << 1) | nwe;
+		if (r >= RANKS) cmd = 7;                  // a one-chip board: nCS high deselects it
 		Rank& R = rk[r];
 		dqm_hist[2] = dqm_hist[1]; dqm_hist[1] = dqm_hist[0]; dqm_hist[0] = dqm;
 		if (cmd != 7) {
@@ -128,7 +135,7 @@ struct Chip {
 		}
 		case 5: case 4: {                          // READ, WRITE
 			Bank& B = R.b[ba];
-			int col = a & 1023;
+			int col = a & (COLS - 1);
 			if (a & 0x400) fail(n, "auto-precharge requested (A10) on a %s", cmd == 5 ? "READ" : "WRITE");
 			if (!B.open) { fail(n, "rank %d bank %d: %s on a closed bank", r, ba, cmd == 5 ? "READ" : "WRITE"); break; }
 			if (!met(B.t_act, T_RCD, n)) fail(n, "rank %d bank %d: %s %ld clocks after ACTIVE (tRCD)", r, ba, cmd == 5 ? "READ" : "WRITE", n - B.t_act);
@@ -218,7 +225,15 @@ int main(int argc, char** argv) {
 		else if (a == "--upload") upload = (uint32_t)std::strtoul(next(), nullptr, 0);
 		else if (a == "--seed") seed = (unsigned)std::strtoul(next(), nullptr, 0);
 		else if (a == "--show") show = std::atoi(next());
-		else { std::printf("usage: sdram_tb [--count N] [--pa ps] [--pb ps] [--upload BYTES] [--seed S] [--show N]\n"); return 2; }
+		else if (a == "--module") {
+			unsigned mb = (unsigned)std::atoi(next());
+			if (mb != 32 && mb != 64 && mb != 128) return 2;
+			SIZE = mb << 20;
+			UP_BASE = SIZE - (4u << 20);
+			RANKS = mb == 128 ? 2 : 1;
+			COLS = mb == 32 ? 512 : 1024;
+		}
+		else { std::printf("usage: sdram_tb [--count N] [--pa ps] [--pb ps] [--upload BYTES] [--seed S] [--show N] [--module 32|64|128]\n"); return 2; }
 	}
 	if (pb != 10000) std::printf("note: the controller is built for 100 MHz; its timings scale with CLK_MHZ\n");
 
@@ -262,8 +277,8 @@ int main(int argc, char** argv) {
 		// CPU is held in reset during the upload)
 		if (pick < 3 || (pick == 3 && !upload_written())) addr = hot + rng() % 65536;   // a hot 64 KB
 		else if (pick == 3) addr = UP_BASE + rng() % (upload ? upload : 4);   // the uploaded file
-		else if (pick == 4) addr = (64u << 20) - 64 + rng() % 128;   // across the ranks
-		else if (pick == 5) addr = ((rng() % 65536) << 11) - 16 + rng() % 32;  // around a row boundary
+		else if (pick == 4) addr = ((rng() % 2) ? 64u << 20 : 32u << 20) - 64 + rng() % 128;   // across A9, the ranks
+		else if (pick == 5) addr = ((rng() % 131072) << 10) - 16 + rng() % 32;  // around a row boundary
 		else addr = rng() % SIZE;
 		addr %= SIZE;
 		a.addr = addr & (a.line ? ~31u : ~3u);
@@ -372,7 +387,8 @@ int main(int argc, char** argv) {
 	}
 	std::printf("%ld requests answered (%ld wrong), %u bytes uploaded, %ld SDRAM clocks (%.2f ms)\n",
 		answered, wrong, up_done, sd, sd * (pb / 1e9));
-	std::printf("refreshes: rank 0 %ld, rank 1 %ld; at most %d owed\n", chip.rk[0].refreshes, chip.rk[1].refreshes, chip.max_owed);
+	std::printf("%u MB board; refreshes: rank 0 %ld, rank 1 %ld; at most %d owed\n", SIZE >> 20,
+		chip.rk[0].refreshes, chip.rk[1].refreshes, chip.max_owed);
 	std::printf("protocol errors: %d; memory differences at the end: %ld\n", errors, bad);
 	bool ok = answered == count && up_done == upload && wrong == 0 && errors == 0 && bad == 0;
 	if (gap >= 1000000) std::printf("no answer for 1000000 cycles\n");

@@ -91,9 +91,9 @@
 
 module MacPPC7300_cuda
 #(
-	parameter int unsigned CLK_HZ    = 65_000_000,   // clk; at least 2 x 4,194,304
+	parameter int unsigned CLK_HZ    = 65_000_000,   // clk; at least 3 x 4,194,304 (the bus below)
 	// for the machine's test bench only: while the CPU is held in reset, a
-	// 4,194,304 Hz tick on every clock, so the cold start takes 1/15 of the
+	// 4,194,304 Hz tick on every third clock, so the cold start takes 1/5 of the
 	// clocks at 65 MHz. Nothing outside Cuda can see its time then (the VIA is
 	// idle), so the firmware runs the same instructions, only sooner.
 	parameter bit          FAST_BOOT = 1'b0
@@ -150,6 +150,7 @@ logic        xtick;
 logic [21:0] xdiv;                     // the crystal's time, 2^22 ticks a second
 logic [7:0]  pll, tctl, onesec;
 logic        cen;
+logic [1:0]  fb_div;                   // FAST_BOOT's tick, every third clock
 
 wire        fast  = pll[6];
 wire  [7:0] bmask = fast ? (8'h07 >> pll[1:0]) : 8'hFF;   // ticks per bus cycle, less 1
@@ -158,7 +159,8 @@ assign tick = xtick;
 
 always_ff @(posedge clk) begin
 	xtick <= 1'b0;
-	if (FAST_BOOT && cpu_reset) xtick <= 1'b1;
+	fb_div <= (fb_div == 2'd2) ? 2'd0 : fb_div + 2'd1;
+	if (FAST_BOOT && cpu_reset) xtick <= fb_div == 2'd2;
 	else if (xacc + 32'd4_194_304 >= CLK_HZ) begin
 		xacc  <= xacc + 32'd4_194_304 - CLK_HZ;
 		xtick <= 1'b1;
@@ -171,6 +173,7 @@ always_ff @(posedge clk) begin
 		xtick <= 1'b0;
 		xdiv  <= 22'h0;
 		cen   <= 1'b0;
+		fb_div <= 2'd0;
 	end
 end
 
@@ -231,12 +234,27 @@ wire        is_io  = addr[12:5] == 8'h00;
 wire        is_ram = addr >= 13'h0090 && addr < 13'h0200;
 wire        is_rom = addr >= 13'h0F00;
 
+// A write's address, strobe and byte, a clock after the 68HC05 presents them from the cen that
+// starts the bus cycle: the write lands at the cen that ends it, at least three clocks on (xtick
+// at most every third clock). At 100 MHz the 68HC05's state through to the port registers did
+// not fit in one.
+logic [12:0] b_addr;
+logic        b_wr;
+logic [7:0]  b_wd;
+always_ff @(posedge clk) begin
+	b_addr <= addr;
+	b_wr   <= wr;
+	b_wd   <= wdata;
+end
+wire        b_io  = b_addr[12:5] == 8'h00;
+wire        b_ram = b_addr >= 13'h0090 && b_addr < 13'h0200;
+
 // the power-down (115B) drives PA0 low (1161-1163) and waits there over a second; the port
 // set-up (1255, at every cold start) for some 65 bus cycles only
 logic       ddra0;                     // DDRA bit 0 as written (it reads 0)
 logic [8:0] pa0_low;                   // bus cycles PA0 has been driven low
 always_ff @(posedge clk) begin
-	if (cen & wr & is_io && addr[4:0] == 5'h04) ddra0 <= wdata[0];
+	if (cen & b_wr & b_io && b_addr[4:0] == 5'h04) ddra0 <= b_wd[0];
 	if (!ddra0 || pa[0]) pa0_low <= 9'd0;
 	else if (cen && !pa0_low[8]) pa0_low <= pa0_low + 9'd1;
 	if (pa0_low[8]) power_off <= 1'b1;
@@ -255,10 +273,10 @@ end
 logic [2:0] clk_ld;                    // bytes left: AE at 4 ... AB at 1
 logic       clk_set, rst_q;
 wire  [7:0] clk_byte = clock_secs[8 * (3'd4 - clk_ld) +: 8];
-wire        cpu_ram_we = cen & wr & is_ram;
+wire        cpu_ram_we = cen & b_wr & b_ram;
 wire        ram_we     = cpu_ram_we | (clk_ld != 3'd0);
-wire  [8:0] ram_wa     = cpu_ram_we ? addr[8:0] : 9'h0AA + 9'(clk_ld);
-wire  [7:0] ram_wd     = cpu_ram_we ? wdata : clk_byte;
+wire  [8:0] ram_wa     = cpu_ram_we ? b_addr[8:0] : 9'h0AA + 9'(clk_ld);
+wire  [7:0] ram_wd     = cpu_ram_we ? b_wd : clk_byte;
 
 logic [7:0] ram [0:511];
 logic [7:0] ram_q, rom_q, io_q;
@@ -299,7 +317,13 @@ always_ff @(posedge clk) begin
 	end
 end
 
-assign rdata = sel_q == 2'd3 ? rom_q : sel_q == 2'd2 ? ram_q : sel_q == 2'd1 ? io_q : 8'h00;
+// the byte read, a clock after the memories' registered outputs: the 68HC05 takes it at the cen
+// that ends the cycle, three clocks after the address at the soonest (at 100 MHz the memories
+// through the 68HC05's adders did not fit in one)
+logic [7:0] rdata_q;
+always_ff @(posedge clk)
+	rdata_q <= sel_q == 2'd3 ? rom_q : sel_q == 2'd2 ? ram_q : sel_q == 2'd1 ? io_q : 8'h00;
+assign rdata = rdata_q;
 
 always_ff @(posedge clk) begin
 	if (cen) begin
@@ -309,25 +333,25 @@ always_ff @(posedge clk) begin
 	end
 	if (sec) onesec[6] <= 1'b1;
 
-	if (cen & wr & is_io) begin
-		case (addr[4:0])
-			5'h00: pa   <= wdata;
-			5'h01: pb   <= wdata;
-			5'h02: pc_  <= wdata;
-			5'h04: ddra <= wdata & 8'hFE;
-			5'h05: ddrb <= wdata;
-			5'h06: ddrc <= wdata;
-			5'h07: pll  <= wdata;
+	if (cen & b_wr & b_io) begin
+		case (b_addr[4:0])
+			5'h00: pa   <= b_wd;
+			5'h01: pb   <= b_wd;
+			5'h02: pc_  <= b_wd;
+			5'h04: ddra <= b_wd & 8'hFE;
+			5'h05: ddrb <= b_wd;
+			5'h06: ddrc <= b_wd;
+			5'h07: pll  <= b_wd;
 			5'h08: begin
 				// a flag stays set where 1 is written; one that sets in this
 				// cycle is not lost
-				tctl[7]   <= (tctl[7] & wdata[7]) | tof_now;
-				tctl[6]   <= (tctl[6] & wdata[6]) | rti_now;
-				tctl[5:0] <= wdata[5:0];
+				tctl[7]   <= (tctl[7] & b_wd[7]) | tof_now;
+				tctl[6]   <= (tctl[6] & b_wd[6]) | rti_now;
+				tctl[5:0] <= b_wd[5:0];
 			end
 			5'h12: begin
-				onesec[6] <= (onesec[6] & wdata[6]) | sec;
-				{onesec[7], onesec[5:0]} <= {wdata[7], wdata[5:0]};
+				onesec[6] <= (onesec[6] & b_wd[6]) | sec;
+				{onesec[7], onesec[5:0]} <= {b_wd[7], b_wd[5:0]};
 			end
 			default: ;
 		endcase

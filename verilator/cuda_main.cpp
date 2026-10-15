@@ -48,7 +48,7 @@
 
 namespace {
 
-const double CLK_HZ = 8388608.0;          // -GCLK_HZ in the Makefile
+const double CLK_HZ = 16777216.0;         // -GCLK_HZ in the Makefile (Cuda's bus needs 3 clocks a tick at least)
 
 struct Options {
 	std::string rom;              // the firmware, for the reference (the RTL has it built in)

@@ -16,12 +16,16 @@
 //  output enable. New here: the request side, for the CPU's memory port, with
 //  one row opened and closed per request (no open pages yet); the upload port.
 //
-//  The module it assumes (a MiSTer SDRAM board of 128 MB): two ranks of
-//  64 MB on one bus, each 4 banks x 8192 rows x 1024 columns x 16 bits
-//  (AS4C32M16SB class); SDRAM_nCS low selects rank 0 and the board inverts
-//  it for rank 1, so every command goes to exactly one rank. A byte offset
-//  in the module maps to rank off[26], bank off[25:24], row off[23:11],
-//  column off[10:1]. A 64 MB board is rank 0 alone.
+//  The modules (the MiSTer SDRAM boards): 32 MB, one chip of 4 banks x 8192
+//  rows x 512 columns x 16 bits (AS4C16M16SA class); 64 MB, one chip of
+//  1024 columns (AS4C32M16SB class); 128 MB, two ranks of the 64 MB chip on
+//  one bus, SDRAM_nCS low selecting rank 0 and the board inverting it for
+//  rank 1, so every command goes to exactly one rank. A byte offset maps to
+//  rank off[26], column bit 9 off[25], bank off[24:23], row off[22:10],
+//  columns 8-0 off[9:1], as in sdram.sv: the first 32 MB are the same
+//  cells on every board (a 32 MB chip ignores A9), the first 64 MB on the
+//  64 and 128 MB boards. The machine keeps to the board's size (the ROM in
+//  its top 4 MB, MacPPC7300.sv).
 //
 //  The port (the CPU's memory port protocol): req held until ack, a 32-byte
 //  line (word 0, the lowest address, in bits 255-224) or one word with byte
@@ -222,8 +226,8 @@ always_ff @(posedge clk) begin
 				r_ud   <= up_d;
 				// ACTIVE: rank, bank, row
 				chip     <= cpu_req ? addr[26] : up_hw[26];
-				SDRAM_BA <= cpu_req ? addr[25:24] : up_hw[25:24];
-				SDRAM_A  <= cpu_req ? addr[23:11] : up_hw[23:11];
+				SDRAM_BA <= cpu_req ? addr[24:23] : up_hw[24:23];
+				SDRAM_A  <= cpu_req ? addr[22:10] : up_hw[22:10];
 				command  <= CMD_ACTIVE;
 				state    <= S_ACT;
 			end
@@ -246,7 +250,7 @@ always_ff @(posedge clk) begin
 		S_READ: begin
 			if (issued == 5'd0 || (r_line && issued == 5'd1 && t == 16'd8)) begin
 				command  <= CMD_READ;
-				SDRAM_A  <= {2'b00, 1'b0, r_hw[10:5], r_line ? issued[0] : r_hw[4], r_hw[3:1]};
+				SDRAM_A  <= {2'b00, 1'b0, r_hw[25], r_hw[9:5], r_line ? issued[0] : r_hw[4], r_hw[3:1]};
 				issued   <= issued + 5'd1;
 				if (issued == 5'd0) t <= 16'd1;
 			end
@@ -275,7 +279,7 @@ always_ff @(posedge clk) begin
 			if (r_up ? issued == 5'd0 : issued < nbeats) begin
 				command <= CMD_WRITE;
 				dq_oe   <= 1'b1;
-				SDRAM_A <= {2'b00, 1'b0, r_hw[10:1] + {6'h0, issued[3:0]}};
+				SDRAM_A <= {2'b00, 1'b0, r_hw[25], r_hw[9:1] + {5'h0, issued[3:0]}};
 				if (r_up) begin
 					dq_out <= r_ud;
 					dqm    <= 2'b00;

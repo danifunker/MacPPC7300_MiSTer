@@ -111,6 +111,7 @@ module MacPPC7300_gc
 	input  logic        modem_rxd,
 	input  logic        modem_cts,
 	output logic        modem_rts,
+	output logic        modem_midi,         // the ESCC's channel A at MIDI's rate
 
 	// the network bridge (MacPPC7300_enet): MACE's frame buffers and toggles, the address
 	input  logic        net_link,
@@ -272,7 +273,7 @@ MacPPC7300_escc escc (
 	.clk, .reset, .rtxc_tick, .trxc_tick(us_tick),
 	.sel(sel & devs & (scc_compat | scc_risc)), .we, .rn(scc_rn), .wdata(wb),
 	.rq(scc_rq), .txd_a(modem_txd), .rxd_a(modem_rxd), .cts_a(modem_cts), .rts_a(modem_rts),
-	.irq_a(scc_a_irq), .irq_b(scc_b_irq)
+	.midi_a(modem_midi), .irq_a(scc_a_irq), .irq_b(scc_b_irq)
 );
 
 // ---- the SCSI controllers: byte registers at (offset >> 4) & F (grandcentral.cpp:188, 211) ----

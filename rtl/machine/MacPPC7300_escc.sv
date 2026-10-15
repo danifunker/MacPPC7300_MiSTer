@@ -32,7 +32,9 @@
 //    Firmware's driver (FCode image 6 in the ROM) sets time constant 1 from
 //    RTxC in x16 mode: 38,400 baud, 8 data bits, 2 stop bits. WR11's TRxC
 //    source (2026-10-08) is a MIDI interface's 1 MHz clock, always there
-//    (trxc_tick), as the Quadra 800 core does: x32, 31,250 bit/s.
+//    (trxc_tick), as the Quadra 800 core does: x32, 31,250 bit/s. midi_a says
+//    channel A's transmitter runs so (the MT32-pi takes the port only then:
+//    a console at 38,400 baud, Linux's, hung it).
 //
 //  - Interrupts (2026-10-08), as the Z85C30's manual has them on a bus
 //    without interrupt acknowledge cycles (Grand Central has none, so no
@@ -93,6 +95,7 @@ module MacPPC7300_escc
 	input  logic       rxd_a,          //   and receive, asynchronous (1 when idle)
 	input  logic       cts_a,          //   CTS, asynchronous (0: clear to send)
 	output logic       rts_a,          //   1 while a received byte waits
+	output logic       midi_a,         //   1 while its transmitter runs at MIDI's rate
 	output logic       irq_a,          // channel A's interrupt (Grand Central's source 0F)
 	output logic       irq_b           // channel B's (10)
 );
@@ -129,7 +132,7 @@ wire       cmd_a = ptr_wr & chan_a;
 wire       cmd_b = ptr_wr & ~chan_a;
 
 logic [7:0] rr0_a, rr1_a, rd_a, rr0_b, rr1_b, rd_b;
-logic       txd_b;
+logic       txd_b, midi_b;
 logic [1:0] rxd_s, cts_s;              // the modem port's receive line and CTS, synchronised
 logic       rx_ip_a, tx_ip_a, ext_ip_a, sp_a, rx_ip_b, tx_ip_b, ext_ip_b, sp_b;
 
@@ -144,7 +147,7 @@ MacPPC7300_escc_ch ch_a (
 	.wr_en(wr_a), .wr_n(ptr), .wr_v(wdata), .tx_wr(tx_a), .rx_rd(rx_a),
 	.cmd_en(cmd_a), .cmd(wdata[5:3]), .crc_cmd(wdata[7:6]),
 	.rr0(rr0_a), .rr1(rr1_a), .rx_data(rd_a), .txd(txd_a), .rxd(rxd_s[1]), .cts(cts_s[1]),
-	.rx_ip(rx_ip_a), .tx_ip(tx_ip_a), .ext_ip(ext_ip_a), .special(sp_a)
+	.rx_ip(rx_ip_a), .tx_ip(tx_ip_a), .ext_ip(ext_ip_a), .special(sp_a), .midi(midi_a)
 );
 
 MacPPC7300_escc_ch ch_b (
@@ -152,7 +155,7 @@ MacPPC7300_escc_ch ch_b (
 	.wr_en(wr_b), .wr_n(ptr), .wr_v(wdata), .tx_wr(tx_b), .rx_rd(rx_b),
 	.cmd_en(cmd_b), .cmd(wdata[5:3]), .crc_cmd(wdata[7:6]),
 	.rr0(rr0_b), .rr1(rr1_b), .rx_data(rd_b), .txd(txd_b), .rxd(1'b1), .cts(1'b0),
-	.rx_ip(rx_ip_b), .tx_ip(tx_ip_b), .ext_ip(ext_ip_b), .special(sp_b)
+	.rx_ip(rx_ip_b), .tx_ip(tx_ip_b), .ext_ip(ext_ip_b), .special(sp_b), .midi(midi_b)
 );
 
 // Grand Central's LocalTalk helper ("LTPC", MacRISC registers 8-B; dingusppc's
@@ -261,7 +264,8 @@ module MacPPC7300_escc_ch
 	output logic       rx_ip,          // the interrupt pending bits
 	output logic       tx_ip,
 	output logic       ext_ip,
-	output logic       special         // the receive interrupt is a special condition's
+	output logic       special,        // the receive interrupt is a special condition's
+	output logic       midi            // the transmitter at MIDI's rate (TRxC, x32, asynchronous)
 );
 
 logic [7:0] wr1, wr3, wr4, wr5, wr10, wr11, wr12, wr13, wr14, wr15;
@@ -282,6 +286,7 @@ wire [23:0] rx_bit  = {6'd0, rx_brg ? brg_div : 18'd1} << mode_sh;
 // counted in TRxC's clocks when WR11 takes it (one a TRxC clock times the clock mode)
 wire        tx_tck  = wr11[4:3] == 2'b01 ? trxc_tick : rtxc_tick;
 wire        rx_tck  = wr11[6:5] == 2'b01 ? trxc_tick : rtxc_tick;
+always_ff @(posedge clk) midi <= wr11[4:3] == 2'b01 && wr4[7:6] == 2'b10 && !sync_md;
 
 // ---- the transmitter ------------------------------------------------------------------------
 logic [7:0]  tx_buf;

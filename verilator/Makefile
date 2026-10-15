@@ -120,7 +120,7 @@ cuda: $(CUDA_DIR)/cuda_tb
 
 $(CUDA_DIR)/cuda_tb: $(CUDA_SRCS) $(HERE)cuda_main.cpp $(HERE)Makefile $(HC05_LIB)
 	@mkdir -p $(CUDA_DIR)
-	@$(VERILATOR) $(VFLAGS) --top-module cuda_tb_top -GCLK_HZ=8388608 -Mdir $(CUDA_DIR) -o cuda_tb \
+	@$(VERILATOR) $(VFLAGS) --top-module cuda_tb_top -GCLK_HZ=16777216 -Mdir $(CUDA_DIR) -o cuda_tb \
 		-CFLAGS "-O2 -std=c++17 $(CUDA_CFLAGS)" $(CUDA_LDFLAGS) \
 		$(CUDA_SRCS) $(HERE)cuda_main.cpp \
 		> $(CUDA_DIR)/build.log 2>&1 || (cat $(CUDA_DIR)/build.log; false)

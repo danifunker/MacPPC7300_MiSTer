@@ -96,14 +96,22 @@ int main(int argc, char** argv) {
 	for (int i = 0; i < 8; i++) tick();
 	dut->reset = 0;
 
+	// midi_a: the MT32-pi takes the port only at MIDI's rate
+	auto midi = [](const char* what, bool want) {
+		check(what, dut->midi_a == want, dut->midi_a ? "midi_a 1" : "midi_a 0");
+	};
 	setup(0x4C, 0x50, 1, true);
 	bit_time("Open Firmware: x16 from the BRG, time constant 1", 38400);
+	midi("  ... not MIDI (a console here hung the MT32-pi)", false);
 	setup(0x84, 0x28, 0, false);
 	bit_time("MIDI: x32 from TRxC (1 MHz)", 31250);
+	midi("  ... MIDI", true);
 	setup(0x44, 0x50, 0, true);
 	bit_time("PPP 57,600: x16 from the BRG, time constant 0", 57600);
+	midi("  ... not MIDI", false);
 	setup(0x84, 0x00, 0, false);
 	bit_time("PPP 115,200: x32 from RTxC", 115200);
+	midi("  ... not MIDI", false);
 
 	// a byte in at MIDI's rate: 0x90 (note on), LSB first, one stop bit
 	setup(0x84, 0x28, 0, false);

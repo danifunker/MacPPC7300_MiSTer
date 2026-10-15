@@ -29,7 +29,8 @@
 //    F8000000  Hammerhead             1,280 bytes of registers
 //                                     (hammerhead.cpp:39) -> below
 //    FFC00000  ROM                    4 MB (machinetnt.cpp:131); SDRAM offset
-//                                     SDRAM_MB - 4 MB; writes are ignored.
+//                                     rom_at x 4 MB (the board's top 4 MB);
+//                                     writes are ignored.
 //                                     With boot_memtest, the 8 KB memory-test
 //                                     program (MacPPC7300_bootrom) mirrored over
 //                                     it instead
@@ -90,14 +91,14 @@ module MacPPC7300_machine
 	parameter int unsigned VIA_HZ   = 783_360,
 	parameter int unsigned RTXC_HZ  = 3_686_400,     // the ESCC's RTxC clock
 	parameter int unsigned SCSI_HZ  = 25_000_000,    // MESH's time base and Curio's clock (below CPU_HZ)
-	parameter int unsigned SDRAM_MB = 128,          // the module; the ROM sits in its top 4 MB
 	parameter int unsigned CUDA_FAST_BOOT = 0,      // 1: the test bench's (MacPPC7300_cuda FAST_BOOT)
 	parameter int unsigned SOUND_IN_DMA = 1         // 0: DMA channel 9 (sound in) its registers alone
 )
 (
 	input  logic         clk,
 	input  logic         reset,
-	input  logic [7:0]   ram_mb,                    // installed RAM, at most SDRAM_MB - 4
+	input  logic [7:0]   ram_mb,                    // installed RAM, at most 4 x rom_at
+	input  logic [4:0]   rom_at,                    // the ROM's SDRAM offset in 4 MB (quasi-static)
 	input  logic         boot_memtest,              // run the memory test in place of the ROM
 
 	// the CPU's memory port
@@ -168,6 +169,7 @@ module MacPPC7300_machine
 	input  logic         modem_rxd,
 	input  logic         modem_cts,
 	output logic         modem_rts,
+	output logic         modem_midi,                // the modem port at MIDI's rate (the MT32-pi takes it then)
 
 	// the network bridge (MacPPC7300_enet): MACE's side
 	input  logic         net_link,
@@ -258,8 +260,6 @@ module MacPPC7300_machine
 );
 
 import MacPPC7300_pkg::*;
-
-localparam logic [9:0] ROM_SDRAM = 10'((SDRAM_MB - 4) / 4);   // SDRAM offset of the ROM, in 4 MB
 
 // ---- RAM: Hammerhead's banks ----------------------------------------------------------------
 // One bank for each bit of ram_mb, the largest in bank 0 (120 MB: 64, 32, 16, 8 in banks
@@ -395,8 +395,8 @@ assign snoop_addr = gdm_addr[31:5];
 assign m_req   = pres_dma | ((own_cpu | grant_cpu) & c_req & to_mem);
 assign m_we    = pres_dma ? gdm_we   : c_we;
 assign m_line  = pres_dma ? gdm_line : c_line;
-assign m_addr  = pres_dma ? (d_rom ? {ROM_SDRAM, da[21:2]} : {5'd0, da_map[26:2]})
-                          : (is_rom ? {ROM_SDRAM, a[21:2]} : {5'd0, a_map[26:2]});
+assign m_addr  = pres_dma ? (d_rom ? {5'd0, rom_at, da[21:2]} : {5'd0, da_map[26:2]})
+                          : (is_rom ? {5'd0, rom_at, a[21:2]} : {5'd0, a_map[26:2]});
 assign m_be    = pres_dma ? gdm_be   : c_be;
 assign m_wdata = pres_dma ? gdm_wdata : c_wdata;
 wire   cpu_m_ack = m_ack & own_cpu;
@@ -677,7 +677,7 @@ MacPPC7300_gc #(.SCSI_HZ(SCSI_HZ), .SOUND_IN_DMA(SOUND_IN_DMA)) gc (
 	.sel(p_sel & p_dev[3]), .we(p_we), .addr(p_a[16:2]), .be(p_be), .wdata(p_wd),
 	.rdata(gc_rdata), .irq(gc_irq),
 	.cuda_treq, .cuda_cb1, .cb2(cb2_line), .via_tip, .via_byteack, .via_cb2_oe, .via_cb2_out,
-	.modem_txd, .modem_rxd, .modem_cts, .modem_rts,
+	.modem_txd, .modem_rxd, .modem_cts, .modem_rts, .modem_midi,
 	.net_link, .net_tx_we, .net_tx_wa, .net_tx_wd, .net_tx_go, .net_tx_len, .net_tx_done,
 	.net_rx_ra, .net_rx_q, .net_rx_avail, .net_rx_len, .net_rx_done, .net_mac, .net_mac_ok,
 	.nv_ld_we, .nv_ld_re, .nv_ld_addr, .nv_ld_data, .nv_ld_rack, .nv_ld_q, .nv_wr_cpu,

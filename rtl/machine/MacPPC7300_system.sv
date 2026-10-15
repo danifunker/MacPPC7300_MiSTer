@@ -21,7 +21,6 @@ module MacPPC7300_system
 #(
 	parameter int unsigned CPU_HZ   = 65_000_000,
 	parameter int unsigned TB_HZ    = 12_500_000,
-	parameter int unsigned SDRAM_MB = 128,
 	parameter int unsigned L2_KB    = 128,          // the L2 cache (MacPPC7300_l2)
 	parameter int unsigned CUDA_FAST_BOOT = 0,      // 1: the test bench's (MacPPC7300_cuda FAST_BOOT)
 	parameter int unsigned TRACE = 1,               // 0: no DDR3 trace (MacPPC7300_trace)
@@ -35,7 +34,8 @@ module MacPPC7300_system
 	output logic         cpu_in_reset,    // the CPU is held in reset (by reset or by Cuda)
 	output logic         power_wake,      // shut down, then the power key: the machine wants a reset
 	input  logic [31:0]  reset_pc,
-	input  logic [7:0]   ram_mb,          // installed RAM, at most SDRAM_MB - 4
+	input  logic [7:0]   ram_mb,          // installed RAM, at most 4 x rom_at
+	input  logic [4:0]   rom_at,          // the ROM's SDRAM offset in 4 MB: the board's top 4 MB (quasi-static)
 	input  logic         boot_memtest,    // the memory test in place of the ROM
 	input  logic         l2_on,           // the L2 cache in the memory path (quasi-static, taken under reset)
 
@@ -68,6 +68,7 @@ module MacPPC7300_system
 	input  logic         modem_rxd,
 	input  logic         modem_cts,       // asynchronous: 0 clear to send
 	output logic         modem_rts,       // 1 while a received byte waits
+	output logic         modem_midi,      // 1 while the port runs at MIDI's rate (TRxC, x32)
 
 	// the sound AWACS plays, signed, in the CPU's clock, changing at its
 	// frame rate (the framework's audio input takes a value seen twice)
@@ -267,9 +268,9 @@ logic         scsi_tr_ev;
 logic [255:0] scsi_tr_rec;
 logic         snd_frame;
 
-MacPPC7300_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_FAST_BOOT(CUDA_FAST_BOOT),
+MacPPC7300_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .CUDA_FAST_BOOT(CUDA_FAST_BOOT),
                      .SOUND_IN_DMA(SOUND_IN_DMA)) machine (
-	.clk, .reset, .ram_mb, .boot_memtest,
+	.clk, .reset, .ram_mb, .rom_at, .boot_memtest,
 	.c_req, .c_we, .c_line, .c_addr, .c_be, .c_wdata, .c_ack, .c_rdata,
 	.m_req, .m_we, .m_line, .m_addr, .m_be, .m_wdata, .m_ack, .m_rdata,
 	.ext_irq, .tb_tick, .cpu_reset(cuda_reset), .power_wake,
@@ -278,7 +279,7 @@ MacPPC7300_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .SDRAM_MB(SDRAM_MB), .CUDA_
 	.sd_buff_addr, .sd_buff_dout, .sd_buff_din, .sd_buff_wr, .disk_busy, .cd_left, .cd_right,
 	.fd_mounted, .fd_lba, .fd_rd, .fd_blk_cnt, .fd_ack,
 	.dma_wr, .dma_wr_line, .dma_wr_addr, .dma_wr_be, .dma_wr_data,
-	.modem_txd, .modem_rxd, .modem_cts, .modem_rts, .snd_left, .snd_right, .snd_frame,
+	.modem_txd, .modem_rxd, .modem_cts, .modem_rts, .modem_midi, .snd_left, .snd_right, .snd_frame,
 	.net_link, .net_tx_we, .net_tx_wa, .net_tx_wd, .net_tx_go, .net_tx_len, .net_tx_done,
 	.net_rx_ra, .net_rx_q, .net_rx_avail, .net_rx_len, .net_rx_done, .net_mac, .net_mac_ok,
 	.nv_ld_we, .nv_ld_re, .nv_ld_addr, .nv_ld_data, .nv_ld_rack, .nv_ld_q, .nv_wr_cpu,
