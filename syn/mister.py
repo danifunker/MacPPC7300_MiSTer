@@ -61,6 +61,10 @@ to the card and the core's UART.
                                                  than the ring holds
     python syn\\mister.py trace-fetch OUT          ... brings the capture back; then
     python syn\\mister.py trace --file OUT         decodes it
+    python syn\\mister.py net [SECONDS]           the Ethernet bridge's rings watched (default 20 s):
+                                                 frames sent and received, a receive side that
+                                                 takes nothing (exit 1); run with the guest's
+                                                 network up (Linux's DHCP, Mac OS with TCP/IP)
 
 For a terminal of your own on the modem port, from a shell on the MiSTer:
 stty -F /dev/ttyS1 38400 raw -echo, then cat /dev/ttyS1 and write to it.
@@ -347,8 +351,52 @@ def main():
         first = int(a[a.index("--from") + 1]) if "--from" in a else None
         fname = a[a.index("--file") + 1] if "--file" in a else None
         return trace(last, first, fname)
+    if cmd == "net":
+        return net_watch(int(a[1]) if len(a) > 1 else 20)
     print(__doc__)
     return 2
+
+
+NET_BASE = 0x30400000
+
+
+def net_watch(secs):
+    """The Ethernet bridge's rings (MacPPC7300_enet's window in DDR3) watched
+    for secs seconds: frames the core sent and the Main took, frames the Main
+    put in the receive ring and the core took. 0 if both ways move (or there
+    is nothing to receive), 1 if the bridge is not up or the receive side
+    stands still with frames waiting (2026-10-15: MACE's receive path did not
+    fit 100 MHz and took no frame at all)."""
+    script = ("import mmap,os,time;f=os.open('/dev/mem',os.O_RDONLY|os.O_SYNC);"
+              "m=mmap.mmap(f,64,mmap.MAP_SHARED,mmap.PROT_READ,offset=%d);"
+              "w=lambda i:int.from_bytes(m[8*i:8*i+8],'little');t=time.time()\n"
+              "while time.time()-t<%d:\n"
+              " print(' '.join('%%x'%%w(i) for i in range(6)),flush=True);time.sleep(0.5)" % (NET_BASE, secs))
+    args = ["ssh"] + ssh_args() + ["root@" + host(), "python3 -c \"%s\"" % script]
+    rows = [[int(x, 16) for x in ln.split()] for ln in
+            subprocess.check_output(args, timeout=secs + 60, text=True).splitlines() if ln.strip()]
+    if not rows or rows[0][0] >> 32 != 0x50504345:
+        print("no bridge: the core's Ethernet is off in the OSD, or the core has none")
+        return 1
+    first, last = rows[0], rows[-1]
+    if not last[5] >> 63:
+        print("the Main does not serve the rings (no address written): a Main without mac_eth?")
+        return 1
+    mac = ":".join("%02x" % ((last[5] >> (8 * i)) & 0xFF) for i in range(6))
+    tx = last[1] - first[1]
+    rx_in, rx_taken = last[3] - first[3], last[4] - first[4]
+    waiting = last[3] - last[4]
+    print("guest %s, epoch %02x, %d s: sent %d (the Main took %d), received %d (the core took %d); "
+          "now %d waiting in the receive ring" % (mac, last[0] & 0xFF, secs, tx, last[2] - first[2],
+                                                    rx_in, rx_taken, waiting))
+    if waiting and rx_taken == 0:
+        print("RECEIVE STUCK: frames wait and the core takes none%s" % (" (the ring is full)" if waiting >= 8 else ""))
+        return 1
+    if last[1] - last[2] >= 8:
+        print("TRANSMIT STUCK: the Main takes none of the core's frames")
+        return 1
+    print("ok")
+    return 0
 
 
 TRACE_BASE, TRACE_RECS = 0x30500000, 2048

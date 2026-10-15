@@ -1,5 +1,6 @@
 // The SCSI bench's top: Grand Central (MacPPC7300_gc: MESH, its DMA channel;
-// AWACS and its sound-out channel) and the disks (MacPPC7300_scsidisk) on the internal bus, wired as
+// AWACS and its sound-out channel; MACE and its two, the bridge's side the
+// bench's) and the disks (MacPPC7300_scsidisk) on the internal bus, wired as
 // MacPPC7300_machine wires them, and the floppy's image (MacPPC7300_fdblk) for
 // SWIM3; Grand Central's register port, its DMA port and the hps_io side
 // are the bench's. The SCSI controllers' 25 MHz tick is made here by phase
@@ -51,6 +52,19 @@ module scsi_tb_top
 	// AWACS's samples (DMA channel 8)
 	output logic [15:0]  snd_left,
 	output logic [15:0]  snd_right,
+	// MACE's side of the Ethernet bridge (MacPPC7300_enet's, the bench's model)
+	input  logic         net_link,
+	output logic         net_tx_we,
+	output logic [7:0]   net_tx_wa,
+	output logic [63:0]  net_tx_wd,
+	output logic         net_tx_go,
+	output logic [10:0]  net_tx_len,
+	input  logic         net_tx_done,
+	output logic [7:0]   net_rx_ra,
+	input  logic [63:0]  net_rx_q,
+	input  logic         net_rx_avail,
+	input  logic [10:0]  net_rx_len,
+	output logic         net_rx_done,
 	// the floppy's slot (6)
 	input  logic         fd_mounted,
 	output logic [31:0]  fd_lba,
@@ -129,8 +143,8 @@ MacPPC7300_gc #(.SCSI_HZ(SCSI_HZ)) gc (
 	.sel, .we, .addr, .be, .wdata, .rdata, .irq,
 	.cuda_treq(1'b1), .cuda_cb1(1'b1), .cb2(1'b1), .via_tip(), .via_byteack(), .via_cb2_oe(), .via_cb2_out(),
 	.modem_txd(), .modem_rxd(1'b1), .modem_cts(1'b0), .modem_rts(),
-	.net_link(1'b0), .net_tx_we(), .net_tx_wa(), .net_tx_wd(), .net_tx_go(), .net_tx_len(), .net_tx_done(1'b0),
-	.net_rx_ra(), .net_rx_q(64'd0), .net_rx_avail(1'b0), .net_rx_len(11'd0), .net_rx_done(), .net_mac(48'd0),
+	.net_link, .net_tx_we, .net_tx_wa, .net_tx_wd, .net_tx_go, .net_tx_len, .net_tx_done,
+	.net_rx_ra, .net_rx_q, .net_rx_avail, .net_rx_len, .net_rx_done, .net_mac(48'd0),
 	.net_mac_ok(1'b0), .nv_ld_we(1'b0), .nv_ld_re(1'b0), .nv_ld_addr(13'h0), .nv_ld_data(8'h0),
 	.nv_ld_rack(), .nv_ld_q(), .nv_wr_cpu(),
 	.ctl_irq(1'b0), .nmi(1'b0),

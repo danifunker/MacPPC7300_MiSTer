@@ -26,7 +26,11 @@
 //      sectors decoded as Apple's driver does (denib);
 //   14. sound out: AWACS playing DMA channel 8's frames in order, a part
 //      frame left by a stopped channel dropped, a late frame held, the rate
-//      set by a byte store.
+//      set by a byte store;
+//   15. Ethernet as Linux's mace.c drives it: MACE reset and given its
+//      address, a receive ring on DMA channel 3, frames from the bridge
+//      back to back (each one's bytes, FCS and status in its buffer), one for
+//      another address dropped, the ring wrapping; a frame sent on channel 2.
 // --stock: the official Main instead (no CD drive, nothing written to slot 4).
 //
 // Every byte the drivers take is checked against the image; every step's
@@ -250,6 +254,35 @@ void mem_edge() {
 	mem_ack = true;
 }
 
+// ---- MACE's side of the Ethernet bridge, as MacPPC7300_enet presents it (in clk) ------------------
+// A received frame waits in a buffer of 64-bit words (byte 0 in bits 7-0) read a clock after its
+// address, rx_avail toggled; MACE toggles rx_done when it has taken it. MACE writes a frame to send
+// a word at a time and toggles tx_go; the bridge answers tx_done.
+uint64_t net_rxb[256];
+uint64_t net_rxq = 0, net_txw[256];
+uint16_t net_rxlen = 0;
+bool net_avail = false, net_go_seen = false, net_txdone = false;
+std::vector<std::vector<uint8_t>> net_sent;
+
+void net_edge(uint8_t ra, bool twe, uint8_t twa, uint64_t twd) {
+	net_rxq = net_rxb[ra];
+	if (twe) net_txw[twa] = twd;
+	if (dut->net_tx_go != net_go_seen) {
+		net_go_seen = dut->net_tx_go;
+		std::vector<uint8_t> f(dut->net_tx_len);
+		for (size_t k = 0; k < f.size(); k++) f[k] = (uint8_t)(net_txw[k >> 3] >> (8 * (k & 7)));
+		net_sent.push_back(f);
+		net_txdone = !net_txdone;
+	}
+}
+void net_deliver(const std::vector<uint8_t>& f) {
+	std::memset(net_rxb, 0, sizeof net_rxb);
+	for (size_t k = 0; k < f.size(); k++) net_rxb[k >> 3] |= (uint64_t)f[k] << (8 * (k & 7));
+	net_rxlen = (uint16_t)f.size();
+	net_avail = !net_avail;
+}
+bool net_taken() { return (bool)dut->net_rx_done == net_avail; }
+
 // ---- the two clocks ---------------------------------------------------------------------------
 const double PA = 1e6 / 65.0 / 2, PB = 1e6 / 100.0 / 2;   // half periods, ps
 double ta = PA, tb = PB;
@@ -265,6 +298,11 @@ void drive() {
 	dut->sd_buff_addr = host.addr;
 	dut->sd_buff_dout = host.dout;
 	dut->sd_buff_wr = host.wr;
+	dut->net_link = 1;
+	dut->net_rx_q = net_rxq;
+	dut->net_rx_avail = net_avail;
+	dut->net_rx_len = net_rxlen;
+	dut->net_tx_done = net_txdone;
 }
 
 // one cycle of the CPU's clock
@@ -274,9 +312,13 @@ void tick() {
 		if (a) ta += PA; else tb += PB;
 		drive();
 		if (a) {
+			// what the bridge's buffers take at this edge
+			uint8_t ra = dut->net_rx_ra, twa = dut->net_tx_wa;
+			bool twe = dut->net_tx_we;
+			uint64_t twd = dut->net_tx_wd;
 			dut->clk = !dut->clk;
 			dut->eval();
-			if (dut->clk) { mem_edge(); break; }
+			if (dut->clk) { mem_edge(); net_edge(ra, twe, twa, twd); break; }
 		} else {
 			dut->clk_h = !dut->clk_h;
 			dut->eval();
@@ -443,6 +485,22 @@ void d8w(int reg, uint32_t le) {
 uint32_t d8r(int reg) {
 	uint32_t be = access(DMA_8 + 4 * reg, 4, false, 0);
 	return (be >> 24) | ((be >> 8) & 0xFF00) | ((be << 8) & 0xFF0000) | (be << 24);
+}
+// MACE (Grand Central's 11000, a byte register every 16) and its DMA channels 2 (out) and 3 (in)
+const uint32_t MACE = 0x11000, DMA_2 = 0x08200, DMA_3 = 0x08300;
+void mace_w(int reg, uint8_t v) { access(MACE + 16 * reg, 1, true, v); }
+uint8_t mace_r(int reg) { return (uint8_t)access(MACE + 16 * reg, 1, false, 0); }
+void dmaw(uint32_t ch, int reg, uint32_t le) {
+	access(ch + 4 * reg, 4, true, (le >> 24) | ((le >> 8) & 0xFF00) | ((le << 8) & 0xFF0000) | (le << 24));
+}
+// Ethernet's CRC-32 of a frame (the FCS, low byte first on the wire)
+uint32_t eth_crc(const std::vector<uint8_t>& f) {
+	uint32_t c = 0xFFFFFFFF;
+	for (uint8_t b : f) {
+		c ^= b;
+		for (int i = 0; i < 8; i++) c = (c & 1) ? (c >> 1) ^ 0xEDB88320 : c >> 1;
+	}
+	return ~c;
 }
 // n stereo frames in memory, big-endian: left l0 + k, right r0 + k
 void put_frames(uint32_t at, int n, uint16_t l0, uint16_t r0) {
@@ -1064,6 +1122,107 @@ int main(int argc, char** argv) {
 		put_cmd(0x790, 7, 0x00, 0, 0);
 		d8w(3, 0x780); d8w(0, 0x80008000);
 		check_frames(play(12 * FRAME_CLKS), 8, 0x7800, 0x7900, "44,100 Hz after Mac OS's read-modify-writes");
+	}
+
+	// ---- 15: Ethernet, as Linux's mace.c drives MACE and its channels ----
+	std::printf("15. Ethernet (MACE, DMA channels 3 and 2) as Linux's mace.c: reset, address, a receive ring;\n"
+	            "    frames back to back (broadcast, ours, full length, odd length, the ring wrapping),\n"
+	            "    one for another address dropped; a frame sent\n");
+	{
+		const uint8_t me[6] = {0x08, 0x00, 0x07, 0x12, 0x34, 0x56};
+		const uint8_t other[6] = {0x08, 0x00, 0x07, 0x99, 0x99, 0x99};
+		const uint8_t bcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+		// mace_reset: soft reset, interrupts masked, the FIFOs, the address, no multicast
+		mace_w(11, 0x01);
+		run(10);
+		check((mace_r(11) & 0x01) == 0, "MACE: BIUCC's SWRST still set");
+		mace_w(9, 0xFF); mace_r(8); mace_w(13, 0x00);
+		mace_w(11, 0x20); mace_w(29, 0x80); mace_w(12, 0x00); mace_w(2, 0x01); mace_w(5, 0x00);
+		mace_w(18, 0x84);                                   // IAC: ADDRCHG | PHYADDR
+		for (int i = 0; i < 100 && (mace_r(18) & 0x80); i++) run(10);
+		for (int i = 0; i < 6; i++) mace_w(21, me[i]);
+		mace_w(18, 0x82);                                   // ADDRCHG | LOGADDR
+		for (int i = 0; i < 100 && (mace_r(18) & 0x80); i++) run(10);
+		for (int i = 0; i < 8; i++) mace_w(20, 0x00);
+		mace_w(18, 0x00);
+		mace_w(14, 0x00);
+		// mace_open: four INPUT_LASTs (interrupt always) and a NOP branching back, then RUN
+		const uint32_t RING = 0xA00, BUF = 0x70000;
+		const uint16_t RXLEN = 1522;
+		auto arm = [&](int i) { put_cmd(RING + 16 * i, 3, 0x30, RXLEN, BUF + 0x800 * i); };
+		for (int i = 0; i < 4; i++) arm(i);
+		put_cmd(RING + 64, 6, 0x0C, 0, 0, RING);
+		std::memset(&mem[BUF], 0xEE, 0x2000);
+		dmaw(DMA_3, 0, 0xF0000000);
+		dmaw(DMA_3, 3, RING);
+		dmaw(DMA_3, 0, 0x80008000);
+		mace_w(13, 0x03);                                   // MACCC: ENXMT | ENRCV
+		mace_w(9, 0x02);
+
+		auto frame = [](const uint8_t* dst, uint16_t type, int len, int seed) {
+			std::vector<uint8_t> f(dst, dst + 6);
+			for (int i = 0; i < 6; i++) f.push_back((uint8_t)(0x10 + i));
+			f.push_back((uint8_t)(type >> 8)); f.push_back((uint8_t)type);
+			while ((int)f.size() < len) f.push_back((uint8_t)(seed + f.size() * 7));
+			return f;
+		};
+		auto deliver = [&](const std::vector<uint8_t>& f, const char* what) {
+			net_deliver(f);
+			int i = 0;
+			while (!net_taken() && i++ < 200000) run(1);
+			check(net_taken(), "Ethernet: MACE never took the frame (%s)", what);
+		};
+		auto expect = [&](int buf, const std::vector<uint8_t>& f, const char* what) {
+			const uint8_t* b = &mem[BUF + 0x800 * buf];
+			uint32_t fcs = eth_crc(f);
+			size_t n = f.size(), cnt = n + 4;
+			bool data = std::memcmp(b, f.data(), n) == 0;
+			bool fcs_ok = b[n] == (uint8_t)fcs && b[n + 1] == (uint8_t)(fcs >> 8) &&
+			              b[n + 2] == (uint8_t)(fcs >> 16) && b[n + 3] == (uint8_t)(fcs >> 24);
+			bool rfs = b[n + 4] == (uint8_t)cnt && b[n + 5] == (uint8_t)(cnt >> 8) && b[n + 6] == 0 && b[n + 7] == 0;
+			check(data && fcs_ok && rfs && b[n + 8] == 0xEE,
+				"Ethernet %s: data %d FCS %d status %02X %02X %02X %02X (count %zu) after %02X", what,
+				data, fcs_ok, b[n + 4], b[n + 5], b[n + 6], b[n + 7], cnt, b[n + 8]);
+			uint32_t d = RING + 16 * buf;
+			check(res_count(d) == RXLEN - (n + 8) && (xfer_stat(d) & 0x8400) == 0x8400,
+				"Ethernet %s: resCount %u (%zu expected), xferStatus %04X", what, res_count(d), RXLEN - (n + 8), xfer_stat(d));
+		};
+		std::vector<uint8_t> f0 = frame(bcast, 0x0806, 60, 1), f1 = frame(me, 0x0800, 1514, 2),
+			f2 = frame(other, 0x0800, 100, 3), f3 = frame(me, 0x0800, 75, 4), f4 = frame(bcast, 0x0800, 64, 5),
+			f5 = frame(me, 0x86DD, 333, 6);
+		deliver(f0, "broadcast, 60 bytes");
+		deliver(f1, "ours, 1514 bytes");
+		deliver(f2, "another address");
+		deliver(f3, "ours, 75 bytes");
+		deliver(f4, "broadcast, 64 bytes");
+		run(2000);
+		expect(0, f0, "broadcast, 60 bytes");
+		expect(1, f1, "ours, 1514 bytes");
+		expect(2, f3, "ours, 75 bytes");
+		expect(3, f4, "broadcast, 64 bytes");
+		check(mace_r(24) == 0, "Ethernet: frames missed (MPC %u)", mace_r(24));
+		check((access(0x2C, 4, false, 0) & 0x08000000) != 0, "Ethernet: Grand Central has no level for DMA channel 3");
+		access(0x28, 4, true, 0x08000000);
+		// the driver takes buffer 0 back; the channel came round the NOP to it
+		arm(0);
+		std::memset(&mem[BUF], 0xEE, 0x800);
+		deliver(f5, "ours, 333 bytes, the ring wrapped");
+		run(2000);
+		expect(0, f5, "ours, 333 bytes, the ring wrapped");
+
+		// mace_start_xmit: an OUTPUT_LAST and a STOP on channel 2
+		std::vector<uint8_t> t = frame(other, 0x0800, 100, 9);
+		std::memcpy(&mem[0x74000], t.data(), t.size());
+		put_cmd(0xB00, 1, 0x00, (uint16_t)t.size(), 0x74000);
+		put_cmd(0xB10, 7, 0x00, 0, 0);
+		dmaw(DMA_2, 0, 0xF0000000);
+		dmaw(DMA_2, 3, 0xB00);
+		dmaw(DMA_2, 0, 0x80008000);
+		for (int i = 0; i < 20000 && net_sent.empty(); i++) run(10);
+		check(net_sent.size() == 1 && net_sent[0] == t, "Ethernet: the frame sent (%zu frames, %zu bytes)",
+			net_sent.size(), net_sent.empty() ? (size_t)0 : net_sent[0].size());
+		run(2000);
+		check(mace_r(3) & 0x80, "Ethernet: XMTFS has no XMTSV after the frame");
 	}
 
 	std::printf("%llu cycles; DMA: %d lines, %d words; the card: %d blocks read, %d written\n",

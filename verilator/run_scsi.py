@@ -12,7 +12,9 @@ READ CAPACITY, a selection of an absent ID; then the CD-ROM at ID 3 and the
 BlueSCSI Toolbox against a model of the Main's Mac layer (--stock: the
 official Main, no CD drive); the messages Mac OS 8.5's driver sends (SDTR,
 WDTR, a MESSAGE REJECT answered under ATN); last the floppy: SWIM3 reading
-DiskCopy and raw images (1440K, 800K) into memory by DMA channel 1. A memory answers the DMA port, and hps_io's
+DiskCopy and raw images (1440K, 800K) into memory by DMA channel 1; sound out;
+Ethernet as Linux's mace.c drives MACE (frames from the bridge received into a
+ring on DMA channel 3, one sent on channel 2). A memory answers the DMA port, and hps_io's
 block side serves a made-up image (or --disk FILE). Every byte is checked.
 --verbose prints every block the card moves. A few seconds.
 

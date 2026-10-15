@@ -210,7 +210,6 @@ wire  [11:0] r_n802 = (r_type + 16'd14 < {5'd0, r_len}) ? 12'(r_type + 16'd14) :
 
 assign rx_ra    = (rs == R_DST) ? 8'd0 : (rs == R_TYPE) ? 8'd1 : r_p[10:3];
 assign di_valid = rs == R_SEND && r_wt == 2'd0;
-assign di_last  = r_p == r_tot - 12'd1;
 
 always_ff @(posedge clk) begin
 	if (tx_we) lbb[tx_wa] <= tx_wd;
@@ -228,15 +227,24 @@ logic [31:0] r_crc;
 wire  [31:0] r_fcs_v = ~r_crc;
 wire  [11:0] r_fi    = r_p - {1'b0, r_n};
 
+logic [7:0] r_byte;
 always_comb begin
-	if (r_p < {1'b0, r_n})  di_data = r_q[8 * r_p[2:0] +: 8];
-	else if (r_p < r_cnt)   di_data = r_fcs_v[8 * r_fi[1:0] +: 8];  // the FCS
+	if (r_p < {1'b0, r_n})  r_byte = r_q[8 * r_p[2:0] +: 8];
+	else if (r_p < r_cnt)   r_byte = r_fcs_v[8 * r_fi[1:0] +: 8];  // the FCS
 	else case (r_p - r_cnt)
-		12'd0:   di_data = r_cnt[7:0];                             // RFS0, RFS1: the count
-		12'd1:   di_data = {4'h0, r_cnt[11:8]};
-		default: di_data = 8'h00;                                  // RFS2, RFS3: no runts, collisions
+		12'd0:   r_byte = r_cnt[7:0];                             // RFS0, RFS1: the count
+		12'd1:   r_byte = {4'h0, r_cnt[11:8]};
+		default: r_byte = 8'h00;                                  // RFS2, RFS3: no runts, collisions
 	endcase
 end
+// The byte and its end of frame from registers, made the clock before they
+// are offered (r_wt 1: the frame RAM's word is in): they go straight into
+// the DMA's line buffer, and at 100 MHz the choice above did not fit there
+always_ff @(posedge clk)
+	if (rs == R_SEND && r_wt == 2'd1) begin
+		di_data <= r_byte;
+		di_last <= r_p == r_tot - 12'd1;
+	end
 
 always_ff @(posedge clk) begin
 	tx_we <= 1'b0;
