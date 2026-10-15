@@ -634,6 +634,19 @@ function automatic logic [31:0] iobus_rdata(input logic [15:0] v);
 	iobus_rdata = {v[7:0], v[15:8], 16'h0};
 endfunction
 
+// ---- the Ethernet address ROM: the Main's address on the network, else dingusppc's ----------
+// As Mac OS 9's driver reads it: the six bytes bit-reversed, then AA, then a check byte (the
+// eight XOR to FF, as Linux's macmace.c checks on the Quadra AV); the ROM and Mac OS 7.6.1
+// take the address either way round (dingusppc's grandcentral.cpp)
+wire  [47:0] rom_mac = net_mac_ok ? net_mac : {8'h66, 8'h55, 8'h44, 8'h07, 8'h00, 8'h08};
+logic [47:0] rom_rev;
+logic [7:0]  rom_chk;
+always_ff @(posedge clk) begin
+	for (int i = 0; i < 48; i++) rom_rev[i] <= rom_mac[(i & ~7) | (7 - (i & 7))];
+	rom_chk <= ~(rom_rev[7:0] ^ rom_rev[15:8] ^ rom_rev[23:16] ^ rom_rev[31:24] ^ rom_rev[39:32] ^
+	             rom_rev[47:40] ^ 8'hAA);
+end
+
 // ---- what a read returns ---------------------------------------------------------------
 logic [31:0] rq;
 always_comb begin
@@ -691,17 +704,8 @@ always_comb begin
 					default:     rq = byte_reg_rdata(be, via_ier | 8'h80);
 				endcase
 			end
-			4'h9: begin                       // the Main's address on the network, else dingusppc's
-				if (net_mac_ok && off[6:4] < 3'd6) rq = byte_reg_rdata(be, net_mac[8 * off[6:4] +: 8]);
-				else case (off[6:4])
-					3'd0:    rq = byte_reg_rdata(be, 8'h08);
-					3'd2:    rq = byte_reg_rdata(be, 8'h07);
-					3'd3:    rq = byte_reg_rdata(be, 8'h44);
-					3'd4:    rq = byte_reg_rdata(be, 8'h55);
-					3'd5:    rq = byte_reg_rdata(be, 8'h66);
-					default: rq = byte_reg_rdata(be, 8'h00);
-				endcase
-			end
+			4'h9:    rq = byte_reg_rdata(be, off[6:4] == 3'd7 ? rom_chk :
+			                                 off[6:4] == 3'd6 ? 8'hAA : rom_rev[8 * off[6:4] +: 8]);
 			4'hA:    rq = iobus_rdata(16'hE13F);
 			4'hD:    rq = iobus_rdata(nv_hi);
 			default: rq = 32'h0;              // 4'hF, the NVRAM, answers from its RAM

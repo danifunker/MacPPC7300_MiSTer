@@ -6,7 +6,7 @@
 //  (MacPPC7300_enet, the OSD's Ethernet option)
 //
 //  The registers as dingusppc's devices/ethernet/mace.cpp reads and writes
-//  them (MACE revision A2, chip ID 0941), the bits as the Am79C940's data
+//  them (but revision B0, chip ID 0940, below), the bits as the Am79C940's data
 //  sheet and Linux's drivers/net/ethernet/apple/mace.h name them. One byte
 //  each, 16 bytes apart in Grand Central's 11000 window (offset >> 4):
 //     0  RCVFIFO   reads 0 (received bytes come by DMA, below)
@@ -32,7 +32,9 @@
 //    14  PLSCC     stored (dingusppc reads it as 0)
 //    15  PHYCC     stored; LNKFL (80) reads 1 with no network (no cable),
 //                  unless DLNKTST (40) disables the link test
-//    16  CHIPID    41, then 09 at 17
+//    16  CHIPID    40, then 09 at 17: revision B0 (Mac OS 9's driver for
+//                  Grand Central's MACE takes only 0940 and 1940; dingusppc's
+//                  0941, revision A2, it refuses)
 //    18  IAC       PHYADDR (04) or LOGADDR (02) set the byte pointer to 0
 //                  for registers 21 (PADR, 6 bytes) and 20 (LADRF, 8 bytes),
 //                  each clearing after its last byte; ADDRCHG (80) clears
@@ -176,7 +178,7 @@ function automatic logic [7:0] reg_read(input logic [4:0] n);
 		5'd13:   r = mac_cc;
 		5'd14:   r = pls_cc;
 		5'd15:   r = {~phy_cc[6] & ~link, phy_cc[6:0]};
-		5'd16:   r = 8'h41;
+		5'd16:   r = 8'h40;
 		5'd17:   r = 8'h09;
 		5'd18:   r = iac;
 		5'd24:   r = mpc;
