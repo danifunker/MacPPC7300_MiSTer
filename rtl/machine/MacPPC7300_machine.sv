@@ -87,6 +87,7 @@
 module MacPPC7300_machine
 #(
 	parameter int unsigned CPU_HZ   = 65_000_000,
+	parameter int unsigned CPU_HZ_FAST = CPU_HZ,    // the clock with cpu_fast
 	parameter int unsigned TB_HZ    = 12_500_000,
 	parameter int unsigned VIA_HZ   = 783_360,
 	parameter int unsigned RTXC_HZ  = 3_686_400,     // the ESCC's RTxC clock
@@ -96,6 +97,7 @@ module MacPPC7300_machine
 )
 (
 	input  logic         clk,
+	input  logic         cpu_fast,                  // clk is CPU_HZ_FAST, else CPU_HZ (changes only in reset)
 	input  logic         reset,
 	input  logic [7:0]   ram_mb,                    // installed RAM, at most 4 x rom_at
 	input  logic [4:0]   rom_at,                    // the ROM's SDRAM offset in 4 MB (quasi-static)
@@ -513,7 +515,7 @@ logic [31:0] line_buf [8];
 
 // a word access to the VIA waits for the VIA's clock: its next edge, then half
 // a cycle (a line goes at once, as to any device)
-localparam int unsigned VIA_HALF = CPU_HZ / VIA_HZ / 2;
+localparam int unsigned VIA_HALF = CPU_HZ / VIA_HZ / 2, VIA_HALF_FAST = CPU_HZ_FAST / VIA_HZ / 2;
 logic [1:0] vw;                                    // 0 idle; 1 to the edge; 2 the half cycle
 logic [7:0] vw_cnt;
 wire  via_wait = q_is_via & ~q_line;
@@ -537,8 +539,19 @@ end
 
 // ---- the time base, the VIA's clock, the ESCC's and the SCSI controllers', the microsecond, ----
 // ---- AWACS's twice 44,100 Hz ----
+// Each rate R by phase accumulation: past the clock less R, the clock less R comes off,
+// else R goes on; the clock less R registered (cpu_fast changes only in reset)
 logic [31:0] tb_acc, via_acc, rtxc_acc, scsi_acc, us_acc, snd_acc;
 logic        via_tick, rtxc_tick, scsi_tick, us_tick, snd_tick;
+logic [31:0] tb_d, via_d, rtxc_d, scsi_d, us_d, snd_d;
+always_ff @(posedge clk) begin
+	snd_d  <= (cpu_fast ? CPU_HZ_FAST : CPU_HZ) - 32'd88_200;
+	us_d   <= (cpu_fast ? CPU_HZ_FAST : CPU_HZ) - 32'd1_000_000;
+	scsi_d <= (cpu_fast ? CPU_HZ_FAST : CPU_HZ) - SCSI_HZ;
+	rtxc_d <= (cpu_fast ? CPU_HZ_FAST : CPU_HZ) - RTXC_HZ;
+	tb_d   <= (cpu_fast ? CPU_HZ_FAST : CPU_HZ) - TB_HZ;
+	via_d  <= (cpu_fast ? CPU_HZ_FAST : CPU_HZ) - VIA_HZ;
+end
 always_ff @(posedge clk) begin
 	tb_tick   <= 1'b0;
 	via_tick  <= 1'b0;
@@ -546,33 +559,33 @@ always_ff @(posedge clk) begin
 	scsi_tick <= 1'b0;
 	us_tick   <= 1'b0;
 	snd_tick  <= 1'b0;
-	if (snd_acc + 32'd88_200 >= CPU_HZ) begin
-		snd_acc  <= snd_acc + 32'd88_200 - CPU_HZ;
+	if (snd_acc >= snd_d) begin
+		snd_acc  <= snd_acc - snd_d;
 		snd_tick <= 1'b1;
 	end
 	else snd_acc <= snd_acc + 32'd88_200;
-	if (us_acc + 32'd1_000_000 >= CPU_HZ) begin
-		us_acc  <= us_acc + 32'd1_000_000 - CPU_HZ;
+	if (us_acc >= us_d) begin
+		us_acc  <= us_acc - us_d;
 		us_tick <= 1'b1;
 	end
 	else us_acc <= us_acc + 32'd1_000_000;
-	if (scsi_acc + SCSI_HZ >= CPU_HZ) begin
-		scsi_acc  <= scsi_acc + SCSI_HZ - CPU_HZ;
+	if (scsi_acc >= scsi_d) begin
+		scsi_acc  <= scsi_acc - scsi_d;
 		scsi_tick <= 1'b1;
 	end
 	else scsi_acc <= scsi_acc + SCSI_HZ;
-	if (rtxc_acc + RTXC_HZ >= CPU_HZ) begin
-		rtxc_acc  <= rtxc_acc + RTXC_HZ - CPU_HZ;
+	if (rtxc_acc >= rtxc_d) begin
+		rtxc_acc  <= rtxc_acc - rtxc_d;
 		rtxc_tick <= 1'b1;
 	end
 	else rtxc_acc <= rtxc_acc + RTXC_HZ;
-	if (tb_acc + TB_HZ >= CPU_HZ) begin
-		tb_acc  <= tb_acc + TB_HZ - CPU_HZ;
+	if (tb_acc >= tb_d) begin
+		tb_acc  <= tb_acc - tb_d;
 		tb_tick <= 1'b1;
 	end
 	else tb_acc <= tb_acc + TB_HZ;
-	if (via_acc + VIA_HZ >= CPU_HZ) begin
-		via_acc  <= via_acc + VIA_HZ - CPU_HZ;
+	if (via_acc >= via_d) begin
+		via_acc  <= via_acc - via_d;
 		via_tick <= 1'b1;
 	end
 	else via_acc <= via_acc + VIA_HZ;
@@ -595,7 +608,7 @@ end
 always_ff @(posedge clk) begin
 	case (vw)
 		2'd0: if (q_req & ~q_to_mem & via_wait & ~dev_busy & ~dev_ack) vw <= 2'd1;
-		2'd1: if (via_tick) begin vw <= 2'd2; vw_cnt <= 8'(VIA_HALF - 1); end
+		2'd1: if (via_tick) begin vw <= 2'd2; vw_cnt <= cpu_fast ? 8'(VIA_HALF_FAST - 1) : 8'(VIA_HALF - 1); end
 		default: begin
 			if (vw_cnt != 8'd0) vw_cnt <= vw_cnt - 8'd1;
 			else vw <= 2'd0;                        // via_go: the access is presented now
@@ -697,8 +710,8 @@ assign ext_irq = gc_irq;
 logic         sd_tr_ev;
 logic [255:0] sd_tr_rec;
 
-MacPPC7300_scsidisk #(.CLK_HZ(CPU_HZ)) disks (
-	.clk, .reset(board_reset),
+MacPPC7300_scsidisk #(.CLK_HZ(CPU_HZ), .CLK_HZ_FAST(CPU_HZ_FAST)) disks (
+	.clk, .cpu_fast, .reset(board_reset),
 	.t_bsy, .t_req, .t_msg, .t_cd, .t_io, .t_db,
 	.b_rst, .b_bsy, .b_sel, .b_atn, .b_ack, .b_db,
 	.clk_h(clk_v), .img_mounted, .img_size, .img_readonly,
@@ -749,8 +762,8 @@ logic        cu_cen, cu_rd, cu_wr, cu_tr_valid, cu_tr_int, cu_cpi, cu_fast;
 logic [12:0] cu_addr, cu_tr_pc;
 logic [7:0]  cu_wdata, cu_rdata, cu_tr_op, cu_tr_a, cu_tr_x, cu_tr_sp, cu_tr_cc;
 
-MacPPC7300_cuda #(.CLK_HZ(CPU_HZ), .FAST_BOOT(CUDA_FAST_BOOT != 0)) cuda (
-	.clk, .reset,
+MacPPC7300_cuda #(.CLK_HZ(CPU_HZ), .CLK_HZ_FAST(CPU_HZ_FAST), .FAST_BOOT(CUDA_FAST_BOOT != 0)) cuda (
+	.clk, .cpu_fast, .reset,
 	.via_tip, .via_byteack, .treq(cuda_treq), .cb1(cuda_cb1),
 	.cb2_oe(cuda_cb2_oe), .cb2_out(cuda_cb2_out), .cb2(cb2_line),
 	.cpu_reset, .power_off, .nmi(cuda_nmi), .clock_ok, .clock_secs,
@@ -883,7 +896,7 @@ wire         bt_hit = q_is_gc && (qa[16:9] == 8'h88 || qa[16:8] == 9'h082 || qa[
                                 qa[16:8] == 9'h140 || qa[16:8] == 9'h088 ||
                                 (tr_mesh && (qa[16:8] == 9'h180 || qa[16:8] == 9'h08A)));
 always_ff @(posedge clk) begin
-	if (bt_div == 16'(CPU_HZ / 1_000_000 - 1)) begin
+	if (bt_div == (cpu_fast ? 16'(CPU_HZ_FAST / 1_000_000 - 1) : 16'(CPU_HZ / 1_000_000 - 1))) begin
 		bt_div <= 16'd0;
 		bt_us  <= bt_us + 32'd1;
 	end

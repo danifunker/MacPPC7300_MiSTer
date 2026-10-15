@@ -87,10 +87,12 @@
 module MacPPC7300_scsidisk
 #(
 	parameter int unsigned CLK_HZ   = 65_000_000,   // the CPU's clock
+	parameter int unsigned CLK_HZ_FAST = CLK_HZ,    // ... with cpu_fast
 	parameter int unsigned PHASE_US = 10            // a phase change's delay before REQ
 )
 (
 	input  logic        clk,            // the CPU's clock
+	input  logic        cpu_fast,       // clk is CLK_HZ_FAST, else CLK_HZ (changes only in reset)
 	input  logic        reset,
 
 	// the SCSI bus: what the targets drive, and the lines (1 = asserted)
@@ -330,7 +332,7 @@ logic        cd_ejected, cd_prevent;
 logic        probe_pend, hk_ff, hk_fe;  // housekeeping owed
 logic        hk_on;                     // ... under way (off the bus)
 logic        a_fwd_ev, a_stop_ev;       // to the audio
-localparam int unsigned PD_CLKS = CLK_HZ / 1_000_000 * PHASE_US;
+localparam int unsigned PD_CLKS = CLK_HZ / 1_000_000 * PHASE_US, PD_CLKS_FAST = CLK_HZ_FAST / 1_000_000 * PHASE_US;
 logic [2:0]  ph_q;                      // the phase of the last REQ
 logic [15:0] pd_cnt;                    // clocks before a new phase's first REQ
 
@@ -728,7 +730,7 @@ always_ff @(posedge clk) begin
 		T_PHASE: begin
 			if (ph != ph_q) begin
 				ph_q   <= ph;
-				pd_cnt <= 16'(PD_CLKS);
+				pd_cnt <= cpu_fast ? 16'(PD_CLKS_FAST) : 16'(PD_CLKS);
 			end
 			else if (pd_cnt != 0) pd_cnt <= pd_cnt - 1'd1;
 			else ts <= T_REQ;
@@ -1201,7 +1203,7 @@ always_ff @(posedge clk) begin
 	tr_ev    <= 1'b0;
 	tr_ts_q  <= ts;
 	tr_rst_q <= b_rst;
-	if (tr_div == 16'(CLK_HZ / 1_000_000 - 1)) begin
+	if (tr_div == (cpu_fast ? 16'(CLK_HZ_FAST / 1_000_000 - 1) : 16'(CLK_HZ / 1_000_000 - 1))) begin
 		tr_div <= 16'd0;
 		tr_us  <= tr_us + 32'd1;
 	end
@@ -1249,8 +1251,8 @@ initial begin
 end
 
 // ---- the CD's audio ------------------------------------------------------------------------------
-MacPPC7300_cdaudio #(.CLK_HZ(CLK_HZ)) cdaudio (
-	.clk, .reset, .bus_rst(b_rst),
+MacPPC7300_cdaudio #(.CLK_HZ(CLK_HZ), .CLK_HZ_FAST(CLK_HZ_FAST)) cdaudio (
+	.clk, .cpu_fast, .reset, .bus_rst(b_rst),
 	.mounted(cd_disc && cd_ok), .mount_ev(cd_mev), .fwd_ev(a_fwd_ev), .stop_ev(a_stop_ev),
 	.a_req, .a_lba, .a_frame, .a_half, .a_done,
 	.cap_hdr(h_cap_hdr), .cap_ver(h_cap_ver), .cap_flags(h_cap_flags),

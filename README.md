@@ -216,6 +216,20 @@ not by drift.
   saves, which SPRs and opcodes exist and which bits each register keeps, is
   `sresults_604_7300_of_run1.csv`.
 
+**CPU clock**
+
+- The CPU and the machine run at 70 MHz, or at 100 MHz as the OSD's "CPU
+  speed (on reset)" chooses (since 2026-10-15). One PLL makes both from a
+  700 MHz VCO: the build is timed at 70 MHz (its CPU counter dividing by 10;
+  timed at 100 the CPU's counter and the memory clock's, both dividing by 7,
+  were merged into one), and while the machine is held in reset
+  `MacPPC7300.sv` rewrites that counter through the framework's `pll_cfg` (by
+  7 for 100 MHz) and holds the reset until the new clock runs. The machine's own rates (the time base, the
+  VIA's clock, AWACS's, the ESCC's, the SCSI chips', Cuda's 68HC05, the CD's
+  audio) follow the speed the PLL runs, so Mac OS sees the same machine at
+  either; 100 MHz is past the CPU's timing in the slow corner (the speed
+  work's paths), as the 100 MHz test builds were.
+
 **Memory**
 
 - Main memory lives on the MiSTer SDRAM module: 32, 64 or 128 MB, as the

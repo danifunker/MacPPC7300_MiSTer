@@ -6,27 +6,31 @@
 
 // MacPPC7300: edited by hand from the template's one-output PLL to three outputs,
 // keeping the instance names (pll|pll_inst|altera_pll_i) that sys_top.sdc's
-// clock groups match: 0 video (20 MHz, the template's), 1 the CPU (CPU_FREQ),
-// 2 memory (100 MHz).
+// clock groups match: 0 video (20 MHz, the template's), 1 the CPU (CPU_MHZ, 70
+// or 100, switched through the reconfiguration ports), 2 memory (100 MHz).
 `timescale 1 ps / 1 ps
 module pll #(
-		parameter CPU_FREQ = "65.000000 MHz"
+		parameter CPU_MHZ = 100
 	) (
-		input  wire  refclk,   //  refclk.clk
-		input  wire  rst,      //   reset.reset
-		output wire  outclk_0, // outclk0.clk
-		output wire  outclk_1, // outclk1.clk
-		output wire  outclk_2, // outclk2.clk
-		output wire  locked    //  locked.export
+		input  wire        refclk,            //  refclk.clk
+		input  wire        rst,               //   reset.reset
+		output wire        outclk_0,          // outclk0.clk
+		output wire        outclk_1,          // outclk1.clk
+		output wire        outclk_2,          // outclk2.clk
+		output wire        locked,            //  locked.export
+		input  wire [63:0] reconfig_to_pll,
+		output wire [63:0] reconfig_from_pll
 	);
 
-	pll_0002 #(.CPU_FREQ(CPU_FREQ)) pll_inst (
+	pll_0002 #(.CPU_MHZ(CPU_MHZ)) pll_inst (
 		.refclk   (refclk),   //  refclk.clk
 		.rst      (rst),      //   reset.reset
 		.outclk_0 (outclk_0), // outclk0.clk
 		.outclk_1 (outclk_1), // outclk1.clk
 		.outclk_2 (outclk_2), // outclk2.clk
-		.locked   (locked)    //  locked.export
+		.locked   (locked),   //  locked.export
+		.reconfig_to_pll   (reconfig_to_pll),
+		.reconfig_from_pll (reconfig_from_pll)
 	);
 
 endmodule

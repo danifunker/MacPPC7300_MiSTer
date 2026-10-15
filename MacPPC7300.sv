@@ -19,7 +19,8 @@
 //============================================================================
 //
 //  Clocks from one PLL (rtl/pll.v):
-//    clk_cpu  CPU_MHZ  the CPU and the machine (MacPPC7300_system)
+//    clk_cpu  70 or    the CPU and the machine (MacPPC7300_system), the OSD's CPU
+//             100 MHz  speed: the PLL's CPU counter rewritten under reset
 //    clk_mem  100 MHz  the SDRAM controller, hps_io, the ROM upload, the VRAM in
 //                      DDR3 and the Control video's scan-out; also the video
 //                      clock, the debug readout's picture running on a 20 MHz
@@ -58,7 +59,8 @@ module emu
 	`include "sys/emu_ports.vh"
 );
 
-localparam int CPU_MHZ = 70;            // 60 and 65 also work with the PLL (VCO 1200, 1300 MHz); 70 since 2026-10-09; 100 the overclocked test builds
+localparam int CPU_MHZ = 70;            // the CPU clock the build is analysed at; the OSD's CPU speed runs it at 70 or 100 (2026-10-15).
+                                        // Not 100: Quartus merges the CPU's counter with the memory clock's when both divide by 7
 localparam int L2_KB = 128;             // 0: no L2 cache (its OSD option then does nothing; saves about 800 ALMs)
 localparam int TRACE = 0;               // 1: the DDR3 trace (syn\mister.py trace), for debugging builds
 localparam int SOUND_IN_DMA = 0;        // 1: DMA channel 9 (sound in, which records silence) a real channel
@@ -122,6 +124,7 @@ localparam CONF_STR = {
 	"h0H1O[7:5],RAM (on reset),28 MB,6 MB,16 MB,60 MB;",
 	"h1O[7:5],RAM (on reset),28 MB,6 MB,16 MB,60 MB,124 MB;",
 	"O[4],L2 cache (on reset),On,Off;",
+	"O[33],CPU speed (on reset),70 MHz,100 MHz;",
 	// (status[16:15] was the list before 2026-10-15, three monitors)
 	"O[32:30],Monitor (on reset),16-inch 832x624,13-inch 640x480,12-inch 512x384,17-inch Multiscan,21-inch 1152x870,20-inch Multiscan;",
 	"-;",
@@ -170,16 +173,79 @@ localparam [31:0] BUILD = {8'h20, BD[43:40], BD[35:32], BD[27:24], BD[19:16], BD
 ///////////////////////   CLOCKS   ///////////////////////////////
 
 wire clk_vid, clk_cpu, clk_mem, pll_locked;
-pll #(.CPU_FREQ(CPU_MHZ == 60 ? "60.000000 MHz" : CPU_MHZ == 70 ? "70.000000 MHz" :
-               CPU_MHZ == 100 ? "100.000000 MHz" : "65.000000 MHz")) pll
+wire [63:0] reconfig_to_pll, reconfig_from_pll;
+pll #(.CPU_MHZ(CPU_MHZ)) pll
 (
 	.refclk(CLK_50M),
 	.rst(0),
 	.outclk_0(clk_vid),
 	.outclk_1(clk_cpu),
 	.outclk_2(clk_mem),
-	.locked(pll_locked)
+	.locked(pll_locked),
+	.reconfig_to_pll,
+	.reconfig_from_pll
 );
+
+// the CPU's speed: the PLL's CPU counter (C1, of a 700 MHz VCO) rewritten through
+// pll_cfg while the machine is held in reset, 10 for 70 MHz and 7 for 100
+wire        cfg_waitrequest;
+reg         cfg_write = 0;
+reg   [5:0] cfg_address = 0;
+reg  [31:0] cfg_data = 0;
+pll_cfg pll_cfg
+(
+	.mgmt_clk(CLK_50M),
+	.mgmt_reset(0),
+	.mgmt_waitrequest(cfg_waitrequest),
+	.mgmt_read(0),
+	.mgmt_readdata(),
+	.mgmt_write(cfg_write),
+	.mgmt_address(cfg_address),
+	.mgmt_writedata(cfg_data),
+	.reconfig_to_pll,
+	.reconfig_from_pll
+);
+
+reg  [2:0]  spd_want_s, spd_rst_s;
+reg         spd_pll = CPU_MHZ == 100;      // the speed the PLL runs (1: 100 MHz)
+reg         spd_tgt = 0;
+reg  [2:0]  spd_st = 0;
+reg  [15:0] spd_wait = 0;
+wire        spd_want;                      // the OSD's speed, under reset (below)
+wire        spd_rst;                       // the machine held in reset
+always @(posedge CLK_50M) begin
+	spd_want_s <= {spd_want_s[1:0], spd_want};
+	spd_rst_s  <= {spd_rst_s[1:0], spd_rst};
+	cfg_write  <= 0;
+	if (!cfg_waitrequest && !cfg_write) begin
+		case (spd_st)
+			3'd0: if (spd_rst_s[2] && spd_want_s[2] != spd_pll) begin
+				spd_tgt     <= spd_want_s[2];
+				cfg_address <= 6'd0;                // waitrequest mode
+				cfg_data    <= 32'd0;
+				cfg_write   <= 1;
+				spd_st      <= 3'd1;
+			end
+			3'd1: begin                          // C1: odd-divide duty for 7, high and low counts
+				cfg_address <= 6'd5;
+				cfg_data    <= spd_tgt ? {9'd0, 5'd1, 1'b1, 1'b0, 8'd4, 8'd3} : {9'd0, 5'd1, 1'b0, 1'b0, 8'd5, 8'd5};
+				cfg_write   <= 1;
+				spd_st      <= 3'd2;
+			end
+			3'd2: begin                          // start
+				cfg_address <= 6'd2;
+				cfg_data    <= 32'd0;
+				cfg_write   <= 1;
+				spd_wait    <= 16'hFFFF;
+				spd_st      <= 3'd3;
+			end
+			3'd3: if (spd_wait != 0) spd_wait <= spd_wait - 1'd1;   // 1.3 ms for the new clock to settle
+			      else begin spd_pll <= spd_tgt; spd_st <= 3'd0; end
+			default: spd_st <= 3'd0;
+		endcase
+	end
+end
+wire spd_busy = spd_st != 3'd0 || spd_want_s[2] != spd_pll;
 
 wire clk_sys = clk_mem;
 
@@ -444,26 +510,39 @@ always @(*) begin
 	endcase
 end
 
+// the CPU's speed: the OSD's, taken under reset; the reset held while the PLL changes to it
+reg       spd_want_m = 0;
+reg [2:0] spd_busy_s = 3'b111, spd_pll_s;
+always @(posedge clk_mem) begin
+	spd_busy_s <= {spd_busy_s[1:0], spd_busy};
+	spd_pll_s  <= {spd_pll_s[1:0], spd_pll};
+end
+assign spd_want = spd_want_m;
+
 reg cpu_reset_m = 1;
 always @(posedge clk_mem)
-	cpu_reset_m <= reset_in[2] | ~sdram_ready | rom_dl | nv_dl | nvs_hold | (~boot_memtest & ~rom_loaded);
+	cpu_reset_m <= reset_in[2] | ~sdram_ready | rom_dl | nv_dl | nvs_hold | (~boot_memtest & ~rom_loaded) | spd_busy_s[2];
+assign spd_rst = cpu_reset_m;
 
 // the options a running Mac cannot follow, taken under reset (a change waits for the next):
-// the RAM size, the monitor, the ADB game controller, the Ethernet bridge; MacPPC7300_adb
-// synchronises the controller's bus
+// the RAM size, the monitor, the ADB game controller, the Ethernet bridge, the CPU's speed
+// (the PLL's, once it runs it); MacPPC7300_adb synchronises the controller's bus
 reg  [7:0]  ram_mb = 8'd16;
 reg  [8:0]  mon_m = 9'h1ED;                 // the 16-inch's sense codes
 reg  [2:0]  joy_mode = 0;
 reg         net_on = 0;
 reg         tr_mesh_m = 0;                  // the trace also takes MESH (status[29]: no menu entry)
 reg         l2_on_m = 1;
+reg         cpu_fast_m = 0;
 always @(posedge clk_mem) if (cpu_reset_m) begin
-	ram_mb    <= ram_opt;
-	mon_m     <= {mon_std, mon_ext};
-	joy_mode  <= (status[13:11] > 3'd4) ? 3'd0 : status[13:11];
-	net_on    <= status[19:17] != 3'd0;     // the Main's mac_eth.cpp takes the interface from it too
-	tr_mesh_m <= status[29];
-	l2_on_m   <= ~status[4];
+	ram_mb     <= ram_opt;
+	mon_m      <= {mon_std, mon_ext};
+	joy_mode   <= (status[13:11] > 3'd4) ? 3'd0 : status[13:11];
+	net_on     <= status[19:17] != 3'd0;    // the Main's mac_eth.cpp takes the interface from it too
+	tr_mesh_m  <= status[29];
+	l2_on_m    <= ~status[4];
+	spd_want_m <= status[33];
+	cpu_fast_m <= spd_pll_s[2];
 end
 wire [51:0] joy = {status[14], joy_mode, joystick_r_analog_0, joystick_l_analog_0, joystick_0[15:0]};
 
@@ -475,8 +554,10 @@ reg [1:0] boot_memtest_c;
 reg [8:0] mon_c [2];
 reg [1:0] tr_mesh_c;
 reg [1:0] l2_on_c = 2'b11;
+reg [1:0] cpu_fast_c;
 always @(posedge clk_cpu) begin
 	cpu_reset_s    <= {cpu_reset_s[1:0], cpu_reset_m};
+	cpu_fast_c     <= {cpu_fast_c[0], cpu_fast_m};
 	ram_mb_c[0]    <= ram_mb;
 	ram_mb_c[1]    <= ram_mb_c[0];
 	rom_at_c[0]    <= rom_at;
@@ -646,10 +727,11 @@ wire   [7:0] mac_r, mac_g, mac_b;
 
 assign DDRAM_CLK = clk_mem;
 
-MacPPC7300_system #(.CPU_HZ(CPU_MHZ * 1000000), .L2_KB(L2_KB), .TB_HZ(12500000),
+MacPPC7300_system #(.CPU_HZ(70000000), .CPU_HZ_FAST(100000000), .L2_KB(L2_KB), .TB_HZ(12500000),
                     .TRACE(TRACE), .SOUND_IN_DMA(SOUND_IN_DMA), .PERF(PERF), .SND_TRACE(SND_TRACE)) system
 (
 	.clk(clk_cpu),
+	.cpu_fast(cpu_fast_c[1]),
 	.reset(cpu_reset),
 	.cpu_in_reset(cpu_held),
 	.power_wake,

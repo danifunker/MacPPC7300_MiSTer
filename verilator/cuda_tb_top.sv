@@ -55,7 +55,7 @@ logic tick;
 assign adb_line = ~(adb_low | adb_dev_low);
 
 MacPPC7300_cuda #(.CLK_HZ(CLK_HZ)) cuda (
-	.clk, .reset,
+	.clk, .cpu_fast(1'b0), .reset,
 	.via_tip, .via_byteack, .treq, .cb1, .cb2_oe, .cb2_out, .cb2,
 	.cpu_reset, .power_off, .adb_low, .adb_line, .tick,
 	/* verilator lint_off PINCONNECTEMPTY */

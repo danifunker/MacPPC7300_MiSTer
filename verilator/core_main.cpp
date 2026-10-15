@@ -1028,6 +1028,7 @@ int main(int argc, char** argv) {
 		dut->ps2_mouse = ps2_mouse;
 		dut->ps2_key = 0;
 		dut->ram_mb = opt.ram_mb;
+		dut->cpu_fast = 0;
 		dut->rom_at = ROM_SDRAM >> 22;
 		dut->boot_memtest = opt.memtest;
 		dut->l2_on = opt.l2;

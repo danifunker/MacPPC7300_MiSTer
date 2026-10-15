@@ -19,10 +19,12 @@
 
 module MacPPC7300_cdaudio
 #(
-	parameter int unsigned CLK_HZ = 65_000_000
+	parameter int unsigned CLK_HZ = 65_000_000,
+	parameter int unsigned CLK_HZ_FAST = CLK_HZ     // clk with cpu_fast
 )
 (
 	input  logic        clk,
+	input  logic        cpu_fast,       // clk is CLK_HZ_FAST, else CLK_HZ (changes only in reset)
 	input  logic        reset,
 	input  logic        bus_rst,        // a SCSI bus reset stops playback
 	input  logic        mounted,        // a disc in the drive
@@ -54,8 +56,11 @@ module MacPPC7300_cdaudio
 );
 
 localparam logic [31:0] TOC_BLK = 32'h7FFF_0000, FRAME_BLK = 32'h7C00_0000, STAT_BLK = 32'h7ECC_0000;
-localparam int unsigned HOLD_CLKS = CLK_HZ / 75;
+localparam int unsigned HOLD_CLKS = CLK_HZ / 75, HOLD_CLKS_FAST = CLK_HZ_FAST / 75;
 localparam int unsigned FRAC_INC  = int'(64'd2_890_137_600 / 64'(CLK_HZ)) + 1;   // 65536 x 44100 / CLK_HZ
+localparam int unsigned FRAC_INC_FAST = int'(64'd2_890_137_600 / 64'(CLK_HZ_FAST)) + 1;
+logic [31:0] acc_d;                     // the clock less 44,100
+always_ff @(posedge clk) acc_d <= (cpu_fast ? CLK_HZ_FAST : CLK_HZ) - 32'd44_100;
 
 // the AUDIO STATUS response's byte 0 is the transfer's byte 0
 wire [7:0] st_byte = cap_hdr[31:24];
@@ -117,7 +122,7 @@ always_ff @(posedge clk) begin
 				end
 				else fr_valid[a_half] <= 1'b1;
 			end
-			else hold <= 24'(HOLD_CLKS);
+			else hold <= cpu_fast ? 24'(HOLD_CLKS_FAST) : 24'(HOLD_CLKS);
 			as <= A_IDLE;
 		end
 		default: as <= A_IDLE;
@@ -149,14 +154,14 @@ wire  [12:0] fbase = play_half ? 13'd2352 : 13'd0;
 
 always_ff @(posedge clk) begin
 	frame_done <= 1'b0;
-	if (!frac16[16]) frac16 <= frac16 + 17'(FRAC_INC);
+	if (!frac16[16]) frac16 <= frac16 + (cpu_fast ? 17'(FRAC_INC_FAST) : 17'(FRAC_INC));
 	if (flush) begin
 		sidx <= '0; acc <= '0; sph <= '0; play_half <= flush_half;
 	end
 	else if (run && fr_valid[play_half]) begin
 		if (sph == 3'd0) begin
-			if (acc >= CLK_HZ - 32'd44_100) begin
-				acc   <= acc + 32'd44_100 - CLK_HZ;
+			if (acc >= acc_d) begin
+				acc   <= acc - acc_d;
 				fr_ra <= fbase + {1'b0, sidx, 2'b00};
 				sph   <= 3'd1;
 			end

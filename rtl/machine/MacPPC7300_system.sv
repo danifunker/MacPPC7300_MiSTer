@@ -20,6 +20,7 @@
 module MacPPC7300_system
 #(
 	parameter int unsigned CPU_HZ   = 65_000_000,
+	parameter int unsigned CPU_HZ_FAST = CPU_HZ,    // the clock with cpu_fast (the OSD's CPU speed)
 	parameter int unsigned TB_HZ    = 12_500_000,
 	parameter int unsigned L2_KB    = 128,          // the L2 cache (MacPPC7300_l2)
 	parameter int unsigned CUDA_FAST_BOOT = 0,      // 1: the test bench's (MacPPC7300_cuda FAST_BOOT)
@@ -30,6 +31,7 @@ module MacPPC7300_system
 )
 (
 	input  logic         clk,             // the CPU's clock
+	input  logic         cpu_fast,        // clk is CPU_HZ_FAST, else CPU_HZ (changes only in reset)
 	input  logic         reset,           // in the CPU's clock: the machine's reset
 	output logic         cpu_in_reset,    // the CPU is held in reset (by reset or by Cuda)
 	output logic         power_wake,      // shut down, then the power key: the machine wants a reset
@@ -268,9 +270,9 @@ logic         scsi_tr_ev;
 logic [255:0] scsi_tr_rec;
 logic         snd_frame;
 
-MacPPC7300_machine #(.CPU_HZ(CPU_HZ), .TB_HZ(TB_HZ), .CUDA_FAST_BOOT(CUDA_FAST_BOOT),
+MacPPC7300_machine #(.CPU_HZ(CPU_HZ), .CPU_HZ_FAST(CPU_HZ_FAST), .TB_HZ(TB_HZ), .CUDA_FAST_BOOT(CUDA_FAST_BOOT),
                      .SOUND_IN_DMA(SOUND_IN_DMA)) machine (
-	.clk, .reset, .ram_mb, .rom_at, .boot_memtest,
+	.clk, .cpu_fast, .reset, .ram_mb, .rom_at, .boot_memtest,
 	.c_req, .c_we, .c_line, .c_addr, .c_be, .c_wdata, .c_ack, .c_rdata,
 	.m_req, .m_we, .m_line, .m_addr, .m_be, .m_wdata, .m_ack, .m_rdata,
 	.ext_irq, .tb_tick, .cpu_reset(cuda_reset), .power_wake,

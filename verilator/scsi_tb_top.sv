@@ -166,7 +166,7 @@ MacPPC7300_fdblk fdblk (
 );
 
 MacPPC7300_scsidisk #(.CLK_HZ(CPU_HZ)) disks (
-	.clk, .reset,
+	.clk, .cpu_fast(1'b0), .reset,
 	.t_bsy, .t_req, .t_msg, .t_cd, .t_io, .t_db,
 	.b_rst, .b_bsy, .b_sel, .b_atn, .b_ack, .b_db,
 	.clk_h, .img_mounted, .img_size, .img_readonly(1'b0),

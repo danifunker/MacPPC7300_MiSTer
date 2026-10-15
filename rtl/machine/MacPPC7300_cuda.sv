@@ -92,6 +92,7 @@
 module MacPPC7300_cuda
 #(
 	parameter int unsigned CLK_HZ    = 65_000_000,   // clk; at least 3 x 4,194,304 (the bus below)
+	parameter int unsigned CLK_HZ_FAST = CLK_HZ,     // clk with cpu_fast
 	// for the machine's test bench only: while the CPU is held in reset, a
 	// 4,194,304 Hz tick on every third clock, so the cold start takes 1/5 of the
 	// clocks at 65 MHz. Nothing outside Cuda can see its time then (the VIA is
@@ -100,6 +101,7 @@ module MacPPC7300_cuda
 )
 (
 	input  logic        clk,
+	input  logic        cpu_fast,                    // clk is CLK_HZ_FAST, else CLK_HZ (changes only in reset)
 	input  logic        reset,
 
 	// the VIA's side (Grand Central's VIA, port B and the shift register)
@@ -157,12 +159,15 @@ wire  [7:0] bmask = fast ? (8'h07 >> pll[1:0]) : 8'hFF;   // ticks per bus cycle
 wire        sec   = xtick & (&xdiv);
 assign tick = xtick;
 
+logic [31:0] xacc_d;                             // the clock less 4,194,304
+always_ff @(posedge clk) xacc_d <= (cpu_fast ? CLK_HZ_FAST : CLK_HZ) - 32'd4_194_304;
+
 always_ff @(posedge clk) begin
 	xtick <= 1'b0;
 	fb_div <= (fb_div == 2'd2) ? 2'd0 : fb_div + 2'd1;
 	if (FAST_BOOT && cpu_reset) xtick <= fb_div == 2'd2;
-	else if (xacc + 32'd4_194_304 >= CLK_HZ) begin
-		xacc  <= xacc + 32'd4_194_304 - CLK_HZ;
+	else if (xacc >= xacc_d) begin
+		xacc  <= xacc - xacc_d;
 		xtick <= 1'b1;
 	end
 	else xacc <= xacc + 32'd4_194_304;
