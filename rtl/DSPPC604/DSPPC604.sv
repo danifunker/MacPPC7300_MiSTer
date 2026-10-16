@@ -663,7 +663,13 @@ wire [BTB_SET_BITS-1:0] btb_seq_idx = btb_index(ex_seq);
 // and ITT's read-ahead from the RAMs' compares is the fetch's loop)
 (* keep = "true" *) logic [BTB_SET_BITS-1:0] btb_ahead_idx;
 logic [BTB_SET_BITS-1:0] btb_pred_idx;
-wire [BTB_SET_BITS-1:0] btb_ridx = redir ? btb_redir_idx : btb_ahead_idx;
+// The redirect's row is read as soon as the operation in EX is known to
+// go elsewhere, not only in the cycle it leaves (ex_leave waits for MEM's
+// room, the cache's answer, and was in front of the RAMs' address): the
+// fetches meanwhile are the ones it kills. A fault's vector gets no row
+// here either way (its first word goes unpredicted, as before).
+logic btb_rd_redir;
+wire [BTB_SET_BITS-1:0] btb_ridx = btb_rd_redir ? btb_redir_idx : btb_ahead_idx;
 // The rows are read ahead for the predicted next address without waiting
 // for the fetch's grant; when the fetch then waited (pred_hold), the rows of
 // the address still being fetched come from these registers instead.
@@ -790,7 +796,7 @@ wire [BTB_SET_BITS-1:0] btb_next_idx = btb_pred_idx;
 (* keep = "true" *) wire btb_write_next = (btb_widx == btb_next_idx);
 (* keep = "true" *) wire btb_write_tgt = (btb_widx == btb_tgt_idx);
 (* keep = "true" *) wire btb_write_seq = (btb_widx == btb_seq_idx);
-wire btb_write_read = redir ? (br_taken ? btb_write_tgt : btb_write_seq) :
+wire btb_write_read = btb_rd_redir ? (br_taken ? btb_write_tgt : btb_write_seq) :
                       ahead_go ? btb_write_next : btb_write_current;
 
 always_ff @(posedge clk) begin
@@ -1854,6 +1860,7 @@ wire        seq_miss  = (ex_seq != ex_pred);
 wire        pc_miss   = br_taken ? tgt_miss : (~ex_fold & seq_miss);
 assign redir    = mem_fault |
                   (ex_leave & (ex_exc | (ex_last & (is_rfi | is_mtmsr | is_xlate | pc_miss))));
+assign btb_rd_redir = ex_valid & ex_last & (is_rfi | is_mtmsr | is_xlate | pc_miss);
 
 // Teach the branch target buffer: a taken branch is entered or strengthened,
 // one that was not taken is weakened, and an entry that fired for something
