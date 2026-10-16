@@ -2174,6 +2174,29 @@ run on a real 604 can settle.
   `PERF = 1`, `TRACE = 1` build writes it into the DDR3 trace for
   `syn\perf.py`. The 604's own numbers for the comparison are in
   `docs/MacPPC7300_plan.md`, "Where the cycles go".
+- The 70 MHz timing pass of 2026-10-15 (`fpu-pipe2`, eleven commits a08ed6d
+  to f5cd1dd, each one cut; the account in `docs/MacPPC7300_plan.md`'s
+  decisions table, "timing"): every cut restructures inside a cycle and
+  leaves the pipeline's behaviour alone (checked: `run_core.py` +0.011 %
+  cycles over the suite, the 300 M lockstep identical, 312.13 M cycles).
+  The method that found them: `syn\sta_cpupaths.tcl` on each fit, the
+  pairs grouped by source and endpoint (`syn\cpupaths_families.py`), the
+  worst of each family reported with `-detail full_path`
+  (`syn\sta_pathsum.py` prints the cells and arrival times), and a cut
+  aimed at the structure
+  the path shows (a late enable on a wide register bank, a mux chain
+  behind a compare, a register far from its readers), never at one fit's
+  worst pair: the fitter moves a family by 0.5-1 ns between fits.
+  Patterns that paid: a one-hot select registered with the operation in
+  ID, and a flat AND-OR in EX (the SPR read, the unit's result); a
+  register loaded while its stage is free, the late signal gating only
+  the valid (IF2, the FPU's operands); a write landing a cycle after its
+  commit where nothing can read it in between (mtsr's queue, now the
+  BATs'); copies of far registers beside their compares, with the lag
+  covered (the MMU's MSR copy from `msr_d`, the IBATs' by `i_stale`); a
+  decision made from the decoder's operation with the sequencer's own
+  cases known apart. What is left needs a cycle: the data cache's answer
+  (`LATE_ANSWER`), the effective address registered before translation.
 
 ## Decisions needed along the way
 
