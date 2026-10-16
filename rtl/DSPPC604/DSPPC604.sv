@@ -1290,7 +1290,8 @@ DSPPC604_alu completion_alu
 	.ca_in (1'b0),
 	.result (completion_result),
 	/* verilator lint_off PINCONNECTEMPTY */
-	.sum (), .ca_out (), .ov_out (), .lt (), .gt (), .eq (), .lt_s (), .lt_u ()
+	.sum (), .ca_out (), .ov_out (), .lt (), .gt (), .eq (), .lt_s (), .lt_u (), .zero (),
+	.log_o (), .rot_o (), .clz_o (), .exts_o ()
 	/* verilator lint_on PINCONNECTEMPTY */
 );
 assign completion_pop = (completion_older_count != 4'd0) &
@@ -1544,6 +1545,7 @@ wire is_int = (ex_dec.unit == UNIT_ALU) | (ex_dec.unit == UNIT_MUL) | (ex_dec.un
 
 logic        int_resp;
 logic [31:0] int_result;
+logic [31:0] int_log, int_rot, int_clz, int_exts, int_mul_hi, int_mul_lo, int_div_q;
 logic [31:0] int_sum;                      // the adder alone: the effective address
 logic        int_ca;
 logic        int_ov;
@@ -1578,7 +1580,14 @@ DSPPC604_int_unit int_unit
 	.cr_out     (int_cr),
 	.cmp_lts    (int_lts),
 	.cmp_ltu    (int_ltu),
-	.cmp_eq     (int_eq)
+	.cmp_eq     (int_eq),
+	.alu_log    (int_log),
+	.alu_rot    (int_rot),
+	.alu_clz    (int_clz),
+	.alu_exts   (int_exts),
+	.mul_hi     (int_mul_hi),
+	.mul_lo     (int_mul_lo),
+	.div_q      (int_div_q)
 );
 
 // ---- floating-point unit ---------------------------------------------------
@@ -1925,44 +1934,65 @@ endfunction
 // The set a 604 has (measured: mfspr of all 1,024 numbers in both modes).
 // 268 and 269 read the time base through mfspr as well as mftb, in user mode
 // too; they cannot be written.
-logic        spr_known;
-logic [31:0] spr_rdata;
-
-always_comb begin
-	spr_known = 1'b1;
-	spr_rdata = 32'd0;
-	case (ex_dec.spr)
-		10'd1:    spr_rdata = xer;
-		10'd8:    spr_rdata = lr;
-		10'd9:    spr_rdata = ctr;
-		10'd18:   spr_rdata = dsisr;
-		10'd19:   spr_rdata = dar;
-		10'd22:   spr_rdata = dec_r;
-		10'd25:   spr_rdata = sdr1;
-		10'd26:   spr_rdata = srr0;
-		10'd27:   spr_rdata = srr1;
-		10'd268:  begin spr_rdata = tbl; spr_known = (ex_dec.sys == SYS_MFSPR); end
-		10'd269:  begin spr_rdata = tbu; spr_known = (ex_dec.sys == SYS_MFSPR); end
-		10'd272, 10'd273, 10'd274, 10'd275: spr_rdata = sprg[ex_dec.spr[1:0]];
-		10'd282:  spr_rdata = ear;
-		10'd284:  spr_rdata = tbl;
-		10'd285:  spr_rdata = tbu;
-		10'd287:  spr_rdata = PVR;
-		10'd952:  spr_rdata = mmcr0;
-		10'd953:  spr_rdata = pmc1;
-		10'd954:  spr_rdata = pmc2;
-		10'd955:  spr_rdata = sia;
-		10'd959:  spr_rdata = sda;
-		10'd1008: spr_rdata = hid0;
-		10'd1010: spr_rdata = iabr;
-		10'd1013: spr_rdata = dabr;
-		10'd1023: spr_rdata = {28'd0, pir};
-		default: begin
-			if (ex_dec.spr[9:4] == 6'b100001) spr_rdata = bat[ex_dec.spr[3:0]];   // 528-543
-			else spr_known = 1'b0;
-		end
+// The register read is chosen from the SPR number in ID and registered as
+// a one-hot select (ex_spr_sel): the read is an AND-OR, without the
+// number's compares in front of EX's result.
+localparam int SPR_SEL_N = 24;
+function automatic logic [SPR_SEL_N-1:0] spr_sel_of(input logic [9:0] n);
+	spr_sel_of = '0;
+	case (n)
+		10'd1:    spr_sel_of[0]  = 1'b1;   // XER
+		10'd8:    spr_sel_of[1]  = 1'b1;   // LR
+		10'd9:    spr_sel_of[2]  = 1'b1;   // CTR
+		10'd18:   spr_sel_of[3]  = 1'b1;   // DSISR
+		10'd19:   spr_sel_of[4]  = 1'b1;   // DAR
+		10'd22:   spr_sel_of[5]  = 1'b1;   // DEC
+		10'd25:   spr_sel_of[6]  = 1'b1;   // SDR1
+		10'd26:   spr_sel_of[7]  = 1'b1;   // SRR0
+		10'd27:   spr_sel_of[8]  = 1'b1;   // SRR1
+		10'd268, 10'd284: spr_sel_of[9]  = 1'b1;   // TBL
+		10'd269, 10'd285: spr_sel_of[10] = 1'b1;   // TBU
+		10'd272, 10'd273, 10'd274, 10'd275: spr_sel_of[11] = 1'b1;   // SPRG0-3
+		10'd282:  spr_sel_of[12] = 1'b1;   // EAR
+		10'd287:  spr_sel_of[13] = 1'b1;   // PVR
+		10'd952:  spr_sel_of[14] = 1'b1;   // MMCR0
+		10'd953:  spr_sel_of[15] = 1'b1;   // PMC1
+		10'd954:  spr_sel_of[16] = 1'b1;   // PMC2
+		10'd955:  spr_sel_of[17] = 1'b1;   // SIA
+		10'd959:  spr_sel_of[18] = 1'b1;   // SDA
+		10'd1008: spr_sel_of[19] = 1'b1;   // HID0
+		10'd1010: spr_sel_of[20] = 1'b1;   // IABR
+		10'd1013: spr_sel_of[21] = 1'b1;   // DABR
+		10'd1023: spr_sel_of[22] = 1'b1;   // PIR
+		default:  spr_sel_of[23] = (n[9:4] == 6'b100001);   // the BATs, 528-543
 	endcase
-end
+endfunction
+logic [SPR_SEL_N-1:0] ex_spr_sel;
+wire [31:0] spr_rdata = ({32{ex_spr_sel[0]}}  & xer)   | ({32{ex_spr_sel[1]}}  & lr)    |
+                        ({32{ex_spr_sel[2]}}  & ctr)   | ({32{ex_spr_sel[3]}}  & dsisr) |
+                        ({32{ex_spr_sel[4]}}  & dar)   | ({32{ex_spr_sel[5]}}  & dec_r) |
+                        ({32{ex_spr_sel[6]}}  & sdr1)  | ({32{ex_spr_sel[7]}}  & srr0)  |
+                        ({32{ex_spr_sel[8]}}  & srr1)  | ({32{ex_spr_sel[9]}}  & tbl)   |
+                        ({32{ex_spr_sel[10]}} & tbu)   | ({32{ex_spr_sel[11]}} & sprg[ex_dec.spr[1:0]]) |
+                        ({32{ex_spr_sel[12]}} & ear)   | ({32{ex_spr_sel[13]}} & PVR)   |
+                        ({32{ex_spr_sel[14]}} & mmcr0) | ({32{ex_spr_sel[15]}} & pmc1)  |
+                        ({32{ex_spr_sel[16]}} & pmc2)  | ({32{ex_spr_sel[17]}} & sia)   |
+                        ({32{ex_spr_sel[18]}} & sda)   | ({32{ex_spr_sel[19]}} & hid0)  |
+                        ({32{ex_spr_sel[20]}} & iabr)  | ({32{ex_spr_sel[21]}} & dabr)  |
+                        ({32{ex_spr_sel[22]}} & {28'd0, pir}) | ({32{ex_spr_sel[23]}} & bat[ex_dec.spr[3:0]]);
+// whether the 604 has the SPR (the illegal-instruction decision is
+// registered with the operation, from the instruction word: ex_x_spr_q)
+function automatic logic spr_known_of(input logic [9:0] n, input logic mf);
+	case (n)
+		10'd1, 10'd8, 10'd9, 10'd18, 10'd19, 10'd22, 10'd25, 10'd26, 10'd27,
+		10'd272, 10'd273, 10'd274, 10'd275, 10'd282, 10'd284, 10'd285, 10'd287,
+		10'd952, 10'd953, 10'd954, 10'd955, 10'd959, 10'd1008, 10'd1010, 10'd1013, 10'd1023:
+		          spr_known_of = 1'b1;
+		10'd268, 10'd269: spr_known_of = mf;        // the time base: mfspr only
+		default:  spr_known_of = (n[9:4] == 6'b100001);                 // BATs, 528-543
+	endcase
+endfunction
+wire spr_known = spr_known_of(ex_dec.spr, ex_dec.sys == SYS_MFSPR);
 
 // segment register number: in the instruction, or the top of operand B
 logic [3:0] srin_idx_q;
@@ -1980,27 +2010,24 @@ wire x_isi    = ex_isi;
 wire fpe_pend = ex_first & fpscr[30] & fp_trap_on;      // FEX was already set when traps were enabled
 // an SPR the 604 does not have is an illegal instruction in either mode
 // (measured; the manual's "privileged in user mode" is not what the chip does)
-// (decided from ID's operation and registered with it: the SPR number's
-// compares are not in front of ex_leave)
-function automatic logic x_spr_of(input dec_t d);
-	logic known;
-	case (d.spr)
-		10'd1, 10'd8, 10'd9, 10'd18, 10'd19, 10'd22, 10'd25, 10'd26, 10'd27,
-		10'd272, 10'd273, 10'd274, 10'd275, 10'd282, 10'd284, 10'd285, 10'd287,
-		10'd952, 10'd953, 10'd954, 10'd955, 10'd959, 10'd1008, 10'd1010, 10'd1013, 10'd1023:
-		          known = 1'b1;
-		10'd268, 10'd269: known = (d.sys == SYS_MFSPR);
-		default:  known = (d.spr[9:4] == 6'b100001);                 // BATs, 528-543
-	endcase
-	x_spr_of = ~((d.unit == UNIT_ALU) | (d.unit == UNIT_MUL) | (d.unit == UNIT_DIV) | (d.unit == UNIT_FPU)) &
-	           ((d.sys == SYS_MFSPR) | (d.sys == SYS_MTSPR)) & ~known;
-endfunction
+// (decided in ID from the instruction word, beside the decoder, and
+// registered with the operation: the SPR number's compares are not in
+// front of ex_leave; mfspr and mtspr are opcode 31, 339 and 467, the
+// number's halves swapped in the word)
+wire [9:0] id_spr_n = {id_insn[15:11], id_insn[20:16]};
+wire       id_mfspr = (id_insn[31:26] == 6'd31) & (id_insn[10:1] == 10'd339);
+wire       id_mtspr = (id_insn[31:26] == 6'd31) & (id_insn[10:1] == 10'd467);
+wire       id_x_spr = (id_mfspr | id_mtspr) & ~spr_known_of(id_spr_n, id_mfspr);
 logic ex_x_spr_q;
 wire x_spr    = ex_x_spr_q;
 /* synthesis translate_off */
-always_ff @(posedge clk)
+always_ff @(posedge clk) begin
 	if (~reset & ex_valid & (ex_x_spr_q != (is_sys & ((ex_dec.sys == SYS_MFSPR) | (ex_dec.sys == SYS_MTSPR)) & ~spr_known)))
 		$fatal(1, "registered illegal-SPR decision differs");
+	if (~reset & ex_valid & ((ex_pass_ok_q != pass_ok_of(ex_dec)) | (ex_rs != rs_of(ex_dec)) |
+	                         ((ex_rs[2] | (ex_dec.sys == SYS_MTSPR)) & (ex_spr_sel != spr_sel_of(ex_dec.spr)))))
+		$fatal(1, "a select registered with the operation differs from the operation's");
+end
 /* synthesis translate_on */
 wire x_priv   = ex_dec.priv & msr[MSR_PR] & ~x_spr;
 wire x_ill    = ex_ill | x_spr;
@@ -2142,7 +2169,6 @@ logic [31:0] xer_next;
 logic [31:0] lr_next;
 logic [31:0] ctr_next;
 logic [31:0] msr_next;
-logic [31:0] sys_result;
 
 always_comb begin
 	cr_next    = cr;
@@ -2151,7 +2177,6 @@ always_comb begin
 	ctr_next   = ctr;
 	fpscr_next = fpscr;
 	msr_next   = msr;
-	sys_result = 32'd0;
 
 	if (is_fpu) begin
 		if (ex_dec.fpscr_wr) fpscr_next = fpu_fpscr;
@@ -2170,7 +2195,6 @@ always_comb begin
 			SYS_CRLOG: cr_next[5'd31 - ex_dec.crbt] =
 				ex_dec.crtt[{cr[5'd31 - ex_dec.crba], cr[5'd31 - ex_dec.crbb]}];
 			SYS_MCRF:  cr_next = cr_insert(cr, ex_dec.crbt[4:2], cr_field(cr, ex_dec.crba[4:2]));
-			SYS_MFCR:  sys_result = cr;
 			SYS_MTCRF: begin
 				for (int f = 0; f < 8; f++)
 					if (ex_dec.crm[7 - f]) cr_next[31 - 4*f -: 4] = op_a[31 - 4*f -: 4];
@@ -2179,7 +2203,6 @@ always_comb begin
 				cr_next  = cr_insert(cr, ex_dec.crbt[4:2], xer[31:28]);
 				xer_next[31:28] = 4'd0;
 			end
-			SYS_MFSPR: sys_result = spr_rdata;
 			SYS_MTSPR: begin
 				// the registers kept here; the rest are written below
 				case (ex_dec.spr)
@@ -2189,10 +2212,8 @@ always_comb begin
 					default: ;
 				endcase
 			end
-			SYS_MFMSR: sys_result = msr;
 			SYS_MTMSR: msr_next = op_a & MSR_MASK;
 			SYS_RFI:   msr_next = ((msr & ~SRR1_MASK) | (srr1 & SRR1_MASK)) & MSR_MASK;
-			SYS_MFSR:  sys_result = sr[sr_idx];
 			SYS_MFFS: begin
 				// Rc: CR1 from the unchanged FPSCR
 				if (ex_dec.cr_wr) cr_next = cr_insert(cr, 3'd1, fpscr[31:28]);
@@ -2217,9 +2238,41 @@ end
 // The value for the register this operation writes, and which register.
 // The upper word mffs delivers is undefined; FFF80000 is what the 604 puts
 // there (measured, as for fctiw).
-wire [63:0] ex_result = is_fpu ? fpu_result :
-                        is_int ? {32'd0, int_result} :
-                        (ex_dec.sys == SYS_MFFS) ? {32'hFFF80000, fpscr} : {32'd0, sys_result};
+// (each unit's own results, or a register read whole, chosen flat by
+// selects registered with the operation, ex_rs: an AND-OR, with neither
+// compares nor the integer unit's own choice in front)
+localparam int RS_N = 14;
+function automatic logic [RS_N-1:0] rs_of(input dec_t d);
+	logic fpu_u, alu_u, mul_u, div_u, sys;
+	fpu_u = (d.unit == UNIT_FPU);
+	alu_u = (d.unit == UNIT_ALU);
+	mul_u = (d.unit == UNIT_MUL);
+	div_u = (d.unit == UNIT_DIV);
+	sys   = ~fpu_u & ~alu_u & ~mul_u & ~div_u;
+	rs_of = {div_u,                                       // 13 the divider's quotient
+	         mul_u & d.ic.mul_high, mul_u & ~d.ic.mul_high, // 12, 11 the product's halves
+	         alu_u & (d.ic.alu_op == ALU_EXTS),           // 10 the ALU's operations
+	         alu_u & (d.ic.alu_op == ALU_CNTLZ),          // 9
+	         alu_u & (d.ic.alu_op == ALU_ROT),            // 8
+	         alu_u & (d.ic.alu_op == ALU_LOGIC),          // 7
+	         alu_u & ((d.ic.alu_op == ALU_ADD) | (d.ic.alu_op == ALU_CMP)),   // 6 the adder
+	         fpu_u,                                       // 5
+	         sys & (d.sys == SYS_MFFS), sys & (d.sys == SYS_MFCR),            // 4, 3
+	         sys & (d.sys == SYS_MFSPR), sys & (d.sys == SYS_MFMSR), sys & (d.sys == SYS_MFSR)};   // 2, 1, 0
+endfunction
+logic [RS_N-1:0] ex_rs;
+// (the registers read whole first: they are early; the units' results join last)
+(* keep = "true" *) wire [31:0] sys_result = ({32{ex_rs[3]}} & cr) | ({32{ex_rs[2]}} & spr_rdata) |
+                         ({32{ex_rs[1]}} & msr) | ({32{ex_rs[0]}} & sr[sr_idx]) | ({32{ex_rs[4]}} & fpscr);
+wire [31:0] int_flat = ({32{ex_rs[6]}} & int_sum) | ({32{ex_rs[7]}} & int_log) | ({32{ex_rs[8]}} & int_rot) |
+                       ({32{ex_rs[9]}} & int_clz) | ({32{ex_rs[10]}} & int_exts) |
+                       ({32{ex_rs[11]}} & int_mul_lo) | ({32{ex_rs[12]}} & int_mul_hi) | ({32{ex_rs[13]}} & int_div_q);
+wire [63:0] ex_result = ({64{ex_rs[5]}} & fpu_result) | {({32{ex_rs[4]}} & 32'hFFF80000), int_flat | sys_result};
+/* synthesis translate_off */
+always_ff @(posedge clk)
+	if (~reset & ex_valid & ex_done & ~x_pre & (|ex_rs[13:6]) & (int_flat != int_result))
+		$fatal(1, "the flat integer result differs from the unit's");
+/* synthesis translate_on */
 wire [6:0]  ex_rd     = ex_dec.frd_wr ? {2'b10, ex_dec.frd} : {1'b0, ex_dec.rd};
 wire        ex_rd_wr  = ex_dec.rd_wr | (ex_dec.frd_wr & (~is_fpu | fpu_result_we));
 
