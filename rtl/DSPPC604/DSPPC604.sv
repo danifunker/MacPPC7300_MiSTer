@@ -262,7 +262,8 @@ fetch_t fetch_word;
 // Two output slots retain one spare at sustained single-word throughput.
 // Their registered occupancy controls FIFO reads, separating the FIFO RAM
 // address/write control from late ID/EX completion readiness.
-fetch_t fetch_stage [2];
+// (registers, not a RAM: the instruction cache's word comes straight in)
+(* ramstyle = "logic" *) fetch_t fetch_stage [2];
 fetch_t fetch_source_word;
 logic fetch_stage_head, fetch_stage_tail;
 logic [1:0] fetch_stage_count;
