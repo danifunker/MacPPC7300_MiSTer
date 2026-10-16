@@ -49,6 +49,8 @@ logic [31:0] quo;        // dividend shifts out of the top, quotient into the bo
 logic [31:0] dvs;
 logic [33:0] dvs3;       // three times the divisor
 logic        neg;
+logic        by_zero_q, too_big_q;   // the cases without a division, decided in S_PRE
+logic [31:0] a_lo_q;                 // ... the 604's quotient for a divisor of zero
 
 wire        a_neg = is_signed & a[31];
 wire        b_neg = is_signed & b[31];
@@ -102,23 +104,19 @@ wire [31:0] rem_nx_b = ~diff3_b[34] ? diff3_b[31:0] : ~diff2_b[34] ? diff2_b[31:
 always_ff @(posedge clk) begin
 	case (state)
 	S_IDLE: begin
+		// (the two cases without a division are decided in S_PRE from
+		// registers: their compares of the forwarded operands enabled the
+		// quotient's 32 flops here, 2.6 ns away; they take a cycle more)
 		if (start) begin
 			rem      <= 32'd0;
 			quo      <= a_mag;
 			dvs      <= b_mag;
 			neg      <= a_neg ^ b_neg;
 			overflow <= by_zero | too_big;
-			if (by_zero) begin
-				quotient <= {a[27:0], a_neg ? 4'h0 : 4'hF};
-				state    <= S_DONE;
-			end
-			else if (too_big) begin
-				quotient <= 32'd1;
-				state    <= S_DONE;
-			end
-			else begin
-				state <= S_PRE;
-			end
+			by_zero_q <= by_zero;
+			too_big_q <= too_big;
+			a_lo_q   <= {a[27:0], a_neg ? 4'h0 : 4'hF};
+			state    <= S_PRE;
 		end
 	end
 
@@ -127,7 +125,15 @@ always_ff @(posedge clk) begin
 		rem   <= pre_rq[63:32];
 		quo   <= pre_rq[31:0];
 		count <= 4'(steps - skip - 5'd1);
-		state <= (quo_zero | (skip == steps)) ? S_FIX : S_RUN;
+		if (by_zero_q) begin
+			quotient <= a_lo_q;
+			state    <= S_DONE;
+		end
+		else if (too_big_q) begin
+			quotient <= 32'd1;
+			state    <= S_DONE;
+		end
+		else state <= (quo_zero | (skip == steps)) ? S_FIX : S_RUN;
 	end
 
 	S_RUN: begin
