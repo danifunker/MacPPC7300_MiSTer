@@ -1071,6 +1071,7 @@ seq_t id_seqk;
 assign id_seqk = seq_of(id_insn);
 
 logic [5:0] seq_next_ra, seq_next_rc;
+logic seq_ra_rd, seq_rb_rd, seq_rc_rd, seq_b_imm, seq_fra_rd, seq_frb_rd, seq_frc_rd, seq_nop, seq_cr_op;
 DSPPC604_seq seq
 (
 	.clk       (clk),
@@ -1092,8 +1093,31 @@ DSPPC604_seq seq
 	.last      (id_last),
 	.wait_xer  (id_wait_xer),
 	.next_ra   (seq_next_ra),
-	.next_rc   (seq_next_rc)
+	.next_rc   (seq_next_rc),
+	.ra_rd_s   (seq_ra_rd),
+	.rb_rd_s   (seq_rb_rd),
+	.rc_rd_s   (seq_rc_rd),
+	.b_imm_s   (seq_b_imm),
+	.fra_rd_s  (seq_fra_rd),
+	.frb_rd_s  (seq_frb_rd),
+	.frc_rd_s  (seq_frc_rd),
+	.nop_s     (seq_nop),
+	.cr_op_s   (seq_cr_op)
 );
+// the operation with its read flags from the sequencer's shallow copies:
+// the forwarding selects are compared from it (the arms' muxes were in
+// front of the compares)
+dec_t id_uop_f;
+always_comb begin
+	id_uop_f = id_uop;
+	id_uop_f.ra_rd  = seq_ra_rd;
+	id_uop_f.rb_rd  = seq_rb_rd;
+	id_uop_f.rc_rd  = seq_rc_rd;
+	id_uop_f.b_imm  = seq_b_imm;
+	id_uop_f.fra_rd = seq_fra_rd;
+	id_uop_f.frb_rd = seq_frb_rd;
+	id_uop_f.frc_rd = seq_frc_rd;
+end
 
 // lswx and stswx read XER's byte count here: wait for anything in EX, the
 // only place that could still be changing it
@@ -2311,7 +2335,7 @@ function automatic logic [14:0] fwd_sel(input dec_t d);
 	         (fwd_mem_own & mem_upd) ? ra_match(d, mem_upd_ra) : 3'd0;
 	fwd_sel = {m_mem, m_wb, u};
 endfunction
-wire [14:0] fwd_sel_id = fwd_sel(id_uop);
+wire [14:0] fwd_sel_id = fwd_sel(id_uop_f);
 wire [14:0] fwd_sel_ex = fwd_sel(ex_dec);
 always_ff @(posedge clk)
 	{fq_a_mem_r, fq_b_mem_r, fq_c_mem_r, fq_fa_mem_r, fq_fb_mem_r, fq_fc_mem_r,
@@ -2387,8 +2411,12 @@ always_ff @(posedge clk) begin
 		ex_pc    <= id_pc;
 		ex_insn  <= id_insn;
 		ex_dec   <= id_uop;
-		ex_pass_ok_q <= pass_ok_of(id_uop);
-		ex_x_spr_q   <= x_spr_of(id_uop);
+		// (from the decoder's operation, the sequencer's two own operations
+		// known apart: its arms' muxes are then not in front of these)
+		ex_pass_ok_q <= seq_nop ? 1'b0 : seq_cr_op ? 1'b1 : pass_ok_of(id_dec);
+		ex_x_spr_q   <= id_x_spr;
+		ex_spr_sel   <= spr_sel_of(id_spr_n);
+		ex_rs        <= (seq_nop | seq_cr_op) ? '0 : rs_of(id_dec);
 		ex_ill   <= ~id_dec.valid;
 		ex_isi   <= id_isi;
 		ex_isi_info <= id_isi_info;
