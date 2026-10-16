@@ -80,6 +80,7 @@ DSPPC604_fpu fpu
 	.flush      (1'b0),
 	.req_valid  (valid_q),
 	.req_ready  (o_ready),
+	.req_simple (),
 	.ctl        (ctl_q),
 	.a          (op_a),
 	.b          (op_b),
@@ -94,7 +95,8 @@ DSPPC604_fpu fpu
 	.result_we  (result_we),
 	.fpscr_out  (fpscr_out),
 	.cr_out     (cr_out),
-	.fex        (fex)
+	.fex        (fex),
+	.set_out (), .fr_out (), .fi_out (), .fprf_we_out (), .fprf_out (), .cmp_out ()
 );
 
 always_ff @(posedge clk) begin
