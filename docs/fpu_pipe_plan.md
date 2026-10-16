@@ -364,6 +364,11 @@ says, and it is a design for the user, not a cut.
 
 ### Loads as queue entries: the design put to the user (2026-10-16, evening)
 
+(The full write-up, with every piece, hazard, cost and test, is
+`docs/enhancement_loads_as_queue_entries.md`; this section is its
+summary. The user set it aside on 2026-10-16 evening, to be taken up
+when wanted.)
+
 **What it does.** A load in EX behind a pending FP entry (today: it holds
 EX until the entry pops) leaves EX into a completion-queue entry of its
 own in the cycle the memory unit accepts its request, exactly as an FP

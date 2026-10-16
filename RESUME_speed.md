@@ -96,7 +96,9 @@ microbenchmarks: `python verilator\progs.py fpbench Scratch\fpbench\KIND.prog KI
    what would pay is loads leaving EX into queue entries of their own
    (64-bit data and the update address per entry, an answer FIFO for
    the memory unit's two descriptors, a fault at the pop refetching):
-   a design to put to the user if the FP work goes on. Committed as
+   written up in full as `docs/enhancement_loads_as_queue_entries.md`
+   (the user set it aside on 2026-10-16 evening: "we can bring it up if
+   we need to"; the 100 MHz startup failures too, for now). Committed as
    8d794c9; then overlap (1)'s admission from ID (the issue register
    `fq_*`, the younger-writers' bitmap) was removed, since EX's push
    left it only compares and traps-on operations to work behind and the
