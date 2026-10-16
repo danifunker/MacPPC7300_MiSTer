@@ -894,15 +894,17 @@ logic sp_check;   // the cycle after start: a special result overrides the stage
 always_ff @(posedge clk) begin
 	case (state)
 	S_IDLE: begin
+		// (taken every idle cycle: the request, behind EX's stall, is then
+		// not the enable of these flops, only of the state)
+		a_q       <= a;
+		b_q       <= b;
+		c_q       <= c;
+		ka_q      <= cls_a;
+		kb_q      <= cls_b;
+		kc_q      <= cls_c;
+		ctl_q     <= ctl;
+		fpscr_i_q <= fpscr_in;
 		if (take) begin
-			a_q       <= a;
-			b_q       <= b;
-			c_q       <= c;
-			ka_q      <= cls_a;
-			kb_q      <= cls_b;
-			kc_q      <= cls_c;
-			ctl_q     <= ctl;
-			fpscr_i_q <= fpscr_in;
 			if ((OPERAND_REG != 0) | (ctl.op == FPU_CMPU) | (ctl.op == FPU_CMPO))
 				state <= S_OPND;
 		end
@@ -1133,7 +1135,15 @@ always_ff @(posedge clk) begin
 		rc_q    <= ictl.rc;
 		rn_q    <= (ictl.op == FPU_CTIWZ) ? 2'b01 : ifpscr[1:0];
 		fpscr_q <= ifpscr;
-
+		if (need_pre)    state <= S_PREA;
+		else if (op_div) state <= S_DIV0;
+		else if (op_rsq) state <= S_RSQ;
+		else if ((ictl.op == FPU_ADD) | (ictl.op == FPU_SUB)) state <= S_ALGN;
+		else             state <= S_MUL1;
+	end
+	// the operands into the first stage's registers: every idle cycle
+	// (the request, behind EX's stall, was the enable of these 190 flops)
+	if (start | ((OPERAND_REG == 0) & (state == S_IDLE))) begin
 		// x * y + z
 		mx <= a_m;  ex <= a_e;
 		my <= c_m;  ey <= c_e;
@@ -1169,12 +1179,6 @@ always_ff @(posedge clk) begin
 		end
 		default: ;
 		endcase
-
-		if (need_pre)    state <= S_PREA;
-		else if (op_div) state <= S_DIV0;
-		else if (op_rsq) state <= S_RSQ;
-		else if ((ictl.op == FPU_ADD) | (ictl.op == FPU_SUB)) state <= S_ALGN;
-		else             state <= S_MUL1;
 	end
 
 	// the stage begun above is abandoned for a result that needs no arithmetic
