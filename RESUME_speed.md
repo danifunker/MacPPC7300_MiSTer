@@ -58,8 +58,11 @@ and where each stands:
    block and MEM's trace fields. `fpu_flush = ex_flush | redir`.
    **State: the quick suite passed with the queue parameter still 0
    (`Scratch\run_core_q15.log`); with `COMPLETION_QUEUE = 1` the quick
-   suite `Scratch\run_core_q17.log` was running at 10:15 (its golden and
-   7300 vectors had passed earlier in the run; check RESULT).**
+   suite `Scratch\run_core_q17.log` finished 10:20: every golden, 7300 and
+   directed program passes, but the two random FP programs (fprandom seeds
+   1 and 2) hang after 28-40 instructions (2 billion cycles: the stuck
+   detector did not fire, so something retires or the detector misses a
+   stall), the same disease as the microbenchmarks' below, most likely.**
 3. **The open bug:** `python verilator\progs.py fpbench OUT KIND` writes
    microbenchmarks (`Scratch\fpbench\{dep,indep,mul,madd,mulchain,lfdmadd}.prog`,
    2,000 operations; run one with the built bench:
