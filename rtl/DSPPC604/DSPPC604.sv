@@ -3006,6 +3006,9 @@ end
 // ============================================================================
 //  WB
 // ============================================================================
+// (the result that is no load's data, chosen apart: the cache's word, the
+// late one, meets it in the last choice only)
+(* keep = "true" *) wire [63:0] wb_other = mo_valid ? {32'd0, mo_result} : mem_result;
 always_ff @(posedge clk) begin
 	wb_valid <= mem_leave & ~mem_fault;
 	// The payload loads every cycle: every reader qualifies it with wb_valid
@@ -3023,8 +3026,7 @@ always_ff @(posedge clk) begin
 		wb_fold_insn <= mo_valid ? mo_fold_insn : mem_fold_insn;
 		wb_rd     <= mo_valid ? mo_rd : mem_rd;
 		wb_rd_wr  <= mo_valid ? mo_rd_wr : mem_rd_wr;
-		wb_result <= (mo_valid ? mo_load : mem_load) ? mu_rdata :
-		             mo_valid ? {32'd0, mo_result} : mem_result;
+		wb_result <= (mo_valid ? mo_load : mem_load) ? mu_rdata : wb_other;
 		wb_fsgl   <= mo_valid ? (mo_load & mo_fp & mo_fsgl) : (mem_load & mem_fp & mem_fsgl);
 		wb_fden_q <= (mo_valid ? (mo_load & mo_fp & mo_fsgl) : (mem_load & mem_fp & mem_fsgl)) & mu_rden;
 		wb_t_cr   <= mo_valid ? mo_t_cr : mem_t_cr;
