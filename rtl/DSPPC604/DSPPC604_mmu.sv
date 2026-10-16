@@ -50,7 +50,10 @@ module DSPPC604_mmu
 	input  logic        msr_ir,
 	input  logic        msr_dr,
 	input  logic        msr_pr,
+	input  logic        msr_ir_d,             // what MSR[IR] and [PR] are written with at this edge
+	input  logic        msr_pr_d,
 	input  logic [15:0][31:0] bat,            // SPR 528-543: IBAT0U, IBAT0L, ... DBAT3U, DBAT3L
+	input  logic        ibat_write,           // one cycle: an IBAT is written at this edge
 	input  logic [15:0][31:0] sr,
 	input  logic        sr_changed,           // one cycle: mtsr is writing one of them
 	input  logic [31:0] sdr1,
@@ -328,8 +331,11 @@ always_ff @(posedge clk) begin
 		d_sr_q   <= sr[d_rpage[19:16]];
 		d_tlb_collision <= w_we & ~w_side & (w_idx == d_rpage[TLB_BITS-1:0]);
 	end
-	// mtsr: what was read ahead is read again (the write lands at this edge)
+	// mtsr: what was read ahead is read again (the write lands at this edge);
+	// an IBAT written likewise, so that the instruction side's copy of the
+	// IBATs (below) is current when it is next used
 	if (sr_changed)      begin i_stale <= 1'b1; d_stale <= 1'b1; end
+	else if (ibat_write) i_stale <= 1'b1;
 	else begin
 		if (~i_fresh)        i_stale <= 1'b0;
 		if (d_read)          d_stale <= 1'b0;
@@ -406,8 +412,22 @@ end
 // The fetch's page from the registered read-ahead page: ixl is used only
 // when it is fresh (i_ready), so the fetch address's multiplexers are not
 // in front of the BAT compares; with translation off the address is used
-// as it is.
-assign ixl = translate(msr_ir, 1'b1, 1'b0, 1'b0, msr_pr, {i_page_q, 12'd0}, bat[7:0], i_sr_q,
+// as it is. MSR[IR,PR] and the IBATs come from copies kept here (the CPU's
+// registers are far from the compares): MSR's written with the value MSR
+// takes, so it never lags; the IBATs' lag a cycle, which i_stale covers
+// (ibat_write).
+logic             i_ir_q, i_pr_q;
+logic [7:0][31:0] ibat_q;
+always_ff @(posedge clk) begin
+	i_ir_q <= msr_ir_d;
+	i_pr_q <= msr_pr_d;
+/* synthesis translate_off */
+	if (~reset & ((i_ir_q != msr_ir) | (i_pr_q != msr_pr)))
+		$fatal(1, "the MMU's copy of MSR[IR,PR] differs from MSR");
+/* synthesis translate_on */
+	ibat_q <= bat[7:0];
+end
+assign ixl = translate(i_ir_q, 1'b1, 1'b0, 1'b0, i_pr_q, {i_page_q, 12'd0}, ibat_q, i_sr_q,
                        itlb_valid[i_page_q[TLB_BITS-1:0]], itlb_q);
 // Resolve a page from the registered read-ahead address. The fresh-page
 // check qualifies installation, so neither the EA adder nor forwarding
@@ -743,7 +763,7 @@ logic        i_cancelled;
 
 // the fetch the walk was for is still wanted
 wire i_same  = i_req & (i_addr[31:12] == w_ea[31:12]);
-wire i_ready = ~msr_ir | i_fresh;
+wire i_ready = ~i_stale & (~i_ir_q | i_fresh);
 
 always_comb begin
 	w_req_i = 1'b0;
@@ -756,7 +776,10 @@ always_comb begin
 				else                      w_req_i = 1'b1;
 			end
 		end
-		I_WALK: if (w_done & i_same & ~i_cancel & ~i_cancelled & ~w_abort & (~w_found | w_pfault)) i_gnt = 1'b1;
+		// (a redirect in the walk's last cycle does not hold the grant: the
+		// fetch granted is the one the redirect kills, and the fault answered
+		// in I_FAULT goes with it; the redirect was in front of every fetch)
+		I_WALK: if (w_done & i_same & ~i_cancelled & ~w_abort & (~w_found | w_pfault)) i_gnt = 1'b1;
 		default: ;
 	endcase
 end
@@ -776,7 +799,7 @@ always_ff @(posedge clk) begin
 			end
 		end
 		I_WALK: if (w_done) begin
-			if (~i_same | w_abort | i_cancel | i_cancelled) i_state <= I_IDLE;
+			if (~i_same | w_abort | i_cancelled) i_state <= I_IDLE;
 			else if (~w_found)  begin i_state <= I_FAULT; i_info_q <= X_NOPAGE; end
 			else if (w_pfault)  begin i_state <= I_FAULT; i_info_q <= X_PROT; end
 			else                i_state <= I_RETRY;
@@ -798,7 +821,7 @@ always_ff @(posedge clk) begin
 end
 
 assign ibus_req  = (i_state == I_IDLE) & i_req & i_ready & ixl.ok;
-assign ibus_addr = msr_ir ? {ixl.pa[31:12], i_addr[11:0]} : i_addr;
+assign ibus_addr = i_ir_q ? {ixl.pa[31:12], i_addr[11:0]} : i_addr;
 assign ibus_ci   = ixl.wimg[2];
 assign i_rvalid  = ibus_rvalid | (i_state == I_FAULT);
 assign i_rdata   = ibus_rdata;

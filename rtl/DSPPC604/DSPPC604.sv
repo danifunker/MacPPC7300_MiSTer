@@ -538,7 +538,9 @@ logic         ic_inval, dc_inval;          // HID0[ICFI], [DCFI]
 //  IF1, IF2
 // ============================================================================
 wire if2_resp = if2_valid & if_rvalid;
-wire fetch_response = if2_resp & ~if2_kill & ~redir;
+// (a word answered in a redirect's cycle is pushed and then thrown away
+// with the queue: the redirect is not in front of the queue's writes)
+wire fetch_response = if2_resp & ~if2_kill;
 wire fetch_push = fetch_response & ~fetch_bypass;
 assign fetch_pop = (fetch_count != 3'd0) & fetch_stage_ready;
 assign fetch_bypass = (fetch_count == 3'd0) & fetch_stage_ready & fetch_response;
@@ -653,11 +655,13 @@ wire [BTB_SET_BITS-1:0] btb_idx = btb_index(pc_f);
 // goes unpredicted, as before.
 wire [BTB_SET_BITS-1:0] btb_tgt_idx = btb_index(br_target);
 wire [BTB_SET_BITS-1:0] btb_seq_idx = btb_index(ex_seq);
-wire [BTB_SET_BITS-1:0] btb_redir_idx = br_taken ? btb_tgt_idx : btb_seq_idx;
+// (kept apart, so that the redirect is the last choice in front of the RAMs)
+(* keep = "true" *) wire [BTB_SET_BITS-1:0] btb_redir_idx = br_taken ? btb_tgt_idx : btb_seq_idx;
 // (the next fetch's row from each source's own index, the prediction then
 // choosing among the indices rather than among the addresses: the BTB's
 // and ITT's read-ahead from the RAMs' compares is the fetch's loop)
-logic [BTB_SET_BITS-1:0] btb_ahead_idx, btb_pred_idx;
+(* keep = "true" *) logic [BTB_SET_BITS-1:0] btb_ahead_idx;
+logic [BTB_SET_BITS-1:0] btb_pred_idx;
 wire [BTB_SET_BITS-1:0] btb_ridx = redir ? btb_redir_idx : btb_ahead_idx;
 // The rows are read ahead for the predicted next address without waiting
 // for the fetch's grant; when the fetch then waited (pred_hold), the rows of
@@ -947,8 +951,11 @@ always_ff @(posedge clk) begin
 	endcase
 	if (if2_resp) if2_valid <= 1'b0;
 
-	if (fetch_go) begin
-		if2_valid <= 1'b1;
+	// the fetch's word and its prediction, loaded whenever IF2 is free: a
+	// grant needs it free (below), so only if2_valid waits for the late
+	// grant, and the registers do not
+	if (fetch_go) if2_valid <= 1'b1;
+	if (~if2_valid | if2_resp) begin
 		if2_kill  <= redir;      // fetched from the wrong path in this very cycle
 		if2_pc    <= pc_f;
 		if2_pred  <= pred_pc;
@@ -2106,6 +2113,12 @@ wire [31:0] ecx_dsisr = 32'h00100000 | (ex_dec.mem_wr ? 32'h02000000 : 32'd0);
 // MSR on exception entry: interrupts, translation, floating point and user
 // mode off; ME, IP and ILE kept; LE takes ILE
 wire [31:0] msr_exc = (msr & 32'h00011040) | {31'd0, msr[16]};
+// what msr is written with at this edge (the MMU keeps its own copy of
+// IR and PR from it): the writes below, in their order of precedence
+wire [31:0] msr_d = reset ? 32'h00000040 :
+                    mem_fault ? msr_exc :
+                    (ex_leave & ex_exc) ? msr_exc :
+                    (ex_leave & ~ex_abort) ? msr_next : msr;
 
 // ---- the reservation ---------------------------------------------------------
 // Set when lwarx's load completes, cleared when stwcx.'s store completes,
@@ -2554,7 +2567,10 @@ DSPPC604_mmu #(.TLB_BITS (TLB_BITS), .CANDIDATE_D_ADDR (1'b1)) mmu
 	.msr_ir      (msr[MSR_IR]),
 	.msr_dr      (msr[MSR_DR]),
 	.msr_pr      (msr[MSR_PR]),
+	.msr_ir_d    (msr_d[MSR_IR]),
+	.msr_pr_d    (msr_d[MSR_PR]),
 	.bat         (bat),
+	.ibat_write  (sys_write_commit & is_mtspr & (ex_dec.spr[9:3] == 7'b1000010)),
 	.sr          (sr),
 	.sr_changed  ((ex_leave & ~ex_abort & is_sys & (ex_dec.sys == SYS_MTSR)) | sr_wq_v),
 	.sdr1        (sdr1),
