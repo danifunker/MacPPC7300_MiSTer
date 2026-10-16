@@ -67,6 +67,23 @@ microbenchmarks: `python verilator\progs.py fpbench Scratch\fpbench\KIND.prog KI
    branch without the overlap), before anything else builds on the
    overlap; `syn\sta_at100.tcl` on `q70f3` for the overlap's paths at
    100 MHz.
+   **Counted 2026-10-16 evening (`Scratch\board_f5`, the decisions row
+   "FPU overlaps 2 and 3"):** `q70f5` (the committed state) **does not
+   start at 100 MHz, 0 of 5** (two loads, two OSD Resets, a power key):
+   no video signal, nothing on the serial port, the disk untouched;
+   with the stop-at-prompt NVRAM Open Firmware reaches its prompt at
+   100 MHz, so the hang is after OF, before Mac OS's first picture. At
+   70 MHz 10 of 10 cold starts, 71 s each; Speedometer at 70
+   (`Scratch\speedo_f5_70`) CPU 3.817, Disk 1.702, Math 257.2, Mix
+   15.26, Color 2.141, FPU 5.528 (as `q70f3`). `q70c7` at 100 MHz: 9 of
+   10 (one Welcome-screen hang). At 100 MHz the CPU clock is -6.99 ns
+   (`q70f3` -6.94) and the machine's sources are identical: a placement
+   that fails at the overclock. MacBench and Speedometer at 100 MHz not
+   run. `mister.py type` garbles every character (`$o`) at 70 MHz too:
+   the tool, not the core. **Next:** the 100 MHz overclock needs a
+   timing answer (a new fit or seed of `q70f5`, or the cuts) before the
+   overlap builds are usable at 100; `q70f3` boots there (with the
+   failures above).
 2. **The fit's cost.** The overlap costs about 960 ALMs (89 %); the CPU
    clock -2.65 ns in `q70f3` against `q70c7`'s -2.58 (the fitter's
    swing), 13,672 failing pairs against 10,399; the first fit (`q70f2`,
@@ -108,11 +125,9 @@ microbenchmarks: `python verilator\progs.py fpbench Scratch\fpbench\KIND.prog KI
    whole FPU work; the random FP programs +0.6 %, nothing else moved.
    The fit's memory clock missed by 0.48 ns on the SDRAM controller's
    data-out register (routing; it passed in the other fits): watch it.
-   **Not yet on the board** (the
-   build of the committed state: `Scratch\q70f5\output_files\MacPPC7300.rbf`):
-   Mac OS 7.6.1, the startup-failure count at 100 MHz (and at 70) over
-   ten boots against `q70c7`'s, MacBench and Speedometer; an Opus session
-   drives the board (the user's wish, 2026-10-16).
+   On the board 2026-10-16 evening (the build of the committed state:
+   `Scratch\q70f5\output_files\MacPPC7300.rbf`): see item 1's count;
+   it does not start at 100 MHz, 10 of 10 at 70.
 
 ## The branch's eleven timing cuts (committed, a08ed6d to f5cd1dd) and what remains
 
@@ -164,6 +179,7 @@ I'm building a MiSTer FPGA core (DE10-Nano, Cyclone V) with my own PowerPC CPU, 
 - **OSD options live in the Main's memory until "Save settings"**; change settings only in the OSD (never edit or copy .CFG files). "On reset" options take effect at the OSD's Reset or the power key after a Shut Down.
 - SSH (`~/.ssh/mister_only`, root@192.168.99.143) only for files, the serial console and devmem.
 - **As left on 2026-10-16 (the overlap session):** `Scratch\q70f3`'s build loaded as `_Unstable/MacPPC7300_test.rbf`, SCSI 0 `os761ot.hda` (Speedometer's disk; the user's `os761.hda`, cleaned on 2026-10-16 00:34 with the duplicated version kept beside it as `os761.hda.dup`, 6 GB, for the user to delete, was on SCSI 0 before and is what the user boots), the user's saved settings 100 MHz and RAM 124 MB (changed by the user from 70 MHz / 28 MB since 2026-10-15). After Speedometer the Mac was shut down by the script and `os761.hda` put back on SCSI 0 through the OSD, the machine left off.
+- **As left on 2026-10-16 evening (the q70f5 board pass):** `q70f5` loaded as the test build, SCSI 0 `os761.hda`, the OSD at 100 MHz / 124 MB (the user's saved settings; not saved by the session), the machine off, no `boot1.rom`. With these settings `q70f5` gives a black screen: set 70 MHz or load `q70f3` to use the machine.
 - **`kvms.py load` has no guard:** on 2026-10-16 `kvms.py off` timed out ("FAIL: no off", the Mac still at a grey screen after the Finder had quit) and the load that followed in the same command went ahead over it. Chain `off` and `load` only with the exit code checked (`&&` in Bash, `if ($LASTEXITCODE -eq 0)` in PowerShell), or run them apart. The disk booted and showed no damage afterwards.
 
 ## Rules
