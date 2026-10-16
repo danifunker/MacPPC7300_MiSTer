@@ -362,6 +362,85 @@ through the queue; the paying next step is loads (and stores of other
 registers) leaving EX into entries of their own, as the record above
 says, and it is a design for the user, not a cut.
 
+### Loads as queue entries: the design put to the user (2026-10-16, evening)
+
+**What it does.** A load in EX behind a pending FP entry (today: it holds
+EX until the entry pops) leaves EX into a completion-queue entry of its
+own in the cycle the memory unit accepts its request, exactly as an FP
+operation leaves at the unit's take. EX is free the next cycle; the
+load's answer lands in its entry; the entry commits in order at its pop
+(the register write, the update form's rA, the trace), as every entry
+does. Loads whose order is ready go the normal way, unchanged. Stores
+stay in EX until their order (a store's side effect is the store), as do
+cache-inhibited loads in effect: the data cache holds one until its
+entry is the head, and abandons it if a redirect has flushed it.
+
+**The pieces.**
+
+- *The entry* (`completion_t`) gains: `ld`, the effective address (32
+  bits, for the update form's rA and the trace), `upd` and its rA (6
+  bits), `fsgl` (an `lfs` is converted to the register's double as its
+  answer is captured, one converter). The 64-bit value, rd (GPR or FPR)
+  and the pending flag exist. A `fault` flag for a DSI on the early load.
+- *The push* (`completion_push_ld`): a plain load (`CK_WORD`, no
+  reservation, no string, one operation, any update form) accepted by
+  the memory unit while `~ex_order_ready`; it joins the older set as the
+  FP push does (the same bookkeeping at `ex_leave`), and `mu_valid`
+  drops the order gate for such loads. The memory unit holds two
+  descriptors, so up to two early loads may be in flight: a two-deep
+  order FIFO (`lo_*`, as `fo_*` for the FPU) names the entry each answer
+  is for; an answer is MEM's own access's whenever MEM or its older slot
+  awaits one (they were accepted first), otherwise the FIFO head's.
+- *The answer* into the entry's value (converted for `lfs`), or the fault
+  flag. No live pop for loads: the answer's data path (the cache's word
+  into `mu_rdata`) is the worst timing family of every fit and must not
+  gain `mem_result` as another endpoint; the entry pops the cycle after
+  its answer, which is one cycle later than a load in MEM reaches WB and
+  matters only when the load is the critical path, which behind an FP
+  operation it is not.
+- *A faulting early load* is not committed: at its pop the queue is
+  flushed and the fetch redirected to the load's own pc (`cq_refetch`
+  into `redir`, the entry's pc into `redir_pc`), the FP entries before
+  it having popped; the load then executes in EX in order and faults
+  through the normal path with its DSISR and DAR. (The first redirect
+  that comes from a pop; interrupts and the MEM fault keep their paths.)
+- *GPR hazards*: an operation in EX reading a register a queued load
+  writes waits for the pop, as FP operations wait on `cq_fpr_o`: a GPR
+  bitmap of the older entries' destinations (`cq_gpr_o`, 32 bits, kept
+  as the FPR one is) in `completion_dependency`, in place of the eight
+  entry compares the ALU admission used. No forwarding from an entry.
+  ID's reads already see WB's write; the issue of an operation into EX
+  while an entry writes its source is covered by the stall in EX.
+- *Flush*: a redirect clears the queue; the flushed early loads' answers
+  are drained (a count of pending answers; `mu_valid` waits for zero)
+  before the unit takes a request, so no answer is mistaken. The MEM
+  interrupt resets the unit (its descriptors are ungranted then, as the
+  interrupt boundary already requires), and `mem_irq` gains `mem_mem`
+  so an early load's ungranted descriptor never raises it at a popped
+  entry in MEM.
+- *The data cache*: `ordered` (the request in hand is the queue head's,
+  or no early load is pending) and `abandon` (flushed) inputs, held or
+  answered-without-memory in its lookup state: as built on 2026-10-16
+  afternoon for the removed version, then dropped with it.
+
+**Cost.**
+
+| | estimate |
+|---|---|
+| area | 500 to 700 ALMs: the entries' 40 new bits each, the GPR bitmap, the answer FIFO and drain, the converter, the refetch's pc mux; about 89 to 90 % of the device |
+| timing | `ex_stall` gains the GPR bitmap's 32:1 select (one level, as the FPR one); `redir` gains a registered term and `redir_pc` a source; `mu_valid` loses a term; WB's update value gains a select; nothing on the cache's data path |
+| cycles | lfd-lfd-fmadd loop 9.8 → about 6.3 an iteration (the chain's latency, the loads hidden), the random FP programs a further 5 to 10 % (a third of their instructions are loads), MacBench's FP test and Speedometer's FPU index the loads of the 68k emulator's load-operate-store pattern: a few per cent at most |
+| rule 2 | a load's execution before older entries commit (its writes in order at the pop); the first redirect from a pop; the cache's hold and abandon of an inhibited access; GPR dependencies on queue entries |
+| verification | directed programs with a page fault on an early load (translation on: the refetch path), interrupts over pending loads, a cache-inhibited load behind an FP operation, stores and loads to the same line behind one, loads with update; the random FP programs (they mix loads, stores, FP operations) and the integer random programs; the lockstep; the board with Debian, Mac OS, MacBench, Speedometer |
+| effort | a session's day, with the debugging the afternoon's version took (two bugs of the same family: the done flag's branch, the update's value) |
+
+**A smaller version**, if the cost is too much for the gain: FP loads
+only (`lfd`, `lfdu`, `lfs`): no GPR bitmap, no change to `ex_stall`'s
+GPR terms, and the FPR hazards exist; it covers the compiled FP loops
+(the lfd-lfd-fmadd case in full) but not the 68k emulator's `lwz`
+around each FP operation, so MacBench and Speedometer would not move.
+About 350 ALMs.
+
 ### Whether it pays for Speedometer
 
 Speedometer's FP tests are 68k code; every FP operation is emulated
