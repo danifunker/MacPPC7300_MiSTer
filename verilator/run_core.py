@@ -177,6 +177,8 @@ def main():
         ("external interrupts", ["irqtest", "3000"], ["--irq-every", "97", "--stall", "10"]),
         ("decrementer interrupts", ["irqtest", "3000"], ["--tb-run"]),
         ("both, with wait states", ["irqtest", "3000"], ["--irq-every", "61", "--tb-run", "--stall", "30"]),
+        ("FP operations queued behind EX", ["fpqtest", "2000"], ["--lockstep"]),
+        ("the same, interrupts, wait states", ["fpqtest", "2000"], ["--lockstep", "--irq-every", "97", "--tb-run", "--stall", "30", "--seed", "5"]),
         ("overlap queue, external interrupts", ["irqoverlaptest", "3000"], ["--irq-every", "97", "--profile", "--stall", "20"]),
         ("overlap queue, both interrupts", ["irqoverlaptest", "3000"], ["--irq-every", "61", "--tb-run", "--profile", "--stall", "30"]),
         ("interrupts during page walks", ["irqwalktest", "1000"], ["--irq-every", "97", "--stall", "40", "--seed", "11"]),

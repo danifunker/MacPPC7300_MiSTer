@@ -1374,6 +1374,63 @@ def fpbench(out, kind, count=2000):
     p.write(out)
 
 
+def fpqtest(out, loops):
+    """FP operations leaving EX into the completion queue, with everything that
+    may follow them: a store of the queued result, a compare, a branch the
+    predictor cannot learn (it alternates), a system call, loads, integer
+    work, and interrupts (the handlers of irqtest). Compared with dingusppc
+    at every instruction (--lockstep); the values stay exact (1.5, 1.25 and
+    their products and sums)."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import fpmodel as fm
+
+    p = Program()
+    COUNT = 0x00FFFFE0
+    save = [mtspr(SPRG0, 30), mtspr(SPRG1, 31), D(15, 30, 0, COUNT >> 16), D(24, 30, 30, COUNT)]
+    back = [mfspr(SPRG0, 30), mfspr(SPRG1, 31), RFI]
+    ext = save + [D(32, 31, 30, 0), D(14, 31, 31, 1), D(36, 31, 30, 0), D(36, 31, 30, 16)] + back
+    dec = save + [D(32, 31, 30, 4), D(14, 31, 31, 1), D(36, 31, 30, 4),
+                  D(14, 31, 0, 300), mtspr(DEC, 31)] + back
+    for i, w in enumerate(ext):
+        p.data[0x500 + 4 * i] = w
+    for i, w in enumerate(dec):
+        p.data[0x900 + 4 * i] = w
+    p.data[0xC00] = RFI                                  # sc: back at once
+    p.data[DATA_A] = 0x3FF80000                          # 1.5
+    p.data[DATA_A + 4] = 0
+    p.data[DATA_A + 8] = 0x3FF40000                      # 1.25
+    p.data[DATA_A + 12] = 0
+    fmadd = lambda d, a, b, c: fm._a(63, d, a, b, c, 29, 0)
+    fmul = lambda d, a, c: fm._a(63, d, a, 0, c, 25, 0)
+    fadd = lambda d, a, b: fm._a(63, d, a, b, 0, 21, 0)
+    fcmpu = lambda crf, a, b: (63 << 26) | (crf << 23) | (a << 16) | (b << 11)
+    stfd = lambda fr, ra, d: D(54, fr, ra, d)
+    bc = lambda bo, bi, off: (16 << 26) | (bo << 21) | (bi << 16) | (off & 0xFFFC)
+    SC = 0x44000002
+    p.words += caches_on() + set_msr(MSR_FP, 7) + li32(1, DATA_A) + li32(3, 0) + li32(4, 0)
+    p.words += [lfd(1, 1, 0), lfd(2, 1, 8), lfd(3, 1, 8), lfd(4, 1, 8), lfd(5, 1, 0), lfd(6, 1, 0)]
+    p.words += li32(7, 100) + [mtspr(DEC, 7)]
+    p.words += li32(7, loops) + [mtspr(CTR, 7)]
+    p.words += set_msr(MSR_FP | MSR_EE, 7)
+    body = [fmadd(3, 1, 2, 3),             # the chain: leaves EX into the queue
+            stfd(3, 1, 16),                # the queued result stored (waits for its pop)
+            D(28, 3, 7, 1),                # andi. r7,r3,1
+            bc(12, 2, 12),                 # beq +12: alternates with r3, over the pending fmadd
+            fmul(4, 1, 2),                 # (not taken) an independent operation behind it
+            fadd(5, 5, 2),                 # ... and a dependent one
+            fcmpu(1, 3, 4),                # a compare behind queued operations (its CR waits for them)
+            SC,                            # a system call behind them: the exception waits for their pop
+            lfd(6, 1, 16),                 # the stored result back
+            fadd(6, 6, 1),
+            D(14, 3, 3, 1),                # addi r3,r3,1
+            X(4, 4, 7, 266)]               # add r4,r4,r7
+    p.words += body
+    p.words.append(bc(16, 0, -4 * len(body)))                                 # bdnz
+    p.words += set_msr(0, 7)
+    p.words.append(NOP)
+    p.write(out)
+
+
 def fprandom(out, count, seed):
     """Straight-line floating-point code. This script executes it as well, with
     fpmodel.py, and records the state every instruction must leave behind.
@@ -2068,6 +2125,8 @@ if __name__ == "__main__":
         exctest(a[1])
     elif len(a) >= 2 and a[0] == "fpexctest":
         fpexctest(a[1])
+    elif len(a) >= 2 and a[0] == "fpqtest":
+        fpqtest(a[1], int(a[2]) if len(a) > 2 else 2000)
     elif len(a) >= 2 and a[0] == "mmutest":
         mmutest(a[1])
     elif len(a) >= 2 and a[0] == "resvtest":

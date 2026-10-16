@@ -351,6 +351,7 @@ logic [3:0] completion_count;
 logic [3:0] completion_older_count;
 logic [7:0] completion_latest_older, completion_latest_younger;
 logic completion_push, completion_push_alu, completion_push_fp, completion_pop, id_to_ex;
+logic completion_push_id, completion_push_ex, ex_fp_elig;   // (the FP operation in EX leaving into the queue: with the unit)
 // Reserve the FIFO entry at issue, then execute from registered operands.
 // Forward that stage's result to the next registered operands, preserving
 // dependent issue without putting decode and execution in the same path.
@@ -500,7 +501,7 @@ wire mem_room_free = ~mo_valid & (~mem_valid | ~mem_mem);
 wire mem_room_pass = ~mo_valid & mem_valid & mem_mem & mu_final & ~mem_resv_set & ~mem_resv_clr;
 wire mem_room = mem_room_free | (mem_room_pass & ex_pass_ok);
 wire ex_regular_done = ~ex_stall & (is_int ? int_resp : is_fpu ? fpu_resp_ex : 1'b1);
-wire ex_ready  = ~ex_valid | (ex_regular_done & mem_room & ex_order_ready);
+wire ex_ready  = ~ex_valid | (ex_regular_done & mem_room & ex_order_ready) | completion_push_ex;
 // EX's payload goes into MEM's newer slot (decided before the abort and
 // fault checks; mem_valid follows those), or a queued completion does
 wire mem_payload_take = ex_valid & ex_regular_done & mem_room & ex_order_ready;
@@ -1153,8 +1154,8 @@ end
 // in EX already cancelled.
 wire   id_hold  = id_wait_xer & ex_valid;
 assign id_to_ex = id_valid & ex_ready & ~id_hold;
-assign id_take  = id_to_ex | completion_push;
-assign id_leave = (id_to_ex & (id_last | ~id_dec.valid)) | completion_push;
+assign id_take  = id_to_ex | completion_push_id;
+assign id_leave = (id_to_ex & (id_last | ~id_dec.valid)) | completion_push_id;
 
 // Read the prospective fetched word and next sequencer operation at every
 // edge. Late ID take selects a registered sample, never a RAM address. A
@@ -1363,7 +1364,8 @@ wire completion_wait = ex_valid & ~x_pre & ~ex_stall & ~ex_done &
 assign completion_push_alu = (COMPLETION_QUEUE != 0) & (COMPLETION_ALU != 0) & id_valid & completion_eligible & completion_wait &
     (completion_count < 4'd8) &
     ~completion_a[32] & ~completion_b[32] & ~mem_fault & ~reset;
-assign completion_push = completion_push_alu | completion_push_fp;   // (the FP admission: with the unit, below)
+assign completion_push_id = completion_push_alu | completion_push_fp;   // (the FP admission: with the unit, below)
+assign completion_push    = completion_push_id | completion_push_ex;
 // completion_wait requires ~ex_done, so EX cannot redirect while pushing.
 // Only the older MEM fault can cancel this admission. Avoid putting branch
 // resolution into queue admission and the following ID/fetch readiness.
@@ -1381,18 +1383,34 @@ DSPPC604_alu completion_alu
 );
 assign completion_pop = (completion_older_count != 4'd0) &
                         ~(completion_exec_valid & (completion_exec_slot == completion_head)) &
-                        ~completion_fp_pend[completion_head] &
+                        (~completion_fp_pend[completion_head] | cq_live) &
                         (mem_room_free | mem_room_pass) & ~mem_fault & ~reset;
-// (from ID's decode, not the admission: an FP admission always writes frd;
-// without the ALU admission it is the only kind)
-wire [6:0] completion_push_rd = ((COMPLETION_ALU != 0) & ~id_uop.frd_wr) ? {1'b0, id_uop.rd} : {2'b10, id_uop.frd};
+// (from the decodes, not the admission: an FP admission always writes frd;
+// without the ALU admission it is the only kind from ID. While EX holds an
+// FP operation that may leave into the queue, no admission from ID is
+// made: the pushed entry is then EX's)
+wire [6:0] completion_push_rd = ex_fp_elig ? {2'b10, ex_dec.frd} :
+                                ((COMPLETION_ALU != 0) & ~id_uop.frd_wr) ? {1'b0, id_uop.rd} : {2'b10, id_uop.frd};
+// the pop's clear of the older writers' bitmap (the latest older writer of
+// the register pops: no older entry writes it now)
+wire [31:0] cq_pop_clear = (completion_pop & completion_queue[completion_head].fp & completion_latest_older[completion_head]) ?
+                           (32'd1 << completion_queue[completion_head].rd[4:0]) : 32'd0;
 // a queued FP operation's FPSCR and CR1 as it pops: its effects applied to
 // the FPSCR of that moment (the sticky bits merge in order, whatever FPSCR
 // the unit saw)
 wire        cq_pop_fp    = completion_pop & completion_queue[completion_head].fp;
-wire [31:0] cq_fpscr_new = fpscr_update(fpscr, completion_queue[completion_head].set, 1'b1,
-                                        completion_queue[completion_head].fr, completion_queue[completion_head].fi,
-                                        completion_queue[completion_head].fprf_we, completion_queue[completion_head].fprf);
+// the unit's answer for the head entry pops it in the answer's own cycle,
+// with the live result (as EX's leave took the answer before the queue):
+// the head's fields are then the unit's outputs
+wire        cq_live      = fpu_resp_q & (fo_slot[fo_head] == completion_head);
+wire [63:0] cq_h_value   = cq_live ? fpu_result  : completion_queue[completion_head].value;
+wire        cq_h_we      = cq_live ? fpu_result_we : completion_queue[completion_head].we;
+wire [31:0] cq_h_set     = cq_live ? fpu_set     : completion_queue[completion_head].set;
+wire        cq_h_fr      = cq_live ? fpu_fr      : completion_queue[completion_head].fr;
+wire        cq_h_fi      = cq_live ? fpu_fi      : completion_queue[completion_head].fi;
+wire        cq_h_fprf_we = cq_live ? fpu_fprf_we : completion_queue[completion_head].fprf_we;
+wire [4:0]  cq_h_fprf    = cq_live ? fpu_fprf    : completion_queue[completion_head].fprf;
+wire [31:0] cq_fpscr_new = fpscr_update(fpscr, cq_h_set, 1'b1, cq_h_fr, cq_h_fi, cq_h_fprf_we, cq_h_fprf);
 wire [31:0] cq_cr_new    = completion_queue[completion_head].rc ? {cr[31:28], cq_fpscr_new[31:28], cr[23:0]} : cr;   // CR1
 always_ff @(posedge clk) begin
 	completion_exec_valid <= completion_push_alu;
@@ -1416,12 +1434,12 @@ always_ff @(posedge clk) begin
 		completion_exec_ctl <= id_uop.ic;
 	end
 	if (completion_push) begin
-		completion_queue[completion_tail].pc <= id_pc;
-		completion_queue[completion_tail].insn <= id_insn;
+		completion_queue[completion_tail].pc <= ex_fp_elig ? ex_pc : id_pc;
+		completion_queue[completion_tail].insn <= ex_fp_elig ? ex_insn : id_insn;
 		completion_queue[completion_tail].rd <= completion_push_rd;
-		completion_queue[completion_tail].fp <= completion_push_fp;
-		completion_queue[completion_tail].rc <= id_uop.cr_wr;
-		completion_fp_pend[completion_tail] <= completion_push_fp;
+		completion_queue[completion_tail].fp <= completion_push_fp | completion_push_ex;
+		completion_queue[completion_tail].rc <= ex_fp_elig ? ex_dec.cr_wr : id_uop.cr_wr;
+		completion_fp_pend[completion_tail] <= completion_push_fp | completion_push_ex;
 		completion_tail <= completion_tail + 3'd1;
 		for (int n = 0; n < 8; n++)
 			if (completion_queue[n].rd == completion_push_rd) completion_latest_younger[n] <= 1'b0;
@@ -1444,11 +1462,23 @@ always_ff @(posedge clk) begin
 	// The next EX is younger than everything already in the queue. New ALU
 	// completions may append while those older entries drain, allowing the
 	// next long operation and its independent work to overlap retirement.
+	// (EX leaves once the older entries have all popped, except an FP
+	// operation leaving into the queue at its take: it joins the older set
+	// behind them, and no younger entry exists then)
 	if (ex_leave) begin
-		completion_older_count <= completion_count;
-		completion_latest_older <= completion_latest_younger;
+		case ({completion_push_ex, completion_pop})
+			2'b10:   completion_older_count <= completion_count + 4'd1;
+			2'b01:   completion_older_count <= completion_count - 4'd1;
+			default: completion_older_count <= completion_count;
+		endcase
+		for (int n = 0; n < 8; n++)
+			completion_latest_older[n] <= completion_push_ex ?
+				((n[2:0] == completion_tail) |
+				 (completion_latest_older[n] & ~(completion_pop & (n[2:0] == completion_head)) &
+				  (completion_queue[n].rd != completion_push_rd))) :
+				completion_latest_younger[n];
 		completion_latest_younger <= '0;
-		cq_fpr_o <= cq_fpr_y;        // (EX leaves only once the older entries have all popped)
+		cq_fpr_o <= completion_push_ex ? ((cq_fpr_o & ~cq_pop_clear) | (32'd1 << ex_dec.frd)) : cq_fpr_y;
 		cq_fpr_y <= '0;
 	end
 	if (reset | redir) begin
@@ -1762,6 +1792,16 @@ wire  ex_fpu_req = ex_valid & ~x_pre & ~ex_stall & is_fpu & ~ex_fpu_taken & ~fq_
 wire  fpu_req    = fq_valid | ex_fpu_req;
 wire  fpu_take   = fpu_req & fpu_ready & ~fpu_req_simple;
 wire  fpu_flush  = ex_flush | redir;     // (a misfetched FP operation leaving EX kills its successor in the unit)
+// EX's FP operation leaves into a completion-queue entry in the cycle the
+// unit takes it (overlap 2 of docs/fpu_pipe_plan.md): one writing a
+// register, FP traps off, fetched sequentially with nothing folded after
+// it (no redirect can leave with it), the queue with room. Its result,
+// FPSCR effects and CR1 commit at the pop as an operation admitted from ID
+// does; everything behind it then runs in EX, in order with MEM.
+assign ex_fp_elig = (COMPLETION_QUEUE != 0) & ex_valid & is_fpu & ex_dec.frd_wr & ~fp_simple_of(ex_dec.fc.op) &
+                    ~fp_trap_on & msr[MSR_FP] & ~seq_miss & ~ex_fold & ~ex_cf & ex_first & ex_last & ~x_pre;
+assign completion_push_ex = ex_fp_elig & ex_fpu_req & fpu_ready & ~fpu_req_simple &
+                            (completion_count < 4'd8) & ~mem_fault & ~reset;
 always_ff @(posedge clk) begin
 	if (ex_fpu_req & fpu_ready & ~fpu_req_simple) ex_fpu_taken <= 1'b1;
 	if (ex_leave | id_to_ex | fpu_flush | reset) ex_fpu_taken <= 1'b0;
@@ -1803,7 +1843,7 @@ wire id_fsrc_busy_c = id_uop.frc_rd & fpr_busy(id_uop.frc);
 assign completion_push_fp = (COMPLETION_QUEUE != 0) & id_valid & id_first & id_last & ~id_isi & id_dec.valid &
     (id_uop.unit == UNIT_FPU) & id_uop.frd_wr & ~fp_simple_of(id_uop.fc.op) & ~fp_trap_on & msr[MSR_FP] &
     (id_pred == id_pc + 32'd4) &
-    ex_valid & is_fpu & ex_fpu_taken & ~x_pre & ~ex_done &
+    ex_valid & is_fpu & ex_fpu_taken & ~x_pre & ~ex_done & ~ex_fp_elig &
     ~fq_valid & ~id_fsrc_busy_a & ~id_fsrc_busy_b & ~id_fsrc_busy_c &
     (completion_count < 4'd8) & ~mem_fault & ~reset;
 always_ff @(posedge clk) begin
@@ -1823,8 +1863,8 @@ always_ff @(posedge clk) begin
 	if (fq_valid & fpu_ready) fq_valid <= 1'b0;
 	// the order of the requests the unit took, for its answers
 	if (fpu_take) begin
-		fo_ex[fo_tail]   <= ~fq_valid;
-		fo_slot[fo_tail] <= fq_slot;
+		fo_ex[fo_tail]   <= ~fq_valid & ~completion_push_ex;
+		fo_slot[fo_tail] <= fq_valid ? fq_slot : completion_tail;
 		fo_tail <= fo_tail + 2'd1;
 	end
 	if (fpu_resp & fpu_resp_ready & (fo_count != 3'd0)) fo_head <= fo_head + 2'd1;
@@ -1846,6 +1886,8 @@ always_ff @(posedge clk) begin
 		$fatal(1, "the FPU answers with no request outstanding");
 	if (~reset & fpu_take & (fo_count == 3'd4)) $fatal(1, "more FPU requests outstanding than the order FIFO holds");
 	if (~reset & completion_push_fp & completion_push_alu) $fatal(1, "two admissions at once");
+	if (~reset & completion_push_ex & completion_push_id) $fatal(1, "EX's FP operation pushed with an admission from ID");
+	if (~reset & completion_push_ex & (completion_latest_younger != 8'd0)) $fatal(1, "EX's FP operation pushed behind younger entries");
 end
 /* synthesis translate_on */
 
@@ -1954,11 +1996,13 @@ DSPPC604_fpscr fpscr_held_ops
 );
 assign fsys_fpscr = ffb_mem ? fsys_mem_next : ffb_wb ? fsys_wb_next : fsys_held_next;
 
-assign ex_done = x_pre | (~ex_stall & (is_int ? int_resp : is_fpu ? fpu_resp_ex : 1'b1));
+// (an FP operation is done in EX when the unit answers it, or when it
+// leaves into the completion queue as the unit takes it)
+assign ex_done = x_pre | (~ex_stall & (is_int ? int_resp : is_fpu ? (fpu_resp_ex | completion_push_ex) : 1'b1));
 // These outer guards already qualify mu_valid. For a non-aborted memory
 // operation, mu_ready is therefore sufficient here; using mu_accept repeats
 // the same completion/backpressure guards in the EX-leave timing cone.
-assign ex_leave = ex_valid & ex_done & mem_room & ex_order_ready & ~mem_fault;
+assign ex_leave = ex_valid & ex_done & ((mem_room & ex_order_ready) | completion_push_ex) & ~mem_fault;
 
 // ---- branch ----------------------------------------------------------------
 // (a folded conditional branch, ex_cf, is evaluated here as the
@@ -2433,7 +2477,7 @@ always_comb begin
 	fpscr_next = fpscr;
 	msr_next   = msr;
 
-	if (is_fpu) begin
+	if (is_fpu & ~completion_push_ex) begin        // (a queued operation's effects commit at its pop)
 		if (ex_dec.fpscr_wr) fpscr_next = fpu_fpscr_ex;
 		if (ex_dec.cr_wr)    cr_next    = cr_insert(cr, ex_dec.cr_fld, fpu_cmp ? fpu_cr : fpu_fpscr_ex[31:28]);
 	end
@@ -2559,7 +2603,7 @@ function automatic logic [14:0] fwd_sel(input dec_t d);
 	logic [5:0] m_take, m_mem, m_wb;
 	logic [2:0] u;
 	// (a popped FP entry whose write is suppressed forwards nothing: mem_rd_wr)
-	m_take = completion_pop ? ((~completion_queue[completion_head].fp | completion_queue[completion_head].we) ?
+	m_take = completion_pop ? ((~completion_queue[completion_head].fp | cq_h_we) ?
 	                           rd_match(d, completion_queue[completion_head].rd) : 6'd0) :
 	         (fwd_ex_ok & ex_rd_wr) ? rd_match(d, ex_rd) : 6'd0;
 	m_mem  = mem_take ? m_take : (fwd_mem_own & mem_rd_wr) ? rd_match(d, mem_rd) : 6'd0;
@@ -3166,7 +3210,7 @@ always_ff @(posedge clk) begin
 		mo_t_fpscr <= mem_t_fpscr;
 		mo_t_msr <= mem_t_msr;
 	end
-	if (ex_leave & ~ex_abort) mem_valid <= 1'b1;
+	if (ex_leave & ~ex_abort & ~completion_push_ex) mem_valid <= 1'b1;   // (an FP operation leaving into the queue enters MEM at its pop)
 	if (completion_pop) begin
 		mem_valid <= 1'b1;
 		mem_pc <= completion_queue[completion_head].pc;
@@ -3176,8 +3220,8 @@ always_ff @(posedge clk) begin
 		mem_fold <= 1'b0;
 		mem_upd <= 1'b0;
 		mem_rd <= completion_queue[completion_head].rd;
-		mem_rd_wr <= ~completion_queue[completion_head].fp | completion_queue[completion_head].we;
-		mem_result <= completion_queue[completion_head].value;
+		mem_rd_wr <= ~completion_queue[completion_head].fp | cq_h_we;
+		mem_result <= cq_h_value;
 		mem_load <= 1'b0;
 		mem_store <= 1'b0;
 		mem_resv_set <= 1'b0;
@@ -3311,11 +3355,12 @@ always_ff @(posedge clk) begin
 		if (mo_valid & mo_rd_wr & ~mo_load & mo_rd[6]) $fatal(1, "a passed store writes an FP register");
 		if (mu_valid & ~mu_ready) $fatal(1, "memory access offered without a free descriptor");
 		if (completion_count > 4'd8) $fatal(1, "completion queue overflow");
-		if (completion_pop & ex_leave) $fatal(1, "two operations entered MEM");
+		if (completion_pop & ex_leave & ~completion_push_ex) $fatal(1, "two operations entered MEM");
 		if (mem_payload_take & completion_pop)
 			$fatal(1, "EX payload overwrote a queued completion");
-		if (ex_leave & ~ex_abort & ~mem_payload_take)
+		if (ex_leave & ~ex_abort & ~mem_payload_take & ~completion_push_ex)
 			$fatal(1, "committed EX operation did not capture its MEM payload");
+		if (completion_push_ex & mem_payload_take) $fatal(1, "EX's FP operation left into the queue and into MEM");
 		if (completion_push & redir) $fatal(1, "completion admitted during redirect");
 		if (ex_valid & sys_reg_write & ex_mem_access)
 			$fatal(1, "system register write has a memory descriptor");
