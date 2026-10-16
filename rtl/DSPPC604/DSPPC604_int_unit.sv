@@ -63,7 +63,7 @@ logic        alu_ov;
 logic        alu_lt;
 logic        alu_gt;
 logic        alu_eq;
-logic        alu_zero;
+logic        alu_zero, alu_neg;
 
 DSPPC604_alu alu
 (
@@ -81,6 +81,7 @@ DSPPC604_alu alu
 	.lt_s   (cmp_lts),
 	.lt_u   (cmp_ltu),
 	.zero   (alu_zero),
+	.neg    (alu_neg),
 	.log_o  (alu_log),
 	.rot_o  (alu_rot),
 	.clz_o  (alu_clz),
@@ -153,7 +154,7 @@ assign div_q  = div_quotient;
 
 // ---- results ---------------------------------------------------------------
 logic so_new;
-logic res_zero;     // (found per unit, before the result's choice: CR0 is not behind it)
+logic res_zero, res_neg;   // (found per unit, before the result's choice: CR0 is not behind it)
 
 always_comb begin
 	ca_out = alu_ca;
@@ -163,6 +164,7 @@ always_comb begin
 			resp_valid = req_valid & (state == S_MUL2);
 			result     = ctl.mul_high ? mul_product[63:32] : mul_product[31:0];
 			res_zero   = ctl.mul_high ? ~(|mul_product[63:32]) : ~(|mul_product[31:0]);
+			res_neg    = ctl.mul_high ? mul_product[63] : mul_product[31];
 			// mullwo: the product does not fit in 32 bits
 			ov_out     = (mul_product[63:32] != {32{mul_product[31]}});
 		end
@@ -170,12 +172,14 @@ always_comb begin
 			resp_valid = req_valid & (state == S_DIV) & div_done;
 			result     = div_quotient;
 			res_zero   = ~(|div_quotient);
+			res_neg    = div_quotient[31];
 			ov_out     = div_overflow;
 		end
 		default: begin
 			resp_valid = req_valid & (unit == UNIT_ALU);
 			result     = alu_result;
 			res_zero   = alu_zero;
+			res_neg    = alu_neg;
 			ov_out     = alu_ov;
 		end
 	endcase
@@ -185,7 +189,7 @@ always_comb begin
 	if (unit == UNIT_ALU && ctl.alu_op == ALU_CMP)
 		cr_out = {alu_lt, alu_gt, alu_eq, so_in};
 	else
-		cr_out = {result[31], ~result[31] & ~res_zero, res_zero, so_new};
+		cr_out = {res_neg, ~res_neg & ~res_zero, res_zero, so_new};
 end
 
 endmodule

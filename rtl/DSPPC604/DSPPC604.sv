@@ -1314,7 +1314,7 @@ DSPPC604_alu completion_alu
 	.ca_in (1'b0),
 	.result (completion_result),
 	/* verilator lint_off PINCONNECTEMPTY */
-	.sum (), .ca_out (), .ov_out (), .lt (), .gt (), .eq (), .lt_s (), .lt_u (), .zero (),
+	.sum (), .ca_out (), .ov_out (), .lt (), .gt (), .eq (), .lt_s (), .lt_u (), .zero (), .neg (),
 	.log_o (), .rot_o (), .clz_o (), .exts_o ()
 	/* verilator lint_on PINCONNECTEMPTY */
 );
