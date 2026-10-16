@@ -214,6 +214,73 @@ Mult 8.534, FFT 6.187), Disk 1.725, against the release's 5.480, 369.5,
 emulated 68k FP code can take from overlap (1), as "Whether it pays"
 below says.
 
+### Overlaps 2 and 3: the design put to the user (2026-10-16)
+
+What holds the pipeline today: EX keeps the FP operation until the
+unit's answer (5 to 8 cycles), and nothing behind it moves except the one
+FP operation overlap (1) admits from ID. The loop `lfd; lfd; fmadd; bdnz`
+takes 9.8 cycles an iteration against the fmadd chain's own 5.25 to 6.25.
+
+**The design: the FP operation leaves EX when the unit takes it.** The
+machinery is overlap (1)'s: an FP operation that writes a register (no
+compare, FP traps off) is pushed from EX into a completion-queue entry in
+the cycle the unit takes it (`ex_fpu_taken`), the order FIFO marks the
+answer as a slot's, and the entry commits in order at the pop with its
+FPSCR and CR1 effects as today. EX is then free and the next instruction
+executes in it, in order with MEM, while the FP result is computed. Two
+rules make this correct without new ordering logic, because both already
+exist for the queue's ALU entries:
+
+- `ex_order_ready` (no older queue entry) gates every leave, commit and
+  redirect from EX. A branch behind the FP operation resolves in EX at
+  once but its redirect waits for the FP entry's pop: that is overlap (3)
+  ("the redirect held until commit") as it stands, and a mispredicted
+  branch cannot flush the older FP entry (the queue resets only on a
+  redirect, which an older entry's presence holds back). An exception in
+  EX likewise waits; a MEM fault flushes everything younger, the FP entry
+  included, correctly: MEM's operation is older than the queue.
+- A memory access's request waits for `ex_order_ready` too
+  (`mu_valid`), so a load behind the FP operation would still wait for
+  the answer. Overlap (2) is one exception to that: a plain cacheable
+  load (no store, no lwarx/stwcx, dcbz or string, no update of a busy
+  register) requests the memory unit before the older entries pop. Its
+  data cache fill is the only side effect and harmless. Its leave into
+  MEM stays in order, so the answer, if it comes first, is captured in EX
+  (a 64-bit register and a valid, cleared by any flush) and passed to
+  MEM in the operation's `mem_result` with `mem_load` clear, which WB
+  takes as a non-load result: no new mux on the cache's data path. A
+  faulting early load is not captured; it requests again in order and
+  faults there, as today. A cache-inhibited load must not go early: the
+  data cache learns I at its lookup (`r_ci`) and gets one input, "the
+  requester is ordered", without which it does not grant an inhibited
+  access (the memory unit's descriptor waits in `S_HOLD0` until the
+  order comes). Interrupts keep their boundary: they are taken at an
+  access before its first grant (`mu_pending`), and an early load that
+  was granted completes before the interrupt, as the architecture allows.
+
+The admission from ID (`fq_*`) stays as it is: with EX free after the
+take, the next FP operation mostly walks into EX itself, and the issue
+register saves a cycle when it is right behind.
+
+**Cost.** Area about 300 ALMs (the capture register, the early-request
+terms, the cache's input). Timing: EX's leave gains `is_fpu &
+ex_fpu_taken` (registers) in its OR; `mem_result`'s load gains a select
+by a registered valid in front of EX's result (one level on a path the
+fits show at about -1.5 ns: to be watched in the fit); `mu_valid` loses
+a term for loads. Cycles, estimated from the microbenchmarks: the
+lfd-lfd-fmadd loop from 9.8 to about 6.3 cycles an iteration (the fmadd
+chain's latency, the loads hidden), the random FP programs -15 to -20 %
+(EX waits for the FPU in half their cycles today), MacBench's FP test
+and Speedometer's FPU index some of the loads-around-each-operation
+pattern of the 68k emulator. Behaviour it changes (rule 2): the point
+where an FP operation leaves EX, a load's request ahead of its order,
+the cache's grant of an inhibited access. Verification it needs beyond
+the gates: directed programs for a load with a DSI behind a pending FP
+operation, an external interrupt there, a cache-inhibited load and a
+store there, a mispredicted branch there with the FP operation's result
+and FPSCR checked after; then the lockstep, Debian on the board (its
+exception paths), MacBench and Speedometer.
+
 ### Whether it pays for Speedometer
 
 Speedometer's FP tests are 68k code; every FP operation is emulated
