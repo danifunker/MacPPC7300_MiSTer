@@ -2023,6 +2023,9 @@ logic [3:0] srin_idx_q;
 logic       sr_wq_v;              // an mtsr's write, a cycle after its commit
 logic [3:0] sr_wq_idx;
 logic [31:0] sr_wq_data;           // rB's segment number, a cycle later (srin takes two)
+logic       bat_wq_v;             // an mtspr to a BAT's write, likewise
+logic [3:0] bat_wq_idx;
+logic [31:0] bat_wq_data;
 wire [3:0] sr_idx = ex_dec.rb_rd ? srin_idx_q : ex_insn[19:16];
 
 // ---- exceptions -------------------------------------------------------------
@@ -2490,6 +2493,14 @@ always_ff @(posedge clk) begin
 	sr_wq_idx <= sr_idx;
 	sr_wq_data <= op_a;
 	if (sr_wq_v) sr[sr_wq_idx] <= sr_wq_data;
+	// mtspr to a BAT likewise lands a cycle after its commit, from registers
+	// (the commit, behind the exception checks, enabled 512 flops); an
+	// mtspr to a BAT refetches, so nothing reads them before the write
+	// upper: BEPI, BL, Vs, Vp; lower: BRPN, WIMG, PP (W and G kept by the IBATs too)
+	bat_wq_v <= sys_write_commit & is_mtspr & (ex_dec.spr[9:4] == 6'b100001) & ~reset;
+	bat_wq_idx <= ex_dec.spr[3:0];
+	bat_wq_data <= op_a & (ex_dec.spr[0] ? 32'hFFFE007B : 32'hFFFE1FFF);
+	if (bat_wq_v) bat[bat_wq_idx] <= bat_wq_data;
 
 	if (sys_write_commit) begin
 
@@ -2519,9 +2530,7 @@ always_ff @(posedge clk) begin
 				10'd1010: iabr  <= op_a;
 				10'd1013: dabr  <= op_a;
 				10'd1023: pir   <= op_a[3:0];
-				default:  if (ex_dec.spr[9:4] == 6'b100001)
-					// upper: BEPI, BL, Vs, Vp; lower: BRPN, WIMG, PP (W and G kept by the IBATs too)
-					bat[ex_dec.spr[3:0]] <= op_a & (ex_dec.spr[0] ? 32'hFFFE007B : 32'hFFFE1FFF);
+				default: ;      // the BATs: a cycle later, below
 			endcase
 		end
 	end
@@ -2652,7 +2661,7 @@ DSPPC604_mmu #(.TLB_BITS (TLB_BITS), .CANDIDATE_D_ADDR (1'b1)) mmu
 	.msr_ir_d    (msr_d[MSR_IR]),
 	.msr_pr_d    (msr_d[MSR_PR]),
 	.bat         (bat),
-	.ibat_write  (sys_write_commit & is_mtspr & (ex_dec.spr[9:3] == 7'b1000010)),
+	.ibat_write  (bat_wq_v & ~bat_wq_idx[3]),
 	.sr          (sr),
 	.sr_changed  ((ex_leave & ~ex_abort & is_sys & (ex_dec.sys == SYS_MTSR)) | sr_wq_v),
 	.sdr1        (sdr1),
