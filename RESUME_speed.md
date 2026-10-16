@@ -1,15 +1,103 @@
-# Resume prompt: speed: 70 MHz timing, the rule-2 cuts, then the FPU's pipeline
+# Resume prompt: speed: the FPU's overlap (in progress, uncommitted), the rule-2 timing cuts
 
-(Rewritten 2026-10-15 at the end of the CPU session that made the eleven
-timing cuts on `fpu-pipe2`. It is the only resume prompt: everything it
-needs is here or in the files it names. The prompt it replaces, of the
-same day's morning, is in git's history at 57eba8b.)
+(Rewritten 2026-10-16 10:15 in the middle of the FPU overlap work on
+`fpu-pipe2`. It is the only resume prompt: everything it needs is here or
+in the files it names. The prompt it replaces, of 2026-10-15's end, is in
+git's history at 012285f.)
 
 Paste everything below the line into a new session started in `C:\Temp\mistercore\PPC_Mac`.
 
 ---
 
-I'm building a MiSTer FPGA core (DE10-Nano, Cyclone V) with my own PowerPC CPU, `DSPPC604` (`rtl/DSPPC604/`), inside a Power Macintosh 7300/7600 machine (`rtl/machine/`). It works: Mac OS 7.6.1 to 9.1 and Debian 7.11 boot on the board. The seventh release is `releases/MacPPC7300_20261015.rbf` (master 7941709): the CPU runs at 70 MHz, or 100 MHz as an overclock (OSD "CPU speed (on reset)"), with a 128 KB L2. The work goes on on the branch **`fpu-pipe2`** (off master 57eba8b; the machine session's commits may land on it too, I sort the branches later). Three things are left of the speed work, in this order:
+## FIRST: the FPU overlap, half built, in the working tree (uncommitted)
+
+The working tree of `fpu-pipe2` (HEAD 324efea plus 012285f's docs) holds
+**uncommitted** changes in `rtl/DSPPC604/DSPPC604.sv`, `DSPPC604_fpu.sv`,
+`DSPPC604_pkg.sv`, `verilator/vector_dut.sv`, `verilator/progs.py`,
+`verilator/run_core.py`, `syn/DSPPC604_check_fpu.sv` and
+`docs/fpu_pipe_plan.md` ("Overlap 1 as built", the design as written).
+Do not lose them (`git stash` only if you must, and say so). What they are
+and where each stands:
+
+1. **The FPU in two halves** (`DSPPC604_fpu.sv`): `fstate` (front:
+   F_IDLE, F_OPND, F_PREA/B/C, F_MUL1, F_ALGN, F_MUL2, F_DIV0, F_DIV, F_RSQ,
+   F_SPEC) and `state` (back: S_ADD, S_LZC, S_NORM, S_SHIFT, S_ROUND,
+   S_DONE, S_IDLE). The front's copies of the operation's control are
+   `f_sgl, f_int, f_div, f_rsq, f_neg, f_rc, f_rn, f_fpscr`, `s_p_f, s_z_f`,
+   `e_win_f, sr_f`; the handoff block (`hand_now = back_free & (hand_cmp |
+   hand_spec | hand_data)`) copies them into the back's old names and sets
+   the back's state; `back_free = idle, or answering this cycle`.
+   `resp_valid` is 1 whenever the back holds an answer (no longer gated by
+   the request); the requester keeps the order. New outputs: `req_simple`
+   (the request presented is a move/select answered in its own cycle: keep
+   presenting it, never queue it), `set_out, fr_out, fi_out, fprf_we_out,
+   fprf_out` (the FPSCR effects alone, for a commit later). `fpscr_update`
+   moved to the package. **Verified: all 25,598 FP vectors pass
+   (`python verilator\run.py --only fp`).** The protocol change: a
+   requester must withdraw its request once taken (the front is free again
+   before the answer) except for `req_simple` ones.
+2. **The pipeline side** (`DSPPC604.sv`): `COMPLETION_QUEUE = 1` and a new
+   `COMPLETION_ALU = 0` (the ALU admission stays off: it cost 1,100 ALMs and
+   5 % of the ROM boot for nothing on 2026-10-11; `run_core.py` now reads
+   `COMPLETION_ALU` to decide its overlap tests). The queue entry
+   (`completion_t`) has a 64-bit value, a 7-bit rd (bit 6: FPR), `fp, we,
+   rc, set, fr, fi, fprf_we, fprf`; `completion_fp_pend` holds the pop
+   until the unit's answer; `cq_fpr_y / cq_fpr_o` are bitmaps of the FPRs
+   the entries write (younger / older than EX's operation), replacing
+   eight compares in EX's stall (`completion_dependency`'s FP terms) and
+   in ID's admission (`fpr_busy`); a sim check compares them with
+   `completion_fmatch`. Admission `completion_push_fp` (with the FPU
+   instantiation): an FPU operation writing a register, not `fp_simple_of`,
+   first and last, sequential, MSR[FP], not `fp_trap_on`, EX's operation
+   in the unit (`ex_fpu_taken`), `~fq_valid`, sources not `fpr_busy`. The
+   issue register `fq_*` requests the unit first (`fpu_req = fq_valid |
+   ex_fpu_req`), the order FIFO `fo_*` (4 deep) routes answers
+   (`fpu_resp_ex`, `fpu_resp_q`; an answer with the FIFO empty is a
+   move's, EX's); a slot's answer is captured into its entry at once; the
+   pop commits FPSCR (`cq_fpscr_new`) and CR1 (`cq_cr_new`) in the commit
+   block and MEM's trace fields. `fpu_flush = ex_flush | redir`.
+   **State: the quick suite passed with the queue parameter still 0
+   (`Scratch\run_core_q15.log`); with `COMPLETION_QUEUE = 1` the quick
+   suite `Scratch\run_core_q17.log` was running at 10:15 (its golden and
+   7300 vectors had passed earlier in the run; check RESULT).**
+3. **The open bug:** `python verilator\progs.py fpbench OUT KIND` writes
+   microbenchmarks (`Scratch\fpbench\{dep,indep,mul,madd,mulchain,lfdmadd}.prog`,
+   2,000 operations; run one with the built bench:
+   `wsl bash <scratch>/fpbench.sh KIND`, i.e.
+   `/home/dani/.cache/macppc7300/verilator/core_ref/core_tb --prog /mnt/c/.../KIND.prog --stall 0`).
+   Before the overlap every kind took 5.25 cycles an operation (madd 6.25,
+   lfdmadd 3.27 an instruction). With the queue built: **mul 3.27 (the
+   overlap works), dep and mulchain 5.25 (dependent, as they must), but
+   indep (fadd f3..f6 = f1 + f2) and madd die on the sim check "more FPU
+   requests outstanding than the order FIFO holds"** (`fo_count` reaching
+   4). A `$display("FPO ...")` trace of takes, answers and admissions is in
+   the FIFO's always block (translate_off) to find how: rebuild
+   (`run_core.py --quick` rebuilds core_tb) and run indep. Suspects: fadd
+   goes through F_ALGN (one front cycle) so the front frees faster than
+   fmul's F_MUL1/F_MUL2, and a take may be counted that the unit did not
+   make (compare `fpu_take = fpu_req & fpu_ready & ~fpu_req_simple` with
+   the unit's `take`), or an answer not popped (`fpu_resp & fpu_resp_ready
+   & fo_count != 0`). Remove the trace when done.
+4. **Area and timing of the first fit** (`Scratch\q70f1`, the overlap with
+   the queue built, before the bitmaps): 37,800 ALMs (90 %, +1,470), the
+   CPU clock at -3.49 ns with 20,000+ failing pairs: the forwarding
+   selects and `fq_*` through `ex_stall` into the memory unit's and data
+   cache's state (the queue's compares came back into EX's stall). The
+   bitmaps and `COMPLETION_ALU` gating of the GPR terms were made after
+   that fit: refit, and if the queue still costs, shrink it to 4 entries
+   (the code hardcodes 8: pointers [2:0], counts 4'd8, loops to 8) or give
+   the FP overlap its own one-entry slot instead of the queue.
+5. **Then:** `run_core.py` whole, the lockstep (300 M, identical expected:
+   the ROM boot has almost no FP), a fit at 70 MHz against `q70c7`
+   (10,399 pairs, -2.58, 36,334 ALMs), the microbenchmarks' table into
+   `docs/fpu_pipe_plan.md`, the decisions row in `docs/MacPPC7300_plan.md`,
+   and the commits: the FPU split (one), the pipeline's admission (one).
+   The user approved overlap (1); overlaps (2) and (3) (loads and branches
+   behind an FP operation) go to the user with (1)'s measurements first.
+
+## The branch's eleven timing cuts (committed, a08ed6d to f5cd1dd) and what remains
+
+I'm building a MiSTer FPGA core (DE10-Nano, Cyclone V) with my own PowerPC CPU, `DSPPC604` (`rtl/DSPPC604/`), inside a Power Macintosh 7300/7600 machine (`rtl/machine/`). It works: Mac OS 7.6.1 to 9.1 and Debian 7.11 boot on the board. The seventh release is `releases/MacPPC7300_20261015.rbf` (master 7941709): the CPU runs at 70 MHz, or 100 MHz as an overclock (OSD "CPU speed (on reset)"), with a 128 KB L2. The work goes on on the branch **`fpu-pipe2`** (off master 57eba8b; the machine session's commits may land on it too, I sort the branches later). **First finish the FPU overlap left in the working tree (the section above).** Then three things are left of the speed work, in this order (3 is the overlap's continuation):
 
 1. **Close setup timing on the CPU clock at 70 MHz** in Quartus 17.0's slow 1100 mV 100 C model (the only model this project times). The 2026-10-15 CPU session made eleven cuts (commits a08ed6d to f5cd1dd, one each, every one a restructuring inside a cycle, none moving a decision later: the account is `docs/MacPPC7300_plan.md`'s decisions table, row "timing", and `docs/DSPPC604_plan.md` "Cost and speed"). The release's fit had 8,794 failing pairs, -2.47 ns; the branch's fits 7,256 pairs at -2.03 (`Scratch\q70c5`, eight cuts) and 5,506 at -2.71 (`Scratch\q70c6`, nine cuts: one family, a shift by a register's amount with the record bit, forwarded rB through the rotator and the zero into CR0). **The fitter swings a family 0.5-1 ns between fits of the same source** (-2.74, -2.77, -2.13, -2.07, -2.03, -2.71, -2.58 on seven fits of this branch): judge a cut over two fits and by its family's count, never by one fit's worst pair. **What remains needs a cycle (rule 2: my go-ahead, with the cost measured):**
    - the data cache's answer (its address register through the pending store's merge, the word and way choices, the memory unit's byte lanes into wb_result and its readers: -1.4 to -2.2, 900 pairs): a cycle on the answer, `LATE_ANSWER` for the data cache (a parameter: `DSPPC604_cache #(.LATE_ANSWER (0))` in `DSPPC604.sv`), measured 2026-10-06 at 9-14 % of the cycles;
