@@ -1329,6 +1329,51 @@ def vecwalktest(out, tries=10):
 SCRATCH = 0x00500000
 
 
+def fpbench(out, kind, count=2000):
+    """Floating-point microbenchmarks, straight-line, no checks: the cycle
+    count is the measure (the lockstep bench still compares every
+    instruction with dingusppc). f1 = 1.5 and f2 = 1.25 from the pool.
+      dep       fadd f3, f3, f1 repeated: a dependent chain
+      indep     fadd f3..f6 = f1 + f2 in turn: independent operations
+      mul       fmul f3..f6 = f1 * f2 in turn
+      madd      fmadd f3..f6 = f1 * f2 + f2 in turn
+      mulchain  fmul f3, f3, f2 repeated (overflows to infinity late)
+      lfdmadd   lfd f1; lfd f2; fmadd f3, f1, f2, f3 repeated: a loop body"""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import fpmodel as fm
+
+    p = Program()
+    p.data[POOL_BASE] = 0x3FF80000
+    p.data[POOL_BASE + 4] = 0
+    p.data[POOL_BASE + 8] = 0x3FF40000
+    p.data[POOL_BASE + 12] = 0
+    p.words += caches_on() + set_msr(MSR_FP) + li32(10, POOL_BASE)
+    p.words += [lfd(1, 10, 0), lfd(2, 10, 8), lfd(3, 10, 8), lfd(4, 10, 8), lfd(5, 10, 8), lfd(6, 10, 8)]
+    fadd  = lambda d, a, b: fm._a(63, d, a, b, 0, 21, 0)
+    fmul  = lambda d, a, c: fm._a(63, d, a, 0, c, 25, 0)
+    fmadd = lambda d, a, b, c: fm._a(63, d, a, b, c, 29, 0)
+    i = 0
+    while len(p.words) < count + 20:
+        d = 3 + (i & 3)
+        if kind == "dep":
+            p.words.append(fadd(3, 3, 1))
+        elif kind == "indep":
+            p.words.append(fadd(d, 1, 2))
+        elif kind == "mul":
+            p.words.append(fmul(d, 1, 2))
+        elif kind == "madd":
+            p.words.append(fmadd(d, 1, 2, 2))
+        elif kind == "mulchain":
+            p.words.append(fmul(3, 3, 2))
+        elif kind == "lfdmadd":
+            p.words += [lfd(1, 10, 0), lfd(2, 10, 8), fmadd(3, 1, 2, 3)]
+        else:
+            raise SystemExit("fpbench: unknown kind " + kind)
+        i += 1
+    p.words.append(D(14, 0, 0, 0))                    # a last nop: the end marker
+    p.write(out)
+
+
 def fprandom(out, count, seed):
     """Straight-line floating-point code. This script executes it as well, with
     fpmodel.py, and records the state every instruction must leave behind.
@@ -2047,6 +2092,8 @@ if __name__ == "__main__":
         irqtest(a[1], int(a[2]) if len(a) > 2 else 3000, overlap=True)
     elif len(a) >= 3 and a[0] == "fprandom":
         fprandom(a[1], int(a[2]), int(a[3]) if len(a) > 3 else 1)
+    elif len(a) >= 3 and a[0] == "fpbench":
+        fpbench(a[1], a[2], int(a[3]) if len(a) > 3 else 2000)
     elif len(a) >= 3 and a[0] == "random":
         opts = a[4:]
         rep = [int(o.split("=")[1]) for o in opts if o.startswith("repeat=")]

@@ -35,7 +35,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # whether the CPU is built with its completion queue (DSPPC604.sv's default)
-COMPLETION_QUEUE = int(re.search(r"parameter int\s+COMPLETION_QUEUE\s*=\s*(\d+)",
+COMPLETION_QUEUE = int(re.search(r"parameter int\s+COMPLETION_ALU\s*=\s*(\d+)",
     open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "rtl", "DSPPC604", "DSPPC604.sv")).read()).group(1))
 
 
