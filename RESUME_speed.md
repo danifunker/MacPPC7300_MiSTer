@@ -41,14 +41,32 @@ microbenchmarks: `python verilator\progs.py fpbench Scratch\fpbench\KIND.prog KI
    (`Scratch\speedo_f3`): CPU 5.485, Disk 1.725, Math 369.5, Mix 21.68,
    Color 2.864, FPU 7.871 (KWhetstones 8.890, Matrix Mult 8.534, FFT
    6.187) against the release's 100 MHz run 5.480, 1.737, 369.5, 21.26,
-   2.810, 7.802: nothing broke, Mix, Color and FPU up 1-2 %. **Still to
-   do on the board:** Debian for a while
-   (exceptions with FP in flight), Mac OS 9.1 to the Finder, and the
-   Speedometer run at 70 MHz (the release's 70 MHz numbers: CPU 3.816,
-   Disk 1.691, Math 257.2, Mix 14.71, Color 2.160, FPU 5.404). Note:
-   `q70f3`'s first boot after its core load stuck at the grey desktop
-   (five minutes); the OSD's Reset booted it and every later boot was
-   clean: a one-off so far, watch for it.
+   2.810, 7.802: nothing broke, Mix, Color and FPU up 1-2 %. **The board
+   check, done 2026-10-16 afternoon** (`Scratch\board_f3`: screenshots,
+   serial logs `deb_uart*.txt`, the SCSI trace `hang85_scsitrace.txt`):
+   Debian 7.11 at 100 MHz / 124 MB to the greeter and tty1's login
+   prompt, about 25 minutes of serial console over three boots, no oops,
+   panic or trap (no login: a password); Ctrl+Option+Delete works only
+   from a text console (`ctrl+win+f1` first: Option is the Win key, X
+   swallows it); the greeter's power menu, Shutdown, powers the machine
+   off ("Power down."). Speedometer at 70 MHz (`Scratch\speedo_f3_70`,
+   RAM 124 MB) clean: CPU 3.817, Disk 3.138, Math 256.8, Mix 15.29,
+   Color 2.132, FPU 5.510 against the release's 3.816, 1.691, 257.2,
+   14.71, 2.160, 5.404 (the Disk figure doubled: unexplained).
+   **But startup fails now and then at 100 MHz:** the first boot after
+   a core load (the Debian disk's Mac OS 8.5) hung at the Welcome screen
+   under an empty white alert box (OSD Reset cured it), and the next
+   cold start, Mac OS 9.1, bombed at its Welcome screen with "address
+   error" (its Restart then reached the Finder). With the first
+   session's grey-desktop hang, three failures in about ten 100 MHz
+   boots of `q70f3`; the user also heard a startup chime an octave off
+   on one boot and reset it. The 2026-10-12 100 MHz failures looked the
+   same (`docs/speed_results_20261012.md`, "Stability at 100 MHz": a
+   timing path, cured by a cut). **Next:** count boots at 70 MHz
+   against 100 MHz with `q70f3`, and at 100 MHz with `q70c7` (the
+   branch without the overlap), before anything else builds on the
+   overlap; `syn\sta_at100.tcl` on `q70f3` for the overlap's paths at
+   100 MHz.
 2. **The fit's cost.** The overlap costs about 960 ALMs (89 %); the CPU
    clock -2.65 ns in `q70f3` against `q70c7`'s -2.58 (the fitter's
    swing), 13,672 failing pairs against 10,399; the first fit (`q70f2`,
