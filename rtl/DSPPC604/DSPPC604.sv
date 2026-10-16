@@ -1028,32 +1028,38 @@ wire fetch_completion_simple = fetch_dec.valid & (fetch_dec.unit == UNIT_ALU) &
     ~fetch_dec.ca_wr & ~fetch_dec.ov_wr & ~fetch_dec.cr_wr & ~fetch_dec.fpscr_wr &
     (fetch_dec.ic.cin != CIN_CA);
 
+// These few decodes from the opcode bits are made on the word as it is
+// delivered to ID and registered with it (id_strx and the others below):
+// they steer the sequencer's register-read indexes and ID's handshake, and
+// their compares were in front of the operand registers (2026-10-15).
+wire [31:0] id_insn_d = fetch_word.isi ? 32'd0 : fetch_word.insn;
+logic id_strx, id_ldux_rb, id_upd_load, id_upd_store;
 // lswx and stswx, from the opcode bits: the sequencer's wait for XER must
 // not come through the decoder (see wait_xer there)
-wire id_strx = (id_insn[31:26] == 6'd31) & ((id_insn[10:1] == 10'd533) | (id_insn[10:1] == 10'd661));
+wire id_strx_d = (id_insn_d[31:26] == 6'd31) & ((id_insn_d[10:1] == 10'd533) | (id_insn_d[10:1] == 10'd661));
 // lbzux, lhzux, lhaux, lwzux (extended opcodes 119, 311, 375, 55: bits 9
 // and 7 clear, 5-0 = 110111) with rD = rB, likewise: the sequencer then
 // reads the scratch register, which must not wait for the decoder either
-wire id_ldux_rb = (id_insn[31:26] == 6'd31) & ~id_insn[10] & ~id_insn[8] & (id_insn[6:1] == 6'b110111) &
-                  (id_insn[25:21] == id_insn[15:11]);
+wire id_ldux_rb_d = (id_insn_d[31:26] == 6'd31) & ~id_insn_d[10] & ~id_insn_d[8] & (id_insn_d[6:1] == 6'b110111) &
+                    (id_insn_d[25:21] == id_insn_d[15:11]);
 // the stores with update (stwu 37, stbu 39, sthu 45, stfsu 53, stfdu 55;
 // stwux 183, stbux 247, sthux 439, stfsux 695, stfdux 759): one operation
 // the loads with update (lwzu 33, lbzu 35, lhzu 41, lhau 43, lfsu 49,
 // lfdu 51; lwzux 55, lbzux 119, lhzux 311, lhaux 375, lfsux 567, lfdux 631)
 // in one operation: rA not 0 and (integer ones) not rD, and not the rD = rB
 // form, which keeps its three
-wire id_ld_upd_fp  = (id_insn[31:26] == 6'd49) | (id_insn[31:26] == 6'd51) |
-                     ((id_insn[31:26] == 6'd31) & ((id_insn[10:1] == 10'd567) | (id_insn[10:1] == 10'd631)));
-wire id_ld_upd_int = (id_insn[31:26] == 6'd33) | (id_insn[31:26] == 6'd35) | (id_insn[31:26] == 6'd41) |
-                     (id_insn[31:26] == 6'd43) |
-                     ((id_insn[31:26] == 6'd31) & ((id_insn[10:1] == 10'd55) | (id_insn[10:1] == 10'd119) |
-                      (id_insn[10:1] == 10'd311) | (id_insn[10:1] == 10'd375)));
-wire id_upd_load = (id_insn[20:16] != 5'd0) & ~id_ldux_rb &
-                   (id_ld_upd_fp | (id_ld_upd_int & (id_insn[20:16] != id_insn[25:21])));
-wire id_upd_store = ((id_insn[31:26] == 6'd37) | (id_insn[31:26] == 6'd39) | (id_insn[31:26] == 6'd45) |
-                     (id_insn[31:26] == 6'd53) | (id_insn[31:26] == 6'd55)) |
-                    ((id_insn[31:26] == 6'd31) & ((id_insn[10:1] == 10'd183) | (id_insn[10:1] == 10'd247) |
-                     (id_insn[10:1] == 10'd439) | (id_insn[10:1] == 10'd695) | (id_insn[10:1] == 10'd759)));
+wire id_ld_upd_fp  = (id_insn_d[31:26] == 6'd49) | (id_insn_d[31:26] == 6'd51) |
+                     ((id_insn_d[31:26] == 6'd31) & ((id_insn_d[10:1] == 10'd567) | (id_insn_d[10:1] == 10'd631)));
+wire id_ld_upd_int = (id_insn_d[31:26] == 6'd33) | (id_insn_d[31:26] == 6'd35) | (id_insn_d[31:26] == 6'd41) |
+                     (id_insn_d[31:26] == 6'd43) |
+                     ((id_insn_d[31:26] == 6'd31) & ((id_insn_d[10:1] == 10'd55) | (id_insn_d[10:1] == 10'd119) |
+                      (id_insn_d[10:1] == 10'd311) | (id_insn_d[10:1] == 10'd375)));
+wire id_upd_load_d = (id_insn_d[20:16] != 5'd0) & ~id_ldux_rb_d &
+                     (id_ld_upd_fp | (id_ld_upd_int & (id_insn_d[20:16] != id_insn_d[25:21])));
+wire id_upd_store_d = ((id_insn_d[31:26] == 6'd37) | (id_insn_d[31:26] == 6'd39) | (id_insn_d[31:26] == 6'd45) |
+                       (id_insn_d[31:26] == 6'd53) | (id_insn_d[31:26] == 6'd55)) |
+                      ((id_insn_d[31:26] == 6'd31) & ((id_insn_d[10:1] == 10'd183) | (id_insn_d[10:1] == 10'd247) |
+                       (id_insn_d[10:1] == 10'd439) | (id_insn_d[10:1] == 10'd695) | (id_insn_d[10:1] == 10'd759)));
 // the sequencer's kind of instruction, likewise from the opcode bits (the
 // decoder's seq field, which the sequencer checks it against in
 // simulation): its last operation, and so ID's handshake, need not wait
@@ -1073,8 +1079,7 @@ function automatic seq_t seq_of(input logic [31:0] i);
 	else if (i[31:26] == 6'd46 || i[31:26] == 6'd47) seq_of = SEQ_MULTI;
 	else if (i[31] & i[26] & (i[31:26] <= 6'd55) & (i[31:26] != 6'd47)) seq_of = SEQ_UPDATE;
 endfunction
-seq_t id_seqk;
-assign id_seqk = seq_of(id_insn);
+seq_t id_seqk;      // (registered with id_insn, above)
 
 logic [5:0] seq_next_ra, seq_next_rc;
 logic seq_ra_rd, seq_rb_rd, seq_rc_rd, seq_b_imm, seq_fra_rd, seq_frb_rd, seq_frc_rd, seq_nop, seq_cr_op;
@@ -1433,7 +1438,12 @@ always_ff @(posedge clk) begin
 	if (fetch_deliver) begin
 		id_valid    <= 1'b1;
 		id_pc       <= fetch_word.pc;
-		id_insn     <= fetch_word.isi ? 32'd0 : fetch_word.insn;
+		id_insn     <= id_insn_d;
+		id_strx     <= id_strx_d;
+		id_ldux_rb  <= id_ldux_rb_d;
+		id_upd_load <= id_upd_load_d;
+		id_upd_store <= id_upd_store_d;
+		id_seqk     <= seq_of(id_insn_d);
 		id_completion_ra <= fetch_dec.ra;
 		id_completion_rb <= fetch_dec.rb;
 		id_completion_ra_rd <= fetch_dec.ra_rd;
