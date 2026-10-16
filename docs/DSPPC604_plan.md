@@ -958,6 +958,14 @@ programs avoid these or, for the undefined divides, take the real-604 value.
   issue register `fq_*`, the order FIFO `fo_*`, the queue's FP register
   bitmaps `cq_fpr_o/y`, the FPSCR and CR1 committed at the pop). EX's own
   FP answer is applied to the FPSCR of its commit cycle, as the pop's is.
+  Since the same day an FP operation that writes a register also leaves EX
+  into a queue entry in the cycle the unit takes it (`completion_push_ex`),
+  so the instructions behind it run in EX while it computes, their leave,
+  commit, redirect and memory request held by the order gate until its
+  pop; the head entry's answer pops it in the answer's own cycle with the
+  live result (`cq_live`), which keeps dependent chains at their latency
+  (overlaps 2 and 3 of `docs/fpu_pipe_plan.md`, "as built": the early
+  request of loads was built, measured at no gain and removed).
 - FP loads and stores in every form. A double is two word accesses at a
   word-aligned address. The single/double conversions of `lfs` and `stfs`
   are the bit rearrangements the architecture defines.

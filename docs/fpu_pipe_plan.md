@@ -281,6 +281,87 @@ store there, a mispredicted branch there with the FP operation's result
 and FPSCR checked after; then the lockstep, Debian on the board (its
 exception paths), MacBench and Speedometer.
 
+### Overlaps 2 and 3 as built (2026-10-16, the user's go-ahead on the design above)
+
+**Kept: the FP operation leaves EX at the unit's take.** An FP operation
+that writes a register, with FP traps off, fetched sequentially with
+nothing folded after it, is pushed from EX into a completion-queue entry
+in the cycle the unit takes it (`completion_push_ex`; `ex_fp_elig` is the
+static eligibility, and while EX holds such an operation no admission
+from ID is made, so the two pushes never meet). EX is free the next
+cycle; the queue's order gate (`ex_order_ready`) makes everything behind
+wait for the entry's pop only where it must: to leave, to commit, to
+redirect, to request memory. Two things made it pay instead of cost:
+
+- The entry joins the queue's *older* set at once (the bookkeeping at
+  `ex_leave` adds it: the older count, the latest-writer bits, the FPR
+  bitmap), since nothing younger is queued when it is pushed.
+- **The head entry's answer pops it in the answer's own cycle** with the
+  unit's live result and effects (`cq_live`, `cq_h_*`): without that,
+  a dependent operation waited a cycle more than before (the chain
+  microbenchmarks went from 5.25 to 6.25 cycles an operation, the random
+  programs from 2.72 to 2.90), because the result reached it through the
+  entry, the pop and MEM instead of the unit's direct answer. With it the
+  chains are 5.25 again and the random FP programs 2.65 (2.72 before this
+  step, 2.86 before overlap 1).
+
+Branches behind a queued FP operation resolve in EX and their redirect
+waits for the pop (overlap 3, as designed, no new logic); the directed
+test `progs.py fpqtest` (an fmadd chain and an fmul leaving EX, a store
+of the queued result, an alternating branch, an fcmpu, a system call,
+loads, interrupts, wait states; dingusppc at every instruction) passes.
+
+**Built, measured and removed: the early request of plain cacheable
+loads.** It was built as designed (the request without the order gate
+into an empty memory unit, the answer captured in EX and handed to MEM as
+a non-load result, a faulting one requesting again in order, a flushed
+one drained, the data cache holding an inhibited access until ordered or
+abandoning it). Two bugs on the way are worth remembering: a load's done
+flag sat in the integer unit's branch of EX's done expression (`lfdu` is
+an integer-unit operation for its address), so the wait for the early
+answer did not apply and MEM waited for an answer already taken; and a
+captured load with update wrote its data, not its address, into rA,
+because the update takes MEM's result's low word. Fixed, it passed, and
+it gained nothing: the lfd-lfd-fmadd loop stayed at 3.27 cycles an
+instruction and the random programs moved 0.1 %. The reason is EX's
+in-order leave: the load's cache access overlaps the FP operation, but
+the load itself holds EX until the entry pops, and nothing behind it can
+enter. The gain the plan hoped for needs loads to leave EX into entries
+of their own (64-bit data and, for the update forms, the address in each
+entry; an answer FIFO for the memory unit's two descriptors; a fault at
+the pop refetching the load), which is a larger change than the one
+approved. Rather than carry a cache interface and a capture state
+machine for nothing measurable, the early-load half was removed before
+the commit; this record is what remains of it.
+
+**Removed after it: the admission of an FP operation from ID.** With EX
+pushing every eligible FP operation at its take, overlap (1)'s issue
+register (`fq_*`) could only fill behind a compare or a traps-on
+operation in EX, and the fit of the step (`Scratch/q70f4`: 37,662 ALMs,
+-2.73 ns, the failing pairs past the script's 20,000) had ID's admission
+as its worst families: the instruction word through the decoder into
+`completion_count`, the entries' register number, the younger-writer
+bitmap `cq_fpr_y`. Tied off, the microbenchmarks did not move and the
+random FP program lost 0.7 % (2.67 against 2.65 cycles an instruction),
+so the issue register, the admission and the FPR bitmap of younger
+entries were removed: the queue's only FP writer is EX's push, the
+order FIFO marks EX's or a slot's answer, and the ALU admission's
+machinery (`completion_push_alu`, the younger-writer bits for GPRs)
+stays for `COMPLETION_ALU`. The fit without it (`Scratch/q70f5`):
+36,952 ALMs (88 %), 10,847 failing pairs, -2.70 ns, `q70c7`'s level
+(36,334, 10,399, -2.58): the whole of the FPU's overlap work costs
+618 ALMs and no timing the fitter's swing can tell.
+
+Where this leaves the FP pipeline: independent operations stream at the
+unit's rate (3.27 cycles an operation), dependent chains at its latency
+(5.25), everything that does not depend on an FP operation runs in EX
+while it computes, and a branch behind it resolves at once. What still
+waits is anything that must *leave* EX behind a pending FP operation (a
+load, a store, the next FP operation), because the leave is in order
+through the queue; the paying next step is loads (and stores of other
+registers) leaving EX into entries of their own, as the record above
+says, and it is a design for the user, not a cut.
+
 ### Whether it pays for Speedometer
 
 Speedometer's FP tests are 68k code; every FP operation is emulated

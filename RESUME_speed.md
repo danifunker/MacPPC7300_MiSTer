@@ -79,10 +79,38 @@ microbenchmarks: `python verilator\progs.py fpbench Scratch\fpbench\KIND.prog KI
    FP slot in place of the queue (the FP admission only ever has one
    entry in flight behind EX's operation, the issue register being
    single); the user's call.
-3. **Overlaps (2) and (3)** (cacheable loads, then branches, behind a
-   pending FP operation): rule-2 changes, to the user with (1)'s numbers
-   first. The lfd-lfd-fmadd loop (3.27 cycles an instruction, unchanged
-   by (1)) is (2)'s case.
+3. **Overlaps (2) and (3), built on the user's go-ahead the same
+   afternoon** (`docs/fpu_pipe_plan.md`, "Overlaps 2 and 3 as built";
+   the decisions row "FPU overlaps 2 and 3"): an FP operation that
+   writes a register leaves EX into a queue entry when the unit takes it
+   (`completion_push_ex`), the instructions behind it run in EX, the
+   order gate holds their leave, commit, redirect and memory request
+   until its pop; the head entry's answer pops it live (`cq_live`), so
+   dependent chains keep 5.25 cycles an operation. Measured: the random
+   FP programs -2.4 to -2.8 % over overlap (1), nothing else moved;
+   `progs.py fpqtest` (branches, a store, an fcmpu, a system call and
+   interrupts behind queued FP operations, in lockstep with dingusppc)
+   is in `run_core.py`. The early request of loads (overlap 2 proper)
+   was built, measured at no gain (the lfd-lfd-fmadd loop stays at 3.27
+   cycles an instruction: the load holds EX until the pop) and removed;
+   what would pay is loads leaving EX into queue entries of their own
+   (64-bit data and the update address per entry, an answer FIFO for
+   the memory unit's two descriptors, a fault at the pop refetching):
+   a design to put to the user if the FP work goes on. Committed as
+   8d794c9; then overlap (1)'s admission from ID (the issue register
+   `fq_*`, the younger-writers' bitmap) was removed, since EX's push
+   left it only compares and traps-on operations to work behind and the
+   fit of 8d794c9 (`Scratch\q70f4`, 37,662 ALMs, -2.73 ns) had it as
+   its worst families; without it (`Scratch\q70f5`) 36,952 ALMs
+   (88 %), -2.70 ns, 10,847 pairs: `q70c7`'s level, +618 ALMs for the
+   whole FPU work; the random FP programs +0.6 %, nothing else moved.
+   The fit's memory clock missed by 0.48 ns on the SDRAM controller's
+   data-out register (routing; it passed in the other fits): watch it.
+   **Not yet on the board** (the
+   build of the committed state: `Scratch\q70f5\output_files\MacPPC7300.rbf`):
+   Mac OS 7.6.1, the startup-failure count at 100 MHz (and at 70) over
+   ten boots against `q70c7`'s, MacBench and Speedometer; an Opus session
+   drives the board (the user's wish, 2026-10-16).
 
 ## The branch's eleven timing cuts (committed, a08ed6d to f5cd1dd) and what remains
 
