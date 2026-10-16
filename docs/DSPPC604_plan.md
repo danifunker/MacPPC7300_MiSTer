@@ -879,6 +879,23 @@ quarter of a 7600/120's Speedometer CPU index at 70 against 120 MHz: 0.58 of
 the clock, the rest cycles per instruction) is a pipeline matter, scoped in
 `RESUME_speed.md`.
 
+The unit in two halves (2026-10-16, `fpu-pipe2`; the design and the
+measurements in `docs/fpu_pipe_plan.md`, "Overlap 1 as built"): a front
+(the request, the operands, the multiplier's two cycles or the add's
+alignment, the divider, the estimate; `fstate`) and a back (add, count,
+normalise, shift, round, done; `state`), the front handing over when the
+back is idle or answering, so a second independent operation is computed
+while the first is rounded. The protocol changed with it: a request is
+withdrawn once taken (`req_ready` in the request cycle: the front is free
+before the answer) except a move's or select's (`req_simple`, answered in
+its own cycle while the back is idle); `resp_valid` is the back's answer,
+in request order, for whoever asked; and the answer's FPSCR effects come
+out on their own (`set_out`, `fr_out`, `fi_out`, `fprf_we_out`, `fprf_out`,
+`cmp_out`) for a requester that commits later against the FPSCR of that
+time, `fpscr_out` being only the effects applied to the request's
+snapshot. Latencies as before; independent operations stream one per
+3 cycles plus the request.
+
 ### M3: pipeline, user-mode integer (done)
 
 What was built (`rtl/DSPPC604/DSPPC604.sv` and the modules it instantiates):
@@ -935,6 +952,12 @@ programs avoid these or, for the undefined divides, take the real-604 value.
 - Floating-point registers are written in WB and forwarded like general
   registers; a register is named by seven bits, so the one hazard mechanism
   serves both files. FPSCR commits when an instruction leaves EX, like CR.
+  Since 2026-10-16 a second, independent FP operation is admitted from ID
+  into the completion queue behind EX's (the user's go-ahead for overlap 1
+  of `docs/fpu_pipe_plan.md`, which has the design and the hazards: the
+  issue register `fq_*`, the order FIFO `fo_*`, the queue's FP register
+  bitmaps `cq_fpr_o/y`, the FPSCR and CR1 committed at the pop). EX's own
+  FP answer is applied to the FPSCR of its commit cycle, as the pop's is.
 - FP loads and stores in every form. A double is two word accesses at a
   word-aligned address. The single/double conversions of `lfs` and `stfs`
   are the bit rearrangements the architecture defines.

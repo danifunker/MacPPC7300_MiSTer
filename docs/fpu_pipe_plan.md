@@ -91,6 +91,129 @@ multiply also needs 2. Each is a hazard change with its own interlocks;
 each lands with the vectors, the FP random programs, run_core and the ROM
 lockstep, and a board run.
 
+### Overlap 1 as built (2026-10-16, `fpu-pipe2`)
+
+The FPU is split in two halves with their own state: the front (the
+request, the operand normaliser, the multiplier's two cycles or fadd's
+alignment, the divider, the estimate) and the back (the adder, the
+leading-zero count, normalise, shift, round, done). The front hands an
+operation over when the back is free (idle, or answering this cycle): the
+product and aligned addend (`p_q`, `zal`, `zst`), the window exponent and
+distance, the signs, and the operation's own control (precision, integer,
+negate, rounding mode, its FPSCR) go into the back's registers, and the
+front takes the next request. A special result (a NaN operand, an
+infinity, an exact zero) and a compare go to the back's done state when it
+is free; a divide holds its last step until then. The unit answers in
+order, one result at a time; `resp_valid` no longer depends on the
+request, and a move or select (answered in the request cycle) is accepted
+only while the back is idle, so its answer never meets a pending one.
+
+The CPU keeps the one FP operation in EX as before and admits a second,
+independent one from ID into the completion queue behind it, as the queue
+admits ALU operations: the operation's registers and classes are read in
+ID into an issue register (`fq_*`), which requests the FPU when its front
+is free; EX's own request goes first while EX's operation is not yet in
+the unit (`ex_fpu_taken`), so the unit sees them in program order. A
+two-bit order FIFO (`fo_*`) names who the next answer is for, EX or a
+queue slot; a slot's answer is taken at once into its entry: the 64-bit
+value, whether the register is written (an enabled invalid operation or
+zero divide leaves it), and the FPSCR effects as set bits, FR, FI and the
+result class. The entry commits in order through MEM and WB as a queued
+ALU result does, and at the pop the FPSCR is updated from the entry's
+bits (`fpscr_update`, now in the package) and CR1 written for a record
+form: the FPSCR's sticky bits merge in order whatever FPSCR the unit saw.
+Admission: an FPU operation that writes a register (not a compare, not an
+FPSCR instruction), its first and only operation, fetched sequentially,
+MSR[FP] set and FP exceptions not trapping (MSR[FE0,FE1] clear: the trap
+decision needs the result in EX), no in-flight writer of any source
+register (EX, MEM's two slots, the queue, the issue register), the issue
+register free and EX's operation already in the unit. An operation in EX
+reading a register a queue entry writes waits for the entry to pop (no
+forwarding from the entry). Every redirect flushes the unit (a kill of
+the operation in EX kills the younger queued one too; a misfetched FP
+operation leaving EX while its successor is in the unit, likewise).
+
+Two things the vectors could not see (they issue one operation at a
+time), found by the microbenchmarks and the random FP programs:
+
+- A handoff in the cycle the back's answer is taken (the back in its
+  round or done state with `resp_ready`) was lost: the back's own state
+  machine, later in the same block, set the state idle over the front's
+  write. The back's two answering states now leave the state and the
+  result registers alone when `hand_now` is set. The order FIFO's
+  overflow check ("more FPU requests outstanding than the order FIFO
+  holds") caught it on the independent fadd stream, where the front frees
+  faster than the back answers; the random programs hung on it.
+- EX's own answer carried the FPSCR the unit saw at the request. Queued
+  operations older than EX's pop between that request and EX's commit,
+  and their FR, FI and sticky bits were overwritten (fcmpu lost FI, an
+  fctiw's CR1 lost OX). The unit's effect outputs (`set_out`, `fr_out`,
+  `fi_out`, `fprf_we_out`, `fprf_out`, and a new `cmp_out`: a compare's
+  condition goes into FPCC with the C bit kept, without FR and FI) are
+  now applied by EX too, to the FPSCR of the commit cycle, with the same
+  `fpscr_update` as the pop; the unit's `fpscr_out` is for the vector
+  benches. The rounding mode and the enable bits the unit took at the
+  request are the commit's: only EX's own FPSCR instructions change
+  them, in order. A popped entry whose write is suppressed (an enabled
+  invalid operation with traps off) forwards nothing: the registered
+  forwarding select now takes the entry's `we`, as `mem_rd_wr` does.
+
+The core bench's microbenchmarks (`progs.py fpbench OUT KIND`, 2,000
+operations, straight-line, no wait states; cycles per operation, the
+lfd-lfd-fmadd loop per instruction):
+
+| kind | shape | before | overlap 1 |
+|---|---|---|---|
+| dep | `fadd f3, f3, f1` repeated | 5.25 | 5.25 |
+| indep | `fadd f3..f6 = f1 + f2` in turn | 5.25 | 3.27 |
+| mul | `fmul f3..f6 = f1 * f2` in turn | 5.25 | 3.27 |
+| madd | `fmadd f3..f6 = f1 * f2 + f2` in turn | 6.25 | 3.27 |
+| mulchain | `fmul f3, f3, f2` repeated | 5.25 | 5.25 |
+| lfdmadd | `lfd f1; lfd f2; fmadd f3, f1, f2, f3` | 3.27 | 3.27 |
+
+Independent operations now stream at the back's rate (adder, count,
+normalise, round: 3 cycles and the request); the dependent chains keep
+their latency, as they must, and the load-fed loop gains nothing until
+loads may pass a pending FP operation (overlap 2). The random FP programs
+(`run_core.py`'s seeds 1 and 2, every third instruction or so an FP
+operation among loads, stores and FPSCR instructions) run 2.72 and 3.23
+cycles an instruction, 2.86 and 3.39 before (`Scratch/run_core_base.log`):
+-5 %.
+
+The first fit of the whole (`Scratch/q70f2`, 70 MHz, the slow 100 C
+model) against the branch before it (`q70c7`: 36,334 ALMs, 10,399 failing
+pairs, -2.58 ns): 37,508 ALMs (89 %, +1,174), 19,175 pairs, -3.21 ns. The
+worst families are the old ones (a WB result forwarded as the address
+into the MMU's page compares and the memory unit's state, -3.21; through
+the rotator into CR0, -2.38; both rule-2 cuts of the timing pass's list),
+wider in this fit. The overlap's own: ID's instruction word through the
+sequencer and the decoder into the admission (`completion_push_fp`), the
+late enable of the 200-flop issue register and of the entry's register
+number (`id_insn` → `fq_a/b/c` at -1.8 ns, 2,700 pairs; →
+`completion_latest_younger` at -1.9). Cut as the timing pass did: the
+issue register loads ID's operation every cycle it is free and the
+admission sets only its valid; the entry's register number comes from
+ID's registered decode (`frd_wr`), not from the admission. The second
+fit (`q70f3`, the committed source): 37,296 ALMs (89 %, +962), 13,672
+pairs, -2.65 ns, within the fitter's swing of `q70c7`; the issue-register
+family is gone, and the overlap's remaining family is MEM's room through
+`fpu_resp_ready` into the unit's `back_free` and the handoff's registers
+(`mem_valid` → `r_q`, 120 pairs at -2.4: the handoff into the back in the
+cycle its answer is taken, whose taking depends on MEM's room). The
+memory clock passes.
+
+On the board (the user's saved 100 MHz and 124 MB): Mac OS 7.6.1 to the
+Finder; MacBench 4's Processor 167 and Floating Point 142, against 166
+and 143 for the core's run of 2026-10-14 at 100 MHz: MacBench's FP test
+does not move with overlap (1), as expected of code that loads and stores
+around each operation (overlap (2)'s case). Boot to the menu bar 46-50 s
+against 56 s for the build before. Speedometer at 100 MHz: CPU 5.485,
+Math 369.5, Mix 21.68, Color 2.864, FPU 7.871 (KWhetstones 8.890, Matrix
+Mult 8.534, FFT 6.187), Disk 1.725, against the release's 5.480, 369.5,
+21.26, 2.810, 7.802, 1.737: the 1-2 % on Mix, Color and FPU is what the
+emulated 68k FP code can take from overlap (1), as "Whether it pays"
+below says.
+
 ### Whether it pays for Speedometer
 
 Speedometer's FP tests are 68k code; every FP operation is emulated
