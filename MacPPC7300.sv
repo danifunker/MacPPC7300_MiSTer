@@ -59,8 +59,17 @@ module emu
 	`include "sys/emu_ports.vh"
 );
 
-localparam int CPU_MHZ = 70;            // the CPU clock the build is analysed at; the OSD's CPU speed runs it at 70 or 100 (2026-10-15).
-                                        // Not 100: Quartus merges the CPU's counter with the memory clock's when both divide by 7
+// The CPU's speed (syn\build.py sets the macro): by default the OSD's choice of 70 or 100 MHz, the
+// build analysed at 70 (at 100 Quartus merges the CPU's counter with the memory clock's, which the
+// rewrite would then move too); MACPPC_SPEED_100 or _70 a fixed speed, built and analysed at it
+`ifdef MACPPC_SPEED_100
+localparam int SPEED = 100;
+`elsif MACPPC_SPEED_70
+localparam int SPEED = 70;
+`else
+localparam int SPEED = 0;
+`endif
+localparam int CPU_MHZ = SPEED == 100 ? 100 : 70;
 localparam int L2_KB = 128;             // 0: no L2 cache (its OSD option then does nothing; saves about 800 ALMs)
 localparam int TRACE = 0;               // 1: the DDR3 trace (syn\mister.py trace), for debugging builds
 localparam int SOUND_IN_DMA = 0;        // 1: DMA channel 9 (sound in, which records silence) a real channel
@@ -124,7 +133,11 @@ localparam CONF_STR = {
 	"h0H1O[7:5],RAM (on reset),28 MB,6 MB,16 MB,60 MB;",
 	"h1O[7:5],RAM (on reset),28 MB,6 MB,16 MB,60 MB,124 MB;",
 	"O[4],L2 cache (on reset),On,Off;",
+`ifndef MACPPC_SPEED_100
+`ifndef MACPPC_SPEED_70
 	"O[33],CPU speed (on reset),70 MHz,100 MHz;",
+`endif
+`endif
 	// (status[16:15] was the list before 2026-10-15, three monitors)
 	"O[32:30],Monitor (on reset),16-inch 832x624,13-inch 640x480,12-inch 512x384,17-inch Multiscan,21-inch 1152x870,20-inch Multiscan;",
 	"-;",
@@ -541,7 +554,7 @@ always @(posedge clk_mem) if (cpu_reset_m) begin
 	net_on     <= status[19:17] != 3'd0;    // the Main's mac_eth.cpp takes the interface from it too
 	tr_mesh_m  <= status[29];
 	l2_on_m    <= ~status[4];
-	spd_want_m <= status[33];
+	spd_want_m <= SPEED == 0 ? status[33] : SPEED == 100;
 	cpu_fast_m <= spd_pll_s[2];
 end
 wire [51:0] joy = {status[14], joy_mode, joystick_r_analog_0, joystick_l_analog_0, joystick_0[15:0]};
