@@ -879,6 +879,23 @@ quarter of a 7600/120's Speedometer CPU index at 70 against 120 MHz: 0.58 of
 the clock, the rest cycles per instruction) is a pipeline matter, scoped in
 `RESUME_speed.md`.
 
+The unit in two halves (2026-10-16, `fpu-pipe2`; the design and the
+measurements in `docs/fpu_pipe_plan.md`, "Overlap 1 as built"): a front
+(the request, the operands, the multiplier's two cycles or the add's
+alignment, the divider, the estimate; `fstate`) and a back (add, count,
+normalise, shift, round, done; `state`), the front handing over when the
+back is idle or answering, so a second independent operation is computed
+while the first is rounded. The protocol changed with it: a request is
+withdrawn once taken (`req_ready` in the request cycle: the front is free
+before the answer) except a move's or select's (`req_simple`, answered in
+its own cycle while the back is idle); `resp_valid` is the back's answer,
+in request order, for whoever asked; and the answer's FPSCR effects come
+out on their own (`set_out`, `fr_out`, `fi_out`, `fprf_we_out`, `fprf_out`,
+`cmp_out`) for a requester that commits later against the FPSCR of that
+time, `fpscr_out` being only the effects applied to the request's
+snapshot. Latencies as before; independent operations stream one per
+3 cycles plus the request.
+
 ### M3: pipeline, user-mode integer (done)
 
 What was built (`rtl/DSPPC604/DSPPC604.sv` and the modules it instantiates):
@@ -935,6 +952,20 @@ programs avoid these or, for the undefined divides, take the real-604 value.
 - Floating-point registers are written in WB and forwarded like general
   registers; a register is named by seven bits, so the one hazard mechanism
   serves both files. FPSCR commits when an instruction leaves EX, like CR.
+  Since 2026-10-16 a second, independent FP operation is admitted from ID
+  into the completion queue behind EX's (the user's go-ahead for overlap 1
+  of `docs/fpu_pipe_plan.md`, which has the design and the hazards: the
+  issue register `fq_*`, the order FIFO `fo_*`, the queue's FP register
+  bitmaps `cq_fpr_o/y`, the FPSCR and CR1 committed at the pop). EX's own
+  FP answer is applied to the FPSCR of its commit cycle, as the pop's is.
+  Since the same day an FP operation that writes a register also leaves EX
+  into a queue entry in the cycle the unit takes it (`completion_push_ex`),
+  so the instructions behind it run in EX while it computes, their leave,
+  commit, redirect and memory request held by the order gate until its
+  pop; the head entry's answer pops it in the answer's own cycle with the
+  live result (`cq_live`), which keeps dependent chains at their latency
+  (overlaps 2 and 3 of `docs/fpu_pipe_plan.md`, "as built": the early
+  request of loads was built, measured at no gain and removed).
 - FP loads and stores in every form. A double is two word accesses at a
   word-aligned address. The single/double conversions of `lfs` and `stfs`
   are the bit rearrangements the architecture defines.
@@ -2174,6 +2205,29 @@ run on a real 604 can settle.
   `PERF = 1`, `TRACE = 1` build writes it into the DDR3 trace for
   `syn\perf.py`. The 604's own numbers for the comparison are in
   `docs/MacPPC7300_plan.md`, "Where the cycles go".
+- The 70 MHz timing pass of 2026-10-15 (`fpu-pipe2`, eleven commits a08ed6d
+  to f5cd1dd, each one cut; the account in `docs/MacPPC7300_plan.md`'s
+  decisions table, "timing"): every cut restructures inside a cycle and
+  leaves the pipeline's behaviour alone (checked: `run_core.py` +0.011 %
+  cycles over the suite, the 300 M lockstep identical, 312.13 M cycles).
+  The method that found them: `syn\sta_cpupaths.tcl` on each fit, the
+  pairs grouped by source and endpoint (`syn\cpupaths_families.py`), the
+  worst of each family reported with `-detail full_path`
+  (`syn\sta_pathsum.py` prints the cells and arrival times), and a cut
+  aimed at the structure
+  the path shows (a late enable on a wide register bank, a mux chain
+  behind a compare, a register far from its readers), never at one fit's
+  worst pair: the fitter moves a family by 0.5-1 ns between fits.
+  Patterns that paid: a one-hot select registered with the operation in
+  ID, and a flat AND-OR in EX (the SPR read, the unit's result); a
+  register loaded while its stage is free, the late signal gating only
+  the valid (IF2, the FPU's operands); a write landing a cycle after its
+  commit where nothing can read it in between (mtsr's queue, now the
+  BATs'); copies of far registers beside their compares, with the lag
+  covered (the MMU's MSR copy from `msr_d`, the IBATs' by `i_stale`); a
+  decision made from the decoder's operation with the sequencer's own
+  cases known apart. What is left needs a cycle: the data cache's answer
+  (`LATE_ANSWER`), the effective address registered before translation.
 
 ## Decisions needed along the way
 

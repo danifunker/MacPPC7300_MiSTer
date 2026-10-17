@@ -135,7 +135,8 @@ DSPPC604_int_unit int_unit
 	.sum        (),
 	.cmp_lts    (),
 	.cmp_ltu    (),
-	.cmp_eq     ()
+	.cmp_eq     (),
+	.alu_log    (), .alu_rot (), .alu_clz (), .alu_exts (), .mul_hi (), .mul_lo (), .div_q ()
 );
 
 always_ff @(posedge clk) begin

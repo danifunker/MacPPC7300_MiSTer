@@ -35,7 +35,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # whether the CPU is built with its completion queue (DSPPC604.sv's default)
-COMPLETION_QUEUE = int(re.search(r"parameter int\s+COMPLETION_QUEUE\s*=\s*(\d+)",
+COMPLETION_QUEUE = int(re.search(r"parameter int\s+COMPLETION_ALU\s*=\s*(\d+)",
     open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "rtl", "DSPPC604", "DSPPC604.sv")).read()).group(1))
 
 
@@ -177,6 +177,8 @@ def main():
         ("external interrupts", ["irqtest", "3000"], ["--irq-every", "97", "--stall", "10"]),
         ("decrementer interrupts", ["irqtest", "3000"], ["--tb-run"]),
         ("both, with wait states", ["irqtest", "3000"], ["--irq-every", "61", "--tb-run", "--stall", "30"]),
+        ("FP operations queued behind EX", ["fpqtest", "2000"], ["--lockstep"]),
+        ("the same, interrupts, wait states", ["fpqtest", "2000"], ["--lockstep", "--irq-every", "97", "--tb-run", "--stall", "30", "--seed", "5"]),
         ("overlap queue, external interrupts", ["irqoverlaptest", "3000"], ["--irq-every", "97", "--profile", "--stall", "20"]),
         ("overlap queue, both interrupts", ["irqoverlaptest", "3000"], ["--irq-every", "61", "--tb-run", "--profile", "--stall", "30"]),
         ("interrupts during page walks", ["irqwalktest", "1000"], ["--irq-every", "97", "--stall", "40", "--seed", "11"]),

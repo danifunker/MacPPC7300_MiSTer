@@ -45,7 +45,12 @@ module DSPPC604_seq
 	output logic        last,         // last operation of the instruction
 	output logic        wait_xer,     // XER's byte count must be final first
 	output logic [5:0]  next_ra,      // prospective next micro-op, independent of take
-	output logic [5:0]  next_rc
+	output logic [5:0]  next_rc,
+	// uop's read flags again, from the decoder's and the step alone (not
+	// through the arms below): the forwarding selects are compared from these
+	output logic        ra_rd_s, rb_rd_s, rc_rd_s, b_imm_s, fra_rd_s, frb_rd_s, frc_rd_s,
+	output logic        nop_s,        // uop is the nop of lswx/stswx with a zero count
+	output logic        cr_op_s       // uop is stwcx.'s CR operation
 );
 
 import DSPPC604_pkg::*;
@@ -54,7 +59,12 @@ logic [5:0] step;
 logic       last_d;               // last, as the decoder's seq field has it (checked against last)
 
 wire        is_load = dec.mem_rd;
-wire [4:0]  base_r  = dec.rc[4:0];        // rS or rD: the same field, which the decoder puts in rc for every instruction
+wire [4:0]  base_r  = rs;                 // rS or rD (the field the decoder puts in rc for every instruction)
+// the multiple's displacement from a register after the first operation
+// (the decoder's immediate is then not in front of the adder): the word
+// holds through a sequence, so what the first operation saw stays right
+logic [31:0] imm_q;
+always_ff @(posedge clk) if (step == 6'd0) imm_q <= dec.imm;
 
 // string forms (strx, from the opcode bits, keeps the decoder's seq field
 // off the register-read indexes)
@@ -142,7 +152,7 @@ always_comb begin
 	end
 
 	SEQ_MULTI: begin
-		uop.imm = dec.imm + {24'd0, step, 2'b00};
+		uop.imm = (step == 6'd0) ? dec.imm : (imm_q + {24'd0, step, 2'b00});
 		if (is_load) uop.rd = {1'b0, base_r + step[4:0]};
 		last_d = ((base_r + step[4:0]) == 5'd31);
 	end
@@ -206,10 +216,31 @@ always_comb begin
 	endcase
 end
 
+// the read flags from the decoder's and the step, beside the arms above
+wire   scratch_s = (strx | ldux_rb) & (step != 6'd0);               // the scratch register is A, B an immediate
+wire   upd_s     = (seqk == SEQ_UPDATE) & ~ldux_rb & (step != 6'd0); // rA <- rA + B: no rS, no frS
+assign nop_s     = (seqk == SEQ_STRX) & (n_total == 7'd0);
+assign cr_op_s   = (seqk == SEQ_STWCX) & (step != 6'd0);
+wire   zero_s    = nop_s | cr_op_s;
+assign ra_rd_s   = ~zero_s & (dec.ra_rd | scratch_s);
+assign rb_rd_s   = ~zero_s & dec.rb_rd & ~scratch_s;
+assign b_imm_s   = ~zero_s & (dec.b_imm | scratch_s);
+assign rc_rd_s   = ~zero_s & dec.rc_rd & ~upd_s & ~(strx & (step == 6'd0));
+assign fra_rd_s  = ~zero_s & dec.fra_rd;
+assign frb_rd_s  = ~zero_s & dec.frb_rd & ~upd_s;
+assign frc_rd_s  = ~zero_s & dec.frc_rd;
+
 // synthesis translate_off
-always_ff @(posedge clk)
+always_ff @(posedge clk) begin
 	if (~reset & valid & ((seqk != dec.seq) | (last != last_d)))
 		$fatal(1, "DSPPC604_seq: seqk %0d / last %0d differ from the decoder's %0d / %0d", seqk, last, dec.seq, last_d);
+	if (~reset & valid & ({ra_rd_s, rb_rd_s, rc_rd_s, b_imm_s, fra_rd_s, frb_rd_s, frc_rd_s} !=
+	                      {uop.ra_rd, uop.rb_rd, uop.rc_rd, uop.b_imm, uop.fra_rd, uop.frb_rd, uop.frc_rd}))
+		$fatal(1, "DSPPC604_seq: the read flags beside the arms differ from uop's");
+	if (~reset & valid & ((nop_s != ((uop.unit == UNIT_SYS) & (uop.sys == SYS_NOP) & (dec.seq == SEQ_STRX))) |
+	                      (cr_op_s != (uop.sys == SYS_STWCX_CR))))
+		$fatal(1, "DSPPC604_seq: nop_s or cr_op_s differs from uop");
+end
 // synthesis translate_on
 
 always_ff @(posedge clk) begin

@@ -338,4 +338,36 @@ package DSPPC604_pkg;
 		end
 	endfunction
 
+	// The FPSCR after an operation: its exception bits set (FX with the
+	// first new sticky one), FR, FI and FPRF written if wanted, VX and FEX
+	// summarised. Shared by the FPU and by the pipeline, which applies a
+	// queued operation's effects at its commit. Bit 31 is FX, the
+	// architecture's bit 0: 30 FEX, 29 VX, 28 OX, 27 UX, 26 ZX, 25 XX,
+	// 24-19 and 9-8 the invalid-operation causes, 7-3 the enables.
+	function automatic logic [31:0] fpscr_update(
+		input logic [31:0] old,
+		input logic [31:0] set_bits,
+		input logic        frfi_we,
+		input logic        fr,
+		input logic        fi,
+		input logic        fprf_we,
+		input logic [4:0]  fprf
+	);
+		logic [31:0] n;
+		begin
+			n = old;
+			if (frfi_we) begin
+				n[18] = fr;
+				n[17] = fi;
+			end
+			if (fprf_we) n[16:12] = fprf;
+			if (|(set_bits & ~old & 32'h1FF80700)) n[31] = 1'b1;
+			n = n | set_bits;
+			n[29] = |(n & 32'h01F80700);
+			n[30] = (n[29] & n[7]) | (n[28] & n[6]) | (n[27] & n[5]) |
+			        (n[26] & n[4]) | (n[25] & n[3]);
+			fpscr_update = n;
+		end
+	endfunction
+
 endpackage

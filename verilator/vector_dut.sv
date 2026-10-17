@@ -125,7 +125,8 @@ DSPPC604_int_unit int_unit
 	.sum        (),
 	.cmp_lts    (),
 	.cmp_ltu    (),
-	.cmp_eq     ()
+	.cmp_eq     (),
+	.alu_log    (), .alu_rot (), .alu_clz (), .alu_exts (), .mul_hi (), .mul_lo (), .div_q ()
 	/* verilator lint_on PINCONNECTEMPTY */
 );
 
@@ -139,6 +140,13 @@ logic        fpu_ready;
 logic        fpu_fex;
 /* verilator lint_on UNUSEDSIGNAL */
 
+// a request is withdrawn once the unit has taken it (its front is free
+// again before the answer, since 2026-10-16)
+logic fpu_taken, fpu_simple;
+always_ff @(posedge clk) begin
+	if ((state == S_EXEC) & is_fpu & fpu_ready & ~fpu_simple) fpu_taken <= 1'b1;
+	if (fpu_resp | (state != S_EXEC) | reset) fpu_taken <= 1'b0;
+end
 generate if (HAVE_FPU != 0) begin : g_fpu
 	DSPPC604_fpu fpu
 	(
@@ -146,7 +154,8 @@ generate if (HAVE_FPU != 0) begin : g_fpu
 		.reset      (reset),
 		.flush      (1'b0),
 		.no_early   (1'b0),
-		.req_valid  ((state == S_EXEC) & is_fpu),
+		.req_valid  ((state == S_EXEC) & is_fpu & ~fpu_taken),
+		.req_simple (fpu_simple),
 		.req_ready  (fpu_ready),
 		.ctl        (dec.fc),
 		.a          (fop_a),
@@ -162,11 +171,15 @@ generate if (HAVE_FPU != 0) begin : g_fpu
 		.result_we  (fpu_result_we),
 		.fpscr_out  (fpu_fpscr),
 		.cr_out     (fpu_cr),
-		.fex        (fpu_fex)
+		.fex        (fpu_fex),
+		/* verilator lint_off PINCONNECTEMPTY */
+		.set_out (), .fr_out (), .fi_out (), .fprf_we_out (), .fprf_out (), .cmp_out ()
+		/* verilator lint_on PINCONNECTEMPTY */
 	);
 end
 else begin : g_nofpu
 	assign fpu_resp      = 1'b0;
+	assign fpu_simple    = 1'b0;
 	assign fpu_result    = 64'd0;
 	assign fpu_result_we = 1'b0;
 	assign fpu_fpscr     = 32'd0;

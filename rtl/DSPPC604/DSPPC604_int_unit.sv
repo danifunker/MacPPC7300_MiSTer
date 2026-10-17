@@ -47,7 +47,11 @@ module DSPPC604_int_unit
 	output logic [3:0]  cr_out,      // CR field: LT GT EQ SO
 	output logic        cmp_lts,     // the ALU's compare, signed and unsigned at once (traps)
 	output logic        cmp_ltu,
-	output logic        cmp_eq
+	output logic        cmp_eq,
+	// each operation's own result (sum is the adder's): the pipeline chooses
+	// flat among them with selects registered with the operation, instead
+	// of behind the choice result makes here
+	output logic [31:0] alu_log, alu_rot, alu_clz, alu_exts, mul_hi, mul_lo, div_q
 );
 
 import DSPPC604_pkg::*;
@@ -59,6 +63,7 @@ logic        alu_ov;
 logic        alu_lt;
 logic        alu_gt;
 logic        alu_eq;
+logic        alu_zero, alu_neg;
 
 DSPPC604_alu alu
 (
@@ -74,7 +79,13 @@ DSPPC604_alu alu
 	.gt     (alu_gt),
 	.eq     (alu_eq),
 	.lt_s   (cmp_lts),
-	.lt_u   (cmp_ltu)
+	.lt_u   (cmp_ltu),
+	.zero   (alu_zero),
+	.neg    (alu_neg),
+	.log_o  (alu_log),
+	.rot_o  (alu_rot),
+	.clz_o  (alu_clz),
+	.exts_o (alu_exts)
 );
 
 assign cmp_eq = alu_eq;
@@ -137,9 +148,13 @@ always_ff @(posedge clk) begin
 end
 
 assign req_ready = (state == S_IDLE);
+assign mul_hi = mul_product[63:32];
+assign mul_lo = mul_product[31:0];
+assign div_q  = div_quotient;
 
 // ---- results ---------------------------------------------------------------
 logic so_new;
+logic res_zero, res_neg;   // (found per unit, before the result's choice: CR0 is not behind it)
 
 always_comb begin
 	ca_out = alu_ca;
@@ -148,17 +163,23 @@ always_comb begin
 		UNIT_MUL: begin
 			resp_valid = req_valid & (state == S_MUL2);
 			result     = ctl.mul_high ? mul_product[63:32] : mul_product[31:0];
+			res_zero   = ctl.mul_high ? ~(|mul_product[63:32]) : ~(|mul_product[31:0]);
+			res_neg    = ctl.mul_high ? mul_product[63] : mul_product[31];
 			// mullwo: the product does not fit in 32 bits
 			ov_out     = (mul_product[63:32] != {32{mul_product[31]}});
 		end
 		UNIT_DIV: begin
 			resp_valid = req_valid & (state == S_DIV) & div_done;
 			result     = div_quotient;
+			res_zero   = ~(|div_quotient);
+			res_neg    = div_quotient[31];
 			ov_out     = div_overflow;
 		end
 		default: begin
 			resp_valid = req_valid & (unit == UNIT_ALU);
 			result     = alu_result;
+			res_zero   = alu_zero;
+			res_neg    = alu_neg;
 			ov_out     = alu_ov;
 		end
 	endcase
@@ -168,7 +189,7 @@ always_comb begin
 	if (unit == UNIT_ALU && ctl.alu_op == ALU_CMP)
 		cr_out = {alu_lt, alu_gt, alu_eq, so_in};
 	else
-		cr_out = {result[31], ~result[31] & (|result), ~(|result), so_new};
+		cr_out = {res_neg, ~res_neg & ~res_zero, res_zero, so_new};
 end
 
 endmodule

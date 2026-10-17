@@ -90,7 +90,8 @@ module DSPPC604
 	parameter int          DC_IDXW  = 7,              // data cache sets, likewise
 	parameter int          FPU_OPERAND_REG = 0,       // 1: the FPU takes its operands into a register first (a cycle each; on 2026-10-06 to 2026-10-09 for timing)
 	parameter int          PERF     = 1,              // 1: the performance counters (perf_cnt; 0 leaves them out)
-	parameter int          COMPLETION_QUEUE = 0,      // 1: simple ALU operations run ahead of a long one (0, since 2026-10-11, leaves the queue out: no gain once the dividers and FPU got faster, 1,100 ALMs, 5 % slower ROM boot)
+	parameter int          COMPLETION_QUEUE = 1,      // 1: the completion queue is built: operations admitted behind a long one in EX, committed in order (since 2026-10-16 the FPU's overlap needs it)
+	parameter int          COMPLETION_ALU   = 0,      // 1: simple ALU operations are admitted to it too (0 since 2026-10-11: no gain once the dividers and FPU got faster, 1,100 ALMs, 5 % slower ROM boot)
 	parameter logic [31:0] PVR      = 32'h00040303    // processor version: 604 revision 3.3
 )
 (
@@ -262,7 +263,8 @@ fetch_t fetch_word;
 // Two output slots retain one spare at sustained single-word throughput.
 // Their registered occupancy controls FIFO reads, separating the FIFO RAM
 // address/write control from late ID/EX completion readiness.
-fetch_t fetch_stage [2];
+// (registers, not a RAM: the instruction cache's word comes straight in)
+(* ramstyle = "logic" *) fetch_t fetch_stage [2];
 fetch_t fetch_source_word;
 logic fetch_stage_head, fetch_stage_tail;
 logic [1:0] fetch_stage_count;
@@ -323,16 +325,33 @@ logic [63:0] ex_fc;
 // Completed, speculative ALU operations behind the long operation in EX.
 // They cannot fault or modify status. After that older operation commits,
 // drain them through the ordinary MEM/WB path before the next EX commits.
+// Since 2026-10-16 also a floating-point operation behind one in EX (the
+// FPU's front free, its sources in no one's hands): its 64-bit result and
+// FPSCR effects arrive from the unit later (completion_fp_pend) and are
+// committed, FPSCR and CR1 included, as the entry pops.
 typedef struct packed {
-	logic [31:0] pc, insn, value;
-	logic [5:0] rd;
+	logic [31:0] pc, insn;
+	logic [63:0] value;
+	logic [6:0]  rd;        // bit 6: a floating-point register
+	logic        fp;        // a floating-point operation: value, we, the FPSCR effects below
+	logic        we;        // ... whose register is written (an enabled invalid operation leaves it)
+	logic        rc;        // ... whose CR1 is written
+	logic [31:0] set;       // ... the FPSCR bits it sets, FR, FI, and the class if wanted
+	logic        fr, fi, fprf_we;
+	logic [4:0]  fprf;
 } completion_t;
 completion_t completion_queue [8];
+logic [7:0] completion_fp_pend;          // the entry's FP result has not arrived
+// the FP registers the entries write, as bitmaps: by an entry younger than
+// EX's operation (ID's admission waits for them) and older (EX's operands
+// wait for the pop); a 32:1 choice instead of eight compares in EX's stall
+logic [31:0] cq_fpr_o;
 logic [2:0] completion_head, completion_tail;
 logic [3:0] completion_count;
 logic [3:0] completion_older_count;
 logic [7:0] completion_latest_older, completion_latest_younger;
-logic completion_push, completion_pop, id_to_ex;
+logic completion_push, completion_push_alu, completion_pop, id_to_ex;
+logic completion_push_ex, ex_fp_elig;   // (the FP operation in EX leaving into the queue: with the unit)
 // Reserve the FIFO entry at issue, then execute from registered operands.
 // Forward that stage's result to the next registered operands, preserving
 // dependent issue without putting decode and execution in the same path.
@@ -481,8 +500,8 @@ wire mem_mem = mem_load | mem_store;
 wire mem_room_free = ~mo_valid & (~mem_valid | ~mem_mem);
 wire mem_room_pass = ~mo_valid & mem_valid & mem_mem & mu_final & ~mem_resv_set & ~mem_resv_clr;
 wire mem_room = mem_room_free | (mem_room_pass & ex_pass_ok);
-wire ex_regular_done = ~ex_stall & (is_int ? int_resp : is_fpu ? fpu_resp : 1'b1);
-wire ex_ready  = ~ex_valid | (ex_regular_done & mem_room & ex_order_ready);
+wire ex_regular_done = ~ex_stall & (is_int ? int_resp : is_fpu ? fpu_resp_ex : 1'b1);
+wire ex_ready  = ~ex_valid | (ex_regular_done & mem_room & ex_order_ready) | completion_push_ex;
 // EX's payload goes into MEM's newer slot (decided before the abort and
 // fault checks; mem_valid follows those), or a queued completion does
 wire mem_payload_take = ex_valid & ex_regular_done & mem_room & ex_order_ready;
@@ -538,7 +557,9 @@ logic         ic_inval, dc_inval;          // HID0[ICFI], [DCFI]
 //  IF1, IF2
 // ============================================================================
 wire if2_resp = if2_valid & if_rvalid;
-wire fetch_response = if2_resp & ~if2_kill & ~redir;
+// (a word answered in a redirect's cycle is pushed and then thrown away
+// with the queue: the redirect is not in front of the queue's writes)
+wire fetch_response = if2_resp & ~if2_kill;
 wire fetch_push = fetch_response & ~fetch_bypass;
 assign fetch_pop = (fetch_count != 3'd0) & fetch_stage_ready;
 assign fetch_bypass = (fetch_count == 3'd0) & fetch_stage_ready & fetch_response;
@@ -653,12 +674,20 @@ wire [BTB_SET_BITS-1:0] btb_idx = btb_index(pc_f);
 // goes unpredicted, as before.
 wire [BTB_SET_BITS-1:0] btb_tgt_idx = btb_index(br_target);
 wire [BTB_SET_BITS-1:0] btb_seq_idx = btb_index(ex_seq);
-wire [BTB_SET_BITS-1:0] btb_redir_idx = br_taken ? btb_tgt_idx : btb_seq_idx;
+// (kept apart, so that the redirect is the last choice in front of the RAMs)
+(* keep = "true" *) wire [BTB_SET_BITS-1:0] btb_redir_idx = br_taken ? btb_tgt_idx : btb_seq_idx;
 // (the next fetch's row from each source's own index, the prediction then
 // choosing among the indices rather than among the addresses: the BTB's
 // and ITT's read-ahead from the RAMs' compares is the fetch's loop)
-logic [BTB_SET_BITS-1:0] btb_ahead_idx, btb_pred_idx;
-wire [BTB_SET_BITS-1:0] btb_ridx = redir ? btb_redir_idx : btb_ahead_idx;
+(* keep = "true" *) logic [BTB_SET_BITS-1:0] btb_ahead_idx;
+logic [BTB_SET_BITS-1:0] btb_pred_idx;
+// The redirect's row is read as soon as the operation in EX is known to
+// go elsewhere, not only in the cycle it leaves (ex_leave waits for MEM's
+// room, the cache's answer, and was in front of the RAMs' address): the
+// fetches meanwhile are the ones it kills. A fault's vector gets no row
+// here either way (its first word goes unpredicted, as before).
+logic btb_rd_redir;
+wire [BTB_SET_BITS-1:0] btb_ridx = btb_rd_redir ? btb_redir_idx : btb_ahead_idx;
 // The rows are read ahead for the predicted next address without waiting
 // for the fetch's grant; when the fetch then waited (pred_hold), the rows of
 // the address still being fetched come from these registers instead.
@@ -785,7 +814,7 @@ wire [BTB_SET_BITS-1:0] btb_next_idx = btb_pred_idx;
 (* keep = "true" *) wire btb_write_next = (btb_widx == btb_next_idx);
 (* keep = "true" *) wire btb_write_tgt = (btb_widx == btb_tgt_idx);
 (* keep = "true" *) wire btb_write_seq = (btb_widx == btb_seq_idx);
-wire btb_write_read = redir ? (br_taken ? btb_write_tgt : btb_write_seq) :
+wire btb_write_read = btb_rd_redir ? (br_taken ? btb_write_tgt : btb_write_seq) :
                       ahead_go ? btb_write_next : btb_write_current;
 
 always_ff @(posedge clk) begin
@@ -947,8 +976,11 @@ always_ff @(posedge clk) begin
 	endcase
 	if (if2_resp) if2_valid <= 1'b0;
 
-	if (fetch_go) begin
-		if2_valid <= 1'b1;
+	// the fetch's word and its prediction, loaded whenever IF2 is free: a
+	// grant needs it free (below), so only if2_valid waits for the late
+	// grant, and the registers do not
+	if (fetch_go) if2_valid <= 1'b1;
+	if (~if2_valid | if2_resp) begin
 		if2_kill  <= redir;      // fetched from the wrong path in this very cycle
 		if2_pc    <= pc_f;
 		if2_pred  <= pred_pc;
@@ -1014,32 +1046,38 @@ wire fetch_completion_simple = fetch_dec.valid & (fetch_dec.unit == UNIT_ALU) &
     ~fetch_dec.ca_wr & ~fetch_dec.ov_wr & ~fetch_dec.cr_wr & ~fetch_dec.fpscr_wr &
     (fetch_dec.ic.cin != CIN_CA);
 
+// These few decodes from the opcode bits are made on the word as it is
+// delivered to ID and registered with it (id_strx and the others below):
+// they steer the sequencer's register-read indexes and ID's handshake, and
+// their compares were in front of the operand registers (2026-10-15).
+wire [31:0] id_insn_d = fetch_word.isi ? 32'd0 : fetch_word.insn;
+logic id_strx, id_ldux_rb, id_upd_load, id_upd_store;
 // lswx and stswx, from the opcode bits: the sequencer's wait for XER must
 // not come through the decoder (see wait_xer there)
-wire id_strx = (id_insn[31:26] == 6'd31) & ((id_insn[10:1] == 10'd533) | (id_insn[10:1] == 10'd661));
+wire id_strx_d = (id_insn_d[31:26] == 6'd31) & ((id_insn_d[10:1] == 10'd533) | (id_insn_d[10:1] == 10'd661));
 // lbzux, lhzux, lhaux, lwzux (extended opcodes 119, 311, 375, 55: bits 9
 // and 7 clear, 5-0 = 110111) with rD = rB, likewise: the sequencer then
 // reads the scratch register, which must not wait for the decoder either
-wire id_ldux_rb = (id_insn[31:26] == 6'd31) & ~id_insn[10] & ~id_insn[8] & (id_insn[6:1] == 6'b110111) &
-                  (id_insn[25:21] == id_insn[15:11]);
+wire id_ldux_rb_d = (id_insn_d[31:26] == 6'd31) & ~id_insn_d[10] & ~id_insn_d[8] & (id_insn_d[6:1] == 6'b110111) &
+                    (id_insn_d[25:21] == id_insn_d[15:11]);
 // the stores with update (stwu 37, stbu 39, sthu 45, stfsu 53, stfdu 55;
 // stwux 183, stbux 247, sthux 439, stfsux 695, stfdux 759): one operation
 // the loads with update (lwzu 33, lbzu 35, lhzu 41, lhau 43, lfsu 49,
 // lfdu 51; lwzux 55, lbzux 119, lhzux 311, lhaux 375, lfsux 567, lfdux 631)
 // in one operation: rA not 0 and (integer ones) not rD, and not the rD = rB
 // form, which keeps its three
-wire id_ld_upd_fp  = (id_insn[31:26] == 6'd49) | (id_insn[31:26] == 6'd51) |
-                     ((id_insn[31:26] == 6'd31) & ((id_insn[10:1] == 10'd567) | (id_insn[10:1] == 10'd631)));
-wire id_ld_upd_int = (id_insn[31:26] == 6'd33) | (id_insn[31:26] == 6'd35) | (id_insn[31:26] == 6'd41) |
-                     (id_insn[31:26] == 6'd43) |
-                     ((id_insn[31:26] == 6'd31) & ((id_insn[10:1] == 10'd55) | (id_insn[10:1] == 10'd119) |
-                      (id_insn[10:1] == 10'd311) | (id_insn[10:1] == 10'd375)));
-wire id_upd_load = (id_insn[20:16] != 5'd0) & ~id_ldux_rb &
-                   (id_ld_upd_fp | (id_ld_upd_int & (id_insn[20:16] != id_insn[25:21])));
-wire id_upd_store = ((id_insn[31:26] == 6'd37) | (id_insn[31:26] == 6'd39) | (id_insn[31:26] == 6'd45) |
-                     (id_insn[31:26] == 6'd53) | (id_insn[31:26] == 6'd55)) |
-                    ((id_insn[31:26] == 6'd31) & ((id_insn[10:1] == 10'd183) | (id_insn[10:1] == 10'd247) |
-                     (id_insn[10:1] == 10'd439) | (id_insn[10:1] == 10'd695) | (id_insn[10:1] == 10'd759)));
+wire id_ld_upd_fp  = (id_insn_d[31:26] == 6'd49) | (id_insn_d[31:26] == 6'd51) |
+                     ((id_insn_d[31:26] == 6'd31) & ((id_insn_d[10:1] == 10'd567) | (id_insn_d[10:1] == 10'd631)));
+wire id_ld_upd_int = (id_insn_d[31:26] == 6'd33) | (id_insn_d[31:26] == 6'd35) | (id_insn_d[31:26] == 6'd41) |
+                     (id_insn_d[31:26] == 6'd43) |
+                     ((id_insn_d[31:26] == 6'd31) & ((id_insn_d[10:1] == 10'd55) | (id_insn_d[10:1] == 10'd119) |
+                      (id_insn_d[10:1] == 10'd311) | (id_insn_d[10:1] == 10'd375)));
+wire id_upd_load_d = (id_insn_d[20:16] != 5'd0) & ~id_ldux_rb_d &
+                     (id_ld_upd_fp | (id_ld_upd_int & (id_insn_d[20:16] != id_insn_d[25:21])));
+wire id_upd_store_d = ((id_insn_d[31:26] == 6'd37) | (id_insn_d[31:26] == 6'd39) | (id_insn_d[31:26] == 6'd45) |
+                       (id_insn_d[31:26] == 6'd53) | (id_insn_d[31:26] == 6'd55)) |
+                      ((id_insn_d[31:26] == 6'd31) & ((id_insn_d[10:1] == 10'd183) | (id_insn_d[10:1] == 10'd247) |
+                       (id_insn_d[10:1] == 10'd439) | (id_insn_d[10:1] == 10'd695) | (id_insn_d[10:1] == 10'd759)));
 // the sequencer's kind of instruction, likewise from the opcode bits (the
 // decoder's seq field, which the sequencer checks it against in
 // simulation): its last operation, and so ID's handshake, need not wait
@@ -1059,10 +1097,10 @@ function automatic seq_t seq_of(input logic [31:0] i);
 	else if (i[31:26] == 6'd46 || i[31:26] == 6'd47) seq_of = SEQ_MULTI;
 	else if (i[31] & i[26] & (i[31:26] <= 6'd55) & (i[31:26] != 6'd47)) seq_of = SEQ_UPDATE;
 endfunction
-seq_t id_seqk;
-assign id_seqk = seq_of(id_insn);
+seq_t id_seqk;      // (registered with id_insn, above)
 
 logic [5:0] seq_next_ra, seq_next_rc;
+logic seq_ra_rd, seq_rb_rd, seq_rc_rd, seq_b_imm, seq_fra_rd, seq_frb_rd, seq_frc_rd, seq_nop, seq_cr_op;
 DSPPC604_seq seq
 (
 	.clk       (clk),
@@ -1084,8 +1122,31 @@ DSPPC604_seq seq
 	.last      (id_last),
 	.wait_xer  (id_wait_xer),
 	.next_ra   (seq_next_ra),
-	.next_rc   (seq_next_rc)
+	.next_rc   (seq_next_rc),
+	.ra_rd_s   (seq_ra_rd),
+	.rb_rd_s   (seq_rb_rd),
+	.rc_rd_s   (seq_rc_rd),
+	.b_imm_s   (seq_b_imm),
+	.fra_rd_s  (seq_fra_rd),
+	.frb_rd_s  (seq_frb_rd),
+	.frc_rd_s  (seq_frc_rd),
+	.nop_s     (seq_nop),
+	.cr_op_s   (seq_cr_op)
 );
+// the operation with its read flags from the sequencer's shallow copies:
+// the forwarding selects are compared from it (the arms' muxes were in
+// front of the compares)
+dec_t id_uop_f;
+always_comb begin
+	id_uop_f = id_uop;
+	id_uop_f.ra_rd  = seq_ra_rd;
+	id_uop_f.rb_rd  = seq_rb_rd;
+	id_uop_f.rc_rd  = seq_rc_rd;
+	id_uop_f.b_imm  = seq_b_imm;
+	id_uop_f.fra_rd = seq_fra_rd;
+	id_uop_f.frb_rd = seq_frb_rd;
+	id_uop_f.frc_rd = seq_frc_rd;
+end
 
 // lswx and stswx read XER's byte count here: wait for anything in EX, the
 // only place that could still be changing it
@@ -1093,8 +1154,8 @@ DSPPC604_seq seq
 // in EX already cancelled.
 wire   id_hold  = id_wait_xer & ex_valid;
 assign id_to_ex = id_valid & ex_ready & ~id_hold;
-assign id_take  = id_to_ex | completion_push;
-assign id_leave = (id_to_ex & (id_last | ~id_dec.valid)) | completion_push;
+assign id_take  = id_to_ex | completion_push_alu;
+assign id_leave = (id_to_ex & (id_last | ~id_dec.valid)) | completion_push_alu;
 
 // Read the prospective fetched word and next sequencer operation at every
 // edge. Late ID take selects a registered sample, never a RAM address. A
@@ -1233,8 +1294,34 @@ wire [31:0] id_c = id_reg_c;
 function automatic logic [7:0] completion_match(input logic [5:0] idx, input logic before_ex);
 	for (int n = 0; n < 8; n++)
 		completion_match[n] = (before_ex ? completion_latest_older[n] : completion_latest_younger[n]) &
-		                      (completion_queue[n].rd == idx);
+		                      (completion_queue[n].rd == {1'b0, idx});
 endfunction
+// a floating-point register some entry writes: the entries older than EX's
+// operation (EX's reader waits for the pop; nothing is taken from the
+// queue), or every entry (ID's admission: no writer may be in flight)
+function automatic logic completion_fmatch(input logic [4:0] fr, input logic before_ex);
+	completion_fmatch = 1'b0;
+	for (int n = 0; n < 8; n++)
+		if ((completion_latest_older[n] | (~before_ex & completion_latest_younger[n])) &
+		    (completion_queue[n].rd == {2'b10, fr}))
+			completion_fmatch = 1'b1;
+endfunction
+// who the unit's next answers are for (fo_*: EX, or a queue slot)
+logic [3:0]  fo_ex;                      // the order of the unit's requests: 1 EX's, 0 a slot's
+logic [2:0]  fo_slot [4];
+logic [1:0]  fo_head, fo_tail;
+logic [2:0]  fo_count;
+logic        fpu_resp;                   // the unit's answer, and whom it goes to
+// (an answer with nothing in the order FIFO is a move's or select's, given
+// in its request's cycle, which the FIFO never sees: EX's)
+wire         fo_for_ex  = (fo_count == 3'd0) | fo_ex[fo_head];
+wire         fpu_resp_ex = fpu_resp & fo_for_ex;
+wire         fpu_resp_q  = fpu_resp & ~fo_for_ex;
+logic [63:0] fpu_result;
+logic        fpu_result_we;
+logic [31:0] fpu_set;                    // the result's FPSCR effects on their own (a queued operation's commit)
+logic        fpu_fr, fpu_fi, fpu_fprf_we;
+logic [4:0]  fpu_fprf;
 function automatic logic [32:0] completion_read(input logic [5:0] idx, input logic [31:0] rf_value);
 	logic [32:0] value;
 	logic [7:0] writer_mask;
@@ -1247,14 +1334,14 @@ function automatic logic [32:0] completion_read(input logic [5:0] idx, input log
 			value = {mem_load, mem_result[31:0]};
 		writer_mask = completion_match(idx, 1'b1);
 		queued_value = '0;
-		for (int n = 0; n < 8; n++) queued_value |= completion_queue[n].value & {32{writer_mask[n]}};
+		for (int n = 0; n < 8; n++) queued_value |= completion_queue[n].value[31:0] & {32{writer_mask[n]}};
 		if (|writer_mask) value = {1'b0, queued_value};
 		if (completion_exec_valid & writer_mask[completion_exec_slot])
 			value = {1'b0, completion_result};
 		if (ex_valid & ex_dec.rd_wr & (ex_dec.rd == idx)) value[32] = 1'b1;
 		writer_mask = completion_match(idx, 1'b0);
 		queued_value = '0;
-		for (int n = 0; n < 8; n++) queued_value |= completion_queue[n].value & {32{writer_mask[n]}};
+		for (int n = 0; n < 8; n++) queued_value |= completion_queue[n].value[31:0] & {32{writer_mask[n]}};
 		if (|writer_mask) value = {1'b0, queued_value};
 		if (completion_exec_valid & writer_mask[completion_exec_slot])
 			value = {1'b0, completion_result};
@@ -1268,9 +1355,10 @@ wire completion_eligible = id_completion_simple & id_first & ~id_isi &
     (id_pred == id_pc + 32'd4);
 wire completion_wait = ex_valid & ~x_pre & ~ex_stall & ~ex_done &
     ((ex_dec.unit == UNIT_MUL) | (ex_dec.unit == UNIT_DIV) | (ex_dec.unit == UNIT_FPU));
-assign completion_push = (COMPLETION_QUEUE != 0) & id_valid & completion_eligible & completion_wait &
+assign completion_push_alu = (COMPLETION_QUEUE != 0) & (COMPLETION_ALU != 0) & id_valid & completion_eligible & completion_wait &
     (completion_count < 4'd8) &
     ~completion_a[32] & ~completion_b[32] & ~mem_fault & ~reset;
+assign completion_push = completion_push_alu | completion_push_ex;   // (the FP push from EX: with the unit, below)
 // completion_wait requires ~ex_done, so EX cannot redirect while pushing.
 // Only the older MEM fault can cancel this admission. Avoid putting branch
 // resolution into queue admission and the following ID/fetch readiness.
@@ -1282,33 +1370,79 @@ DSPPC604_alu completion_alu
 	.ca_in (1'b0),
 	.result (completion_result),
 	/* verilator lint_off PINCONNECTEMPTY */
-	.sum (), .ca_out (), .ov_out (), .lt (), .gt (), .eq (), .lt_s (), .lt_u ()
+	.sum (), .ca_out (), .ov_out (), .lt (), .gt (), .eq (), .lt_s (), .lt_u (), .zero (), .neg (),
+	.log_o (), .rot_o (), .clz_o (), .exts_o ()
 	/* verilator lint_on PINCONNECTEMPTY */
 );
 assign completion_pop = (completion_older_count != 4'd0) &
                         ~(completion_exec_valid & (completion_exec_slot == completion_head)) &
+                        (~completion_fp_pend[completion_head] | cq_live) &
                         (mem_room_free | mem_room_pass) & ~mem_fault & ~reset;
+// (from the decodes, not the pushes: while EX holds an FP operation that
+// may leave into the queue, no admission from ID is made, so the pushed
+// entry is then EX's)
+wire [6:0] completion_push_rd = ex_fp_elig ? {2'b10, ex_dec.frd} : {1'b0, id_uop.rd};
+// the pop's clear of the older writers' bitmap (the latest older writer of
+// the register pops: no older entry writes it now)
+wire [31:0] cq_pop_clear = (completion_pop & completion_queue[completion_head].fp & completion_latest_older[completion_head]) ?
+                           (32'd1 << completion_queue[completion_head].rd[4:0]) : 32'd0;
+// a queued FP operation's FPSCR and CR1 as it pops: its effects applied to
+// the FPSCR of that moment (the sticky bits merge in order, whatever FPSCR
+// the unit saw)
+wire        cq_pop_fp    = completion_pop & completion_queue[completion_head].fp;
+// the unit's answer for the head entry pops it in the answer's own cycle,
+// with the live result (as EX's leave took the answer before the queue):
+// the head's fields are then the unit's outputs
+wire        cq_live      = fpu_resp_q & (fo_slot[fo_head] == completion_head);
+wire [63:0] cq_h_value   = cq_live ? fpu_result  : completion_queue[completion_head].value;
+wire        cq_h_we      = cq_live ? fpu_result_we : completion_queue[completion_head].we;
+wire [31:0] cq_h_set     = cq_live ? fpu_set     : completion_queue[completion_head].set;
+wire        cq_h_fr      = cq_live ? fpu_fr      : completion_queue[completion_head].fr;
+wire        cq_h_fi      = cq_live ? fpu_fi      : completion_queue[completion_head].fi;
+wire        cq_h_fprf_we = cq_live ? fpu_fprf_we : completion_queue[completion_head].fprf_we;
+wire [4:0]  cq_h_fprf    = cq_live ? fpu_fprf    : completion_queue[completion_head].fprf;
+wire [31:0] cq_fpscr_new = fpscr_update(fpscr, cq_h_set, 1'b1, cq_h_fr, cq_h_fi, cq_h_fprf_we, cq_h_fprf);
+wire [31:0] cq_cr_new    = completion_queue[completion_head].rc ? {cr[31:28], cq_fpscr_new[31:28], cr[23:0]} : cr;   // CR1
 always_ff @(posedge clk) begin
-	completion_exec_valid <= completion_push;
+	completion_exec_valid <= completion_push_alu;
 	if (completion_exec_valid)
-		completion_queue[completion_exec_slot].value <= completion_result;
-	if (completion_push) begin
+		completion_queue[completion_exec_slot].value <= {32'd0, completion_result};
+	// the unit's answer for a slot: into its entry, at once
+	if (fpu_resp_q) begin
+		completion_queue[fo_slot[fo_head]].value   <= fpu_result;
+		completion_queue[fo_slot[fo_head]].we      <= fpu_result_we;
+		completion_queue[fo_slot[fo_head]].set     <= fpu_set;
+		completion_queue[fo_slot[fo_head]].fr      <= fpu_fr;
+		completion_queue[fo_slot[fo_head]].fi      <= fpu_fi;
+		completion_queue[fo_slot[fo_head]].fprf_we <= fpu_fprf_we;
+		completion_queue[fo_slot[fo_head]].fprf    <= fpu_fprf;
+		completion_fp_pend[fo_slot[fo_head]] <= 1'b0;
+	end
+	if (completion_push_alu) begin
 		completion_exec_slot <= completion_tail;
 		completion_exec_a <= completion_a[31:0];
 		completion_exec_b <= completion_b[31:0];
 		completion_exec_ctl <= id_uop.ic;
-		completion_queue[completion_tail].pc <= id_pc;
-		completion_queue[completion_tail].insn <= id_insn;
-		completion_queue[completion_tail].rd <= id_uop.rd;
+	end
+	if (completion_push) begin
+		completion_queue[completion_tail].pc <= ex_fp_elig ? ex_pc : id_pc;
+		completion_queue[completion_tail].insn <= ex_fp_elig ? ex_insn : id_insn;
+		completion_queue[completion_tail].rd <= completion_push_rd;
+		completion_queue[completion_tail].fp <= completion_push_ex;
+		completion_queue[completion_tail].rc <= ex_fp_elig ? ex_dec.cr_wr : id_uop.cr_wr;
+		completion_fp_pend[completion_tail] <= completion_push_ex;
 		completion_tail <= completion_tail + 3'd1;
 		for (int n = 0; n < 8; n++)
-			if (completion_queue[n].rd == id_uop.rd) completion_latest_younger[n] <= 1'b0;
+			if (completion_queue[n].rd == completion_push_rd) completion_latest_younger[n] <= 1'b0;
 		completion_latest_younger[completion_tail] <= 1'b1;
 	end
 	if (completion_pop) begin
 		completion_head <= completion_head + 3'd1;
 		completion_latest_older[completion_head] <= 1'b0;
 		completion_older_count <= completion_older_count - 4'd1;
+		// (the latest older writer of the register pops: no older entry writes it now)
+		if (completion_queue[completion_head].fp & completion_latest_older[completion_head])
+			cq_fpr_o[completion_queue[completion_head].rd[4:0]] <= 1'b0;
 	end
 	case ({completion_push, completion_pop})
 		2'b10: completion_count <= completion_count + 4'd1;
@@ -1318,13 +1452,29 @@ always_ff @(posedge clk) begin
 	// The next EX is younger than everything already in the queue. New ALU
 	// completions may append while those older entries drain, allowing the
 	// next long operation and its independent work to overlap retirement.
+	// (EX leaves once the older entries have all popped, except an FP
+	// operation leaving into the queue at its take: it joins the older set
+	// behind them, and no younger entry exists then)
 	if (ex_leave) begin
-		completion_older_count <= completion_count;
-		completion_latest_older <= completion_latest_younger;
+		case ({completion_push_ex, completion_pop})
+			2'b10:   completion_older_count <= completion_count + 4'd1;
+			2'b01:   completion_older_count <= completion_count - 4'd1;
+			default: completion_older_count <= completion_count;
+		endcase
+		for (int n = 0; n < 8; n++)
+			completion_latest_older[n] <= completion_push_ex ?
+				((n[2:0] == completion_tail) |
+				 (completion_latest_older[n] & ~(completion_pop & (n[2:0] == completion_head)) &
+				  (completion_queue[n].rd != completion_push_rd))) :
+				completion_latest_younger[n];
 		completion_latest_younger <= '0;
+		// (no younger entry writes an FPR: only EX pushes FP operations)
+		cq_fpr_o <= completion_push_ex ? ((cq_fpr_o & ~cq_pop_clear) | (32'd1 << ex_dec.frd)) : '0;
 	end
 	if (reset | redir) begin
 		completion_exec_valid <= 1'b0;
+		completion_fp_pend <= '0;
+		cq_fpr_o <= '0;
 		completion_head <= 3'd0;
 		completion_tail <= 3'd0;
 		completion_count <= 4'd0;
@@ -1394,7 +1544,12 @@ always_ff @(posedge clk) begin
 	if (fetch_deliver) begin
 		id_valid    <= 1'b1;
 		id_pc       <= fetch_word.pc;
-		id_insn     <= fetch_word.isi ? 32'd0 : fetch_word.insn;
+		id_insn     <= id_insn_d;
+		id_strx     <= id_strx_d;
+		id_ldux_rb  <= id_ldux_rb_d;
+		id_upd_load <= id_upd_load_d;
+		id_upd_store <= id_upd_store_d;
+		id_seqk     <= seq_of(id_insn_d);
 		id_completion_ra <= fetch_dec.ra;
 		id_completion_rb <= fetch_dec.rb;
 		id_completion_ra_rd <= fetch_dec.ra_rd;
@@ -1522,9 +1677,21 @@ wire mo_dep = mo_ld &
       (ex_dec.rc_rd & (mo_upd_ra == ex_dec.rc) & ~fc_mem)));
 // a load's data is not there until it reaches WB
 wire completion_dependency =
-    ((ex_dec.ra_rd & (|completion_match(ex_dec.ra, 1'b1))) |
-     (ex_use_b & (|completion_match(ex_dec.rb, 1'b1))) |
-     (ex_dec.rc_rd & (|completion_match(ex_dec.rc, 1'b1))));
+    ((COMPLETION_ALU != 0) &
+     ((ex_dec.ra_rd & (|completion_match(ex_dec.ra, 1'b1))) |
+      (ex_use_b & (|completion_match(ex_dec.rb, 1'b1))) |
+      (ex_dec.rc_rd & (|completion_match(ex_dec.rc, 1'b1))))) |
+     // an FP register a queued FP operation writes: wait for its pop
+     (ex_dec.fra_rd & cq_fpr_o[ex_dec.fra]) |
+     (ex_dec.frb_rd & cq_fpr_o[ex_dec.frb]) |
+     (ex_dec.frc_rd & cq_fpr_o[ex_dec.frc]);
+/* synthesis translate_off */
+always_ff @(posedge clk)
+	if (~reset & ex_valid & ((ex_dec.fra_rd & (cq_fpr_o[ex_dec.fra] != completion_fmatch(ex_dec.fra, 1'b1))) |
+	                         (ex_dec.frb_rd & (cq_fpr_o[ex_dec.frb] != completion_fmatch(ex_dec.frb, 1'b1))) |
+	                         (ex_dec.frc_rd & (cq_fpr_o[ex_dec.frc] != completion_fmatch(ex_dec.frc, 1'b1)))))
+		$fatal(1, "the queue's FP register bitmap differs from its entries");
+/* synthesis translate_on */
 // sync waits until a posted store (one memory must get) is in memory
 wire ex_sync = (ex_insn[31:26] == 6'd31) & (ex_insn[10:1] == 10'd598);
 wire ex_stall_ops = completion_dependency | mo_dep | (mem_load & (fa_ld | fb_ld | fc_ld | ffa_mem | ffb_mem | ffc_mem)) |
@@ -1536,6 +1703,7 @@ wire is_int = (ex_dec.unit == UNIT_ALU) | (ex_dec.unit == UNIT_MUL) | (ex_dec.un
 
 logic        int_resp;
 logic [31:0] int_result;
+logic [31:0] int_log, int_rot, int_clz, int_exts, int_mul_hi, int_mul_lo, int_div_q;
 logic [31:0] int_sum;                      // the adder alone: the effective address
 logic        int_ca;
 logic        int_ov;
@@ -1570,23 +1738,106 @@ DSPPC604_int_unit int_unit
 	.cr_out     (int_cr),
 	.cmp_lts    (int_lts),
 	.cmp_ltu    (int_ltu),
-	.cmp_eq     (int_eq)
+	.cmp_eq     (int_eq),
+	.alu_log    (int_log),
+	.alu_rot    (int_rot),
+	.alu_clz    (int_clz),
+	.alu_exts   (int_exts),
+	.mul_hi     (int_mul_hi),
+	.mul_lo     (int_mul_lo),
+	.div_q      (int_div_q)
 );
 
 // ---- floating-point unit ---------------------------------------------------
 wire is_fpu = (ex_dec.unit == UNIT_FPU);
 
-logic        fpu_resp;
-logic [63:0] fpu_result;
-logic        fpu_result_we;
-logic [31:0] fpu_fpscr;
 logic [3:0]  fpu_cr;
+logic        fpu_cmp;
 /* verilator lint_off UNUSEDSIGNAL */
+logic [31:0] fpu_fpscr;                  // (the unit's own FPSCR: the pipeline applies the effects itself, below)
 logic        fpu_ready;
 logic        fpu_fex;
 /* verilator lint_on UNUSEDSIGNAL */
+// EX's answer applied to the FPSCR as it is when EX commits: queued FP
+// operations older than EX's may pop between the unit's taking the request
+// (its FPSCR snapshot) and the commit
+wire [31:0] fpu_fpscr_ex = fpscr_update(fpscr, fpu_set, ~fpu_cmp, fpu_fr, fpu_fi, fpu_fprf_we,
+                                        fpu_cmp ? {fpscr[16], fpu_fprf[3:0]} : fpu_fprf);
 
 wire fp_trap_on = msr[MSR_FE0] | msr[MSR_FE1];   // FP enabled exceptions trap
+
+// EX's request to the FPU, withdrawn once the unit has taken it: the unit's
+// front is free again before the answer (a second operation may follow it
+// in), so a request still presented would be taken twice.
+// A move, a select or the like is answered in its request's cycle from no
+// state (fpu_req_simple): that request stays presented until EX takes the
+// answer, and such an operation is never queued (its answer would come in
+// the cycle of its request, before the order FIFO knows it).
+logic ex_fpu_taken;
+logic fpu_req_simple;
+wire  ex_fpu_req = ex_valid & ~x_pre & ~ex_stall & is_fpu & ~ex_fpu_taken;
+wire  fpu_req    = ex_fpu_req;
+wire  fpu_take   = fpu_req & fpu_ready & ~fpu_req_simple;
+wire  fpu_flush  = ex_flush | redir;     // (a misfetched FP operation leaving EX kills its successor in the unit)
+// EX's FP operation leaves into a completion-queue entry in the cycle the
+// unit takes it (overlap 2 of docs/fpu_pipe_plan.md): one writing a
+// register, FP traps off, fetched sequentially with nothing folded after
+// it (no redirect can leave with it), the queue with room. Its result,
+// FPSCR effects and CR1 commit at the pop as an operation admitted from ID
+// does; everything behind it then runs in EX, in order with MEM.
+assign ex_fp_elig = (COMPLETION_QUEUE != 0) & ex_valid & is_fpu & ex_dec.frd_wr & ~fp_simple_of(ex_dec.fc.op) &
+                    ~fp_trap_on & msr[MSR_FP] & ~seq_miss & ~ex_fold & ~ex_cf & ex_first & ex_last & ~x_pre;
+assign completion_push_ex = ex_fp_elig & ex_fpu_req & fpu_ready & ~fpu_req_simple &
+                            (completion_count < 4'd8) & ~mem_fault & ~reset;
+always_ff @(posedge clk) begin
+	if (ex_fpu_req & fpu_ready & ~fpu_req_simple) ex_fpu_taken <= 1'b1;
+	if (ex_leave | id_to_ex | fpu_flush | reset) ex_fpu_taken <= 1'b0;
+end
+// the operations the unit answers in their own cycle (as its decode has
+// them; checked against it below)
+function automatic logic fp_simple_of(input fpu_op_t op);
+	case (op)
+		FPU_ADD, FPU_SUB, FPU_MUL, FPU_DIV, FPU_MADD, FPU_MSUB, FPU_NMADD, FPU_NMSUB,
+		FPU_RSP, FPU_CTIW, FPU_CTIWZ, FPU_RES, FPU_RSQRTE, FPU_CMPU, FPU_CMPO: fp_simple_of = 1'b0;
+		default: fp_simple_of = 1'b1;
+	endcase
+endfunction
+/* synthesis translate_off */
+always_ff @(posedge clk)
+	if (~reset & ex_fpu_req & (fp_simple_of(ex_dec.fc.op) != fpu_req_simple))
+		$fatal(1, "the pipeline's simple-FP decode differs from the unit's");
+/* synthesis translate_on */
+
+// a slot's answer is taken at once; EX's when EX can leave
+wire fpu_resp_ready = fo_for_ex ? (mem_room & ex_order_ready) : 1'b1;
+always_ff @(posedge clk) begin
+	// the order of the requests the unit took, for its answers
+	if (fpu_take) begin
+		fo_ex[fo_tail]   <= ~completion_push_ex;
+		fo_slot[fo_tail] <= completion_tail;
+		fo_tail <= fo_tail + 2'd1;
+	end
+	if (fpu_resp & fpu_resp_ready & (fo_count != 3'd0)) fo_head <= fo_head + 2'd1;
+	case ({fpu_take, fpu_resp & fpu_resp_ready & (fo_count != 3'd0)})
+		2'b10: fo_count <= fo_count + 3'd1;
+		2'b01: fo_count <= fo_count - 3'd1;
+		default: ;
+	endcase
+	if (fpu_flush | reset) begin
+		fo_head  <= 2'd0;
+		fo_tail  <= 2'd0;
+		fo_count <= 3'd0;
+	end
+end
+/* synthesis translate_off */
+always_ff @(posedge clk) begin
+	if (~reset & fpu_resp & (fo_count == 3'd0) & ~(ex_fpu_req & fpu_req_simple))
+		$fatal(1, "the FPU answers with no request outstanding");
+	if (~reset & fpu_take & (fo_count == 3'd4)) $fatal(1, "more FPU requests outstanding than the order FIFO holds");
+	if (~reset & completion_push_ex & completion_push_alu) $fatal(1, "EX's FP operation pushed with an admission from ID");
+	if (~reset & completion_push_ex & (completion_latest_younger != 8'd0)) $fatal(1, "EX's FP operation pushed behind younger entries");
+end
+/* synthesis translate_on */
 
 // mtfsf, mtfsfi, mtfsb0/1 and mcrfs with FP traps on: a second cycle in
 // EX, their FEX for the trap from a register (the operand's forwarding
@@ -1612,10 +1863,11 @@ DSPPC604_fpu #(.OPERAND_REG (FPU_OPERAND_REG)) fpu
 (
 	.clk        (clk),
 	.reset      (reset),
-	.flush      (ex_flush),
+	.flush      (fpu_flush),
 	.no_early   (fp_trap_on),
-	.req_valid  (ex_valid & ~x_pre & ~ex_stall & is_fpu),
+	.req_valid  (fpu_req),
 	.req_ready  (fpu_ready),
+	.req_simple (fpu_req_simple),
 	.ctl        (ex_dec.fc),
 	.a          (fop_a),
 	.b          (fop_b),
@@ -1625,12 +1877,18 @@ DSPPC604_fpu #(.OPERAND_REG (FPU_OPERAND_REG)) fpu
 	.cls_c      (fcls_c),
 	.fpscr_in   (fpscr),
 	.resp_valid (fpu_resp),
-	.resp_ready (mem_room & ex_order_ready),
+	.resp_ready (fpu_resp_ready),
 	.result     (fpu_result),
 	.result_we  (fpu_result_we),
 	.fpscr_out  (fpu_fpscr),
 	.cr_out     (fpu_cr),
-	.fex        (fpu_fex)
+	.fex        (fpu_fex),
+	.set_out    (fpu_set),
+	.fr_out     (fpu_fr),
+	.fi_out     (fpu_fi),
+	.fprf_we_out (fpu_fprf_we),
+	.fprf_out   (fpu_fprf),
+	.cmp_out    (fpu_cmp)
 );
 
 // ---- the instructions that write FPSCR directly ----------------------------
@@ -1686,11 +1944,13 @@ DSPPC604_fpscr fpscr_held_ops
 );
 assign fsys_fpscr = ffb_mem ? fsys_mem_next : ffb_wb ? fsys_wb_next : fsys_held_next;
 
-assign ex_done = x_pre | (~ex_stall & (is_int ? int_resp : is_fpu ? fpu_resp : 1'b1));
+// (an FP operation is done in EX when the unit answers it, or when it
+// leaves into the completion queue as the unit takes it)
+assign ex_done = x_pre | (~ex_stall & (is_int ? int_resp : is_fpu ? (fpu_resp_ex | completion_push_ex) : 1'b1));
 // These outer guards already qualify mu_valid. For a non-aborted memory
 // operation, mu_ready is therefore sufficient here; using mu_accept repeats
 // the same completion/backpressure guards in the EX-leave timing cone.
-assign ex_leave = ex_valid & ex_done & mem_room & ex_order_ready & ~mem_fault;
+assign ex_leave = ex_valid & ex_done & ((mem_room & ex_order_ready) | completion_push_ex) & ~mem_fault;
 
 // ---- branch ----------------------------------------------------------------
 // (a folded conditional branch, ex_cf, is evaluated here as the
@@ -1813,6 +2073,7 @@ wire        seq_miss  = (ex_seq != ex_pred);
 wire        pc_miss   = br_taken ? tgt_miss : (~ex_fold & seq_miss);
 assign redir    = mem_fault |
                   (ex_leave & (ex_exc | (ex_last & (is_rfi | is_mtmsr | is_xlate | pc_miss))));
+assign btb_rd_redir = ex_valid & ex_last & (is_rfi | is_mtmsr | is_xlate | pc_miss);
 
 // Teach the branch target buffer: a taken branch is entered or strengthened,
 // one that was not taken is weakened, and an entry that fired for something
@@ -1917,50 +2178,74 @@ endfunction
 // The set a 604 has (measured: mfspr of all 1,024 numbers in both modes).
 // 268 and 269 read the time base through mfspr as well as mftb, in user mode
 // too; they cannot be written.
-logic        spr_known;
-logic [31:0] spr_rdata;
-
-always_comb begin
-	spr_known = 1'b1;
-	spr_rdata = 32'd0;
-	case (ex_dec.spr)
-		10'd1:    spr_rdata = xer;
-		10'd8:    spr_rdata = lr;
-		10'd9:    spr_rdata = ctr;
-		10'd18:   spr_rdata = dsisr;
-		10'd19:   spr_rdata = dar;
-		10'd22:   spr_rdata = dec_r;
-		10'd25:   spr_rdata = sdr1;
-		10'd26:   spr_rdata = srr0;
-		10'd27:   spr_rdata = srr1;
-		10'd268:  begin spr_rdata = tbl; spr_known = (ex_dec.sys == SYS_MFSPR); end
-		10'd269:  begin spr_rdata = tbu; spr_known = (ex_dec.sys == SYS_MFSPR); end
-		10'd272, 10'd273, 10'd274, 10'd275: spr_rdata = sprg[ex_dec.spr[1:0]];
-		10'd282:  spr_rdata = ear;
-		10'd284:  spr_rdata = tbl;
-		10'd285:  spr_rdata = tbu;
-		10'd287:  spr_rdata = PVR;
-		10'd952:  spr_rdata = mmcr0;
-		10'd953:  spr_rdata = pmc1;
-		10'd954:  spr_rdata = pmc2;
-		10'd955:  spr_rdata = sia;
-		10'd959:  spr_rdata = sda;
-		10'd1008: spr_rdata = hid0;
-		10'd1010: spr_rdata = iabr;
-		10'd1013: spr_rdata = dabr;
-		10'd1023: spr_rdata = {28'd0, pir};
-		default: begin
-			if (ex_dec.spr[9:4] == 6'b100001) spr_rdata = bat[ex_dec.spr[3:0]];   // 528-543
-			else spr_known = 1'b0;
-		end
+// The register read is chosen from the SPR number in ID and registered as
+// a one-hot select (ex_spr_sel): the read is an AND-OR, without the
+// number's compares in front of EX's result.
+localparam int SPR_SEL_N = 24;
+function automatic logic [SPR_SEL_N-1:0] spr_sel_of(input logic [9:0] n);
+	spr_sel_of = '0;
+	case (n)
+		10'd1:    spr_sel_of[0]  = 1'b1;   // XER
+		10'd8:    spr_sel_of[1]  = 1'b1;   // LR
+		10'd9:    spr_sel_of[2]  = 1'b1;   // CTR
+		10'd18:   spr_sel_of[3]  = 1'b1;   // DSISR
+		10'd19:   spr_sel_of[4]  = 1'b1;   // DAR
+		10'd22:   spr_sel_of[5]  = 1'b1;   // DEC
+		10'd25:   spr_sel_of[6]  = 1'b1;   // SDR1
+		10'd26:   spr_sel_of[7]  = 1'b1;   // SRR0
+		10'd27:   spr_sel_of[8]  = 1'b1;   // SRR1
+		10'd268, 10'd284: spr_sel_of[9]  = 1'b1;   // TBL
+		10'd269, 10'd285: spr_sel_of[10] = 1'b1;   // TBU
+		10'd272, 10'd273, 10'd274, 10'd275: spr_sel_of[11] = 1'b1;   // SPRG0-3
+		10'd282:  spr_sel_of[12] = 1'b1;   // EAR
+		10'd287:  spr_sel_of[13] = 1'b1;   // PVR
+		10'd952:  spr_sel_of[14] = 1'b1;   // MMCR0
+		10'd953:  spr_sel_of[15] = 1'b1;   // PMC1
+		10'd954:  spr_sel_of[16] = 1'b1;   // PMC2
+		10'd955:  spr_sel_of[17] = 1'b1;   // SIA
+		10'd959:  spr_sel_of[18] = 1'b1;   // SDA
+		10'd1008: spr_sel_of[19] = 1'b1;   // HID0
+		10'd1010: spr_sel_of[20] = 1'b1;   // IABR
+		10'd1013: spr_sel_of[21] = 1'b1;   // DABR
+		10'd1023: spr_sel_of[22] = 1'b1;   // PIR
+		default:  spr_sel_of[23] = (n[9:4] == 6'b100001);   // the BATs, 528-543
 	endcase
-end
+endfunction
+logic [SPR_SEL_N-1:0] ex_spr_sel;
+wire [31:0] spr_rdata = ({32{ex_spr_sel[0]}}  & xer)   | ({32{ex_spr_sel[1]}}  & lr)    |
+                        ({32{ex_spr_sel[2]}}  & ctr)   | ({32{ex_spr_sel[3]}}  & dsisr) |
+                        ({32{ex_spr_sel[4]}}  & dar)   | ({32{ex_spr_sel[5]}}  & dec_r) |
+                        ({32{ex_spr_sel[6]}}  & sdr1)  | ({32{ex_spr_sel[7]}}  & srr0)  |
+                        ({32{ex_spr_sel[8]}}  & srr1)  | ({32{ex_spr_sel[9]}}  & tbl)   |
+                        ({32{ex_spr_sel[10]}} & tbu)   | ({32{ex_spr_sel[11]}} & sprg[ex_dec.spr[1:0]]) |
+                        ({32{ex_spr_sel[12]}} & ear)   | ({32{ex_spr_sel[13]}} & PVR)   |
+                        ({32{ex_spr_sel[14]}} & mmcr0) | ({32{ex_spr_sel[15]}} & pmc1)  |
+                        ({32{ex_spr_sel[16]}} & pmc2)  | ({32{ex_spr_sel[17]}} & sia)   |
+                        ({32{ex_spr_sel[18]}} & sda)   | ({32{ex_spr_sel[19]}} & hid0)  |
+                        ({32{ex_spr_sel[20]}} & iabr)  | ({32{ex_spr_sel[21]}} & dabr)  |
+                        ({32{ex_spr_sel[22]}} & {28'd0, pir}) | ({32{ex_spr_sel[23]}} & bat[ex_dec.spr[3:0]]);
+// whether the 604 has the SPR (the illegal-instruction decision is
+// registered with the operation, from the instruction word: ex_x_spr_q)
+function automatic logic spr_known_of(input logic [9:0] n, input logic mf);
+	case (n)
+		10'd1, 10'd8, 10'd9, 10'd18, 10'd19, 10'd22, 10'd25, 10'd26, 10'd27,
+		10'd272, 10'd273, 10'd274, 10'd275, 10'd282, 10'd284, 10'd285, 10'd287,
+		10'd952, 10'd953, 10'd954, 10'd955, 10'd959, 10'd1008, 10'd1010, 10'd1013, 10'd1023:
+		          spr_known_of = 1'b1;
+		10'd268, 10'd269: spr_known_of = mf;        // the time base: mfspr only
+		default:  spr_known_of = (n[9:4] == 6'b100001);                 // BATs, 528-543
+	endcase
+endfunction
+wire spr_known = spr_known_of(ex_dec.spr, ex_dec.sys == SYS_MFSPR);
 
 // segment register number: in the instruction, or the top of operand B
 logic [3:0] srin_idx_q;
 logic       sr_wq_v;              // an mtsr's write, a cycle after its commit
 logic [3:0] sr_wq_idx;
 logic [31:0] sr_wq_data;           // rB's segment number, a cycle later (srin takes two)
+logic       bat_wq_v;             // an mtspr to a BAT's write, likewise
+logic [3:0] bat_wq_idx;
+logic [31:0] bat_wq_data;
 wire [3:0] sr_idx = ex_dec.rb_rd ? srin_idx_q : ex_insn[19:16];
 
 // ---- exceptions -------------------------------------------------------------
@@ -1972,27 +2257,24 @@ wire x_isi    = ex_isi;
 wire fpe_pend = ex_first & fpscr[30] & fp_trap_on;      // FEX was already set when traps were enabled
 // an SPR the 604 does not have is an illegal instruction in either mode
 // (measured; the manual's "privileged in user mode" is not what the chip does)
-// (decided from ID's operation and registered with it: the SPR number's
-// compares are not in front of ex_leave)
-function automatic logic x_spr_of(input dec_t d);
-	logic known;
-	case (d.spr)
-		10'd1, 10'd8, 10'd9, 10'd18, 10'd19, 10'd22, 10'd25, 10'd26, 10'd27,
-		10'd272, 10'd273, 10'd274, 10'd275, 10'd282, 10'd284, 10'd285, 10'd287,
-		10'd952, 10'd953, 10'd954, 10'd955, 10'd959, 10'd1008, 10'd1010, 10'd1013, 10'd1023:
-		          known = 1'b1;
-		10'd268, 10'd269: known = (d.sys == SYS_MFSPR);
-		default:  known = (d.spr[9:4] == 6'b100001);                 // BATs, 528-543
-	endcase
-	x_spr_of = ~((d.unit == UNIT_ALU) | (d.unit == UNIT_MUL) | (d.unit == UNIT_DIV) | (d.unit == UNIT_FPU)) &
-	           ((d.sys == SYS_MFSPR) | (d.sys == SYS_MTSPR)) & ~known;
-endfunction
+// (decided in ID from the instruction word, beside the decoder, and
+// registered with the operation: the SPR number's compares are not in
+// front of ex_leave; mfspr and mtspr are opcode 31, 339 and 467, the
+// number's halves swapped in the word)
+wire [9:0] id_spr_n = {id_insn[15:11], id_insn[20:16]};
+wire       id_mfspr = (id_insn[31:26] == 6'd31) & (id_insn[10:1] == 10'd339);
+wire       id_mtspr = (id_insn[31:26] == 6'd31) & (id_insn[10:1] == 10'd467);
+wire       id_x_spr = (id_mfspr | id_mtspr) & ~spr_known_of(id_spr_n, id_mfspr);
 logic ex_x_spr_q;
 wire x_spr    = ex_x_spr_q;
 /* synthesis translate_off */
-always_ff @(posedge clk)
+always_ff @(posedge clk) begin
 	if (~reset & ex_valid & (ex_x_spr_q != (is_sys & ((ex_dec.sys == SYS_MFSPR) | (ex_dec.sys == SYS_MTSPR)) & ~spr_known)))
 		$fatal(1, "registered illegal-SPR decision differs");
+	if (~reset & ex_valid & ((ex_pass_ok_q != pass_ok_of(ex_dec)) | (ex_rs != rs_of(ex_dec)) |
+	                         ((ex_rs[2] | (ex_dec.sys == SYS_MTSPR)) & (ex_spr_sel != spr_sel_of(ex_dec.spr)))))
+		$fatal(1, "a select registered with the operation differs from the operation's");
+end
 /* synthesis translate_on */
 wire x_priv   = ex_dec.priv & msr[MSR_PR] & ~x_spr;
 wire x_ill    = ex_ill | x_spr;
@@ -2106,6 +2388,12 @@ wire [31:0] ecx_dsisr = 32'h00100000 | (ex_dec.mem_wr ? 32'h02000000 : 32'd0);
 // MSR on exception entry: interrupts, translation, floating point and user
 // mode off; ME, IP and ILE kept; LE takes ILE
 wire [31:0] msr_exc = (msr & 32'h00011040) | {31'd0, msr[16]};
+// what msr is written with at this edge (the MMU keeps its own copy of
+// IR and PR from it): the writes below, in their order of precedence
+wire [31:0] msr_d = reset ? 32'h00000040 :
+                    mem_fault ? msr_exc :
+                    (ex_leave & ex_exc) ? msr_exc :
+                    (ex_leave & ~ex_abort) ? msr_next : msr;
 
 // ---- the reservation ---------------------------------------------------------
 // Set when lwarx's load completes, cleared when stwcx.'s store completes,
@@ -2128,7 +2416,6 @@ logic [31:0] xer_next;
 logic [31:0] lr_next;
 logic [31:0] ctr_next;
 logic [31:0] msr_next;
-logic [31:0] sys_result;
 
 always_comb begin
 	cr_next    = cr;
@@ -2137,11 +2424,10 @@ always_comb begin
 	ctr_next   = ctr;
 	fpscr_next = fpscr;
 	msr_next   = msr;
-	sys_result = 32'd0;
 
-	if (is_fpu) begin
-		if (ex_dec.fpscr_wr) fpscr_next = fpu_fpscr;
-		if (ex_dec.cr_wr)    cr_next    = cr_insert(cr, ex_dec.cr_fld, fpu_cr);
+	if (is_fpu & ~completion_push_ex) begin        // (a queued operation's effects commit at its pop)
+		if (ex_dec.fpscr_wr) fpscr_next = fpu_fpscr_ex;
+		if (ex_dec.cr_wr)    cr_next    = cr_insert(cr, ex_dec.cr_fld, fpu_cmp ? fpu_cr : fpu_fpscr_ex[31:28]);
 	end
 	else if (is_int) begin
 		if (ex_dec.ca_wr) xer_next[29] = int_ca;
@@ -2156,7 +2442,6 @@ always_comb begin
 			SYS_CRLOG: cr_next[5'd31 - ex_dec.crbt] =
 				ex_dec.crtt[{cr[5'd31 - ex_dec.crba], cr[5'd31 - ex_dec.crbb]}];
 			SYS_MCRF:  cr_next = cr_insert(cr, ex_dec.crbt[4:2], cr_field(cr, ex_dec.crba[4:2]));
-			SYS_MFCR:  sys_result = cr;
 			SYS_MTCRF: begin
 				for (int f = 0; f < 8; f++)
 					if (ex_dec.crm[7 - f]) cr_next[31 - 4*f -: 4] = op_a[31 - 4*f -: 4];
@@ -2165,7 +2450,6 @@ always_comb begin
 				cr_next  = cr_insert(cr, ex_dec.crbt[4:2], xer[31:28]);
 				xer_next[31:28] = 4'd0;
 			end
-			SYS_MFSPR: sys_result = spr_rdata;
 			SYS_MTSPR: begin
 				// the registers kept here; the rest are written below
 				case (ex_dec.spr)
@@ -2175,10 +2459,8 @@ always_comb begin
 					default: ;
 				endcase
 			end
-			SYS_MFMSR: sys_result = msr;
 			SYS_MTMSR: msr_next = op_a & MSR_MASK;
 			SYS_RFI:   msr_next = ((msr & ~SRR1_MASK) | (srr1 & SRR1_MASK)) & MSR_MASK;
-			SYS_MFSR:  sys_result = sr[sr_idx];
 			SYS_MFFS: begin
 				// Rc: CR1 from the unchanged FPSCR
 				if (ex_dec.cr_wr) cr_next = cr_insert(cr, 3'd1, fpscr[31:28]);
@@ -2203,9 +2485,41 @@ end
 // The value for the register this operation writes, and which register.
 // The upper word mffs delivers is undefined; FFF80000 is what the 604 puts
 // there (measured, as for fctiw).
-wire [63:0] ex_result = is_fpu ? fpu_result :
-                        is_int ? {32'd0, int_result} :
-                        (ex_dec.sys == SYS_MFFS) ? {32'hFFF80000, fpscr} : {32'd0, sys_result};
+// (each unit's own results, or a register read whole, chosen flat by
+// selects registered with the operation, ex_rs: an AND-OR, with neither
+// compares nor the integer unit's own choice in front)
+localparam int RS_N = 14;
+function automatic logic [RS_N-1:0] rs_of(input dec_t d);
+	logic fpu_u, alu_u, mul_u, div_u, sys;
+	fpu_u = (d.unit == UNIT_FPU);
+	alu_u = (d.unit == UNIT_ALU);
+	mul_u = (d.unit == UNIT_MUL);
+	div_u = (d.unit == UNIT_DIV);
+	sys   = ~fpu_u & ~alu_u & ~mul_u & ~div_u;
+	rs_of = {div_u,                                       // 13 the divider's quotient
+	         mul_u & d.ic.mul_high, mul_u & ~d.ic.mul_high, // 12, 11 the product's halves
+	         alu_u & (d.ic.alu_op == ALU_EXTS),           // 10 the ALU's operations
+	         alu_u & (d.ic.alu_op == ALU_CNTLZ),          // 9
+	         alu_u & (d.ic.alu_op == ALU_ROT),            // 8
+	         alu_u & (d.ic.alu_op == ALU_LOGIC),          // 7
+	         alu_u & ((d.ic.alu_op == ALU_ADD) | (d.ic.alu_op == ALU_CMP)),   // 6 the adder
+	         fpu_u,                                       // 5
+	         sys & (d.sys == SYS_MFFS), sys & (d.sys == SYS_MFCR),            // 4, 3
+	         sys & (d.sys == SYS_MFSPR), sys & (d.sys == SYS_MFMSR), sys & (d.sys == SYS_MFSR)};   // 2, 1, 0
+endfunction
+logic [RS_N-1:0] ex_rs;
+// (the registers read whole first: they are early; the units' results join last)
+(* keep = "true" *) wire [31:0] sys_result = ({32{ex_rs[3]}} & cr) | ({32{ex_rs[2]}} & spr_rdata) |
+                         ({32{ex_rs[1]}} & msr) | ({32{ex_rs[0]}} & sr[sr_idx]) | ({32{ex_rs[4]}} & fpscr);
+wire [31:0] int_flat = ({32{ex_rs[6]}} & int_sum) | ({32{ex_rs[7]}} & int_log) | ({32{ex_rs[8]}} & int_rot) |
+                       ({32{ex_rs[9]}} & int_clz) | ({32{ex_rs[10]}} & int_exts) |
+                       ({32{ex_rs[11]}} & int_mul_lo) | ({32{ex_rs[12]}} & int_mul_hi) | ({32{ex_rs[13]}} & int_div_q);
+wire [63:0] ex_result = ({64{ex_rs[5]}} & fpu_result) | {({32{ex_rs[4]}} & 32'hFFF80000), int_flat | sys_result};
+/* synthesis translate_off */
+always_ff @(posedge clk)
+	if (~reset & ex_valid & ex_done & ~x_pre & (|ex_rs[13:6]) & (int_flat != int_result))
+		$fatal(1, "the flat integer result differs from the unit's");
+/* synthesis translate_on */
 wire [6:0]  ex_rd     = ex_dec.frd_wr ? {2'b10, ex_dec.frd} : {1'b0, ex_dec.rd};
 wire        ex_rd_wr  = ex_dec.rd_wr | (ex_dec.frd_wr & (~is_fpu | fpu_result_we));
 
@@ -2236,7 +2550,9 @@ wire       fwd_mem_own = mem_valid;   // (if it leaves: fq_kill, at the use)
 function automatic logic [14:0] fwd_sel(input dec_t d);
 	logic [5:0] m_take, m_mem, m_wb;
 	logic [2:0] u;
-	m_take = completion_pop ? rd_match(d, {1'b0, completion_queue[completion_head].rd}) :
+	// (a popped FP entry whose write is suppressed forwards nothing: mem_rd_wr)
+	m_take = completion_pop ? ((~completion_queue[completion_head].fp | cq_h_we) ?
+	                           rd_match(d, completion_queue[completion_head].rd) : 6'd0) :
 	         (fwd_ex_ok & ex_rd_wr) ? rd_match(d, ex_rd) : 6'd0;
 	m_mem  = mem_take ? m_take : (fwd_mem_own & mem_rd_wr) ? rd_match(d, mem_rd) : 6'd0;
 	m_wb   = fwd_wb_v ? rd_match(d, fwd_wb_rd) : 6'd0;
@@ -2244,7 +2560,7 @@ function automatic logic [14:0] fwd_sel(input dec_t d);
 	         (fwd_mem_own & mem_upd) ? ra_match(d, mem_upd_ra) : 3'd0;
 	fwd_sel = {m_mem, m_wb, u};
 endfunction
-wire [14:0] fwd_sel_id = fwd_sel(id_uop);
+wire [14:0] fwd_sel_id = fwd_sel(id_uop_f);
 wire [14:0] fwd_sel_ex = fwd_sel(ex_dec);
 always_ff @(posedge clk)
 	{fq_a_mem_r, fq_b_mem_r, fq_c_mem_r, fq_fa_mem_r, fq_fb_mem_r, fq_fc_mem_r,
@@ -2320,8 +2636,12 @@ always_ff @(posedge clk) begin
 		ex_pc    <= id_pc;
 		ex_insn  <= id_insn;
 		ex_dec   <= id_uop;
-		ex_pass_ok_q <= pass_ok_of(id_uop);
-		ex_x_spr_q   <= x_spr_of(id_uop);
+		// (from the decoder's operation, the sequencer's two own operations
+		// known apart: its arms' muxes are then not in front of these)
+		ex_pass_ok_q <= seq_nop ? 1'b0 : seq_cr_op ? 1'b1 : pass_ok_of(id_dec);
+		ex_x_spr_q   <= id_x_spr;
+		ex_spr_sel   <= spr_sel_of(id_spr_n);
+		ex_rs        <= (seq_nop | seq_cr_op) ? '0 : rs_of(id_dec);
 		ex_ill   <= ~id_dec.valid;
 		ex_isi   <= id_isi;
 		ex_isi_info <= id_isi_info;
@@ -2386,6 +2706,12 @@ always_ff @(posedge clk) begin
 		msr   <= msr_next;
 
 	end
+	// a queued FP operation commits its FPSCR and CR1 as it pops (never in
+	// the cycle EX leaves: EX waits for the queue's older entries)
+	if (cq_pop_fp) begin
+		fpscr <= cq_fpscr_new;
+		cr    <= cq_cr_new;
+	end
 
 	// mtsr's write lands a cycle after its commit, from registers (the
 	// commit, behind EX's add and exception checks, only enables them); it
@@ -2395,6 +2721,14 @@ always_ff @(posedge clk) begin
 	sr_wq_idx <= sr_idx;
 	sr_wq_data <= op_a;
 	if (sr_wq_v) sr[sr_wq_idx] <= sr_wq_data;
+	// mtspr to a BAT likewise lands a cycle after its commit, from registers
+	// (the commit, behind the exception checks, enabled 512 flops); an
+	// mtspr to a BAT refetches, so nothing reads them before the write
+	// upper: BEPI, BL, Vs, Vp; lower: BRPN, WIMG, PP (W and G kept by the IBATs too)
+	bat_wq_v <= sys_write_commit & is_mtspr & (ex_dec.spr[9:4] == 6'b100001) & ~reset;
+	bat_wq_idx <= ex_dec.spr[3:0];
+	bat_wq_data <= op_a & (ex_dec.spr[0] ? 32'hFFFE007B : 32'hFFFE1FFF);
+	if (bat_wq_v) bat[bat_wq_idx] <= bat_wq_data;
 
 	if (sys_write_commit) begin
 
@@ -2424,9 +2758,7 @@ always_ff @(posedge clk) begin
 				10'd1010: iabr  <= op_a;
 				10'd1013: dabr  <= op_a;
 				10'd1023: pir   <= op_a[3:0];
-				default:  if (ex_dec.spr[9:4] == 6'b100001)
-					// upper: BEPI, BL, Vs, Vp; lower: BRPN, WIMG, PP (W and G kept by the IBATs too)
-					bat[ex_dec.spr[3:0]] <= op_a & (ex_dec.spr[0] ? 32'hFFFE007B : 32'hFFFE1FFF);
+				default: ;      // the BATs: a cycle later, below
 			endcase
 		end
 	end
@@ -2554,7 +2886,10 @@ DSPPC604_mmu #(.TLB_BITS (TLB_BITS), .CANDIDATE_D_ADDR (1'b1)) mmu
 	.msr_ir      (msr[MSR_IR]),
 	.msr_dr      (msr[MSR_DR]),
 	.msr_pr      (msr[MSR_PR]),
+	.msr_ir_d    (msr_d[MSR_IR]),
+	.msr_pr_d    (msr_d[MSR_PR]),
 	.bat         (bat),
+	.ibat_write  (bat_wq_v & ~bat_wq_idx[3]),
 	.sr          (sr),
 	.sr_changed  ((ex_leave & ~ex_abort & is_sys & (ex_dec.sys == SYS_MTSR)) | sr_wq_v),
 	.sdr1        (sdr1),
@@ -2823,7 +3158,7 @@ always_ff @(posedge clk) begin
 		mo_t_fpscr <= mem_t_fpscr;
 		mo_t_msr <= mem_t_msr;
 	end
-	if (ex_leave & ~ex_abort) mem_valid <= 1'b1;
+	if (ex_leave & ~ex_abort & ~completion_push_ex) mem_valid <= 1'b1;   // (an FP operation leaving into the queue enters MEM at its pop)
 	if (completion_pop) begin
 		mem_valid <= 1'b1;
 		mem_pc <= completion_queue[completion_head].pc;
@@ -2832,20 +3167,21 @@ always_ff @(posedge clk) begin
 		mem_first <= 1'b1;
 		mem_fold <= 1'b0;
 		mem_upd <= 1'b0;
-		mem_rd <= {1'b0, completion_queue[completion_head].rd};
-		mem_rd_wr <= 1'b1;
-		mem_result <= {32'd0, completion_queue[completion_head].value};
+		mem_rd <= completion_queue[completion_head].rd;
+		mem_rd_wr <= ~completion_queue[completion_head].fp | cq_h_we;
+		mem_result <= cq_h_value;
 		mem_load <= 1'b0;
 		mem_store <= 1'b0;
 		mem_resv_set <= 1'b0;
 		mem_resv_clr <= 1'b0;
-		mem_fp <= 1'b0;
+		mem_fp <= completion_queue[completion_head].fp;
 		mem_fsgl <= 1'b0;
-		mem_t_cr <= cr;
+		// (an FP entry commits its FPSCR and CR1 here, in order: cq_fpscr_new)
+		mem_t_cr <= cq_pop_fp ? cq_cr_new : cr;
 		mem_t_xer <= xer;
 		mem_t_lr <= lr;
 		mem_t_ctr <= ctr;
-		mem_t_fpscr <= fpscr;
+		mem_t_fpscr <= cq_pop_fp ? cq_fpscr_new : fpscr;
 		mem_t_msr <= msr;
 	end
 
@@ -2892,6 +3228,9 @@ end
 // ============================================================================
 //  WB
 // ============================================================================
+// (the result that is no load's data, chosen apart: the cache's word, the
+// late one, meets it in the last choice only)
+(* keep = "true" *) wire [63:0] wb_other = mo_valid ? {32'd0, mo_result} : mem_result;
 always_ff @(posedge clk) begin
 	wb_valid <= mem_leave & ~mem_fault;
 	// The payload loads every cycle: every reader qualifies it with wb_valid
@@ -2909,8 +3248,7 @@ always_ff @(posedge clk) begin
 		wb_fold_insn <= mo_valid ? mo_fold_insn : mem_fold_insn;
 		wb_rd     <= mo_valid ? mo_rd : mem_rd;
 		wb_rd_wr  <= mo_valid ? mo_rd_wr : mem_rd_wr;
-		wb_result <= (mo_valid ? mo_load : mem_load) ? mu_rdata :
-		             mo_valid ? {32'd0, mo_result} : mem_result;
+		wb_result <= (mo_valid ? mo_load : mem_load) ? mu_rdata : wb_other;
 		wb_fsgl   <= mo_valid ? (mo_load & mo_fp & mo_fsgl) : (mem_load & mem_fp & mem_fsgl);
 		wb_fden_q <= (mo_valid ? (mo_load & mo_fp & mo_fsgl) : (mem_load & mem_fp & mem_fsgl)) & mu_rden;
 		wb_t_cr   <= mo_valid ? mo_t_cr : mem_t_cr;
@@ -2965,11 +3303,12 @@ always_ff @(posedge clk) begin
 		if (mo_valid & mo_rd_wr & ~mo_load & mo_rd[6]) $fatal(1, "a passed store writes an FP register");
 		if (mu_valid & ~mu_ready) $fatal(1, "memory access offered without a free descriptor");
 		if (completion_count > 4'd8) $fatal(1, "completion queue overflow");
-		if (completion_pop & ex_leave) $fatal(1, "two operations entered MEM");
+		if (completion_pop & ex_leave & ~completion_push_ex) $fatal(1, "two operations entered MEM");
 		if (mem_payload_take & completion_pop)
 			$fatal(1, "EX payload overwrote a queued completion");
-		if (ex_leave & ~ex_abort & ~mem_payload_take)
+		if (ex_leave & ~ex_abort & ~mem_payload_take & ~completion_push_ex)
 			$fatal(1, "committed EX operation did not capture its MEM payload");
+		if (completion_push_ex & mem_payload_take) $fatal(1, "EX's FP operation left into the queue and into MEM");
 		if (completion_push & redir) $fatal(1, "completion admitted during redirect");
 		if (ex_valid & sys_reg_write & ex_mem_access)
 			$fatal(1, "system register write has a memory descriptor");
@@ -2991,7 +3330,7 @@ wire [19:0] perf_events /* verilator public_flat_rd */ = {
     ex_final & is_br & (next_pc != ex_pred),
     ex_ready & ~id_valid,
     ex_valid & ex_done & ~mem_room,
-    ex_valid & ~ex_stall & is_fpu & ~fpu_resp,
+    ex_valid & ~ex_stall & is_fpu & ~fpu_resp_ex,
     ex_valid & ~ex_stall & is_int & ~int_resp,
     (mem_valid & (mem_load | mem_store) & ~mu_resp) | (ex_valid & ex_mem_access & ~ex_abort & ~mu_accept),
     ex_valid & ex_stall, id_take, wb_valid & wb_last

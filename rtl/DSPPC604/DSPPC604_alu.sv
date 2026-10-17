@@ -23,7 +23,13 @@ module DSPPC604_alu
 	output logic        gt,
 	output logic        eq,
 	output logic        lt_s,        // ... and both at once, for the trap instructions
-	output logic        lt_u
+	output logic        lt_u,
+	output logic        zero,        // the result is zero (found per operation, before the result's choice)
+	output logic        neg,         // ... and its sign bit, likewise
+	output logic [31:0] log_o,       // each operation's own result, for a flat choice outside (sum is the adder's)
+	output logic [31:0] rot_o,
+	output logic [31:0] clz_o,
+	output logic [31:0] exts_o
 );
 
 import DSPPC604_pkg::*;
@@ -133,15 +139,24 @@ endfunction
 // ---- result ----------------------------------------------------------------
 assign sum = add_sum[31:0];
 
+assign log_o  = log_res;
+assign rot_o  = rot_res;
+assign clz_o  = {26'd0, clz32(a)};
+assign exts_o = ctl.ext_byte ? {{24{a[7]}}, a[7:0]} : {{16{a[15]}}, a[15:0]};
+
 always_comb begin
 	ca_out = add_sum[32];
 	ov_out = add_ov;
 	case (ctl.alu_op)
-		ALU_LOGIC: result = log_res;
-		ALU_ROT:   begin result = rot_res; ca_out = rot_ca; end
-		ALU_CNTLZ: result = {26'd0, clz32(a)};
-		ALU_EXTS:  result = ctl.ext_byte ? {{24{a[7]}}, a[7:0]} : {{16{a[15]}}, a[15:0]};
-		default:   result = add_sum[31:0];
+		ALU_LOGIC: begin result = log_res; zero = ~(|log_res); neg = log_res[31]; end
+		ALU_ROT:   begin result = rot_res; ca_out = rot_ca; zero = ~(|rot_res); neg = rot_res[31]; end
+		ALU_CNTLZ: begin result = {26'd0, clz32(a)}; zero = a[31]; neg = 1'b0; end
+		ALU_EXTS:  begin
+			result = ctl.ext_byte ? {{24{a[7]}}, a[7:0]} : {{16{a[15]}}, a[15:0]};
+			zero   = ctl.ext_byte ? ~(|a[7:0]) : ~(|a[15:0]);
+			neg    = ctl.ext_byte ? a[7] : a[15];
+		end
+		default:   begin result = add_sum[31:0]; zero = ~(|add_sum[31:0]); neg = add_sum[31]; end
 	endcase
 end
 

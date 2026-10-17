@@ -16,7 +16,11 @@ derive_clock_uncertainty
 #     toggles, each through two flip-flops; the snapshot registers stand
 #     still between them);
 #   memory -> video: the status bits and RAM size, through two flip-flops.
-set_clock_groups -asynchronous \
-	-group [get_clocks {*|pll|pll_inst|altera_pll_i|*[0].*|divclk}] \
-	-group [get_clocks {*|pll|pll_inst|altera_pll_i|*[1].*|divclk}] \
-	-group [get_clocks {*|pll|pll_inst|altera_pll_i|*[2].*|divclk}]
+# A 100 MHz-only build (syn/build.py 100) has the CPU's and the memory's
+# counters merged into one: a group only for each counter that exists.
+set pll_groups {}
+foreach i {0 1 2} {
+	set c [get_clocks -nowarn "*|pll|pll_inst|altera_pll_i|*\[$i\].*|divclk"]
+	if {[get_collection_size $c] > 0} { lappend pll_groups -group $c }
+}
+set_clock_groups -asynchronous {*}$pll_groups
