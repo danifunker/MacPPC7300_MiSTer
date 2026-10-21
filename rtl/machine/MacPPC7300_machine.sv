@@ -913,7 +913,17 @@ always_ff @(posedge clk) begin
 	else if (dev_ack) bt_pend <= 1'b0;
 	if (reset) bt_pend <= 1'b0;
 end
-wire bt_ev = dev_ack & bt_pend;
+// an ESCC or serial-DMA access the same as the one two before it (a polling loop's pair) is
+// left out, so a spin does not flood the trace
+wire        bt_ser = bt_a[16:13] == 4'h9 || bt_a[16:10] == 7'h21;
+wire [49:0] bt_key = {bt_a[16:0], bt_we, bt_we ? bt_wd : line_buf[0]};
+logic [49:0] bt_k1, bt_k2;
+wire bt_ev = dev_ack & bt_pend & ~(bt_ser & bt_key == bt_k2);
+always_ff @(posedge clk)
+	if (dev_ack & bt_pend & bt_ser) begin
+		bt_k1 <= bt_key;
+		bt_k2 <= bt_k1;
+	end
 // kind 5: a command of DMA channel 2, 3 or 8 finished (8 fetched, 9 stopped); 6: the ADB
 // keyboard; 10: MESH's interrupt (with tr_mesh); 11: channel 8's interrupt
 wire   itr_tr = itr_ev & tr_mesh;
