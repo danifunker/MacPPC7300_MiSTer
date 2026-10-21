@@ -677,6 +677,8 @@ logic [1:0]   dfin_type;
 logic [127:0] dfin_info;
 logic         itr_ev, itr8_ev;
 logic [7:0]   itr8_st;
+logic         scc_tr_ev;
+logic [23:0]  scc_tr_info;
 logic         fd_m_t, fd_m_ok, fd_m_dc42, fd_rq_t, fd_dn_t;
 logic [1:0]   fd_m_fmt;
 logic [11:0]  fd_rq_lba;
@@ -700,7 +702,7 @@ MacPPC7300_gc #(.SCSI_HZ(SCSI_HZ), .SOUND_IN_DMA(SOUND_IN_DMA)) gc (
 	.dm_wdata(gdm_wdata), .dm_ack(gdm_ack), .dm_rdata(gdm_rdata),
 	.snd_left, .snd_right, .snd_frame,
 	.dac_cr, .dbl_buf_cr, .cursor_x, .cursor_clut, .clk_v, .clut_index, .clut_rgb,
-	.dfin, .dfin_ch, .dfin_type, .dfin_info, .itr_ev, .itr_st, .itr8_ev, .itr8_st,
+	.dfin, .dfin_ch, .dfin_type, .dfin_info, .itr_ev, .itr_st, .itr8_ev, .itr8_st, .scc_tr_ev, .scc_tr_info,
 	.fd_m_t, .fd_m_ok, .fd_m_fmt, .fd_m_dc42, .fd_rq_t, .fd_rq_lba, .fd_dn_t, .fd_ra, .fd_q
 );
 
@@ -927,8 +929,10 @@ always_ff @(posedge clk)
 // kind 5: a command of DMA channel 2, 3 or 8 finished (8 fetched, 9 stopped); 6: the ADB
 // keyboard; 10: MESH's interrupt (with tr_mesh); 11: channel 8's interrupt
 wire   itr_tr = itr_ev & tr_mesh;
-assign tr_ev  = sd_tr_ev | bt_ev | dfin | adb_tr_ev | itr_tr | itr8_ev;
+// kind 16: the ESCC's channel A received a byte or gave one to DMA (scc_tr_info)
+assign tr_ev  = sd_tr_ev | bt_ev | dfin | adb_tr_ev | itr_tr | itr8_ev | scc_tr_ev;
 assign tr_rec = sd_tr_ev ? sd_tr_rec :
+                scc_tr_ev ? {168'd0, scc_tr_info, bt_us, 24'd0, 8'd16} :
                 bt_ev    ? {128'd0, bt_we ? bt_wd : line_buf[0], bt_a, bt_us, 19'd0, bt_we, bt_be, 8'd4} :
                 dfin     ? {64'd0, dfin_info, bt_us, 16'd0, 4'd0, dfin_ch,
                             (dfin_type == 2'd0) ? 8'd5 : (dfin_type == 2'd1) ? 8'd8 : 8'd9} :

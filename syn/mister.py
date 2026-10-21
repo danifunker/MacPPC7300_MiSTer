@@ -538,6 +538,15 @@ def trace(last, first, fname=None):
             else:
                 print("%s DMA-%d STOPPED in state %d %s res %d status %04x conds w%d b%d i%d"
                       % (t, r[1], y >> 28, c, x >> 16, x & 0xFFFF, (y >> 2) & 1, (y >> 1) & 1, y & 1))
+        elif kind == 16:
+            # the ESCC's channel A: a byte finished by the receiver and/or one taken by DMA
+            f = r[10]
+            parts = []
+            if f & 0x80:
+                parts.append("rx %02x%s" % (r[9], " LOST (overrun)" if f & 0x20 else ""))
+            if f & 0x40:
+                parts.append("dma %02x" % r[8])
+            print("%s SCC-A %s  fifo %d" % (t, ", ".join(parts), f & 0x1F))
         elif kind == 13:
             # the codec's output frames (syn/sndtrace.py turns them into a WAV)
             cnt = int.from_bytes(r[1:4], "little")

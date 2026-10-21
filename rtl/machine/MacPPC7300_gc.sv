@@ -191,6 +191,9 @@ module MacPPC7300_gc
 	// with the ESCC's channel A line and channels 4 or 5's level in bits 1 and 0
 	output logic         itr8_ev,
 	output logic [7:0]   itr8_st,
+	// ... and the ESCC's channel A receiving (MacPPC7300_escc tr_info)
+	output logic         scc_tr_ev,
+	output logic [23:0]  scc_tr_info,
 
 	// the floppy disk's image (MacPPC7300_fdblk)
 	input  logic         fd_m_t,
@@ -282,7 +285,8 @@ MacPPC7300_escc escc (
 	.dt_ready_a(sa_ready), .dt_put_a(sa_put), .dt_data_a(sa_odata),
 	.dr_valid_a(sa_valid), .dr_data_a(sa_idata), .dr_take_a(sa_take),
 	.dt_ready_b(sb_ready), .dt_put_b(sb_put), .dt_data_b(sb_odata),
-	.dr_valid_b(sb_valid), .dr_data_b(sb_idata), .dr_take_b(sb_take)
+	.dr_valid_b(sb_valid), .dr_data_b(sb_idata), .dr_take_b(sb_take),
+	.tr_ev(scc_tr_ev), .tr_info(scc_tr_info)
 );
 
 // ---- the SCSI controllers: byte registers at (offset >> 4) & F (grandcentral.cpp:188, 211) ----

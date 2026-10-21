@@ -120,7 +120,12 @@ module MacPPC7300_escc
 	input  logic [7:0] dt_data_b,
 	output logic       dr_valid_b,
 	output logic [7:0] dr_data_b,
-	input  logic       dr_take_b
+	input  logic       dr_take_b,
+
+	// for MacPPC7300_trace: channel A's receiver finished a byte, or DMA took one (one clock):
+	// {finished, taken by DMA, lost to an overrun, bytes in the FIFO, the byte finished, the byte taken}
+	output logic       tr_ev,
+	output logic [23:0] tr_info
 );
 
 logic [3:0] ptr;                       // the register pointer, shared
@@ -164,6 +169,9 @@ always_ff @(posedge clk) begin
 	cts_s <= {cts_s[0], cts_a};
 end
 assign rts_a = rr0_a[0];
+logic       a_push, a_lost;              // channel A's receiver, for the trace
+logic [4:0] a_n;
+logic [7:0] a_byte;
 
 MacPPC7300_escc_ch ch_a (
 	.clk, .hw_rst, .ch_rst(rst_a), .rtxc_tick, .trxc_tick,
@@ -171,8 +179,13 @@ MacPPC7300_escc_ch ch_a (
 	.tx_dma(dt_put_a), .tx_dma_d(dt_data_a), .rx_dma(dr_take_a),
 	.cmd_en(cmd_a), .cmd(wdata[5:3]), .crc_cmd(wdata[7:6]),
 	.rr0(rr0_a), .rr1(rr1_a), .rx_data(rd_a), .txd(txd_a), .rxd(rxd_s[1]), .cts(cts_s[1]),
-	.rx_ip(rx_ip_a), .tx_ip(tx_ip_a), .ext_ip(ext_ip_a), .special(sp_a), .midi(midi_a), .rx_dreq(dr_valid_a)
+	.rx_ip(rx_ip_a), .tx_ip(tx_ip_a), .ext_ip(ext_ip_a), .special(sp_a), .midi(midi_a), .rx_dreq(dr_valid_a),
+	.tr_push(a_push), .tr_lost(a_lost), .tr_n(a_n), .tr_byte(a_byte)
 );
+always_ff @(posedge clk) begin
+	tr_ev   <= a_push | (dr_take_a & dr_valid_a);
+	tr_info <= {a_push, dr_take_a & dr_valid_a, a_lost, a_n, a_byte, rd_a};
+end
 assign dt_ready_a = rr0_a[2];
 assign dr_data_a  = rd_a;
 
@@ -182,7 +195,10 @@ MacPPC7300_escc_ch ch_b (
 	.tx_dma(dt_put_b), .tx_dma_d(dt_data_b), .rx_dma(dr_take_b),
 	.cmd_en(cmd_b), .cmd(wdata[5:3]), .crc_cmd(wdata[7:6]),
 	.rr0(rr0_b), .rr1(rr1_b), .rx_data(rd_b), .txd(txd_b), .rxd(1'b1), .cts(1'b0),
-	.rx_ip(rx_ip_b), .tx_ip(tx_ip_b), .ext_ip(ext_ip_b), .special(sp_b), .midi(midi_b), .rx_dreq(dr_valid_b)
+	.rx_ip(rx_ip_b), .tx_ip(tx_ip_b), .ext_ip(ext_ip_b), .special(sp_b), .midi(midi_b), .rx_dreq(dr_valid_b),
+	/* verilator lint_off PINCONNECTEMPTY */
+	.tr_push(), .tr_lost(), .tr_n(), .tr_byte()
+	/* verilator lint_on PINCONNECTEMPTY */
 );
 assign dt_ready_b = rr0_b[2];
 assign dr_data_b  = rd_b;
@@ -298,7 +314,11 @@ module MacPPC7300_escc_ch
 	output logic       ext_ip,
 	output logic       special,        // the receive interrupt is a special condition's
 	output logic       midi,           // the transmitter at MIDI's rate (TRxC, x32, asynchronous)
-	output logic       rx_dreq         // a byte for DMA: W/REQ as a receive DMA request (WR1 bits 7-5)
+	output logic       rx_dreq,        // a byte for DMA: W/REQ as a receive DMA request (WR1 bits 7-5)
+	output logic       tr_push,        // for the trace: a byte finished (one clock),
+	output logic       tr_lost,        //   lost to an overrun,
+	output logic [4:0] tr_n,           //   the FIFO's fill before it,
+	output logic [7:0] tr_byte         //   the byte
 );
 
 logic [7:0] wr1, wr3, wr4, wr5, wr10, wr11, wr12, wr13, wr14, wr15;
@@ -385,6 +405,10 @@ assign rx_data = rx_f[rx_rp];
 // (Mac OS turns W/REQ off around each FLUSH of its receive channel, so no byte lands past the
 // position it reads there)
 assign rx_dreq = wr1[7:5] == 3'b111 && rx_n != 5'd0;
+assign tr_push = rx_push;
+assign tr_lost = rx_push & ~rx_take;
+assign tr_n    = rx_n;
+assign tr_byte = rx_byte;
 assign txd     = tx_idle | tx_sh[0];
 
 // ---- the interrupt pending bits ------------------------------------------------------------
