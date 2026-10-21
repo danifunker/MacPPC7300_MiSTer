@@ -99,10 +99,11 @@ module MacPPC7300_dbdma
 	// data moves a 32-byte line at a time (MESH's disk speed); 0: a word at a time (the slow
 	// devices: a 4-byte buffer instead of 32)
 	parameter bit LINE = 1'b1,
-	// a FLUSH's write-back has FLUSH in xferStatus (dbdma.cpp); 0: not (the ESCC's receive
-	// channels: Mac OS's serial driver recycles a buffer whose xferStatus is ACTIVE without
-	// FLUSH and keeps one with FLUSH as in use, so with dbdma.cpp's bit every restart of the
-	// receive channel used up a buffer, and after four it waited for ever at its STOP)
+	// a FLUSH's write-back has FLUSH in xferStatus (dbdma.cpp); 0: only if the command has
+	// moved a byte (the ESCC's receive channels: Mac OS's serial driver recycles a buffer whose
+	// xferStatus is ACTIVE without FLUSH and keeps one with FLUSH for its partial data; with
+	// the bit always, empty buffers were never recycled and the driver ran out of them; with
+	// it never, a buffer still being filled was re-armed under the DMA and frames broke)
 	parameter bit FLUSH_XS = 1'b1
 )
 (
@@ -562,9 +563,10 @@ always_ff @(posedge clk) begin
 					dm_line  <= 1'b0;
 					dm_addr  <= cmd_ptr[31:2] + 30'd3;
 					dm_be    <= (cmd == 4'd6) ? 4'b0011 : 4'b1111;
-					// (a flush's write-back has FLUSH in xferStatus, as dbdma.cpp's, with FLUSH_XS)
+					// (a flush's write-back has FLUSH in xferStatus, as dbdma.cpp's; without
+					// FLUSH_XS only once the command has moved a byte)
 					dw       <= {res_count[7:0], res_count[15:8], xstat[7:0],
-					             xstat[15:8] | ((flushing && FLUSH_XS) ? 8'h20 : 8'h00)};
+					             xstat[15:8] | ((flushing && (FLUSH_XS || res_count != req_count)) ? 8'h20 : 8'h00)};
 				end
 			end
 			else if (dm_ack) begin
