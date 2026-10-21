@@ -106,13 +106,19 @@ assign BUTTONS = 0;
 
 //////////////////////////////////////////////////////////////////
 
-wire [1:0] ar = status[122:121];         // the aspect ratio (video_freak, below)
+wire [127:0] cfg;                       // the OSD's settings as the machine last took them (below)
+wire         cfg_pending;               // an OSD setting differs from them
+wire [1:0] ar = cfg[122:121];            // the aspect ratio (video_freak, below)
 
+// The OSD follows the computer cores' standard (hp9000-715_MiSTer docs/osd-standard.md):
+// media, Memory and Network interface on the top page, then the pages P1 Machine, P2
+// Video, P3 Input, P4 Audio, P5 Advanced; a setting waits for "Apply and reset" (Input's
+// and the MT32-pi's act at once), and "Changes pending" shows meanwhile (menu mask bit 0;
+// bit 1 a 64 MB board or larger, bit 2 a 128 MB board).
 `include "build_id.v"
 localparam CONF_STR = {
 	"MacPPC7300;UART115200:57600:38400:19200:9600,MIDI;",
 	"-;",
-	"F1,ROM,Load ROM;",
 	// the disks: SC, so the Main remembers the image and mounts it at the
 	// next start (as the other Mac cores); slots 2-5 are the Mac SCSI
 	// family's (NVRAM, BlueSCSI Toolbox, CD-ROM, CD changer); slot 2 holds
@@ -120,45 +126,54 @@ localparam CONF_STR = {
 	// and the changer are the Main's own (no menu entry); the CD-ROM needs
 	// the Main's Mac CD layer (MacPPC7300_scsidisk); the floppy (slot 6) is not
 	// remembered: a disk left in would be tried at every start
-	"SC0,HDAVHD,Mount SCSI disk 0;",
-	"SC1,HDAVHD,Mount SCSI disk 1;",
-	"SC4,ISOTO*CUEBINCHD,Mount CD-ROM;",
-	"S6,DSKIMGIMA,Insert floppy disk;",
-	"SC2,NVR,Mount NVRAM;",
+	"SC0,HDAVHD,Pri. disk (ID 0);",
+	"SC1,HDAVHD,Disk (ID 1);",
+	"SC4,ISOTO*CUEBINCHD,CD-ROM (ID 3);",
+	"S6,DSKIMGIMA,Floppy disk;",
+	"F1,ROM,Load ROM;",
 	"-;",
-	// the RAM sizes the SDRAM board holds besides the ROM, 28 MB (any board's) the default
-	// (menu mask: bit 0 a 64 MB board or larger, bit 1 a 128 MB board); status[3:1] was the
-	// list before 2026-10-15
-	"H0O[7:5],RAM (on reset),28 MB,6 MB,16 MB;",
-	"h0H1O[7:5],RAM (on reset),28 MB,6 MB,16 MB,60 MB;",
-	"h1O[7:5],RAM (on reset),28 MB,6 MB,16 MB,60 MB,124 MB;",
-	"O[4],L2 cache (on reset),On,Off;",
+	// the RAM sizes the board holds besides the ROM, 28 MB (any board's) the default
+	// (status[3:1] was the list before 2026-10-15; until 2026-10-21 28, 6, 16, 60, 124)
+	"H1O[7:5],Memory,28MB,6MB,16MB;",
+	"h1H2O[7:5],Memory,28MB,60MB,6MB,16MB;",
+	"h2O[7:5],Memory,28MB,60MB,124MB,6MB,16MB;",
+	// the values in the order Main's ring bridge reads (support/mac/mac_eth.cpp: 0 off)
+	"O[19:17],Network interface,None,eth0,eth1,wlan0,tap0;",
+	"-;",
+	"P1,Machine;",
+	"P2,Video;",
+	"P3,Input;",
+	"P4,Audio;",
+	"P5,Advanced;",
+	"-;",
+	"h0-,Changes pending;",
+	"R[0],Apply and reset;",
+
 `ifndef MACPPC_SPEED_100
 `ifndef MACPPC_SPEED_70
-	"O[33],CPU speed (on reset),70 MHz,100 MHz;",
+	"P1O[33],CPU speed,70 MHz,100 MHz;",
 `endif
 `endif
+	"P1O[4],L2 cache,On,Off;",
+
 	// (status[16:15] was the list before 2026-10-15, three monitors)
-	"O[32:30],Monitor (on reset),16-inch 832x624,13-inch 640x480,12-inch 512x384,17-inch Multiscan,21-inch 1152x870,20-inch Multiscan;",
-	"-;",
-	"O[13:11],ADB controller (on reset),None,Gravis MouseStick II,Gravis Firebird,Gravis GamePad,SideWinder 3D Pro;",
-	"O[14],Stick moves pointer,No,Yes;",
-	"-;",
-	"O[19:17],Ethernet (on reset),Off,eth0,eth1,wlan0,tap0;",
-	"-;",
-	"P1,MT32-pi;",
-	"P1-;",
-	"P1O[20],Use MT32-pi,Yes,No;",
-	"P1O[21],Synth,Munt,FluidSynth;",
-	"P1O[23:22],Munt ROM,MT-32 v1,MT-32 v2,CM-32L;",
-	"P1O[26:24],SoundFont,0,1,2,3,4,5,6,7;",
-	"P1O[28:27],Show Info,No,Yes,LCD-On,LCD-Auto;",
-	"-;",
-	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
-	"O[10:9],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
-	"-;",
-	"T[0],Reset;",
-	"R[0],Reset and close OSD;",
+	"P2O[32:30],Monitor,16-inch 832x624,13-inch 640x480,12-inch 512x384,17-inch Multiscan,21-inch 1152x870,20-inch Multiscan;",
+	"P2O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
+	"P2O[10:9],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
+
+	"P3O[38],Swap Alt/Win keys,No,Yes;",
+	// the controller is ADB hardware Mac OS finds at its start, so it waits for the reset
+	"P3O[13:11],Controller,None,MouseStick II,Firebird,GamePad,SideWinder;",
+	"P3O[14],Stick moves pointer,No,Yes;",
+
+	"P4O[20],Use MT32-pi,Yes,No;",
+	"P4O[21],Synth,Munt,FluidSynth;",
+	"P4O[23:22],Munt ROM,MT-32 v1,MT-32 v2,CM-32L;",
+	"P4O[26:24],SoundFont,0,1,2,3,4,5,6,7;",
+	"P4O[28:27],Show Info,No,Yes,LCD-On,LCD-Auto;",
+
+	"P5SC2,NVR,NVRAM image;",
+
 	"J,Trigger,Thumb,Button 3,Button 4,Button 5,Base 1,Base 2,Base 3;",
 	"jn,A,B,X,Y,L,R,Select,Start;",
 	"jp,B,A,Y,X,L,R,Select,Start;",
@@ -175,7 +190,8 @@ localparam CONF_STR = {
 	"MT32-pi: MT-32 v2,",
 	"MT32-pi: CM-32L,",
 	"MT32-pi: Unknown mode;",
-	"v,0;",
+	// 1 since 2026-10-21: the Memory list reordered
+	"v,1;",
 	"V,v",`BUILD_DATE
 };
 
@@ -326,7 +342,7 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(VDNUM), .BLKSZ(2)) hps_io
 	.forced_scandoubler(forced_scandoubler),
 	.buttons(buttons),
 	.status(status),
-	.status_menumask({14'd0, sdram_mod == 2'd3, sdram_mod[1]}),
+	.status_menumask({13'd0, sdram_mod == 2'd3, sdram_mod[1], cfg_pending}),
 	.sdram_sz(sdram_sz),
 	.ps2_key(ps2_key),
 	.ps2_mouse(ps2_mouse),
@@ -387,12 +403,13 @@ reg  [7:0] ram_opt;
 wire [7:0] ram_max = sdram_mod == 2'd3 ? 8'd124 : sdram_mod == 2'd2 ? 8'd60 : 8'd28;
 reg  [7:0] ram_sel;
 always @(*) begin
-	case (status[7:5])
-		3'd0:    ram_sel = 8'd28;
-		3'd1:    ram_sel = 8'd6;
-		3'd2:    ram_sel = 8'd16;
-		3'd3:    ram_sel = 8'd60;
-		default: ram_sel = 8'd124;              // (5-7: 96, 120, 124 MB in the list before)
+	// each board's list (CONF_STR): the default, the larger sizes it holds, then 6 and 16 MB
+	case ({sdram_mod, status[7:5]})
+		{2'd3, 3'd1}, {2'd2, 3'd1}: ram_sel = 8'd60;
+		{2'd3, 3'd2}:               ram_sel = 8'd124;
+		{2'd3, 3'd3}, {2'd2, 3'd2}, {2'd1, 3'd1}, {2'd0, 3'd1}: ram_sel = 8'd6;
+		{2'd3, 3'd4}, {2'd2, 3'd3}, {2'd1, 3'd2}, {2'd0, 3'd2}: ram_sel = 8'd16;
+		default:                    ram_sel = 8'd28;
 	endcase
 end
 always @(posedge clk_mem) ram_opt <= ram_sel > ram_max ? ram_max : ram_sel;
@@ -558,6 +575,19 @@ always @(posedge clk_mem) if (cpu_reset_m) begin
 	cpu_fast_m <= spd_pll_s[2];
 end
 wire [51:0] joy = {status[14], joy_mode, joystick_r_analog_0, joystick_l_analog_0, joystick_0[15:0]};
+// "Swap Alt/Win keys": Alt gives Option and the Windows keys Command
+wire [8:0]  key_sc = ps2_key[8:0];
+wire [10:0] ps2_key_m = {ps2_key[10:9], !status[38] ? key_sc :
+                         key_sc == 9'h011 ? 9'h11F : key_sc == 9'h111 ? 9'h127 :
+                         key_sc == 9'h11F ? 9'h011 : key_sc == 9'h127 ? 9'h111 : key_sc};
+
+// the whole OSD as the machine took it, and "Changes pending" while a setting differs
+// (not Input's [14] and [38], nor the MT32-pi's [28:20], which act at once)
+reg  [127:0] cfg_m = 0;
+always @(posedge clk_mem) if (cpu_reset_m) cfg_m <= status;
+assign cfg = cfg_m;
+assign cfg_pending = {status[13:4], status[19:17], status[33:30], status[122:121]}
+                  != {cfg[13:4],    cfg[19:17],    cfg[33:30],    cfg[122:121]};
 
 // into the CPU's clock (the options are quasi-static: they change only with the reset held)
 reg [2:0] cpu_reset_s = 3'b111;
@@ -762,7 +792,7 @@ MacPPC7300_system #(.CPU_HZ(70000000), .CPU_HZ_FAST(100000000), .L2_KB(L2_KB), .
 	.modem_txd, .modem_rxd, .modem_cts, .modem_rts, .modem_midi, .snd_left, .snd_right,
 	.nv_ld_we, .nv_ld_re, .nv_ld_addr, .nv_ld_data, .nv_ld_rack, .nv_ld_q, .nv_wr_cpu,
 	.mon_std(mon_c[1][8:6]), .mon_ext(mon_c[1][5:0]),
-	.ps2_key, .ps2_mouse, .joy,           // in the memory clock: MacPPC7300_adb synchronises them
+	.ps2_key(ps2_key_m), .ps2_mouse, .joy,   // in the memory clock: MacPPC7300_adb synchronises them
 	.clock_ok, .clock_secs,
 	.img_mounted(img_mounted[5:0]), .img_size, .img_readonly,   // the targets' side runs in the memory clock
 	.sd_lba(disk_lba), .sd_rd(disk_rd), .sd_wr(disk_wr), .sd_blk_cnt(disk_blk_cnt), .sd_ack(sd_ack[5:0]),
@@ -872,7 +902,7 @@ video_freak video_freak
 	.ARY((!ar) ? 12'd3 : 12'd0),
 	.CROP_SIZE(12'd0),
 	.CROP_OFF(5'd0),
-	.SCALE({1'b0, status[10:9]})
+	.SCALE({1'b0, cfg[10:9]})
 );
 assign VGA_VS    = mac_vs;
 // the MT32-pi's LCD: the picture dimmed in its box, the text pixel on top
