@@ -58,3 +58,9 @@ fine), leaving `Scratch\NAME\MacPPC7300_MODE.rbf`:
 It prints the CPU and memory clocks' setup slack. Try a new fit at 100 MHz
 on the board before releasing it: a fit that misses the memory clock (two
 of two so far) has been one that fails at 100.
+
+**Every release from 2026-10-21 on is two fixed-speed bitstreams** (the
+user's decision: the OSD's speed toggle does not work well enough):
+`MacPPC7300_YYYYMMDD_100MHz.rbf` (`build.py 100`) and
+`MacPPC7300_YYYYMMDD_70MHz.rbf` (`build.py 70`), of the same source. No
+dual build is released; `dual` stays for development only.
