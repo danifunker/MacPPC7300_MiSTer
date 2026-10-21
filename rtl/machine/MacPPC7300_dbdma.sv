@@ -98,7 +98,12 @@ module MacPPC7300_dbdma
 	parameter bit DEV_QUAD = 1'b0,
 	// data moves a 32-byte line at a time (MESH's disk speed); 0: a word at a time (the slow
 	// devices: a 4-byte buffer instead of 32)
-	parameter bit LINE = 1'b1
+	parameter bit LINE = 1'b1,
+	// a FLUSH of an INPUT command that has moved no byte writes its counts back too (dbdma.cpp);
+	// 0: it leaves the command alone (the ESCC's receive channels: Mac OS's serial driver takes
+	// a written-back xferStatus as a buffer done and, with nothing received, ran through its
+	// ring to its STOP and waited there for ever)
+	parameter bit FLUSH_EMPTY_WB = 1'b1
 )
 (
 	input  logic         clk,
@@ -440,8 +445,11 @@ always_ff @(posedge clk) begin
 			else if (stop_req) s <= S_IDLE;
 			else if (flush_req) begin       // a flush: the counts written, then on
 				flush_req <= 1'b0;
-				flushing  <= 1'b1;
-				s <= S_WB;
+				if (FLUSH_EMPTY_WB || res_count != req_count) begin
+					flushing <= 1'b1;
+					s <= S_WB;
+				end
+				else s <= S_IN;
 			end
 			else s <= (res_count == 16'd0 || in_end) ? S_WAIT : S_IN;
 		end
