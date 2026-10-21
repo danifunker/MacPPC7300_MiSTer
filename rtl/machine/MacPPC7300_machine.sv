@@ -890,10 +890,12 @@ logic [31:0] bt_a, bt_wd, bt_us = 32'd0;
 logic [3:0]  bt_be;
 logic [15:0] bt_div = 16'd0;
 // MACE (F3011000-F30111FF) and its DMA channels 2 and 3 (F3008200, 8300); AWACS (F3014000)
-// and its channel 8 (F3008800); MESH (F3018000) and its channel A (F3008A00) with tr_mesh.
+// and its channel 8 (F3008800); the ESCC (F3012000-F3013FFF) and its channels 4-7 (F3008400-
+// F30087FF); MESH (F3018000) and its channel A (F3008A00) with tr_mesh.
 // Not the interrupt registers: the NanoKernel reads and rewrites them thousands of times a second
 wire         bt_hit = q_is_gc && (qa[16:9] == 8'h88 || qa[16:8] == 9'h082 || qa[16:8] == 9'h083 ||
                                 qa[16:8] == 9'h140 || qa[16:8] == 9'h088 ||
+                                qa[16:13] == 4'h9 || qa[16:10] == 7'h21 ||
                                 (tr_mesh && (qa[16:8] == 9'h180 || qa[16:8] == 9'h08A)));
 always_ff @(posedge clk) begin
 	if (bt_div == (cpu_fast ? 16'(CPU_HZ_FAST / 1_000_000 - 1) : 16'(CPU_HZ / 1_000_000 - 1))) begin

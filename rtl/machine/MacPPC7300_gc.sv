@@ -177,7 +177,7 @@ module MacPPC7300_gc
 	input  logic [23:0]  clut_index,
 	output logic [23:0]  clut_rgb,
 
-	// for MacPPC7300_trace: DMA channel 2, 3 or 8 (dfin_ch) finished (dfin_type 0), fetched (1)
+	// for MacPPC7300_trace: DMA channel 2, 3, 4, 5 or 8 (dfin_ch) finished (dfin_type 0), fetched (1)
 	// or was stopped (2) a command
 	output logic         dfin,
 	output logic [3:0]   dfin_ch,
@@ -187,7 +187,8 @@ module MacPPC7300_gc
 	// irq, 68k mode, MESH's mask, event, line, channel A's mask, event, level)
 	output logic         itr_ev,
 	output logic [7:0]   itr_st,
-	// ... and channel 8's (itr8_st: irq, 68k mode, mask, event, level, the channel active)
+	// ... and channel 8's (itr8_st: irq, 68k mode, mask, event, level, the channel active),
+	// with the ESCC's channel A line and channels 4 or 5's level in bits 1 and 0
 	output logic         itr8_ev,
 	output logic [7:0]   itr8_st,
 
@@ -362,7 +363,9 @@ end
 // ---- the ESCC's DMA channels: 4 and 5 the modem port's transmit and receive, 6 and 7 the ----
 // ---- printer port's (word buffers: a byte every 87 us at 115,200 bit/s) ----
 logic [31:0] dma_4_rle, dma_5_rle, dma_6_rle, dma_7_rle;
-logic        c4_irq, c5_irq, c6_irq, c7_irq;
+logic        c4_irq, c5_irq, c6_irq, c7_irq, c4_fin, c5_fin;
+logic [1:0]  c4_fin_dec, c5_fin_dec;
+logic [127:0] c4_fin_info, c5_fin_info;
 wire         dma_4_sel = sel & dma & (addr[14:8] == 7'd4) & (addr[7:5] == 3'd0);
 wire         dma_5_sel = sel & dma & (addr[14:8] == 7'd5) & (addr[7:5] == 3'd0);
 wire         dma_6_sel = sel & dma & (addr[14:8] == 7'd6) & (addr[7:5] == 3'd0);
@@ -376,9 +379,10 @@ MacPPC7300_dbdma #(.LINE(1'b0)) dma_4 (
 	.di_valid(1'b0), .di_data(8'h00), .di_flush(1'b0), .di_last(1'b0), .dev_st(8'h00),
 	.do_ready(sa_ready), .do_data(sa_odata), .do_put(sa_put), .dq_ack(1'b0), .dq_rd(8'h00),
 	/* verilator lint_off PINCONNECTEMPTY */
-	.do_last(), .di_take(), .xfer_in(), .xfer_out(), .drained(), .active(), .fin(), .fin_dec(), .fin_info(),
+	.do_last(), .di_take(), .xfer_in(), .xfer_out(), .drained(), .active(),
 	.dq_req(), .dq_we(), .dq_off(), .dq_wd(),
 	/* verilator lint_on PINCONNECTEMPTY */
+	.fin(c4_fin), .fin_dec(c4_fin_dec), .fin_info(c4_fin_info),
 	.irq(c4_irq)
 );
 
@@ -390,9 +394,10 @@ MacPPC7300_dbdma #(.LINE(1'b0)) dma_5 (
 	.di_valid(sa_valid), .di_data(sa_idata), .di_take(sa_take), .di_flush(1'b0), .di_last(1'b0), .dev_st(8'h00),
 	.do_ready(1'b0), .dq_ack(1'b0), .dq_rd(8'h00),
 	/* verilator lint_off PINCONNECTEMPTY */
-	.do_data(), .do_put(), .do_last(), .xfer_in(), .xfer_out(), .drained(), .active(), .fin(), .fin_dec(), .fin_info(),
+	.do_data(), .do_put(), .do_last(), .xfer_in(), .xfer_out(), .drained(), .active(),
 	.dq_req(), .dq_we(), .dq_off(), .dq_wd(),
 	/* verilator lint_on PINCONNECTEMPTY */
+	.fin(c5_fin), .fin_dec(c5_fin_dec), .fin_info(c5_fin_info),
 	.irq(c5_irq)
 );
 
@@ -487,10 +492,11 @@ MacPPC7300_dbdma #(.LINE(1'b0)) dma_8 (
 	.irq(s8_irq)
 );
 
-// channel 8's interrupt for the trace
-wire [7:0] itr8_now = {irq, int_mask[31], int_mask[8], int_events[8], dma_lvl[8], s8_active, 2'b00};
+// channel 8's interrupt for the trace, and the ESCC's channel A line and channels 4 and 5's
+wire [7:0] itr8_now = {irq, int_mask[31], int_mask[8], int_events[8], dma_lvl[8], s8_active,
+                       scc_a_irq, dma_lvl[4] | dma_lvl[5]};
 always_ff @(posedge clk) begin
-	itr8_ev <= itr8_now[6:2] != itr8_st[6:2];
+	itr8_ev <= itr8_now[6:0] != itr8_st[6:0];
 	itr8_st <= itr8_now;
 end
 
@@ -615,10 +621,10 @@ MacPPC7300_dbdma #(.S6_EOF(1'b1), .DEV_QUAD(1'b1), .LINE(1'b0)) dma_3 (
 	.irq(e3_irq), .fin(e3_fin), .fin_dec(e3_fin_dec), .fin_info(e3_fin_info)
 );
 
-assign dfin      = e2_fin | e3_fin | s8_fin;
-assign dfin_ch   = s8_fin ? 4'd8 : e3_fin ? 4'd3 : 4'd2;
-assign dfin_type = s8_fin ? s8_fin_dec : e3_fin ? e3_fin_dec : e2_fin_dec;
-assign dfin_info = s8_fin ? s8_fin_info : e3_fin ? e3_fin_info : e2_fin_info;
+assign dfin      = e2_fin | e3_fin | s8_fin | c4_fin | c5_fin;
+assign dfin_ch   = s8_fin ? 4'd8 : e3_fin ? 4'd3 : e2_fin ? 4'd2 : c4_fin ? 4'd4 : 4'd5;
+assign dfin_type = s8_fin ? s8_fin_dec : e3_fin ? e3_fin_dec : e2_fin ? e2_fin_dec : c4_fin ? c4_fin_dec : c5_fin_dec;
+assign dfin_info = s8_fin ? s8_fin_info : e3_fin ? e3_fin_info : e2_fin ? e2_fin_info : c4_fin ? c4_fin_info : c5_fin_info;
 
 // ---- SWIM3 (MacPPC7300_swim3): byte registers at (offset >> 4) & F (grandcentral.cpp:205), ----
 // ---- and its DMA channel 1 ----
