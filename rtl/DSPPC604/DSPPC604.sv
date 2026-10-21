@@ -76,8 +76,18 @@
 //    dcbst, dcbi and icbi translate their address and do nothing else until
 //    there is a cache; dcbt and dcbtst do nothing at all.
 //
-//  Not here yet: caches, trace and machine-check exceptions, little-endian
-//  mode.
+//  Little-endian mode (LE_MODE = 1, IBMRS6K7248 2026-10-17): with MSR[LE]
+//  set, the 604 "munges" every address it puts on its bus: an instruction
+//  fetch's by XOR 4, a load or store's by XOR 7 for a byte, 6 for a
+//  halfword, 4 for a word, 0 for a doubleword; the data itself is not
+//  moved. (The bridge then swaps the byte lanes of each doubleword, and
+//  memory reads as little-endian: that half is the machine's.) Accesses the
+//  604 cannot munge take an alignment exception in LE mode: a halfword,
+//  word or doubleword not naturally aligned, lmw/stmw and the string
+//  instructions. DAR receives the unmunged address for an alignment
+//  exception (it is taken in EX), the munged one for a DSI (in MEM).
+//
+//  Not here yet: trace and machine-check exceptions.
 //
 //============================================================================
 
@@ -92,6 +102,7 @@ module DSPPC604
 	parameter int          PERF     = 1,              // 1: the performance counters (perf_cnt; 0 leaves them out)
 	parameter int          COMPLETION_QUEUE = 1,      // 1: the completion queue is built: operations admitted behind a long one in EX, committed in order (since 2026-10-16 the FPU's overlap needs it)
 	parameter int          COMPLETION_ALU   = 0,      // 1: simple ALU operations are admitted to it too (0 since 2026-10-11: no gain once the dividers and FPU got faster, 1,100 ALMs, 5 % slower ROM boot)
+	parameter int          LE_MODE  = 0,              // 1: little-endian mode (MSR[LE], the 604's address munging); 0: MSR[LE] is kept but ignored, as before
 	parameter logic [31:0] PVR      = 32'h00040303    // processor version: 604 revision 3.3
 )
 (
@@ -570,7 +581,10 @@ assign fetch_source_word = (fetch_count != 3'd0) ? fetch_queue[fetch_head] :
                      if2_cf, if2_cf_kind, if2_cf_bo, if2_cf_bi, if2_cf_bh, if2_cf_tgt};
 
 assign if_req  = ~reset & ~fetch_full;
-assign if_addr = pc_f;
+// little-endian mode: an instruction fetch's address munged (XOR 4)
+wire       le_on   = (LE_MODE != 0) & msr[0];
+wire [2:0] le_inst = {le_on, 2'b00};
+assign if_addr = {pc_f[31:3], pc_f[2:0] ^ le_inst};
 
 wire fetch_go = if_req & if_gnt;
 
@@ -2335,7 +2349,14 @@ wire        str_4k    = fa_mem ? str_cross(mem_result[11:0], ex_b[11:0], str_las
 wire        x_align_s_now = (ex_dec.str_bytes != 7'd0) & str_4k &
                             ((int_sum[1:0] != 2'b00) | (&int_sum[27:12]));
 wire        x_align_s = (ex_dec.str_bytes != 7'd0) & x_align_s_q;
-wire x_align  = x_align_w | x_align_s | x_align_z;
+// ... and in little-endian mode, any access the 604 cannot munge: one not
+// naturally aligned, lmw/stmw, the string forms
+wire [2:0] ex_mis = (ex_dec.mem_n == 4'd8) ? int_sum[2:0] :
+                    (ex_dec.mem_n == 4'd4) ? {1'b0, int_sum[1:0]} :
+                    (ex_dec.mem_n == 4'd2) ? {2'b00, int_sum[0]} : 3'b000;
+wire x_align_le = le_on & (ex_dec.mem_rd | ex_dec.mem_wr) &
+                  ((ex_mis != 3'b000) | (ex_dec.seq == SEQ_MULTI) | (ex_dec.str_bytes != 7'd0));
+wire x_align  = x_align_w | x_align_s | x_align_z | x_align_le;
 // eciwx and ecowx: a DSI, this machine having no external control facility
 wire x_ecx    = ex_dec.mem_ext;
 
@@ -2817,6 +2838,11 @@ logic        mu_rden;
 logic [31:0] mu_dsisr;
 logic [31:0] mu_dar;
 logic [31:0] mu_ea;
+// little-endian mode: a load or store's address munged by its size
+wire [2:0] le_data = ~le_on | (ex_dec.cop != CK_WORD) ? 3'b000 :
+                     (ex_dec.mem_n == 4'd1) ? 3'b111 :
+                     (ex_dec.mem_n == 4'd2) ? 3'b110 :
+                     (ex_dec.mem_n == 4'd4) ? 3'b100 : 3'b000;
 logic        mu_direct;      // the memory unit passes EX's effective address straight through
 logic [29:0] mu_addr_held;   // ... and its address otherwise, from its registers
 
@@ -2830,7 +2856,7 @@ DSPPC604_mem_unit mem_unit
 	.final_q     (mu_final),
 	.we          (ex_dec.mem_wr),
 	.kind        (ex_dec.cop),
-	.addr        (ex_ea),
+	.addr        ({ex_ea[31:3], ex_ea[2:0] ^ le_data}),
 	.nbytes      (ex_dec.mem_n),
 	.sext        (ex_dec.mem_sext),
 	.brev        (ex_dec.mem_brev),
@@ -2898,7 +2924,7 @@ DSPPC604_mmu #(.TLB_BITS (TLB_BITS), .CANDIDATE_D_ADDR (1'b1)) mmu
 	.i_req       (if_req),
 	.i_addr      (if_addr),
 	.i_cancel    (redir),
-	.i_addr_next (pred_pc),
+	.i_addr_next ({pred_pc[31:3], pred_pc[2:0] ^ le_inst}),
 	.i_gnt       (if_gnt),
 	.i_rvalid    (if_rvalid),
 	.i_rdata     (if_rdata),
