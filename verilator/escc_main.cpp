@@ -150,6 +150,33 @@ int main(int argc, char** argv) {
 	std::snprintf(got, sizeof got, "RR0 %02X", rr0);
 	check("CTS low: clear to send", !(rr0 & 0x20), got);
 
+	// DMA (Grand Central's channels 4 and 5): bytes put while the transmit buffer is empty go
+	// out at 115,200; looped back to the receiver, the DMA side takes them from the FIFO
+	setup(0x84, 0x00, 0, false);
+	const uint8_t msg[] = {0x7E, 0xFF, 0x03, 0xC0, 0x21, 0x7D, 0x5A, 0x7E};
+	const size_t n = sizeof msg;
+	size_t sent = 0;
+	std::vector<uint8_t> back;
+	for (uint64_t i = 0; i < (uint64_t)(CLK_HZ / 115200 * 12 * n) && back.size() < n; i++) {
+		dut->rxd_a = dut->txd_a;
+		dut->dt_put_a = 0;
+		dut->dr_take_a = 0;
+		dut->eval();
+		if (dut->dt_ready_a && sent < n) { dut->dt_put_a = 1; dut->dt_data_a = msg[sent++]; }
+		if (dut->dr_valid_a) { back.push_back(dut->dr_data_a); dut->dr_take_a = 1; }
+		tick();
+	}
+	dut->dt_put_a = 0;
+	dut->dr_take_a = 0;
+	dut->rxd_a = 1;
+	bool same = back.size() == n;
+	for (size_t i = 0; same && i < n; i++) same = back[i] == msg[i];
+	std::snprintf(got, sizeof got, "%zu of %zu bytes back%s", back.size(), n, same ? ", in order" : ", wrong");
+	check("DMA: a PPP frame out and back through the FIFO", same, got);
+	rr0 = rr(0);
+	std::snprintf(got, sizeof got, "RR0 %02X", rr0);
+	check("DMA: the FIFO empty, the transmit buffer empty", (rr0 & 0x05) == 0x04, got);
+
 	std::printf("RESULT: %s\n", failures ? "FAIL" : "PASS");
 	delete dut;
 	return failures ? 1 : 0;

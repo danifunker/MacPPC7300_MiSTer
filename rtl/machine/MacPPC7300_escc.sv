@@ -67,8 +67,16 @@
 //    with an ImageWriter: RR0 bit 5 = 0 is clear to send to the Mac's
 //    drivers. rts_a holds the other end off while a received byte waits.
 //
+//  - DMA (2026-10-21): Mac OS's serial driver moves the bytes through
+//    Grand Central's DBDMA channels (4 and 5 channel A's transmit and
+//    receive, 6 and 7 channel B's) and hangs when they never run. A
+//    channel's DMA puts a byte into the transmit buffer whenever it is empty
+//    and takes the receive FIFO's oldest byte, as dingusppc's escc.cpp
+//    xfer_to and xfer_from do; the W/REQ and DTR/REQ pins are not modelled
+//    (a channel moves bytes while software runs a data command on it).
+//
 //  Left out (docs/MacPPC7300_stubs.md): receiving in the synchronous modes (no
-//  frame ever arrives), DMA, the DPLL and the encodings, the CRC's value,
+//  frame ever arrives), the DPLL and the encodings, the CRC's value,
 //  zero insertion, abort and break, the other modem lines (DCD reads 0, the
 //  printer port's CTS 0), WR5's RTS and DTR pins, the baud-rate
 //  generator's zero count, and the read registers dingusppc does not keep
@@ -97,7 +105,22 @@ module MacPPC7300_escc
 	output logic       rts_a,          //   1 while a received byte waits
 	output logic       midi_a,         //   1 while its transmitter runs at MIDI's rate
 	output logic       irq_a,          // channel A's interrupt (Grand Central's source 0F)
-	output logic       irq_b           // channel B's (10)
+	output logic       irq_b,          // channel B's (10)
+
+	// each channel's DMA side (Grand Central's channels 4 and 5 for A, 6 and 7 for B): a byte
+	// for the transmit buffer while it is empty; the receive FIFO's oldest byte
+	output logic       dt_ready_a,
+	input  logic       dt_put_a,
+	input  logic [7:0] dt_data_a,
+	output logic       dr_valid_a,
+	output logic [7:0] dr_data_a,
+	input  logic       dr_take_a,
+	output logic       dt_ready_b,
+	input  logic       dt_put_b,
+	input  logic [7:0] dt_data_b,
+	output logic       dr_valid_b,
+	output logic [7:0] dr_data_b,
+	input  logic       dr_take_b
 );
 
 logic [3:0] ptr;                       // the register pointer, shared
@@ -145,18 +168,26 @@ assign rts_a = rr0_a[0];
 MacPPC7300_escc_ch ch_a (
 	.clk, .hw_rst, .ch_rst(rst_a), .rtxc_tick, .trxc_tick,
 	.wr_en(wr_a), .wr_n(ptr), .wr_v(wdata), .tx_wr(tx_a), .rx_rd(rx_a),
+	.tx_dma(dt_put_a), .tx_dma_d(dt_data_a), .rx_dma(dr_take_a),
 	.cmd_en(cmd_a), .cmd(wdata[5:3]), .crc_cmd(wdata[7:6]),
 	.rr0(rr0_a), .rr1(rr1_a), .rx_data(rd_a), .txd(txd_a), .rxd(rxd_s[1]), .cts(cts_s[1]),
 	.rx_ip(rx_ip_a), .tx_ip(tx_ip_a), .ext_ip(ext_ip_a), .special(sp_a), .midi(midi_a)
 );
+assign dt_ready_a = rr0_a[2];
+assign dr_valid_a = rr0_a[0];
+assign dr_data_a  = rd_a;
 
 MacPPC7300_escc_ch ch_b (
 	.clk, .hw_rst, .ch_rst(rst_b), .rtxc_tick, .trxc_tick,
 	.wr_en(wr_b), .wr_n(ptr), .wr_v(wdata), .tx_wr(tx_b), .rx_rd(rx_b),
+	.tx_dma(dt_put_b), .tx_dma_d(dt_data_b), .rx_dma(dr_take_b),
 	.cmd_en(cmd_b), .cmd(wdata[5:3]), .crc_cmd(wdata[7:6]),
 	.rr0(rr0_b), .rr1(rr1_b), .rx_data(rd_b), .txd(txd_b), .rxd(1'b1), .cts(1'b0),
 	.rx_ip(rx_ip_b), .tx_ip(tx_ip_b), .ext_ip(ext_ip_b), .special(sp_b), .midi(midi_b)
 );
+assign dt_ready_b = rr0_b[2];
+assign dr_valid_b = rr0_b[0];
+assign dr_data_b  = rd_b;
 
 // Grand Central's LocalTalk helper ("LTPC", MacRISC registers 8-B; dingusppc's
 // escc.cpp after its commit cfde7ee0): a recovery count (8 from reset),
@@ -252,6 +283,9 @@ module MacPPC7300_escc_ch
 	input  logic [7:0] wr_v,
 	input  logic       tx_wr,          // a byte for the transmitter
 	input  logic       rx_rd,          // the oldest received byte taken
+	input  logic       tx_dma,         // a byte for the transmitter from DMA
+	input  logic [7:0] tx_dma_d,
+	input  logic       rx_dma,         // the oldest received byte taken by DMA
 	input  logic       cmd_en,         // a WR0 command to this channel
 	input  logic [2:0] cmd,            // ... its bits 5-3
 	input  logic [1:0] crc_cmd,        // ... its bits 7-6 (3: reset the Tx underrun/EOM latch)
@@ -331,7 +365,7 @@ wire         rx_on    = wr3[0];
 wire  [7:0]  rx_byte  = rx_sh >> (4'd8 - rx_dbits);              // the first bit received at bit 0
 wire         rx_mid   = rx_tck & (rx_cnt <= 24'd1);
 wire         rx_push  = rx_state == 2'd3 & rx_mid;
-wire         rx_pop   = rx_rd & (rx_n != 2'd0);
+wire         rx_pop   = (rx_rd | rx_dma) & (rx_n != 2'd0);
 wire         rx_take  = rx_push & ~(rx_n == 2'd3 & ~rx_pop);     // room for it
 wire  [1:0]  rx_at    = rx_n - {1'b0, rx_pop};                   // where it goes
 
@@ -368,7 +402,8 @@ assign special = rx_mode != 2'b00 && rx_ovr;
 assign rx_ip   = special | (rx_n != 2'd0 && (rx_mode == 2'b10 || (rx_mode == 2'b01 && rx_first)));
 assign tx_ip   = tx_pend & wr1[1];
 assign ext_ip  = ext_pend;
-wire         tx_load = tx_idle & tx_full & ~tx_wr & wr5[3];       // the buffer into the shift register
+wire         tx_in   = tx_wr | tx_dma;                            // a byte into the transmit buffer
+wire         tx_load = tx_idle & tx_full & ~tx_in & wr5[3];       // the buffer into the shift register
 
 always_ff @(posedge clk) begin
 	// the registers
@@ -390,7 +425,7 @@ always_ff @(posedge clk) begin
 
 	// the interrupt pending bits and WR0's commands
 	if (tx_load & wr1[1]) tx_pend <= 1'b1;
-	if (tx_wr || (cmd_en && cmd == 3'd5)) tx_pend <= 1'b0;
+	if (tx_in || (cmd_en && cmd == 3'd5)) tx_pend <= 1'b0;
 	if ((cmd_en && cmd == 3'd4) || (wr_en && wr_n == 4'd1 && wr_v[4:3] == 2'b01 && rx_mode != 2'b01))
 		rx_first <= 1'b1;
 	else if (rx_pop) rx_first <= 1'b0;
@@ -401,8 +436,8 @@ always_ff @(posedge clk) begin
 	if (cmd_en && crc_cmd == 2'b11) eom <= 1'b0;
 
 	// the transmitter
-	if (tx_wr) begin
-		tx_buf  <= wr_v;
+	if (tx_in) begin
+		tx_buf  <= tx_wr ? wr_v : tx_dma_d;
 		tx_full <= 1'b1;
 	end
 	if (tx_idle) begin
