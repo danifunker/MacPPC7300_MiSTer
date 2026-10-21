@@ -171,10 +171,9 @@ MacPPC7300_escc_ch ch_a (
 	.tx_dma(dt_put_a), .tx_dma_d(dt_data_a), .rx_dma(dr_take_a),
 	.cmd_en(cmd_a), .cmd(wdata[5:3]), .crc_cmd(wdata[7:6]),
 	.rr0(rr0_a), .rr1(rr1_a), .rx_data(rd_a), .txd(txd_a), .rxd(rxd_s[1]), .cts(cts_s[1]),
-	.rx_ip(rx_ip_a), .tx_ip(tx_ip_a), .ext_ip(ext_ip_a), .special(sp_a), .midi(midi_a)
+	.rx_ip(rx_ip_a), .tx_ip(tx_ip_a), .ext_ip(ext_ip_a), .special(sp_a), .midi(midi_a), .rx_dreq(dr_valid_a)
 );
 assign dt_ready_a = rr0_a[2];
-assign dr_valid_a = rr0_a[0];
 assign dr_data_a  = rd_a;
 
 MacPPC7300_escc_ch ch_b (
@@ -183,10 +182,9 @@ MacPPC7300_escc_ch ch_b (
 	.tx_dma(dt_put_b), .tx_dma_d(dt_data_b), .rx_dma(dr_take_b),
 	.cmd_en(cmd_b), .cmd(wdata[5:3]), .crc_cmd(wdata[7:6]),
 	.rr0(rr0_b), .rr1(rr1_b), .rx_data(rd_b), .txd(txd_b), .rxd(1'b1), .cts(1'b0),
-	.rx_ip(rx_ip_b), .tx_ip(tx_ip_b), .ext_ip(ext_ip_b), .special(sp_b), .midi(midi_b)
+	.rx_ip(rx_ip_b), .tx_ip(tx_ip_b), .ext_ip(ext_ip_b), .special(sp_b), .midi(midi_b), .rx_dreq(dr_valid_b)
 );
 assign dt_ready_b = rr0_b[2];
-assign dr_valid_b = rr0_b[0];
 assign dr_data_b  = rd_b;
 
 // Grand Central's LocalTalk helper ("LTPC", MacRISC registers 8-B; dingusppc's
@@ -299,7 +297,8 @@ module MacPPC7300_escc_ch
 	output logic       tx_ip,
 	output logic       ext_ip,
 	output logic       special,        // the receive interrupt is a special condition's
-	output logic       midi            // the transmitter at MIDI's rate (TRxC, x32, asynchronous)
+	output logic       midi,           // the transmitter at MIDI's rate (TRxC, x32, asynchronous)
+	output logic       rx_dreq         // a byte for DMA: W/REQ as a receive DMA request (WR1 bits 7-5)
 );
 
 logic [7:0] wr1, wr3, wr4, wr5, wr10, wr11, wr12, wr13, wr14, wr15;
@@ -357,17 +356,19 @@ logic [23:0] rx_cnt;                   // RTxC clocks to the middle of the next 
 logic [3:0]  rx_left;                  // data bits still to come
 logic [7:0]  rx_sh;                    // the data bits, shifted in from the top
 logic        rx_q;                     // the line as last seen
-logic [7:0]  rx_f0, rx_f1, rx_f2;      // the FIFO, the oldest first
-logic [1:0]  rx_n;                     // bytes in it
+// the FIFO: 16 bytes (the Z85C30's 3, the ESCC's 8; deeper so the MiSTer UART's 16-byte
+// transmit FIFO, which goes on after RTS, does not overrun it while software restarts DMA)
+logic [7:0]  rx_f [16];
+logic [3:0]  rx_rp, rx_wp;             // the oldest byte, the next free place
+logic [4:0]  rx_n;                     // bytes in it
 logic        rx_ovr;
 wire  [3:0]  rx_dbits = wr3[7:6] == 2'b00 ? 4'd5 : wr3[7:6] == 2'b01 ? 4'd7 : wr3[7:6] == 2'b10 ? 4'd6 : 4'd8;
 wire         rx_on    = wr3[0];
 wire  [7:0]  rx_byte  = rx_sh >> (4'd8 - rx_dbits);              // the first bit received at bit 0
 wire         rx_mid   = rx_tck & (rx_cnt <= 24'd1);
 wire         rx_push  = rx_state == 2'd3 & rx_mid;
-wire         rx_pop   = (rx_rd | rx_dma) & (rx_n != 2'd0);
-wire         rx_take  = rx_push & ~(rx_n == 2'd3 & ~rx_pop);     // room for it
-wire  [1:0]  rx_at    = rx_n - {1'b0, rx_pop};                   // where it goes
+wire         rx_pop   = (rx_rd | rx_dma) & (rx_n != 5'd0);
+wire         rx_take  = rx_push & ~(rx_n == 5'd16 & ~rx_pop);    // room for it
 
 // RR0: break/abort 0, Tx underrun/EOM, CTS 0, sync/hunt, DCD 0, Tx buffer
 // empty, zero count 0, Rx character available. Sync/hunt: in the
@@ -378,9 +379,12 @@ wire  [1:0]  rx_at    = rx_n - {1'b0, rx_pop};                   // where it goe
 // /SYNC pin, 0 as dingusppc reads it. RR1's all sent is 1 in the
 // synchronous modes (the manual).
 wire         sync_hunt = sync_md;
-assign rr0     = {1'b0, eom, cts, sync_hunt, 1'b0, ~tx_full, 1'b0, rx_n != 2'd0};
+assign rr0     = {1'b0, eom, cts, sync_hunt, 1'b0, ~tx_full, 1'b0, rx_n != 5'd0};
 assign rr1     = {2'b00, rx_ovr, 2'b00, 2'b11, sync_md | (~tx_full & tx_idle)};
-assign rx_data = rx_f0;
+assign rx_data = rx_f[rx_rp];
+// (Mac OS turns W/REQ off around each FLUSH of its receive channel, so no byte lands past the
+// position it reads there)
+assign rx_dreq = wr1[7:5] == 3'b111 && rx_n != 5'd0;
 assign txd     = tx_idle | tx_sh[0];
 
 // ---- the interrupt pending bits ------------------------------------------------------------
@@ -399,7 +403,7 @@ logic [7:0]  ext_q;                    // the watched RR0 bits as last seen
 wire  [7:0]  ext_now = rr0 & 8'hF8;
 wire  [1:0]  rx_mode = wr1[4:3];
 assign special = rx_mode != 2'b00 && rx_ovr;
-assign rx_ip   = special | (rx_n != 2'd0 && (rx_mode == 2'b10 || (rx_mode == 2'b01 && rx_first)));
+assign rx_ip   = special | (rx_n != 5'd0 && (rx_mode == 2'b10 || (rx_mode == 2'b01 && rx_first)));
 assign tx_ip   = tx_pend & wr1[1];
 assign ext_ip  = ext_pend;
 wire         tx_in   = tx_wr | tx_dma;                            // a byte into the transmit buffer
@@ -497,20 +501,14 @@ always_ff @(posedge clk) begin
 	if (!rx_on) rx_state <= 2'd0;
 
 	// the FIFO: the oldest leaves when read; a new byte goes in behind the rest
-	if (rx_pop) begin
-		rx_f0 <= rx_f1;
-		rx_f1 <= rx_f2;
-	end
+	if (rx_pop) rx_rp <= rx_rp + 4'd1;
 	if (rx_take) begin
-		case (rx_at)
-			2'd0:    rx_f0 <= rx_byte;
-			2'd1:    rx_f1 <= rx_byte;
-			default: rx_f2 <= rx_byte;
-		endcase
+		rx_f[rx_wp] <= rx_byte;
+		rx_wp       <= rx_wp + 4'd1;
 	end
 	if (rx_push & ~rx_take) rx_ovr <= 1'b1;
-	if (rx_take & ~rx_pop) rx_n <= rx_n + 2'd1;
-	else if (rx_pop & ~rx_take) rx_n <= rx_n - 2'd1;
+	if (rx_take & ~rx_pop) rx_n <= rx_n + 5'd1;
+	else if (rx_pop & ~rx_take) rx_n <= rx_n - 5'd1;
 
 	// WR9's channel reset (escc.cpp EsccChannel::reset(false)); the hardware
 	// reset, from registers that start at 0 as dingusppc's do
@@ -539,7 +537,9 @@ always_ff @(posedge clk) begin
 		tx_full  <= 1'b0;
 		tx_left  <= 5'd0;
 		rx_state <= 2'd0;
-		rx_n     <= 2'd0;
+		rx_n     <= 5'd0;
+		rx_rp    <= 4'd0;
+		rx_wp    <= 4'd0;
 		rx_ovr   <= 1'b0;
 		tx_pend  <= 1'b0;
 		rx_first <= 1'b0;

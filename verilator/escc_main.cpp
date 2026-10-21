@@ -153,6 +153,7 @@ int main(int argc, char** argv) {
 	// DMA (Grand Central's channels 4 and 5): bytes put while the transmit buffer is empty go
 	// out at 115,200; looped back to the receiver, the DMA side takes them from the FIFO
 	setup(0x84, 0x00, 0, false);
+	wr(1, 0xE0);                       // W/REQ: DMA requests on receive, as Mac OS's driver sets it
 	const uint8_t msg[] = {0x7E, 0xFF, 0x03, 0xC0, 0x21, 0x7D, 0x5A, 0x7E};
 	const size_t n = sizeof msg;
 	size_t sent = 0;
@@ -176,6 +177,39 @@ int main(int argc, char** argv) {
 	rr0 = rr(0);
 	std::snprintf(got, sizeof got, "RR0 %02X", rr0);
 	check("DMA: the FIFO empty, the transmit buffer empty", (rr0 & 0x05) == 0x04, got);
+
+	// W/REQ off (WR1 7D, the driver's FLUSH window): received bytes wait in the FIFO, 16 of
+	// them without an overrun, and go to DMA once W/REQ is back
+	wr(1, 0x7D);
+	const uint64_t b115 = (uint64_t)(CLK_HZ / 115200);
+	for (int k = 0; k < 16; k++) {
+		uint8_t v = (uint8_t)(0xA0 + k);
+		int fr[10] = {0, v & 1, (v >> 1) & 1, (v >> 2) & 1, (v >> 3) & 1, (v >> 4) & 1, (v >> 5) & 1, (v >> 6) & 1, (v >> 7) & 1, 1};
+		for (int b = 0; b < 10; b++) {
+			dut->rxd_a = fr[b];
+			for (uint64_t i = 0; i < b115; i++) tick();
+		}
+	}
+	dut->rxd_a = 1;
+	for (int i = 0; i < 100; i++) tick();
+	bool held = !dut->dr_valid_a;
+	rr0 = rr(0);
+	uint8_t rr1v = rr(1);
+	std::snprintf(got, sizeof got, "dr_valid %d, RR0 %02X, RR1 %02X", dut->dr_valid_a, rr0, rr1v);
+	check("W/REQ off: 16 bytes wait, none to DMA, no overrun", held && (rr0 & 1) && !(rr1v & 0x20), got);
+	wr(1, 0xFD);
+	back.clear();
+	for (int i = 0; i < 200 && back.size() < 16; i++) {
+		dut->dr_take_a = 0;
+		dut->eval();
+		if (dut->dr_valid_a) { back.push_back(dut->dr_data_a); dut->dr_take_a = 1; }
+		tick();
+	}
+	dut->dr_take_a = 0;
+	same = back.size() == 16;
+	for (size_t i = 0; same && i < 16; i++) same = back[i] == 0xA0 + i;
+	std::snprintf(got, sizeof got, "%zu of 16 bytes, %s", back.size(), same ? "in order" : "wrong");
+	check("W/REQ on again: the 16 bytes to DMA in order", same, got);
 
 	std::printf("RESULT: %s\n", failures ? "FAIL" : "PASS");
 	delete dut;
