@@ -176,6 +176,8 @@ logic [4:0]  beat;                     // beats captured
 logic [4:0]  issued;                   // WRITEs or READs issued
 
 wire [4:0]  nbeats  = r_line ? 5'd16 : 5'd2;
+// a WRITE's byte masks, {DQMH, DQML}: none for a line or an upload; a word's high halfword first
+wire [1:0]  wmask   = (r_up | r_line) ? 2'b00 : issued[0] ? ~r_be[1:0] : ~r_be[3:2];
 
 always_ff @(posedge clk) begin
 	command  <= CMD_NOP;
@@ -279,20 +281,14 @@ always_ff @(posedge clk) begin
 			if (r_up ? issued == 5'd0 : issued < nbeats) begin
 				command <= CMD_WRITE;
 				dq_oe   <= 1'b1;
-				SDRAM_A <= {2'b00, 1'b0, r_hw[25], r_hw[9:1] + {5'h0, issued[3:0]}};
-				if (r_up) begin
-					dq_out <= r_ud;
-					dqm    <= 2'b00;
-				end
-				else if (r_line) begin
-					dq_out <= r_wd[255 - 16 * issued -: 16];
-					dqm    <= 2'b00;
-				end
-				else begin
-					// the word's high halfword (the lower address) first
-					dq_out <= issued[0] ? r_wd[15:0] : r_wd[31:16];
-					dqm    <= issued[0] ? ~r_be[1:0] : ~r_be[3:2];
-				end
+				// the byte masks also on A12-A11: the MiSTer SDRAM boards wire the
+				// chip's DQMH and DQML to those address lines (as Sorgelig's sdram.sv
+				// drives them), and a column command does not use them
+				SDRAM_A <= {wmask, 1'b0, r_hw[25], r_hw[9:1] + {5'h0, issued[3:0]}};
+				dqm     <= wmask;
+				if (r_up)        dq_out <= r_ud;
+				else if (r_line) dq_out <= r_wd[255 - 16 * issued -: 16];
+				else             dq_out <= issued[0] ? r_wd[15:0] : r_wd[31:16];   // the word's high halfword (the lower address) first
 				issued <= issued + 5'd1;
 				t      <= 16'd0;
 			end

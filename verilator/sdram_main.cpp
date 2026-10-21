@@ -26,7 +26,8 @@
 //   AUTO REFRESH with every bank of the rank idle, tRP after the last
 //     PRECHARGE; at most 8 refreshes owed at any time (7.8 us each)
 //   the controller drives the bus only for a WRITE and never while the chip
-//     drives read data; DQM low on every read beat (it never masks a read)
+//     drives read data; DQM low on every read beat (it never masks a read);
+//     DQMH and DQML taken from A12 and A11, the MiSTer boards' wiring
 // Every read is checked against a software copy of the memory, and at the
 // end the model's whole contents are compared with it.
 
@@ -365,7 +366,7 @@ int main(int argc, char** argv) {
 				// the SDRAM's rising edge (SDRAM_CLK is the controller's clock inverted)
 				bool drv; uint16_t dq;
 				chip.edge(sd, dut->SDRAM_nCS, dut->SDRAM_nRAS, dut->SDRAM_nCAS, dut->SDRAM_nWE, dut->SDRAM_BA,
-				          dut->SDRAM_A, (dut->SDRAM_DQMH << 1) | dut->SDRAM_DQML, dut->dq_oe, dut->dq_out, drv, dq);
+				          dut->SDRAM_A, (dut->SDRAM_A >> 11) & 3, dut->dq_oe, dut->dq_out, drv, dq);   // DQM on A12-A11, as the MiSTer boards wire it
 				if (!dut->SDRAM_CKE) fail(sd, "CKE low");
 				chip_drives = drv;
 				dut->dq_in = dq;
