@@ -345,11 +345,6 @@ int main(int argc, char** argv) {
 	dut->reset = 1;
 	drive();
 	for (int i = 0; i < 8; i++) { dut->clk = 1; dut->eval(); dut->clk = 0; dut->eval(); }
-	// PRAM kept from before (the SD card's image): 5A at 0020 in the shadow, which the firmware's
-	// clear at its cold start must not reach (READ_PRAM 0020 below)
-	dut->pr_we = 1; dut->pr_addr = 0x20; dut->pr_wdata = 0x5A;
-	dut->clk = 1; dut->eval(); dut->clk = 0; dut->eval();
-	dut->pr_we = 0;
 	dut->reset = 0;
 
 	// the script: packet, what the reply must start with (empty: just print it),
@@ -361,7 +356,6 @@ int main(int argc, char** argv) {
 		{"GET_REAL_TIME", {0x01, 0x03}, {0x01, 0x00, 0x03}, 7},
 		{"WRITE_PRAM 0010 = AA 55", {0x01, 0x0C, 0x00, 0x10, 0xAA, 0x55}, {0x01, 0x00, 0x0C}, 8},
 		{"READ_PRAM 0010", {0x01, 0x07, 0x00, 0x10}, {0x01, 0x00, 0x07, 0xAA, 0x55}, 5},
-		{"READ_PRAM 0020: kept through the cold start", {0x01, 0x07, 0x00, 0x20}, {0x01, 0x00, 0x07, 0x5A, 0x00}, 5},
 		{"the ROM's first packet: I2C write to 88, 61 55", {0x01, 0x22, 0x88, 0x61, 0x55}, {}, 8},
 		// the ADB devices (MacPPC7300_adb) answering Cuda's firmware: flags 00 an
 		// answer, 02 none (a timeout)
@@ -478,10 +472,6 @@ int main(int argc, char** argv) {
 			released_at = clocks;
 			std::printf("Cuda released the CPU's reset after %.3f s (%llu instructions)\n",
 				clocks / CLK_HZ, (unsigned long long)retired);
-#ifdef WITH_HC05REF
-			// the shadow's PRAM goes back in now, as MAME's cuda.cpp loads its saved PRAM
-			if (opt.lockstep) hc05_ref_poke(0x120, 0x5A);
-#endif
 		}
 		if (dut->power_off && !off_seen) {
 			off_seen  = true;
@@ -622,24 +612,8 @@ int main(int argc, char** argv) {
 	if (!host.unsolicited.empty())
 		for (auto& u : host.unsolicited) std::printf("unsolicited from Cuda: %s\n", hex(u).c_str());
 	if (!off_seen) std::printf("Cuda never switched the power off: FAIL\n");
-
-	// the shadow followed WRITE_PRAM 0010 (what the SD card's image is saved from)
-	auto shadow = [&](uint8_t a) {
-		dut->pr_addr = a; dut->pr_re = 1;
-		uint8_t q = 0;
-		for (int i = 0; i < 8; i++) {
-			dut->clk = 1; dut->eval(); dut->clk = 0; dut->eval();
-			if (dut->pr_rack) { q = dut->pr_q; break; }
-		}
-		dut->pr_re = 0;
-		return q;
-	};
-	uint8_t s10 = shadow(0x10), s11 = shadow(0x11);
-	bool shadow_ok = s10 == 0xAA && s11 == 0x55;
-	std::printf("PRAM's shadow at 0010: %02X %02X (want AA 55)%s\n", s10, s11, shadow_ok ? "" : ": FAIL");
-
 	bool ok = released && host.sync_done_at && script_i == script.size() && failures == 0 && !failed &&
-	          off_seen && !off_early && off_held && wake_seen && shadow_ok;
+	          off_seen && !off_early && off_held && wake_seen;
 	if (opt.lockstep) std::printf("lockstep with MAME's 6805: %s\n", failures || failed ? "DIFFERENT" : "identical");
 	std::printf("%s\n", ok ? "RESULT: PASS" : "RESULT: FAIL");
 	dut->final();

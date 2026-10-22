@@ -83,7 +83,7 @@ module MacPPC7300_system
 	// writes (the save to the SD card)
 	input  logic         nv_ld_we,
 	input  logic         nv_ld_re,
-	input  logic [13:0]  nv_ld_addr,                // 2000-20FF: Cuda's PRAM
+	input  logic [12:0]  nv_ld_addr,
 	input  logic [7:0]   nv_ld_data,
 	output logic         nv_ld_rack,
 	output logic [7:0]   nv_ld_q,

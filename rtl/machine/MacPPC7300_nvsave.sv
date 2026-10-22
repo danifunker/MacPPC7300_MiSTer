@@ -18,13 +18,6 @@
 //  With no image mounted nothing happens: the NVRAM starts as it does
 //  without this module (zeros, or boot1.rom's image).
 //
-//  An image of 8,704 bytes or more (17 blocks) also keeps Cuda's PRAM in
-//  block 16 (its first 256 bytes; the second half is ignored on a load and a
-//  copy on a save), at 2000-20FF of the byte channel (2026-10-22): Cuda's
-//  firmware clears PRAM at each cold start, which Mac OS 9 takes as a lost
-//  clock ("Your clock is not set to the correct time"). An 8 KB image works
-//  as before.
-//
 //  hps_io's side (sd_*) is the block interface the disks use: rd or wr held
 //  until sd_ack rises, the block moved while sd_ack is high (sd_buff_wr with
 //  the bytes for a read; sd_buff_din one clock after sd_buff_addr for a
@@ -63,7 +56,7 @@ module MacPPC7300_nvsave
 	// the byte channel to the NVRAM
 	output logic        b_req,
 	output logic        b_we,
-	output logic [13:0] b_addr,            // 2000-20FF: Cuda's PRAM
+	output logic [12:0] b_addr,
 	output logic [7:0]  b_wdata,
 	input  logic        b_done,
 	input  logic [7:0]  b_rdata
@@ -74,10 +67,7 @@ localparam int unsigned SETTLE = CLK_HZ * 2;          // 2 s
 typedef enum logic [2:0] {S_IDLE, S_LD_RD, S_LD_WAIT, S_LD_PUT, S_SV_GET, S_SV_WR, S_SV_WAIT} st_t;
 st_t         s;
 logic        ok, ro;                  // an image of 8 KB or more; read-only
-logic        big;                     // ... of 17 blocks or more: PRAM in block 16
-logic [4:0]  blk;                     // the block in hand
-wire  [4:0]  last = big ? 5'd16 : 5'd15;
-wire  [13:0] at   = blk[4] ? {6'b100000, idx[7:0]} : {1'b0, blk[3:0], idx[8:0]};
+logic [3:0]  blk;                     // the block in hand
 logic [9:0]  idx;                     // the byte in hand (10 bits: 512 ends the block)
 logic        acked;                   // hps_io has taken the block request
 logic        dirty;
@@ -99,7 +89,7 @@ always_ff @(posedge clk) begin
 	buf_qa <= buf_ra;
 end
 assign sd_buff_din = buf_q;
-assign sd_lba      = {27'h0, blk};
+assign sd_lba      = {28'h0, blk};
 assign hold        = s == S_LD_RD || s == S_LD_WAIT || s == S_LD_PUT;
 
 wire dirty_ev = dt_s[2] != dt_s[1];
@@ -117,17 +107,16 @@ always_ff @(posedge clk) begin
 	case (s)
 		S_IDLE: begin
 			if (img_mounted) begin
-				ok  <= img_size >= 64'd8192;
-				big <= img_size >= 64'd8704;
-				ro  <= img_readonly;
+				ok <= img_size >= 64'd8192;
+				ro <= img_readonly;
 				if (img_size >= 64'd8192) begin
-					blk <= 5'd0;
+					blk <= 4'd0;
 					s   <= S_LD_RD;
 				end
 			end
 			else if (ok && !ro && dirty && !dirty_ev && (settle == 32'd0 || (osd_open && !osd_q))) begin
 				dirty <= 1'b0;                   // writes from now on make it dirty again
-				blk   <= 5'd0;
+				blk   <= 4'd0;
 				idx   <= 10'd0;
 				s     <= S_SV_GET;
 			end
@@ -152,18 +141,17 @@ always_ff @(posedge clk) begin
 		S_LD_PUT: begin                          // buf_q is the byte at idx a clock after
 			if (!b_req) begin
 				if (idx == 10'd512) begin
-					blk <= blk + 5'd1;
-					if (blk == last) begin
+					blk <= blk + 4'd1;
+					if (blk == 4'd15) begin
 						dirty <= 1'b0;
 						s     <= S_IDLE;
 					end
 					else s <= S_LD_RD;
 				end
-				else if (blk[4] && idx[8]) idx <= idx + 10'd1;   // PRAM's block: its second half unused
 				else if (!b_done && buf_qa == idx[8:0]) begin
 					b_req   <= 1'b1;
 					b_we    <= 1'b1;
-					b_addr  <= at;
+					b_addr  <= {blk, idx[8:0]};
 					b_wdata <= buf_q;
 				end
 			end
@@ -184,7 +172,7 @@ always_ff @(posedge clk) begin
 				else if (!b_done) begin
 					b_req  <= 1'b1;
 					b_we   <= 1'b0;
-					b_addr <= at;                    // (PRAM's block: its 256 bytes twice)
+					b_addr <= {blk, idx[8:0]};
 				end
 			end
 			else if (b_done) begin               // buf_we takes the byte in this clock
@@ -200,9 +188,9 @@ always_ff @(posedge clk) begin
 			else if (acked) s <= S_SV_WAIT;
 		end
 		S_SV_WAIT: begin
-			blk <= blk + 5'd1;
+			blk <= blk + 4'd1;
 			idx <= 10'd0;
-			s   <= (blk == last) ? S_IDLE : S_SV_GET;
+			s   <= (blk == 4'd15) ? S_IDLE : S_SV_GET;
 		end
 		default: s <= S_IDLE;
 	endcase
@@ -210,9 +198,8 @@ always_ff @(posedge clk) begin
 	if (reset) begin
 		s      <= S_IDLE;
 		ok     <= 1'b0;
-		big    <= 1'b0;
 		ro     <= 1'b1;
-		blk    <= 5'd0;
+		blk    <= 4'd0;
 		idx    <= 10'd0;
 		acked  <= 1'b0;
 		dirty  <= 1'b0;
