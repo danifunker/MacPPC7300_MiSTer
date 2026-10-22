@@ -390,7 +390,7 @@ MacPPC7300_dbdma #(.LINE(1'b0)) dma_4 (
 	.irq(c4_irq)
 );
 
-MacPPC7300_dbdma #(.LINE(1'b0), .FLUSH_XS(1'b0)) dma_5 (
+MacPPC7300_dbdma #(.LINE(1'b0), .STOP_WB(1'b1)) dma_5 (
 	.clk, .reset,
 	.sel(dma_5_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_5_rle),
 	.dm_req(c5_req), .dm_we(c5_we), .dm_line(c5_line), .dm_addr(c5_addr), .dm_be(c5_be), .dm_wdata(c5_wdata),
@@ -419,7 +419,7 @@ MacPPC7300_dbdma #(.LINE(1'b0)) dma_6 (
 	.irq(c6_irq)
 );
 
-MacPPC7300_dbdma #(.LINE(1'b0), .FLUSH_XS(1'b0)) dma_7 (
+MacPPC7300_dbdma #(.LINE(1'b0), .STOP_WB(1'b1)) dma_7 (
 	.clk, .reset,
 	.sel(dma_7_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_7_rle),
 	.dm_req(c7_req), .dm_we(c7_we), .dm_line(c7_line), .dm_addr(c7_addr), .dm_be(c7_be), .dm_wdata(c7_wdata),

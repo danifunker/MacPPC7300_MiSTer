@@ -99,12 +99,12 @@ module MacPPC7300_dbdma
 	// data moves a 32-byte line at a time (MESH's disk speed); 0: a word at a time (the slow
 	// devices: a 4-byte buffer instead of 32)
 	parameter bit LINE = 1'b1,
-	// a FLUSH's write-back has FLUSH in xferStatus (dbdma.cpp); 0: only if the command has
-	// moved a byte (the ESCC's receive channels: Mac OS's serial driver recycles a buffer whose
-	// xferStatus is ACTIVE without FLUSH and keeps one with FLUSH for its partial data; with
-	// the bit always, empty buffers were never recycled and the driver ran out of them; with
-	// it never, a buffer still being filled was re-armed under the DMA and frames broke)
-	parameter bit FLUSH_XS = 1'b1
+	// RUN cleared during an INPUT command writes the bytes held, resCount and xferStatus
+	// (ACTIVE, RUN and FLUSH clear) and moves CommandPtr on to the next command, as the real
+	// 7300's Grand Central does (hwprobe --dbdma, 2026-10-21; dbdma.cpp writes nothing). Mac OS's
+	// serial driver needs it: it stops its receive channel to take a buffer, and recycles a
+	// buffer only once its xferStatus is ACTIVE without FLUSH
+	parameter bit STOP_WB = 1'b0
 )
 (
 	input  logic         clk,
@@ -230,6 +230,7 @@ logic stop_req;                         // RUN cleared: stop once no access is i
 logic irq_pend;                         // ... with the stopped command's interrupt condition
 logic flush_req;                        // FLUSH asked with an INPUT running
 logic flushing;                         // the write-back in hand is a flush's
+logic stopping;                         // ... or a stop's (STOP_WB)
 logic pausing;                          // PAUSE: hold where we are
 
 wire  is_in  = (cmd == 4'd2) || (cmd == 4'd3);
@@ -443,7 +444,13 @@ always_ff @(posedge clk) begin
 				dm_be    <= lv[(LB - 1) - 4 * wfirst -: 4];
 				dw       <= lb[(8 * LB - 1) - 32 * wfirst -: 32];
 			end
-			else if (stop_req) s <= S_IDLE;
+			else if (stop_req) begin        // a stop: with STOP_WB the counts written, then idle
+				if (STOP_WB) begin
+					stopping <= 1'b1;
+					s <= S_WB;
+				end
+				else s <= S_IDLE;
+			end
 			else if (flush_req) begin       // a flush: the counts written, then on
 				flush_req <= 1'b0;
 				flushing  <= 1'b1;
@@ -548,7 +555,7 @@ always_ff @(posedge clk) begin
 		end
 		S_WB: begin                         // resCount and xferStatus into the command
 			if (!dm_req) begin
-				if (stop_req && !flushing) s <= S_IDLE;
+				if (stop_req && !flushing && !stopping) s <= S_IDLE;
 				else if (q_wb) begin            // LOAD_QUAD's value into cmdDep first
 					dm_req   <= 1'b1;
 					dm_we    <= 1'b1;
@@ -563,17 +570,22 @@ always_ff @(posedge clk) begin
 					dm_line  <= 1'b0;
 					dm_addr  <= cmd_ptr[31:2] + 30'd3;
 					dm_be    <= (cmd == 4'd6) ? 4'b0011 : 4'b1111;
-					// (a flush's write-back has FLUSH in xferStatus, as dbdma.cpp's; without
-					// FLUSH_XS only once the command has moved a byte)
+					// (a flush's write-back has FLUSH in xferStatus, as the 7300's and dbdma.cpp's;
+					// a stop's has RUN clear already)
 					dw       <= {res_count[7:0], res_count[15:8], xstat[7:0],
-					             xstat[15:8] | ((flushing && (FLUSH_XS || res_count != req_count)) ? 8'h20 : 8'h00)};
+					             xstat[15:8] | (flushing ? 8'h20 : 8'h00)};
 				end
 			end
 			else if (dm_ack) begin
 				if (q_wb) q_wb <= 1'b0;
 				else if (flushing) begin
 					flushing <= 1'b0;
-					s <= stop_req ? S_IDLE : S_IN;
+					s <= stop_req ? (STOP_WB ? S_INW : S_IDLE) : S_IN;   // a stop meanwhile: its write-back
+				end
+				else if (stopping) begin        // the stop's write-back done: on to the next command
+					stopping <= 1'b0;
+					cmd_ptr  <= cmd_ptr + 32'd16;
+					s        <= S_IDLE;
 				end
 				else s <= S_FINISH;
 			end
@@ -620,6 +632,7 @@ always_ff @(posedge clk) begin
 		irq_pend  <= 1'b0;
 		flush_req <= 1'b0;
 		flushing  <= 1'b0;
+		stopping  <= 1'b0;
 		pausing   <= 1'b0;
 		in_end    <= 1'b0;
 		lv        <= '0;
