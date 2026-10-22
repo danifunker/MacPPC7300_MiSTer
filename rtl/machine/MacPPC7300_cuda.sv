@@ -24,7 +24,9 @@
 //    09     timer counter        bus cycles / 4
 //    12     one-second timer     6 the flag, every second of the crystal's
 //                                time; 4 its interrupt enable; 0 clears
-//    90-1FF RAM, 368 bytes (PRAM is 100-1FF, the clock AB-AE)
+//    90-1FF RAM, 368 bytes (PRAM is 100-1FF, the clock AB-AE; PRAM is kept
+//                         through the firmware's cold start, and on the SD
+//                         card with MacPPC7300_nvsave: the pr_* port)
 //    F00-1FFF the ROM
 //
 //  Anything else reads 0. Not in MAME and here: the RTI flag (MAME has no
@@ -126,6 +128,18 @@ module MacPPC7300_cuda
 	output logic        iic_sda_low,     // pull the I2C data low
 	input  logic        iic_scl,         // the I2C lines' levels
 	input  logic        iic_sda,
+
+	// PRAM (RAM 100-1FF) beyond the firmware's cold start, which clears it (a Mac's battery keeps
+	// Cuda running): a shadow, reached from outside for the SD card's image (pr_we, or pr_re
+	// held until pr_rack with the byte in pr_q); pr_changed a clock at each write the firmware
+	// makes to PRAM while the shadow follows it
+	input  logic        pr_we,
+	input  logic        pr_re,
+	input  logic [7:0]  pr_addr,
+	input  logic [7:0]  pr_wdata,
+	output logic        pr_rack,
+	output logic [7:0]  pr_q,
+	output logic        pr_changed,
 
 	// for the test bench and the debug readout
 	output logic        dbg_cen,         // a bus cycle ends at this clock
@@ -279,9 +293,37 @@ logic [2:0] clk_ld;                    // bytes left: AE at 4 ... AB at 1
 logic       clk_set, rst_q;
 wire  [7:0] clk_byte = clock_secs[8 * (3'd4 - clk_ld) +: 8];
 wire        cpu_ram_we = cen & b_wr & b_ram;
-wire        ram_we     = cpu_ram_we | (clk_ld != 3'd0);
-wire  [8:0] ram_wa     = cpu_ram_we ? b_addr[8:0] : 9'h0AA + 9'(clk_ld);
-wire  [7:0] ram_wd     = cpu_ram_we ? b_wd : clk_byte;
+
+// ---- PRAM beyond the cold start (MAME's cuda.cpp does the same with its saved PRAM) ----------
+// The shadow follows every write to PRAM while it is all there is (pr_ok 0: the firmware's own
+// start included, so it equals PRAM); once it holds PRAM worth keeping (pr_ok: loaded from the
+// image, or followed until the CPU ran) the firmware's clear at its next cold start is not
+// followed, and as the CPU's reset is first released the shadow is written back into PRAM,
+// a byte a clock the firmware leaves RAM alone; then it follows PRAM again. pr_ok and the
+// shadow outlast this module's reset.
+logic [7:0] pram_sh [0:255];
+logic       pr_ok = 1'b0;              // the shadow holds PRAM to keep
+logic       pr_live;                   // the shadow follows PRAM's writes
+logic       pr_set;                    // written back since this module's reset
+logic [8:0] pr_ld;                     // bytes left to write back (256 ... 1)
+logic [1:0] pr_ph;                     // the write-back's phase: 0 the shadow read, 1 its byte, 2 PRAM written
+logic [7:0] pr_i, pr_byte;             // the byte in hand, its value
+wire        cpu_pram_we = cpu_ram_we & b_addr[8];
+wire        pr_put      = pr_ld != 9'd0 && pr_ph == 2'd2 && !cpu_ram_we && clk_ld == 3'd0;
+wire        sh_we       = (cpu_pram_we && (pr_live || !pr_ok)) || pr_we;
+wire  [7:0] sh_wa       = (cpu_pram_we && (pr_live || !pr_ok)) ? b_addr[7:0] : pr_addr;
+wire  [7:0] sh_wd       = (cpu_pram_we && (pr_live || !pr_ok)) ? b_wd : pr_wdata;
+wire  [7:0] sh_ra       = pr_ld != 9'd0 ? pr_i : pr_addr;
+logic [7:0] sh_q;
+always_ff @(posedge clk) begin
+	if (sh_we) pram_sh[sh_wa] <= sh_wd;
+	sh_q <= pram_sh[sh_ra];
+end
+assign pr_q = sh_q;
+
+wire        ram_we     = cpu_ram_we | (clk_ld != 3'd0) | pr_put;
+wire  [8:0] ram_wa     = cpu_ram_we ? b_addr[8:0] : clk_ld != 3'd0 ? 9'h0AA + 9'(clk_ld) : {1'b1, pr_i};
+wire  [7:0] ram_wd     = cpu_ram_we ? b_wd : clk_ld != 3'd0 ? clk_byte : pr_byte;
 
 logic [7:0] ram [0:511];
 logic [7:0] ram_q, rom_q, io_q;
@@ -319,6 +361,44 @@ always_ff @(posedge clk) begin
 		clk_set <= 1'b0;
 		clk_ld  <= 3'd0;
 		rst_q   <= 1'b1;
+	end
+end
+
+// the PRAM write-back as the CPU's reset is first released, and the outside reads
+always_ff @(posedge clk) begin
+	pr_changed <= cpu_pram_we && pr_live;
+	pr_rack    <= 1'b0;
+	if (pr_re && !pr_rack && pr_ld == 9'd0) pr_rack <= 1'b1;   // sh_q holds pr_addr's byte a clock on
+	if (pr_we) pr_ok <= 1'b1;
+	if (rst_q && !cpu_reset && !pr_set) begin
+		pr_set  <= 1'b1;
+		pr_live <= 1'b1;
+		if (pr_ok) begin
+			pr_ld <= 9'd256;
+			pr_i  <= 8'd0;
+			pr_ph <= 2'd0;
+		end
+		else pr_ok <= 1'b1;                   // the shadow has followed PRAM from the start
+	end
+	else if (pr_ld != 9'd0) begin
+		case (pr_ph)
+			2'd0:    pr_ph <= 2'd1;             // the shadow reads pr_i in this clock
+			2'd1: begin
+				pr_byte <= sh_q;
+				pr_ph   <= 2'd2;
+			end
+			default: if (pr_put) begin
+				pr_i  <= pr_i + 8'd1;
+				pr_ld <= pr_ld - 9'd1;
+				pr_ph <= 2'd0;
+			end
+		endcase
+	end
+	if (reset) begin
+		pr_set  <= 1'b0;
+		pr_live <= 1'b0;
+		pr_ld   <= 9'd0;
+		pr_ph   <= 2'd0;
 	end
 end
 

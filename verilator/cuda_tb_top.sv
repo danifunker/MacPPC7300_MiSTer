@@ -33,6 +33,14 @@ module cuda_tb_top
 	input  logic [24:0] ps2_mouse,
 	input  logic [51:0] joy,
 
+	input  logic        pr_we,           // PRAM's shadow (the SD card's image)
+	input  logic        pr_re,
+	input  logic [7:0]  pr_addr,
+	input  logic [7:0]  pr_wdata,
+	output logic        pr_rack,
+	output logic [7:0]  pr_q,
+	output logic        pr_changed,
+
 	output logic        dbg_cen,
 	output logic [12:0] dbg_addr,
 	output logic        dbg_rd,
@@ -63,6 +71,7 @@ MacPPC7300_cuda #(.CLK_HZ(CLK_HZ)) cuda (
 	/* verilator lint_on PINCONNECTEMPTY */
 	.clock_ok(1'b0), .clock_secs(32'h0),
 	.iic_scl_low, .iic_sda_low, .iic_scl, .iic_sda,
+	.pr_we, .pr_re, .pr_addr, .pr_wdata, .pr_rack, .pr_q, .pr_changed,
 	.dbg_cen, .dbg_addr, .dbg_rd, .dbg_wr, .dbg_wdata, .dbg_rdata,
 	.tr_valid, .tr_int, .tr_pc, .tr_op, .tr_a, .tr_x, .tr_sp, .tr_cc,
 	.dbg_cpi, .dbg_fast

@@ -195,14 +195,14 @@ module MacPPC7300_machine
 	output logic         snd_frame,     // one clock a frame (the samples change the clock after)
 
 	// Grand Central's NVRAM written from outside, a byte a cycle, while
-	// the machine is held in reset
+	// the machine is held in reset; 2000-20FF Cuda's PRAM (its shadow)
 	input  logic         nv_ld_we,
 	input  logic         nv_ld_re,                  // ... or read from outside (MacPPC7300_gc)
-	input  logic [12:0]  nv_ld_addr,
+	input  logic [13:0]  nv_ld_addr,
 	input  logic [7:0]   nv_ld_data,
 	output logic         nv_ld_rack,
 	output logic [7:0]   nv_ld_q,
-	output logic         nv_wr_cpu,                 // the CPU wrote the NVRAM
+	output logic         nv_wr_cpu,                 // the CPU wrote the NVRAM (or PRAM)
 
 	// the monitor: its AppleSense codes (MacPPC7300_control MON_SENSE)
 	input  logic [2:0]   mon_std,
@@ -675,6 +675,12 @@ logic         dfin;
 logic [3:0]   dfin_ch;
 logic [1:0]   dfin_type;
 logic [127:0] dfin_info;
+// the NVRAM channel: Grand Central's NVRAM, or (2000-20FF) Cuda's PRAM
+logic         gc_nv_rack, gc_nv_wr, cu_pr_rack, cu_pr_changed;
+logic [7:0]   gc_nv_q, cu_pr_q;
+assign nv_ld_rack = gc_nv_rack | cu_pr_rack;
+assign nv_ld_q    = nv_ld_addr[13] ? cu_pr_q : gc_nv_q;
+assign nv_wr_cpu  = gc_nv_wr | cu_pr_changed;
 logic         itr_ev, itr8_ev;
 logic [7:0]   itr8_st;
 logic         scc_tr_ev;
@@ -694,7 +700,8 @@ MacPPC7300_gc #(.SCSI_HZ(SCSI_HZ), .SOUND_IN_DMA(SOUND_IN_DMA)) gc (
 	.modem_txd, .modem_rxd, .modem_cts, .modem_rts, .modem_midi,
 	.net_link, .net_tx_we, .net_tx_wa, .net_tx_wd, .net_tx_go, .net_tx_len, .net_tx_done,
 	.net_rx_ra, .net_rx_q, .net_rx_avail, .net_rx_len, .net_rx_done, .net_mac, .net_mac_ok,
-	.nv_ld_we, .nv_ld_re, .nv_ld_addr, .nv_ld_data, .nv_ld_rack, .nv_ld_q, .nv_wr_cpu,
+	.nv_ld_we(nv_ld_we & ~nv_ld_addr[13]), .nv_ld_re(nv_ld_re & ~nv_ld_addr[13]), .nv_ld_addr(nv_ld_addr[12:0]),
+	.nv_ld_data, .nv_ld_rack(gc_nv_rack), .nv_ld_q(gc_nv_q), .nv_wr_cpu(gc_nv_wr),
 	.ctl_irq, .nmi(cuda_nmi),
 	.mesh_rst, .mesh_bsy, .mesh_sel, .mesh_atn, .mesh_ack, .mesh_req, .mesh_msg, .mesh_cd, .mesh_io, .mesh_db,
 	.scsi_rst, .scsi_bsy, .scsi_sel, .scsi_atn, .scsi_ack, .scsi_req, .scsi_msg, .scsi_cd, .scsi_io, .scsi_db,
@@ -771,6 +778,8 @@ MacPPC7300_cuda #(.CLK_HZ(CPU_HZ), .CLK_HZ_FAST(CPU_HZ_FAST), .FAST_BOOT(CUDA_FA
 	.cpu_reset, .power_off, .nmi(cuda_nmi), .clock_ok, .clock_secs,
 	.adb_low, .adb_line(~(adb_low | adb_dev_low)), .tick(cuda_tick),
 	.iic_scl_low, .iic_sda_low, .iic_scl, .iic_sda,
+	.pr_we(nv_ld_we & nv_ld_addr[13]), .pr_re(nv_ld_re & nv_ld_addr[13]), .pr_addr(nv_ld_addr[7:0]),
+	.pr_wdata(nv_ld_data), .pr_rack(cu_pr_rack), .pr_q(cu_pr_q), .pr_changed(cu_pr_changed),
 	.dbg_cen(cu_cen), .dbg_addr(cu_addr), .dbg_rd(cu_rd), .dbg_wr(cu_wr),
 	.dbg_wdata(cu_wdata), .dbg_rdata(cu_rdata),
 	.tr_valid(cu_tr_valid), .tr_int(cu_tr_int), .tr_pc(cu_tr_pc), .tr_op(cu_tr_op),

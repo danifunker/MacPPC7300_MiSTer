@@ -440,7 +440,7 @@ end
 // hps_io waiting meanwhile; and MacPPC7300_nvsave, the image on block slot 2.
 wire nv_index = ioctl_index[7:0] == 8'h40;
 wire nv_dl    = ioctl_download & nv_index;
-reg  [12:0] nv_m_addr;
+reg  [13:0] nv_m_addr;                // 2000-20FF Cuda's PRAM (the image's block 16)
 reg  [7:0]  nv_m_data;
 reg         nv_m_we;
 reg         nv_req = 0, nv_busy = 0;
@@ -453,7 +453,7 @@ reg  [7:0]  nv_dl_data;
 reg         nvs_own = 0, nvs_taken = 0, nvs_done = 0;
 reg  [7:0]  nvs_q;
 wire        nvs_req, nvs_we;
-wire [12:0] nvs_addr;
+wire [13:0] nvs_addr;
 wire [7:0]  nvs_wdata;
 always @(posedge clk_mem) begin
 	nv_ack_s <= {nv_ack_s[1:0], nv_ack};
@@ -461,7 +461,7 @@ always @(posedge clk_mem) begin
 	if (!nvs_req) nvs_taken <= 0;
 	if (!nv_busy) begin
 		if (nv_dl_pend) begin
-			nv_m_addr  <= nv_dl_addr;
+			nv_m_addr  <= {1'b0, nv_dl_addr};
 			nv_m_data  <= nv_dl_data;
 			nv_m_we    <= 1;
 			nv_req     <= ~nv_req;
@@ -627,7 +627,7 @@ wire clock_ok = clock_secs != 32'd0;
 // from the toggle until the acknowledge returns)
 reg  [2:0]  nv_req_s;
 reg         nv_ack_c = 0, nv_ld_we = 0, nv_ld_re = 0;
-reg  [12:0] nv_ld_addr;
+reg  [13:0] nv_ld_addr;
 reg  [7:0]  nv_ld_data, nv_q_c;
 wire        nv_ld_rack, nv_wr_cpu;
 wire [7:0]  nv_ld_q;
