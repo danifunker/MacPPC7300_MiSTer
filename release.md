@@ -3,6 +3,59 @@
 The bitstreams are in `releases/`. Installing (the ROM, disks, the Main
 binary for the CD-ROM and Ethernet) is as in `releases/README.md`.
 
+## 2026-10-21
+
+Two bitstreams of the same source (branch `ibm-learnings-osd-ppp`), each at
+one fixed speed (no CPU speed option any more):
+
+| File | md5 | CPU speed |
+|---|---|---|
+| `MacPPC7300_20261021.rbf` | `7b0735e6c4cef48fb1ae462116c14402` | 70 MHz, the speed the design is timed at (fitter seed 3) |
+| `MacPPC7300_OC_20261021.rbf` | `1e2b06b558a10b71b42f442e615a6d2c` | **100 MHz, an overclock** (fitter seed 4): faster, but whether a fit runs at 100 depends on the fit; if it misbehaves on your board, use the other file and say so on Discord |
+
+Both identify as MacPPC7300 (the same `games/MacPPC7300/` folder and
+settings). **Your OSD settings start over once** (the menu changed): set
+the Memory and the disks again.
+
+New since 2026-10-16:
+
+- **PPP and serial on Mac OS work.** Mac OS's serial driver moves its bytes
+  through Grand Central's DMA channels 4-7, which were missing: Mac OS 9.1
+  froze the moment Remote Access opened the modem port. They are DMA
+  engines now, and their receive side does what the user's real 7300 was
+  measured doing when software stops the channel (`hwprobe --dbdma`). With
+  the OSD's UART set to PPP at 115,200 and Remote Access on "Null Modem
+  115200": connected in a second, pings from the MiSTer, a 92 KB web page
+  from a server on the MiSTer complete in Internet Explorer.
+- **The OSD follows the MiSTer computer cores' standard menu**: the disks,
+  Load ROM, Memory and Network interface on the top page; Machine, Video,
+  Input (new: Swap Alt/Win keys), Audio (the MT32-pi) and Advanced (the
+  NVRAM image) pages; settings that need a restart show "Changes pending"
+  until "Apply and reset".
+- **SDRAM byte writes** (found by the IBM RS/6000 core, which shares this
+  controller): the MiSTer SDRAM boards take a write's byte masks on two
+  address lines the controller left at 0, so a single-byte or halfword
+  store to uncached memory wrote the whole word. Fixed.
+- The CPU carries the RS/6000 core's little-endian mode, switched off here.
+- Known: Mac OS 9.1 says "Your clock is not set to the correct time" after
+  every core load or Apply and reset (not after a restart from Mac OS; not
+  on 7.6.1), and closes the alert by itself after about four minutes. The
+  clock is right and the year is not the cause: Cuda's PRAM starts empty at
+  every cold start, as a real Mac's does only without its battery, and Mac
+  OS takes that as a lost clock. Keeping the PRAM on the SD card (as MAME
+  does) is the fix, not in this release.
+- Seen once, not reproduced: a Restart from Mac OS 9.1 right after a PPP
+  session stopped at the Finder (Apply and reset recovered it).
+
+Tested on the board (DE10-Nano, 128 MB SDRAM, RAM 124 MB):
+
+- OC build: Mac OS 7.6.1 cold starts 5 of 5 (61-62 s to the Finder), Mac
+  OS 9.1, the chime, the OSD.
+- 70 MHz build: Mac OS 7.6.1 cold starts 3 of 3 (70 s), Mac OS 9.1,
+  Ethernet (DHCP), PPP (connected in 5 s, a 92 KB page complete, pings 20
+  of 20 and 10 of 10 at 1,000 bytes), the chime, the OSD ("Changes
+  pending", Apply and reset).
+
 ## 2026-10-16
 
 Two bitstreams of the same source (branch `fpu-pipe2`, 3f2dab7 plus the
