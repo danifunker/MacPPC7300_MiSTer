@@ -51,9 +51,6 @@ ppctest/FROM_CARD/
 ppctest/_sim/
 ppctest/*.bin
 ppctest/runs/*
-cudadump/TO_CARD/
-cudadump/FROM_CARD/
-cudadump/runs/
 verilator/live/
 verilator/imgui.ini
 hwprobe/TO_CARD/
@@ -61,7 +58,10 @@ hwprobe/FROM_CARD/
 hwprobe/runs/
 *.hda
 *.rom
-RESUME_hardware.md
+!releases/boot0.rom
+
+# work-in-progress notes stay local
+RESUME_*.md
 
 # the golden results are the one thing in runs/ that is tracked
 !ppctest/runs/results_*.csv
