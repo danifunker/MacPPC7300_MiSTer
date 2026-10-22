@@ -259,6 +259,119 @@ def default_program(target_id=6, mesh=True, curio=True):
     return p
 
 
+ESCC_B_CMD, ESCC_B_DATA = 0x13000, 0x13010   # MacRISC addressing: the printer port, channel B
+DMA7 = 0x8700                                # its receive DMA channel
+DBDMA_RAM = 0x00500000                       # descriptors here, the buffer at +0x100
+DBDMA_CASES = [("a", "empty FLUSH"), ("b0", "3 bytes in, before FLUSH"), ("b1", "3 bytes in, FLUSH"),
+               ("b2", "13 more: the command completes"), ("c0", "new command, 2 bytes in"),
+               ("c1", "RUN cleared, no FLUSH")]
+
+
+def swap32(v):
+    return struct.unpack("<I", struct.pack(">I", v & 0xFFFFFFFF))[0]
+
+
+def dbdma_program():
+    """Grand Central's DBDMA on a FLUSH, measured on the printer port's receive channel (7):
+    what a FLUSH writes into the command's resCount and xferStatus with and without data,
+    what a normal completion writes, and whether clearing RUN writes anything. The ESCC's
+    channel B runs in local loopback (no cable), so its own bytes come back to its receiver."""
+    p = Program()
+    ms = lambda ms_: int(TB_NOMINAL * ms_ / 1000)          # noqa: E731
+    ram = lambda a: (a - DEFAULT_GC) & 0xFFFFFFFF          # noqa: E731  RAM through the GC-relative offset
+    desc, buf = DBDMA_RAM, DBDMA_RAM + 0x100
+
+    def wr(n, v):                                          # channel B's write register n
+        p.w8(ESCC_B_CMD, n if n < 8 else 0x08 | (n - 8))
+        p.w8(ESCC_B_CMD, v)
+
+    def ctl(mask, value):                                  # ChannelControl, as the CPU stores it
+        p.w32(DMA7, swap32((mask << 16) | value))
+
+    def command(at, cmd, req, addr):                       # a 16-byte command, little-endian fields
+        p.w32(ram(at), swap32((cmd << 28) | req))
+        p.w32(ram(at + 4), swap32(addr))
+        p.w32(ram(at + 8), 0)
+        p.w32(ram(at + 12), 0)
+
+    def snap(tag):                                         # the command's last word, the status, the buffer
+        p.wait(ms(2))
+        p.r32(ram(desc + 12), "dma_%s_res_xfer" % tag)
+        p.r32(DMA7 + 4, "dma_%s_status" % tag)
+        p.r32(DMA7 + 12, "dma_%s_cmdptr" % tag)
+        p.r32(ram(buf), "dma_%s_buf0" % tag)
+
+    def send(vals):                                        # bytes out of channel B, one at a time
+        for v in vals:
+            p.poll8(ESCC_B_CMD, 0x04, ms(5), "tx_ready_%d" % len(p.names))   # RR0: transmit buffer empty
+            p.w8(ESCC_B_DATA, v)
+
+    # the channel stopped and cleared; channel B reset, then asynchronous 57,600 in local loopback
+    ctl(0xFFFF, 0x0000)
+    p.r32(DMA7 + 4, "dma_status_before")
+    wr(9, 0x40)                                            # reset channel B only (A is the console)
+    wr(4, 0x44)                                            # x16 clock, 1 stop bit
+    wr(11, 0x50)                                           # receive and transmit clocks from the BRG
+    wr(12, 0x00)
+    wr(13, 0x00)
+    wr(14, 0x11)                                           # BRG on (from RTxC), local loopback
+    wr(3, 0xC1)                                            # 8 bits, receiver on
+    wr(5, 0x6A)                                            # 8 bits, transmitter on, RTS
+    wr(1, 0xE0)                                            # W/REQ: DMA request on receive
+
+    # A: an empty FLUSH
+    command(desc, 2, 16, buf)                              # INPUT_MORE 16
+    command(desc + 16, 7, 0, 0)                            # STOP
+    p.w32(ram(buf), 0x5A5A5A5A)
+    p.w32(DMA7 + 12, swap32(desc))
+    ctl(0x8000, 0x8000)                                    # RUN
+    p.wait(ms(1))
+    ctl(0x2000, 0x2000)                                    # FLUSH
+    snap("a")
+
+    # B: 3 bytes, then a FLUSH; then 13 more complete the command
+    send([0x11, 0x22, 0x33])
+    snap("b0")
+    ctl(0x2000, 0x2000)
+    snap("b1")
+    send([0x40 + i for i in range(13)])
+    snap("b2")
+
+    # C: a new command, 2 bytes, then RUN cleared with no FLUSH
+    ctl(0x8000, 0x0000)
+    command(desc, 2, 16, buf)
+    command(desc + 16, 7, 0, 0)
+    p.w32(ram(buf), 0x5A5A5A5A)
+    p.w32(DMA7 + 12, swap32(desc))
+    ctl(0x8000, 0x8000)
+    send([0x77, 0x88])
+    snap("c0")
+    ctl(0x8000, 0x0000)
+    snap("c1")
+
+    # put back: channel B reset, the channel stopped
+    wr(1, 0x00)
+    wr(14, 0x00)
+    wr(9, 0x40)
+    ctl(0xFFFF, 0x0000)
+    p.r32(DMA7 + 4, "dma_status_after")
+    return p
+
+
+def interpret_dbdma(r):
+    print()
+    for tag, what in DBDMA_CASES:
+        k = "dma_%s_" % tag
+        if k + "status" not in r:
+            continue
+        w = struct.pack(">I", r[k + "res_xfer"])
+        res, xfer = w[0] | (w[1] << 8), w[2] | (w[3] << 8)
+        st = swap32(r[k + "status"]) & 0xFFFF
+        print("%-34s resCount %5d  xferStatus %04X  ChannelStatus %04X  CommandPtr %08X  buffer %08X"
+              % (what + ":", res, xfer, st, swap32(r[k + "cmdptr"]), r[k + "buf0"]))
+    print("(bits: RUN 8000, PAUSE 4000, FLUSH 2000, WAKE 1000, DEAD 0800, ACTIVE 0400, BT 0100)")
+
+
 # --- build -----------------------------------------------------------------------------------
 def build(prog):
     s1, s2 = program.build_stage1(), program.build_stage2()
@@ -282,10 +395,15 @@ def options_from(args):
     return dict(target_id=args.target_id, mesh=not args.no_mesh, curio=not args.no_curio)
 
 
+def program_from(args):
+    return dbdma_program() if args.dbdma else default_program(**options_from(args))
+
+
 def cmd_build(args):
-    prog = default_program(**options_from(args))
+    prog = program_from(args)
     img, build_id, n1, n2 = build(prog)
-    out = args.out or os.path.join(HERE, "TO_CARD", "HD50_512_hwprobe_v%d.hda" % VERSION)
+    out = args.out or os.path.join(HERE, "TO_CARD", "HD50_512_hwprobe_%s.hda"
+                                   % ("dbdma" if args.dbdma else "v%d" % VERSION))
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     with open(out, "wb") as f:
         f.write(img)
@@ -296,7 +414,7 @@ def cmd_build(args):
 
 
 def cmd_list(args):
-    prog = default_program(**options_from(args))
+    prog = program_from(args)
     names = {v: k for k, v in globals().items() if k.startswith("OP_")}
     res = 0
     for i, (op, off, val, arg) in enumerate(prog.ops):
@@ -308,7 +426,7 @@ def cmd_list(args):
 
 
 # --- decode ------------------------------------------------------------------------------------
-def decode(img, target_id=6, mesh=True, curio=True):
+def decode(img, target_id=6, mesh=True, curio=True, dbdma=False):
     hdr = img[HDR_BLK * BLOCK:(HDR_BLK + 1) * BLOCK]
     if hdr[0:8] != MAGIC:
         print("not a hwprobe image")
@@ -329,13 +447,13 @@ def decode(img, target_id=6, mesh=True, curio=True):
              nres, "FAILED" if w(H_WRFAIL) else "ok"))
     raw = img[RES_BLK * BLOCK:(RES_BLK + RES_BLKS) * BLOCK]
     values = list(struct.unpack(">%dI" % RES_MAX, raw))[:nres]
-    prog = default_program(target_id, mesh, curio)
+    prog = dbdma_program() if dbdma else default_program(target_id, mesh, curio)
     r = {}
     for i, v in enumerate(values):
         name = prog.names[i] if i < len(prog.names) else "result%d" % i
         r[name] = v
         print("  %3d %-34s %08X" % (i, name, v))
-    interpret(r)
+    (interpret_dbdma if dbdma else interpret)(r)
     return 0
 
 
@@ -405,7 +523,7 @@ def interpret(r):
 def cmd_decode(args):
     with open(args.image, "rb") as f:
         img = f.read()
-    return decode(img, **options_from(args))
+    return decode(img, dbdma=args.dbdma, **options_from(args))
 
 
 def main():
@@ -420,6 +538,7 @@ def main():
         s.add_argument("--target-id", type=int, default=6)
         s.add_argument("--no-mesh", action="store_true")
         s.add_argument("--no-curio", action="store_true")
+        s.add_argument("--dbdma", action="store_true", help="the DBDMA FLUSH probe instead")
     args = p.parse_args()
     return {"build": cmd_build, "list": cmd_list, "decode": cmd_decode}[args.cmd](args)
 

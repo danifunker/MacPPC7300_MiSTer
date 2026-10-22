@@ -23,11 +23,12 @@
 //                 the Control video's VBL (1A, through Chaos)
 //    08000-0FFFF  DMA channel registers, 256 bytes per channel
 //                 (grandcentral.cpp:250-305; dbdma.cpp:307-380): channels
-//                 1 (the floppy's), 2, 3 (Ethernet out, in), 8, 9 (sound
-//                 out, in) and A (MESH's) are DBDMA engines (MacPPC7300_dbdma)
+//                 1 (the floppy's), 2, 3 (Ethernet out, in), 4-7 (the
+//                 ESCC's, 2026-10-21), 8, 9 (sound out, in) and A
+//                 (MESH's) are DBDMA engines (MacPPC7300_dbdma)
 //                 sharing the DMA port (dm_*), one access at a time, the
 //                 sound channels first; each one's interrupt, sources 01,
-//                 02, 03, 08, 09, 0A, a level that the clear register drops
+//                 02-09, 0A, a level that the clear register drops
 //                 (dingusppc's ack_dma_int, clear_dma_int); channel 0
 //                 (Curio's) is stored and read back and never runs
 //    10000        Curio SCSI             MacPPC7300_sc53c94: the external bus's
@@ -176,7 +177,7 @@ module MacPPC7300_gc
 	input  logic [23:0]  clut_index,
 	output logic [23:0]  clut_rgb,
 
-	// for MacPPC7300_trace: DMA channel 2, 3 or 8 (dfin_ch) finished (dfin_type 0), fetched (1)
+	// for MacPPC7300_trace: DMA channel 2, 3, 4, 5 or 8 (dfin_ch) finished (dfin_type 0), fetched (1)
 	// or was stopped (2) a command
 	output logic         dfin,
 	output logic [3:0]   dfin_ch,
@@ -186,9 +187,13 @@ module MacPPC7300_gc
 	// irq, 68k mode, MESH's mask, event, line, channel A's mask, event, level)
 	output logic         itr_ev,
 	output logic [7:0]   itr_st,
-	// ... and channel 8's (itr8_st: irq, 68k mode, mask, event, level, the channel active)
+	// ... and channel 8's (itr8_st: irq, 68k mode, mask, event, level, the channel active),
+	// with the ESCC's channel A line and channels 4 or 5's level in bits 1 and 0
 	output logic         itr8_ev,
 	output logic [7:0]   itr8_st,
+	// ... and the ESCC's channel A receiving (MacPPC7300_escc tr_info)
+	output logic         scc_tr_ev,
+	output logic [23:0]  scc_tr_info,
 
 	// the floppy disk's image (MacPPC7300_fdblk)
 	input  logic         fd_m_t,
@@ -233,10 +238,10 @@ always_ff @(posedge clk) begin
 	itr_st <= itr_now;
 end
 
-// ---- DMA channels: 0-3 Curio, floppy, Ethernet out and in; 8, 9 sound out and in; A MESH ----
-// (4-7, the serial channels, read 0 and ignore writes, as in dingusppc).
-// Channels 1, 2, 3, 8, 9 and A are MacPPC7300_dbdma (below); 0's registers
-// are kept here.
+// ---- DMA channels: 0-3 Curio, floppy, Ethernet out and in; 4-7 the ESCC's; 8, 9 sound ----
+// ---- out and in; A MESH ----
+// Channels 1-9 and A are MacPPC7300_dbdma (below; 9 a register stub unless
+// SOUND_IN_DMA); 0's registers are kept here.
 localparam int NCH = 1;
 logic [15:0] ch_stat [NCH];
 logic [31:0] ch_cmd  [NCH];
@@ -268,12 +273,20 @@ always_comb begin
 	if (!scc_compat) scc_rn = off[7:4];
 end
 logic [7:0] scc_rq;
+// the ESCC's DMA sides, to channels 4 (A out), 5 (A in), 6 (B out), 7 (B in) below
+logic       sa_ready, sa_put, sa_valid, sa_take, sb_ready, sb_put, sb_valid, sb_take;
+logic [7:0] sa_odata, sa_idata, sb_odata, sb_idata;
 
 MacPPC7300_escc escc (
 	.clk, .reset, .rtxc_tick, .trxc_tick(us_tick),
 	.sel(sel & devs & (scc_compat | scc_risc)), .we, .rn(scc_rn), .wdata(wb),
 	.rq(scc_rq), .txd_a(modem_txd), .rxd_a(modem_rxd), .cts_a(modem_cts), .rts_a(modem_rts),
-	.midi_a(modem_midi), .irq_a(scc_a_irq), .irq_b(scc_b_irq)
+	.midi_a(modem_midi), .irq_a(scc_a_irq), .irq_b(scc_b_irq),
+	.dt_ready_a(sa_ready), .dt_put_a(sa_put), .dt_data_a(sa_odata),
+	.dr_valid_a(sa_valid), .dr_data_a(sa_idata), .dr_take_a(sa_take),
+	.dt_ready_b(sb_ready), .dt_put_b(sb_put), .dt_data_b(sb_odata),
+	.dr_valid_b(sb_valid), .dr_data_b(sb_idata), .dr_take_b(sb_take),
+	.tr_ev(scc_tr_ev), .tr_info(scc_tr_info)
 );
 
 // ---- the SCSI controllers: byte registers at (offset >> 4) & F (grandcentral.cpp:188, 211) ----
@@ -292,51 +305,133 @@ wire        dma_a_sel = sel & dma & (addr[14:8] == 7'd10) & (addr[7:5] == 3'd0);
 
 // ---- the DBDMA engines' way to memory: one access at a time ---------------------------------
 // Each engine holds its request until acknowledged; the port is granted to
-// one (sound out, sound in, MESH, Ethernet out, Ethernet in, the floppy, in
-// that order: the sound channels stream in real time and move little) and
-// released in the cycle of its acknowledge.
+// one (sound out, sound in, MESH, Ethernet out, Ethernet in, the floppy, the
+// serial channels, in that order: the sound channels stream in real time and
+// move little) and released in the cycle of its acknowledge.
 logic         a_req, a_we, a_line, s8_req, s8_we, s8_line, s9_req, s9_we, s9_line;
 logic         e2_req, e2_we, e2_line, e3_req, e3_we, e3_line, f1_req, f1_we, f1_line;
-logic [31:2]  a_addr, s8_addr, s9_addr, e2_addr, e3_addr, f1_addr;
-logic [3:0]   a_be, s8_be, s9_be, e2_be, e3_be, f1_be;
-logic [255:0] a_wdata, s8_wdata, s9_wdata, e2_wdata, e3_wdata, f1_wdata;
-logic         a_half, s8_half, s9_half, e2_half, e3_half, f1_half;
+logic         c4_req, c4_we, c4_line, c5_req, c5_we, c5_line, c6_req, c6_we, c6_line, c7_req, c7_we, c7_line;
+logic [31:2]  a_addr, s8_addr, s9_addr, e2_addr, e3_addr, f1_addr, c4_addr, c5_addr, c6_addr, c7_addr;
+logic [3:0]   a_be, s8_be, s9_be, e2_be, e3_be, f1_be, c4_be, c5_be, c6_be, c7_be;
+logic [255:0] a_wdata, s8_wdata, s9_wdata, e2_wdata, e3_wdata, f1_wdata, c4_wdata, c5_wdata, c6_wdata, c7_wdata;
+logic         a_half, s8_half, s9_half, e2_half, e3_half, f1_half, c4_half, c5_half, c6_half, c7_half;
 logic         dm_half;
 logic         g_busy;
-logic [2:0]   g_own;                           // 0 MESH (A), 1 sound out (8), 2 sound in (9), 3 Ethernet out (2), 4 in (3), 5 floppy (1)
+logic [3:0]   g_own;                           // 0 MESH (A), 1 sound out (8), 2 sound in (9), 3 Ethernet out (2), 4 in (3), 5 floppy (1), 6-9 serial (4-7)
 always_comb begin
 	case (g_own)
-		3'd1:    begin dm_req = g_busy & s8_req; dm_we = s8_we; dm_line = s8_line; dm_addr = s8_addr; dm_be = s8_be; dm_wdata = s8_wdata; dm_half = s8_half; end
-		3'd2:    begin dm_req = g_busy & s9_req; dm_we = s9_we; dm_line = s9_line; dm_addr = s9_addr; dm_be = s9_be; dm_wdata = s9_wdata; dm_half = s9_half; end
-		3'd3:    begin dm_req = g_busy & e2_req; dm_we = e2_we; dm_line = e2_line; dm_addr = e2_addr; dm_be = e2_be; dm_wdata = e2_wdata; dm_half = e2_half; end
-		3'd4:    begin dm_req = g_busy & e3_req; dm_we = e3_we; dm_line = e3_line; dm_addr = e3_addr; dm_be = e3_be; dm_wdata = e3_wdata; dm_half = e3_half; end
-		3'd5:    begin dm_req = g_busy & f1_req; dm_we = f1_we; dm_line = f1_line; dm_addr = f1_addr; dm_be = f1_be; dm_wdata = f1_wdata; dm_half = f1_half; end
+		4'd1:    begin dm_req = g_busy & s8_req; dm_we = s8_we; dm_line = s8_line; dm_addr = s8_addr; dm_be = s8_be; dm_wdata = s8_wdata; dm_half = s8_half; end
+		4'd2:    begin dm_req = g_busy & s9_req; dm_we = s9_we; dm_line = s9_line; dm_addr = s9_addr; dm_be = s9_be; dm_wdata = s9_wdata; dm_half = s9_half; end
+		4'd3:    begin dm_req = g_busy & e2_req; dm_we = e2_we; dm_line = e2_line; dm_addr = e2_addr; dm_be = e2_be; dm_wdata = e2_wdata; dm_half = e2_half; end
+		4'd4:    begin dm_req = g_busy & e3_req; dm_we = e3_we; dm_line = e3_line; dm_addr = e3_addr; dm_be = e3_be; dm_wdata = e3_wdata; dm_half = e3_half; end
+		4'd5:    begin dm_req = g_busy & f1_req; dm_we = f1_we; dm_line = f1_line; dm_addr = f1_addr; dm_be = f1_be; dm_wdata = f1_wdata; dm_half = f1_half; end
+		4'd6:    begin dm_req = g_busy & c4_req; dm_we = c4_we; dm_line = c4_line; dm_addr = c4_addr; dm_be = c4_be; dm_wdata = c4_wdata; dm_half = c4_half; end
+		4'd7:    begin dm_req = g_busy & c5_req; dm_we = c5_we; dm_line = c5_line; dm_addr = c5_addr; dm_be = c5_be; dm_wdata = c5_wdata; dm_half = c5_half; end
+		4'd8:    begin dm_req = g_busy & c6_req; dm_we = c6_we; dm_line = c6_line; dm_addr = c6_addr; dm_be = c6_be; dm_wdata = c6_wdata; dm_half = c6_half; end
+		4'd9:    begin dm_req = g_busy & c7_req; dm_we = c7_we; dm_line = c7_line; dm_addr = c7_addr; dm_be = c7_be; dm_wdata = c7_wdata; dm_half = c7_half; end
 		default: begin dm_req = g_busy & a_req;  dm_we = a_we;  dm_line = a_line;  dm_addr = a_addr;  dm_be = a_be;  dm_wdata = a_wdata;  dm_half = a_half;  end
 	endcase
 end
 // a command descriptor is 16 of the line's 32 bytes: the half chosen here, once
 wire [127:0] dm_rdesc = dm_half ? dm_rdata[127:0] : dm_rdata[255:128];
-wire a_ack  = dm_ack & g_busy & (g_own == 3'd0);
-wire s8_ack = dm_ack & g_busy & (g_own == 3'd1);
-wire s9_ack = dm_ack & g_busy & (g_own == 3'd2);
-wire e2_ack = dm_ack & g_busy & (g_own == 3'd3);
-wire e3_ack = dm_ack & g_busy & (g_own == 3'd4);
-wire f1_ack = dm_ack & g_busy & (g_own == 3'd5);
+wire a_ack  = dm_ack & g_busy & (g_own == 4'd0);
+wire s8_ack = dm_ack & g_busy & (g_own == 4'd1);
+wire s9_ack = dm_ack & g_busy & (g_own == 4'd2);
+wire e2_ack = dm_ack & g_busy & (g_own == 4'd3);
+wire e3_ack = dm_ack & g_busy & (g_own == 4'd4);
+wire f1_ack = dm_ack & g_busy & (g_own == 4'd5);
+wire c4_ack = dm_ack & g_busy & (g_own == 4'd6);
+wire c5_ack = dm_ack & g_busy & (g_own == 4'd7);
+wire c6_ack = dm_ack & g_busy & (g_own == 4'd8);
+wire c7_ack = dm_ack & g_busy & (g_own == 4'd9);
 always_ff @(posedge clk) begin
 	if (dm_ack) g_busy <= 1'b0;
 	else if (!g_busy) begin
-		if (s8_req)      begin g_busy <= 1'b1; g_own <= 3'd1; end
-		else if (s9_req) begin g_busy <= 1'b1; g_own <= 3'd2; end
-		else if (a_req)  begin g_busy <= 1'b1; g_own <= 3'd0; end
-		else if (e2_req) begin g_busy <= 1'b1; g_own <= 3'd3; end
-		else if (e3_req) begin g_busy <= 1'b1; g_own <= 3'd4; end
-		else if (f1_req) begin g_busy <= 1'b1; g_own <= 3'd5; end
+		if (s8_req)      begin g_busy <= 1'b1; g_own <= 4'd1; end
+		else if (s9_req) begin g_busy <= 1'b1; g_own <= 4'd2; end
+		else if (a_req)  begin g_busy <= 1'b1; g_own <= 4'd0; end
+		else if (e2_req) begin g_busy <= 1'b1; g_own <= 4'd3; end
+		else if (e3_req) begin g_busy <= 1'b1; g_own <= 4'd4; end
+		else if (f1_req) begin g_busy <= 1'b1; g_own <= 4'd5; end
+		else if (c4_req) begin g_busy <= 1'b1; g_own <= 4'd6; end
+		else if (c5_req) begin g_busy <= 1'b1; g_own <= 4'd7; end
+		else if (c6_req) begin g_busy <= 1'b1; g_own <= 4'd8; end
+		else if (c7_req) begin g_busy <= 1'b1; g_own <= 4'd9; end
 	end
 	if (reset) begin
 		g_busy <= 1'b0;
-		g_own  <= 3'd0;
+		g_own  <= 4'd0;
 	end
 end
+
+// ---- the ESCC's DMA channels: 4 and 5 the modem port's transmit and receive, 6 and 7 the ----
+// ---- printer port's (word buffers: a byte every 87 us at 115,200 bit/s) ----
+logic [31:0] dma_4_rle, dma_5_rle, dma_6_rle, dma_7_rle;
+logic        c4_irq, c5_irq, c6_irq, c7_irq, c4_fin, c5_fin;
+logic [1:0]  c4_fin_dec, c5_fin_dec;
+logic [127:0] c4_fin_info, c5_fin_info;
+wire         dma_4_sel = sel & dma & (addr[14:8] == 7'd4) & (addr[7:5] == 3'd0);
+wire         dma_5_sel = sel & dma & (addr[14:8] == 7'd5) & (addr[7:5] == 3'd0);
+wire         dma_6_sel = sel & dma & (addr[14:8] == 7'd6) & (addr[7:5] == 3'd0);
+wire         dma_7_sel = sel & dma & (addr[14:8] == 7'd7) & (addr[7:5] == 3'd0);
+
+MacPPC7300_dbdma #(.LINE(1'b0)) dma_4 (
+	.clk, .reset,
+	.sel(dma_4_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_4_rle),
+	.dm_req(c4_req), .dm_we(c4_we), .dm_line(c4_line), .dm_addr(c4_addr), .dm_be(c4_be), .dm_wdata(c4_wdata),
+	.dm_ack(c4_ack), .dm_rdata, .dm_half(c4_half), .dm_rdesc,
+	.di_valid(1'b0), .di_data(8'h00), .di_flush(1'b0), .di_last(1'b0), .dev_st(8'h00),
+	.do_ready(sa_ready), .do_data(sa_odata), .do_put(sa_put), .dq_ack(1'b0), .dq_rd(8'h00),
+	/* verilator lint_off PINCONNECTEMPTY */
+	.do_last(), .di_take(), .xfer_in(), .xfer_out(), .drained(), .active(),
+	.dq_req(), .dq_we(), .dq_off(), .dq_wd(),
+	/* verilator lint_on PINCONNECTEMPTY */
+	.fin(c4_fin), .fin_dec(c4_fin_dec), .fin_info(c4_fin_info),
+	.irq(c4_irq)
+);
+
+MacPPC7300_dbdma #(.LINE(1'b0), .STOP_WB(1'b1)) dma_5 (
+	.clk, .reset,
+	.sel(dma_5_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_5_rle),
+	.dm_req(c5_req), .dm_we(c5_we), .dm_line(c5_line), .dm_addr(c5_addr), .dm_be(c5_be), .dm_wdata(c5_wdata),
+	.dm_ack(c5_ack), .dm_rdata, .dm_half(c5_half), .dm_rdesc,
+	.di_valid(sa_valid), .di_data(sa_idata), .di_take(sa_take), .di_flush(1'b0), .di_last(1'b0), .dev_st(8'h00),
+	.do_ready(1'b0), .dq_ack(1'b0), .dq_rd(8'h00),
+	/* verilator lint_off PINCONNECTEMPTY */
+	.do_data(), .do_put(), .do_last(), .xfer_in(), .xfer_out(), .drained(), .active(),
+	.dq_req(), .dq_we(), .dq_off(), .dq_wd(),
+	/* verilator lint_on PINCONNECTEMPTY */
+	.fin(c5_fin), .fin_dec(c5_fin_dec), .fin_info(c5_fin_info),
+	.irq(c5_irq)
+);
+
+MacPPC7300_dbdma #(.LINE(1'b0)) dma_6 (
+	.clk, .reset,
+	.sel(dma_6_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_6_rle),
+	.dm_req(c6_req), .dm_we(c6_we), .dm_line(c6_line), .dm_addr(c6_addr), .dm_be(c6_be), .dm_wdata(c6_wdata),
+	.dm_ack(c6_ack), .dm_rdata, .dm_half(c6_half), .dm_rdesc,
+	.di_valid(1'b0), .di_data(8'h00), .di_flush(1'b0), .di_last(1'b0), .dev_st(8'h00),
+	.do_ready(sb_ready), .do_data(sb_odata), .do_put(sb_put), .dq_ack(1'b0), .dq_rd(8'h00),
+	/* verilator lint_off PINCONNECTEMPTY */
+	.do_last(), .di_take(), .xfer_in(), .xfer_out(), .drained(), .active(), .fin(), .fin_dec(), .fin_info(),
+	.dq_req(), .dq_we(), .dq_off(), .dq_wd(),
+	/* verilator lint_on PINCONNECTEMPTY */
+	.irq(c6_irq)
+);
+
+MacPPC7300_dbdma #(.LINE(1'b0), .STOP_WB(1'b1)) dma_7 (
+	.clk, .reset,
+	.sel(dma_7_sel), .we, .rn(addr[4:2]), .wle, .rle(dma_7_rle),
+	.dm_req(c7_req), .dm_we(c7_we), .dm_line(c7_line), .dm_addr(c7_addr), .dm_be(c7_be), .dm_wdata(c7_wdata),
+	.dm_ack(c7_ack), .dm_rdata, .dm_half(c7_half), .dm_rdesc,
+	.di_valid(sb_valid), .di_data(sb_idata), .di_take(sb_take), .di_flush(1'b0), .di_last(1'b0), .dev_st(8'h00),
+	.do_ready(1'b0), .dq_ack(1'b0), .dq_rd(8'h00),
+	/* verilator lint_off PINCONNECTEMPTY */
+	.do_data(), .do_put(), .do_last(), .xfer_in(), .xfer_out(), .drained(), .active(), .fin(), .fin_dec(), .fin_info(),
+	.dq_req(), .dq_we(), .dq_off(), .dq_wd(),
+	/* verilator lint_on PINCONNECTEMPTY */
+	.irq(c7_irq)
+);
 
 MacPPC7300_mesh #(.TICK_HZ(SCSI_HZ)) mesh (
 	.clk, .reset, .tick(scsi_tick),
@@ -401,10 +496,11 @@ MacPPC7300_dbdma #(.LINE(1'b0)) dma_8 (
 	.irq(s8_irq)
 );
 
-// channel 8's interrupt for the trace
-wire [7:0] itr8_now = {irq, int_mask[31], int_mask[8], int_events[8], dma_lvl[8], s8_active, 2'b00};
+// channel 8's interrupt for the trace, and the ESCC's channel A line and channels 4 and 5's
+wire [7:0] itr8_now = {irq, int_mask[31], int_mask[8], int_events[8], dma_lvl[8], s8_active,
+                       scc_a_irq, dma_lvl[4] | dma_lvl[5]};
 always_ff @(posedge clk) begin
-	itr8_ev <= itr8_now[6:2] != itr8_st[6:2];
+	itr8_ev <= itr8_now[6:0] != itr8_st[6:0];
 	itr8_st <= itr8_now;
 end
 
@@ -529,10 +625,10 @@ MacPPC7300_dbdma #(.S6_EOF(1'b1), .DEV_QUAD(1'b1), .LINE(1'b0)) dma_3 (
 	.irq(e3_irq), .fin(e3_fin), .fin_dec(e3_fin_dec), .fin_info(e3_fin_info)
 );
 
-assign dfin      = e2_fin | e3_fin | s8_fin;
-assign dfin_ch   = s8_fin ? 4'd8 : e3_fin ? 4'd3 : 4'd2;
-assign dfin_type = s8_fin ? s8_fin_dec : e3_fin ? e3_fin_dec : e2_fin_dec;
-assign dfin_info = s8_fin ? s8_fin_info : e3_fin ? e3_fin_info : e2_fin_info;
+assign dfin      = e2_fin | e3_fin | s8_fin | c4_fin | c5_fin;
+assign dfin_ch   = s8_fin ? 4'd8 : e3_fin ? 4'd3 : e2_fin ? 4'd2 : c4_fin ? 4'd4 : 4'd5;
+assign dfin_type = s8_fin ? s8_fin_dec : e3_fin ? e3_fin_dec : e2_fin ? e2_fin_dec : c4_fin ? c4_fin_dec : c5_fin_dec;
+assign dfin_info = s8_fin ? s8_fin_info : e3_fin ? e3_fin_info : e2_fin ? e2_fin_info : c4_fin ? c4_fin_info : c5_fin_info;
 
 // ---- SWIM3 (MacPPC7300_swim3): byte registers at (offset >> 4) & F (grandcentral.cpp:205), ----
 // ---- and its DMA channel 1 ----
@@ -666,6 +762,10 @@ always_comb begin
 		else if (addr[14:8] == 7'd2) rq = (off[7:5] == 3'd0) ? bswap32(dma_2_rle) : 32'h0;
 		else if (addr[14:8] == 7'd3) rq = (off[7:5] == 3'd0) ? bswap32(dma_3_rle) : 32'h0;
 		else if (addr[14:8] == 7'd1) rq = (off[7:5] == 3'd0) ? bswap32(dma_1_rle) : 32'h0;
+		else if (addr[14:8] == 7'd4) rq = (off[7:5] == 3'd0) ? bswap32(dma_4_rle) : 32'h0;
+		else if (addr[14:8] == 7'd5) rq = (off[7:5] == 3'd0) ? bswap32(dma_5_rle) : 32'h0;
+		else if (addr[14:8] == 7'd6) rq = (off[7:5] == 3'd0) ? bswap32(dma_6_rle) : 32'h0;
+		else if (addr[14:8] == 7'd7) rq = (off[7:5] == 3'd0) ? bswap32(dma_7_rle) : 32'h0;
 		else if (ch_ok) begin
 			case (off[7:2])
 				6'd1:    rq = bswap32({16'h0, ch_stat[ch]});
@@ -793,6 +893,10 @@ always_ff @(posedge clk) begin
 	if (e2_irq)    dma_lvl[2]  <= 1'b1;
 	if (e3_irq)    dma_lvl[3]  <= 1'b1;
 	if (f1_irq)    dma_lvl[1]  <= 1'b1;
+	if (c4_irq)    dma_lvl[4]  <= 1'b1;
+	if (c5_irq)    dma_lvl[5]  <= 1'b1;
+	if (c6_irq)    dma_lvl[6]  <= 1'b1;
+	if (c7_irq)    dma_lvl[7]  <= 1'b1;
 
 	if (sel & ints & we) begin
 		case (off[7:0])

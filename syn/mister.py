@@ -485,6 +485,16 @@ def trace(last, first, fname=None):
                 reg = "GC int " + {0x20: "events", 0x24: "mask", 0x28: "clear", 0x2C: "levels"}.get(addr & 0xFC, "?")
             elif blk == 0x140:
                 reg = "AWACS %s+%d" % (AWACS_REGS.get((addr >> 4) & 15, "%d" % ((addr >> 4) & 15)), addr & 3)
+            elif 0x120 <= blk <= 0x13F:
+                off = (addr & 0x1FFF) + {8: 0, 4: 1, 2: 2, 1: 3}.get(be, 0)
+                if off < 0x0C and blk == 0x120:
+                    n = ["B cmd", "A cmd", "B data", "A data", "B enh", "A enh"][off >> 1]
+                else:
+                    k = (off >> 4) & 15
+                    n = ["B cmd", "B data", "A cmd", "A data", "B enh", "A enh"][k] if k < 6 else "reg %d" % k
+                reg = "ESCC " + n
+                data = (data >> (8 * {8: 3, 4: 2, 2: 1, 1: 0}.get(be, 0))) & 0xFF
+                be = 8
             else:
                 reg = "DMA-%X " % (blk & 15) + DMA_REGS.get(addr & 0xFF, "%02x" % (addr & 0xFF))
             print("%s %-14s %s %0*x  (be %x)" % (t, reg, "w" if we else "r", 2 if be == 8 else 8, data, be))
@@ -506,8 +516,9 @@ def trace(last, first, fname=None):
                      (s >> 2) & 1, (s >> 1) & 1, s & 1))
         elif kind == 11:
             s = r[1]
-            print("%s IRQ cpu %d 68k %d | DMA-8 mask %d event %d level %d active %d"
-                  % (t, s >> 7, (s >> 6) & 1, (s >> 5) & 1, (s >> 4) & 1, (s >> 3) & 1, (s >> 2) & 1))
+            print("%s IRQ cpu %d 68k %d | DMA-8 mask %d event %d level %d active %d | SCC-A line %d | DMA-4/5 level %d"
+                  % (t, s >> 7, (s >> 6) & 1, (s >> 5) & 1, (s >> 4) & 1, (s >> 3) & 1, (s >> 2) & 1,
+                     (s >> 1) & 1, s & 1))
         elif kind in (5, 8, 9):
             # MacPPC7300_dbdma fin_info: {cmd_ptr, cmd key bits reqCount, ..., ...}
             w1, w2 = int.from_bytes(r[8:16], "little"), int.from_bytes(r[16:24], "little")
@@ -527,6 +538,15 @@ def trace(last, first, fname=None):
             else:
                 print("%s DMA-%d STOPPED in state %d %s res %d status %04x conds w%d b%d i%d"
                       % (t, r[1], y >> 28, c, x >> 16, x & 0xFFFF, (y >> 2) & 1, (y >> 1) & 1, y & 1))
+        elif kind == 16:
+            # the ESCC's channel A: a byte finished by the receiver and/or one taken by DMA
+            f = r[10]
+            parts = []
+            if f & 0x80:
+                parts.append("rx %02x%s" % (r[9], " LOST (overrun)" if f & 0x20 else ""))
+            if f & 0x40:
+                parts.append("dma %02x" % r[8])
+            print("%s SCC-A %s  fifo %d" % (t, ", ".join(parts), f & 0x1F))
         elif kind == 13:
             # the codec's output frames (syn/sndtrace.py turns them into a WAV)
             cnt = int.from_bytes(r[1:4], "little")

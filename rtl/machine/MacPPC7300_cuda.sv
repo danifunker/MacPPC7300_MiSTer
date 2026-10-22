@@ -275,13 +275,16 @@ end
 // clock (RAM AB-AE, seconds since 1904, the high byte first) to 630BD178;
 // the date and time go there as the machine starts, a byte a clock when the
 // firmware is not writing RAM itself. Not again until this module's reset.
-logic [2:0] clk_ld;                    // bytes left: AE at 4 ... AB at 1
+// Then bit 4 of A1, as SET_REAL_TIME sets it (17DB): without it Mac OS takes
+// the clock as never set and shows its alert.
+logic [2:0] clk_ld;                    // bytes left: A1 at 5, AE at 4 ... AB at 1
 logic       clk_set, rst_q;
+logic [7:0] a1_q;                      // the firmware's last write to A1
 wire  [7:0] clk_byte = clock_secs[8 * (3'd4 - clk_ld) +: 8];
 wire        cpu_ram_we = cen & b_wr & b_ram;
 wire        ram_we     = cpu_ram_we | (clk_ld != 3'd0);
-wire  [8:0] ram_wa     = cpu_ram_we ? b_addr[8:0] : 9'h0AA + 9'(clk_ld);
-wire  [7:0] ram_wd     = cpu_ram_we ? b_wd : clk_byte;
+wire  [8:0] ram_wa     = cpu_ram_we ? b_addr[8:0] : clk_ld == 3'd5 ? 9'h0A1 : 9'h0AA + 9'(clk_ld);
+wire  [7:0] ram_wd     = cpu_ram_we ? b_wd : clk_ld == 3'd5 ? a1_q | 8'h10 : clk_byte;
 
 logic [7:0] ram [0:511];
 logic [7:0] ram_q, rom_q, io_q;
@@ -310,9 +313,10 @@ end
 
 always_ff @(posedge clk) begin
 	rst_q <= cpu_reset;
+	if (cpu_ram_we && b_addr[8:0] == 9'h0A1) a1_q <= b_wd;
 	if (rst_q && !cpu_reset && !clk_set && clock_ok) begin
 		clk_set <= 1'b1;
-		clk_ld  <= 3'd4;
+		clk_ld  <= 3'd5;
 	end
 	else if (clk_ld != 3'd0 && !cpu_ram_we) clk_ld <= clk_ld - 3'd1;
 	if (reset) begin

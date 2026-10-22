@@ -354,6 +354,8 @@ int main(int argc, char** argv) {
 	std::vector<Step> script = {
 		{"READ_MCU_MEM 0F00 (the ROM's copyright)", {0x01, 0x02, 0x0F, 0x00}, {0x01, 0x00, 0x02, 0x28, 0x63, 0x29, 0x20, 0x31, 0x39, 0x38, 0x39}, 12},
 		{"GET_REAL_TIME", {0x01, 0x03}, {0x01, 0x00, 0x03}, 7},
+		{"SET_REAL_TIME 7A000000 (writes)", {0x01, 0x09, 0x7A, 0x00, 0x00, 0x00}, {0x01, 0x00, 0x09}, 8},
+		{"GET_REAL_TIME after it (writes)", {0x01, 0x03}, {0x01, 0x00, 0x03, 0x7A, 0x00}, 7},
 		{"WRITE_PRAM 0010 = AA 55", {0x01, 0x0C, 0x00, 0x10, 0xAA, 0x55}, {0x01, 0x00, 0x0C}, 8},
 		{"READ_PRAM 0010", {0x01, 0x07, 0x00, 0x10}, {0x01, 0x00, 0x07, 0xAA, 0x55}, 5},
 		{"the ROM's first packet: I2C write to 88, 61 55", {0x01, 0x22, 0x88, 0x61, 0x55}, {}, 8},
@@ -423,6 +425,7 @@ int main(int argc, char** argv) {
 	bool off_seen = false, off_early = false, off_held = false, wake_seen = false;
 	uint64_t off_at = 0;
 	size_t script_i = 0;
+	bool log_writes = false;
 	bool script_sent = false;
 	uint64_t script_started = 0;
 	uint32_t time_at_get = 0;
@@ -445,6 +448,10 @@ int main(int argc, char** argv) {
 			if (opt.lockstep && dut->dbg_rd && dut->dbg_addr < 0x20) io_reads.push_back({(uint16_t)dut->dbg_addr, (uint8_t)dut->dbg_rdata});
 #endif
 			if (dut->dbg_wr) rtl_writes.push_back({(uint16_t)dut->dbg_addr, (uint8_t)dut->dbg_wdata});
+			// a step marked with "(writes)" lists the firmware's RAM writes outside its stack
+			if (dut->dbg_wr && log_writes && dut->dbg_addr >= 0x90 && dut->dbg_addr < 0x200 &&
+			    !(dut->dbg_addr >= 0xE0 && dut->dbg_addr < 0x100))
+				std::printf("       write %02X at %03X\n", dut->dbg_wdata, dut->dbg_addr);
 		}
 		dut->clk = 1;
 		dut->eval();
@@ -503,6 +510,7 @@ int main(int argc, char** argv) {
 					host.send(script[script_i].pkt);
 					host.max_reply = script[script_i].max;
 					script_sent = true;
+					log_writes = std::strstr(script[script_i].what, "(writes)") != nullptr;
 					script_started = clocks;
 				}
 			}
@@ -518,6 +526,7 @@ int main(int argc, char** argv) {
 				script_i++;
 				script_sent = false;
 				host.have_reply = false;
+				log_writes = false;
 			}
 			if (script_sent && clocks - script_started > (uint64_t)(0.5 * CLK_HZ)) {
 				if (script_i + 1 == script.size() && off_seen) {
