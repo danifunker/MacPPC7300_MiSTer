@@ -37,13 +37,12 @@ New since 2026-10-16:
   address lines the controller left at 0, so a single-byte or halfword
   store to uncached memory wrote the whole word. Fixed.
 - The CPU carries the RS/6000 core's little-endian mode, switched off here.
-- Known: Mac OS 9.1 says "Your clock is not set to the correct time" after
-  every core load or Apply and reset (not after a restart from Mac OS; not
-  on 7.6.1), and closes the alert by itself after about four minutes. The
-  clock is right and the year is not the cause: Cuda's PRAM starts empty at
-  every cold start, as a real Mac's does only without its battery, and Mac
-  OS takes that as a lost clock. Keeping the PRAM on the SD card (as MAME
-  does) is the fix, not in this release.
+- Known: Mac OS 9.1 and 7.6.1 say "Your clock is not set to the correct
+  time" at every start but a restart right after setting the time, and
+  close the alert by themselves. The clock is right and the year is not the
+  cause: the core writes the MiSTer's time into Cuda's clock bytes but not
+  the "time set" flag (Cuda RAM A1 bit 4) that Cuda's SET_REAL_TIME sets
+  with them, and Mac OS asks Cuda for that flag. Fixed after this release.
 - Seen once, not reproduced: a Restart from Mac OS 9.1 right after a PPP
   session stopped at the Finder (Apply and reset recovered it).
 

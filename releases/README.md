@@ -66,11 +66,11 @@ Test builds of the Power Macintosh 7300/7600 core for the MiSTer
   the SCSI disks, the CD-ROM, Ethernet, the startup chime, the clock (set
   from the MiSTer's, local time), the serial port (the modem port on the
   MiSTer's UART, or MIDI). Mac OS's own sounds are not tested yet.
-- Mac OS 9.1 says "Your clock is not set to the correct time" after every
-  core load or Apply and reset (not after a restart from Mac OS), and
-  closes it by itself after about four minutes. The time is right: Cuda's
-  PRAM starts empty at each cold start (no battery), which Mac OS takes as
-  a lost clock. Keeping PRAM on the SD card is the planned fix.
+- Mac OS 9.1 and 7.6.1 say "Your clock is not set to the correct time" as
+  they start, and close it by themselves. The time is right: the core puts
+  the MiSTer's time into Cuda's clock without the "time set" flag Cuda
+  keeps beside it, so Mac OS takes the clock as never set. Fixed after the
+  2026-10-21 release (the core sets the flag with the time).
 - Memory (OSD top page): 28 MB (the default, any board), then 60 (a 64 MB
   SDRAM board or larger) and 124 MB (a 128 MB board), then 6 and 16 MB;
   Mac OS sees all of it. Settings that need a restart (Memory, the
