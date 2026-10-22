@@ -60,7 +60,9 @@ on the board before releasing it: a fit that misses the memory clock (two
 of two so far) has been one that fails at 100.
 
 **Every release from 2026-10-21 on is two fixed-speed bitstreams** (the
-user's decision: the OSD's speed toggle does not work well enough):
-`MacPPC7300_YYYYMMDD_100MHz.rbf` (`build.py 100`) and
-`MacPPC7300_YYYYMMDD_70MHz.rbf` (`build.py 70`), of the same source. No
-dual build is released; `dual` stays for development only.
+user's decision: the OSD's speed toggle does not work well enough), of the
+same source: `MacPPC7300_YYYYMMDD.rbf` (`build.py 70`, the design's speed)
+and `MacPPC7300_OC_YYYYMMDD.rbf` (`build.py 100`, the overclock: OC in the
+name, the user's naming). Both keep the core name MacPPC7300 (the same
+`games/MacPPC7300/` folder and settings). No dual build is released; `dual`
+stays for development only.
