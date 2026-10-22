@@ -124,6 +124,25 @@ chip reset with ENF and 00 after a DMA no-operation.
 
 ## Results from the real 7300
 
-None yet: the image is in `TO_CARD\` for the user's next session with the
-machine. When they come, they go here, into `docs/MacPPC7300_stubs.md`
+**`--dbdma` (2026-10-21, `HD50_512_hwprobe_dbdma.hda`, build 59BA6844):**
+Grand Central's DMA channel 7 with a 16-byte INPUT_MORE, the ESCC's channel B
+in local loopback at 57,600. As the command's resCount / xferStatus, the
+channel status and CommandPtr:
+
+| case | resCount | xferStatus | status | CommandPtr |
+|---|---|---|---|---|
+| an empty FLUSH | 16 | A400 | 8400 | the INPUT |
+| 3 bytes in, no FLUSH yet | (not written: the bytes still in the channel) | | 8400 | the INPUT |
+| 3 bytes, FLUSH | 13 | A400 | 8400 | the INPUT |
+| 13 more: the command completes | 0 | 8400 | 8000 | the STOP after it |
+| a new command, 2 bytes in | (not written) | | 8400 | the INPUT |
+| RUN cleared, no FLUSH | 14 | 0400 | 0000 | the STOP after it |
+
+A FLUSH always writes FLUSH into xferStatus; clearing RUN during an INPUT
+writes the bytes, resCount and xferStatus (ACTIVE alone) and moves
+CommandPtr on, which dingusppc does not do. The core's serial receive
+channels do it since f8ff304 (Mac OS's PPP needs it).
+
+The default probe (MESH, Curio, access times) has not been run yet: its
+image is built by `python hwprobe.py build`. When they come, they go here, into `docs/MacPPC7300_stubs.md`
 (the entries that name this probe), and into the RTL if they differ.
