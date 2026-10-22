@@ -1413,7 +1413,7 @@ int main(int argc, char** argv) {
 	};
 
 	dut->clk = 0; dut->clk_b = 0;
-	dut->reset = 1; dut->reset_b = 1; dut->cuda_cold = 1;   // the machine's start: Cuda's cold start too
+	dut->reset = 1; dut->reset_b = 1;
 	for (int i = 0; i < 4; i++) tick();
 	// the NVRAM image, a byte a clock, with reset still held (as the MiSTer's
 	// boot1.rom is loaded)
@@ -1422,7 +1422,7 @@ int main(int argc, char** argv) {
 		nv_ld = -1;
 		tick();
 	}
-	dut->reset = 0; dut->reset_b = 0; dut->cuda_cold = 0;
+	dut->reset = 0; dut->reset_b = 0;
 	mm = Mem();
 	cycles = 0;
 #else

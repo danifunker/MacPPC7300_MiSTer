@@ -554,16 +554,6 @@ always @(posedge clk_mem)
 	cpu_reset_m <= reset_in[2] | ~sdram_ready | rom_dl | nv_dl | nvs_hold | (~boot_memtest & ~rom_loaded) | spd_busy_s[2];
 assign spd_rst = cpu_reset_m;
 
-// Cuda's reset: a cold start of its firmware only as the machine starts (the core's start, a new
-// ROM, a CPU speed change, the power key after a Shut Down: Cuda's power-off is its firmware's
-// own state); Apply and reset and an NVRAM image's load leave Cuda running, as a Mac's reset
-// leaves it (its battery): Mac OS 9 takes Cuda's cold start for a lost clock
-reg cuda_cold_m = 1;
-always @(posedge clk_mem) begin
-	if (rom_dl | spd_busy_s[2] | wake_m[1]) cuda_cold_m <= 1;
-	else if (!cpu_reset_m) cuda_cold_m <= 0;
-end
-
 // the options a running Mac cannot follow, taken under reset (a change waits for the next):
 // the RAM size, the monitor, the ADB game controller, the Ethernet bridge, the CPU's speed
 // (the PLL's, once it runs it); MacPPC7300_adb synchronises the controller's bus
@@ -601,7 +591,6 @@ assign cfg_pending = {status[13:4], status[19:17], status[33:30], status[122:121
 
 // into the CPU's clock (the options are quasi-static: they change only with the reset held)
 reg [2:0] cpu_reset_s = 3'b111;
-reg [2:0] cuda_cold_s = 3'b111;
 reg [7:0] ram_mb_c [2];
 reg [4:0] rom_at_c [2];
 reg [1:0] boot_memtest_c;
@@ -611,7 +600,6 @@ reg [1:0] l2_on_c = 2'b11;
 reg [1:0] cpu_fast_c;
 always @(posedge clk_cpu) begin
 	cpu_reset_s    <= {cpu_reset_s[1:0], cpu_reset_m};
-	cuda_cold_s    <= {cuda_cold_s[1:0], cpu_reset_m & cuda_cold_m};
 	cpu_fast_c     <= {cpu_fast_c[0], cpu_fast_m};
 	ram_mb_c[0]    <= ram_mb;
 	ram_mb_c[1]    <= ram_mb_c[0];
@@ -788,7 +776,6 @@ MacPPC7300_system #(.CPU_HZ(70000000), .CPU_HZ_FAST(100000000), .L2_KB(L2_KB), .
 	.clk(clk_cpu),
 	.cpu_fast(cpu_fast_c[1]),
 	.reset(cpu_reset),
-	.cuda_cold(cuda_cold_s[2]),
 	.cpu_in_reset(cpu_held),
 	.power_wake,
 	.reset_pc(32'hFFF00100),
