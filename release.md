@@ -23,10 +23,12 @@ New since 2026-10-21:
 Tested on the board (DE10-Nano, 128 MB SDRAM, RAM 124 MB), the 70 MHz
 build: no alert and the right time on Mac OS 9.1 and 7.6.1 after a core
 load, Apply and reset, Shut Down and the power key, and a restart; the
-2026-10-21 build, started the same way, still shows it. The OC build is
-the 2026-10-21 OC's source and seed with this change, not run on the board.
-Known: 7.6.1 started with the power key after a clean Shut Down says it
-was not shut down properly.
+2026-10-21 build, started the same way, still shows it. Shut Down and the
+power key, twice, on Mac OS 7.5.3, 7.6.1 (three images), 8.5 and 9.1: no
+"not shut down properly" box (seen once on a test build, not again). The
+OC build: 7.6.1 cold starts 3 of 3 (65-66 s to the Finder), 9.1 a core
+load and a restart (90-93 s), Ethernet (DHCP, ping), the chime right, no
+clock alert.
 
 ## 2026-10-21
 
