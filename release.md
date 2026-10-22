@@ -3,6 +3,31 @@
 The bitstreams are in `releases/`. Installing (the ROM, disks, the Main
 binary for the CD-ROM and Ethernet) is as in `releases/README.md`.
 
+## 2026-10-22
+
+Two bitstreams of the same source (branch `ibm-learnings-osd-ppp`, c65af4a):
+
+| File | md5 | CPU speed |
+|---|---|---|
+| `MacPPC7300_20261022.rbf` | `93f4273a7c4c90eaeff087debc87389f` | 70 MHz (fitter seed 3) |
+| `MacPPC7300_OC_20261022.rbf` | `5e7eb83d4512fc46c58e2d82a3208385` | **100 MHz, an overclock** (fitter seed 4); if it misbehaves on your board, use the other file and say so on Discord |
+
+New since 2026-10-21:
+
+- **No more "Your clock is not set to the correct time"** on Mac OS 7.6.1
+  and 9.1. The core put the MiSTer's time into Cuda's clock but not the
+  "time set" flag Cuda keeps beside it (RAM A1 bit 4, set by Cuda's
+  SET_REAL_TIME), so Mac OS took the clock as never set. The core now sets
+  the flag with the time.
+
+Tested on the board (DE10-Nano, 128 MB SDRAM, RAM 124 MB), the 70 MHz
+build: no alert and the right time on Mac OS 9.1 and 7.6.1 after a core
+load, Apply and reset, Shut Down and the power key, and a restart; the
+2026-10-21 build, started the same way, still shows it. The OC build is
+the 2026-10-21 OC's source and seed with this change, not run on the board.
+Known: 7.6.1 started with the power key after a clean Shut Down says it
+was not shut down properly.
+
 ## 2026-10-21
 
 Two bitstreams of the same source (branch `ibm-learnings-osd-ppp`), each at
@@ -42,7 +67,7 @@ New since 2026-10-16:
   close the alert by themselves. The clock is right and the year is not the
   cause: the core writes the MiSTer's time into Cuda's clock bytes but not
   the "time set" flag (Cuda RAM A1 bit 4) that Cuda's SET_REAL_TIME sets
-  with them, and Mac OS asks Cuda for that flag. Fixed after this release.
+  with them, and Mac OS asks Cuda for that flag. Fixed in 2026-10-22.
 - Seen once, not reproduced: a Restart from Mac OS 9.1 right after a PPP
   session stopped at the Finder (Apply and reset recovered it).
 
