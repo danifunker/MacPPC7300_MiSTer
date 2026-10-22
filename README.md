@@ -16,8 +16,8 @@ The bitstreams are in [`releases/`](releases/):
 
 | File | CPU clock |
 |---|---|
-| `MacPPC7300_20261022.rbf` | 70 MHz. The speed the design is built for. Start here. |
-| `MacPPC7300_OC_20261022.rbf` | 100 MHz, an overclock. About 40 % faster, but past what the FPGA is timed for. If you get a black screen, a grey screen or a crash at "Welcome to Mac OS", use the 70 MHz file. |
+| `MacPPC7300_OC_20261022.rbf` | 100 MHz, about 40 % faster. Works on the DE10-Nano, MiSTer Pi and SuperStation. |
+| `MacPPC7300_20261022.rbf` | 70 MHz, the speed the design is timed for. Use it on other hardware, or if the 100 MHz file gives a black screen, a grey screen or a crash at "Welcome to Mac OS". |
 
 Both are the same machine and share the same `games/MacPPC7300/` folder and
 OSD settings.
@@ -90,8 +90,8 @@ still runs, without those three.
 - Mac OS lists 1280 x 960 and 1280 x 1024 for the 20-inch Multiscan but
   stays in its current mode.
 - Apple System Profiler does not show the L2 cache. It is there and works.
-- The overclocked build depends on the FPGA's fit and on your board, and
-  may not start on every DE10-Nano or third-party board.
+- The 100 MHz build may not run on boards other than the DE10-Nano, MiSTer
+  Pi and SuperStation; use the 70 MHz build there.
 
 ## Keyboard
 
