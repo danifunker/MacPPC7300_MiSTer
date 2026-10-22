@@ -99,6 +99,10 @@ module MacPPC7300_machine
 	input  logic         clk,
 	input  logic         cpu_fast,                  // clk is CPU_HZ_FAST, else CPU_HZ (changes only in reset)
 	input  logic         reset,
+	// Cuda's own reset: a cold start of its firmware, only when the machine starts (a Mac's
+	// battery keeps Cuda running through its resets; Mac OS 9 takes Cuda's cold start for a
+	// lost clock: "Your clock is not set to the correct time")
+	input  logic         cuda_cold,
 	input  logic [7:0]   ram_mb,                    // installed RAM, at most 4 x rom_at
 	input  logic [4:0]   rom_at,                    // the ROM's SDRAM offset in 4 MB (quasi-static)
 	input  logic         boot_memtest,              // run the memory test in place of the ROM
@@ -765,7 +769,7 @@ logic [12:0] cu_addr, cu_tr_pc;
 logic [7:0]  cu_wdata, cu_rdata, cu_tr_op, cu_tr_a, cu_tr_x, cu_tr_sp, cu_tr_cc;
 
 MacPPC7300_cuda #(.CLK_HZ(CPU_HZ), .CLK_HZ_FAST(CPU_HZ_FAST), .FAST_BOOT(CUDA_FAST_BOOT != 0)) cuda (
-	.clk, .cpu_fast, .reset,
+	.clk, .cpu_fast, .reset(cuda_cold),
 	.via_tip, .via_byteack, .treq(cuda_treq), .cb1(cuda_cb1),
 	.cb2_oe(cuda_cb2_oe), .cb2_out(cuda_cb2_out), .cb2(cb2_line),
 	.cpu_reset, .power_off, .nmi(cuda_nmi), .clock_ok, .clock_secs,
